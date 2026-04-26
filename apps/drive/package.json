@@ -1,0 +1,47 @@
+{
+  "name": "@shedflare/drive",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "check": "vp check",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply shedflare-drive --local",
+    "db:migrate": "wrangler d1 migrations apply shedflare-drive --remote",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.4",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.32.3",
+    "@cloudflare/workers-types": "^4.20260415.1",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "^2.11.12",
+    "vite-plus": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "cloudflare": {
+    "bindings": {
+      "APP_PUBLIC_URL": {
+        "description": "The canonical public URL of the app."
+      },
+      "OWNER_EMAIL": {
+        "description": "Required owner email. Cloudflare Access must authenticate this account in production."
+      },
+      "DEV_AUTH_EMAIL": {
+        "description": "Optional local-only development identity used on localhost."
+      }
+    }
+  }
+}

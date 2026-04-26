@@ -1,0 +1,77 @@
+{
+  "name": "@shedflare/chat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "test": "vp test",
+    "check": "vp check",
+    "deploy": "node ./scripts/deploy.mjs",
+    "ready": "vp fmt && vp lint && vp run test -r && vp run build -r",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "^1.1.0",
+    "@openauthjs/openauth": "^0.4.3",
+    "@shedflare/chat-domain": "workspace:*",
+    "@shedflare/chat-effect": "workspace:*",
+    "@shedflare/chat-server": "workspace:*",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.4",
+    "@tanstack/ai": "0.10.2",
+    "@tanstack/db": "catalog:",
+    "@tanstack/solid-db": "catalog:",
+    "dompurify": "catalog:",
+    "effect": "catalog:",
+    "highlight.js": "catalog:",
+    "marked": "catalog:",
+    "marked-highlight": "catalog:",
+    "solid-js": "^1.9.12",
+    "valibot": "^1.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.32.3",
+    "@cloudflare/workers-types": "^4.20260415.1",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "^2.11.12",
+    "vite-plus": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "cloudflare": {
+    "bindings": {
+      "OPENCODE_GO_BASE_URL": {
+        "description": "Base URL for the OpenCode Go API backend."
+      },
+      "OPENCODE_GO_API_KEY": {
+        "description": "API key for authenticating with the OpenCode Go API."
+      },
+      "DEFAULT_MODEL_ID": {
+        "description": "Default LLM model ID to use (e.g. `claude-sonnet-4-20250514`)."
+      },
+      "APP_PUBLIC_URL": {
+        "description": "The canonical public URL of the app. This is configured as a plain Wrangler var because it is not secret."
+      },
+      "UPLOAD_TOKEN_SECRET": {
+        "description": "A random secret for signing short-lived attachment upload/read URLs. Generate one with `openssl rand -hex 32`."
+      },
+      "GOOGLE_CLIENT_ID": {
+        "description": "Google OAuth client ID for OpenAuth. Create one in Google Cloud Console > APIs & Services > Credentials."
+      },
+      "DEV_AUTH_EMAIL": {
+        "description": "Optional local-only development identity used on localhost when no auth cookie is present."
+      },
+      "OWNER_EMAIL": {
+        "description": "Required owner Google account email. Only this account can log in; others are redirected to /forbidden."
+      }
+    }
+  }
+}

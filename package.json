@@ -1,0 +1,22 @@
+{
+  "name": "shedflare",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A self-hosted Cloudflare app suite for personal productivity tools.",
+  "type": "module",
+  "scripts": {
+    "dev:chat": "pnpm --filter @shedflare/chat dev",
+    "build:chat": "pnpm --filter @shedflare/chat build",
+    "deploy:chat": "pnpm --filter @shedflare/chat deploy",
+    "dev:drive": "pnpm --filter @shedflare/drive dev",
+    "build:drive": "pnpm --filter @shedflare/drive build",
+    "deploy:drive": "pnpm --filter @shedflare/drive deploy",
+    "check": "pnpm -r check",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "license": "MIT"
+}

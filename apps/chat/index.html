@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" />
+    <script>
+      (() => {
+        const savedTheme = localStorage.getItem("b3-theme");
+        const theme = savedTheme === "night" ? savedTheme : "night";
+        document.documentElement.setAttribute("data-theme", theme);
+
+        let href = null;
+        if (theme === "night") {
+          href =
+            "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap";
+        }
+
+        if (!href) return;
+
+        const preconnectGoogle = document.createElement("link");
+        preconnectGoogle.rel = "preconnect";
+        preconnectGoogle.href = "https://fonts.googleapis.com";
+        document.head.append(preconnectGoogle);
+
+        const preconnectStatic = document.createElement("link");
+        preconnectStatic.rel = "preconnect";
+        preconnectStatic.href = "https://fonts.gstatic.com";
+        preconnectStatic.crossOrigin = "";
+        document.head.append(preconnectStatic);
+
+        const fontLink = document.createElement("link");
+        fontLink.id = "theme-fonts";
+        fontLink.rel = "stylesheet";
+        fontLink.href = href;
+        document.head.append(fontLink);
+      })();
+    </script>
+    <title>b3 chat</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>

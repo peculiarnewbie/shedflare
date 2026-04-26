@@ -1,0 +1,54 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shedflare-chat",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-03-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+  },
+  "vars": {
+    "APP_PUBLIC_URL": "https://sf-chat.example.com",
+    "DEFAULT_MODEL_ID": "auto",
+    "GOOGLE_CLIENT_ID": "replace-me",
+    "OWNER_EMAIL": "you@example.com",
+  },
+  "secrets": {
+    "required": ["OPENCODE_GO_BASE_URL", "OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"],
+  },
+  "kv_namespaces": [
+    {
+      "binding": "OPENAUTH_STORAGE",
+      "id": "replace-me",
+    },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "shedflare-chat-uploads",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SYNC_ENGINE",
+        "class_name": "SyncEngineDurableObject",
+      },
+    ],
+  },
+  "browser": {
+    "binding": "BROWSER",
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SyncEngineDurableObject"],
+    },
+  ],
+}

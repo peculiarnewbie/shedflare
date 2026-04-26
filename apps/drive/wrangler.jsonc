@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shedflare-drive",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-03-22",
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+  },
+  "vars": {
+    "APP_PUBLIC_URL": "https://sf-drive.example.com",
+    "OWNER_EMAIL": "you@example.com",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shedflare-drive",
+      "database_id": "replace-me",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "shedflare-drive-files",
+    },
+  ],
+}
