@@ -16,7 +16,7 @@ import {
   type RetryMessagePayload,
   type Thread,
   type Workspace,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import { dispatch } from "./pending-ops";
 import {
   workspaces,

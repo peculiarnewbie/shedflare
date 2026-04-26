@@ -11,7 +11,7 @@ import type {
   ExtractRun,
   TraceRun,
   TraceSpan,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 
 // ---------------------------------------------------------------------------
 // Sync channel – the push API that sync-adapter uses to feed server data

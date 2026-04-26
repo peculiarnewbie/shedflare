@@ -6,7 +6,7 @@
  */
 
 import type { StreamChunk, TextOptions, ModelMessage, ContentPart, Tool } from "@tanstack/ai";
-import type { TraceSpanKind } from "@shedflare/chat-domain";
+import type { TraceSpanKind } from "#/domain";
 
 export type ChatCompletionsAdapterConfig = {
   baseUrl: string;

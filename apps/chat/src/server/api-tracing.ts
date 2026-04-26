@@ -1,4 +1,4 @@
-import { createId, type TraceSpanKind } from "@shedflare/chat-domain";
+import { createId, type TraceSpanKind } from "#/domain";
 import {
   createStructuredLogger,
   makeRootTraceContext,
@@ -6,7 +6,7 @@ import {
   runAppEffect,
   traceEffect,
   type AppEnv,
-} from "@shedflare/chat-effect";
+} from "#/effect";
 import { Effect } from "effect";
 
 export async function runApiTrace<A>(input: {

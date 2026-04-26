@@ -1,4 +1,4 @@
-import { getRuntimeEnv, requireSession, verifyUploadToken } from "@shedflare/chat-server";
+import { getRuntimeEnv, requireSession, verifyUploadToken } from "#/runtime";
 import { runApiTrace } from "../server/api-tracing";
 
 function readObjectKey(url: URL) {

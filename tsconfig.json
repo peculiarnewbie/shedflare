@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["apps", "packages"]
+  "include": ["apps"]
 }

@@ -29,6 +29,11 @@ const computedCommit = process.env.VITE_GIT_SHA || gitCommit();
 const computedBuildTime = process.env.VITE_BUILD_TIME || new Date().toISOString();
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "#": path.resolve(repoDir, "src"),
+    },
+  },
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(computedVersion),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(computedCommit),

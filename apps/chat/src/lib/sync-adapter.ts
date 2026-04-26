@@ -4,8 +4,8 @@ import {
   TABLES,
   type SyncEventPayloadMap,
   type SyncServerEnvelope,
-} from "@shedflare/chat-domain";
-import type { Workspace, Thread, Message, Attachment } from "@shedflare/chat-domain";
+} from "#/domain";
+import type { Workspace, Thread, Message, Attachment } from "#/domain";
 import * as conn from "./ws-connection";
 import * as pendingOps from "./pending-ops";
 import { ensureActiveSelection } from "./ui-state";

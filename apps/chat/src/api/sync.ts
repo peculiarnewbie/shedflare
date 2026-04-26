@@ -1,4 +1,4 @@
-import { getRuntimeEnv, getSyncStub, requireSession } from "@shedflare/chat-server";
+import { getRuntimeEnv, getSyncStub, requireSession } from "#/runtime";
 
 export async function handleSync(request: Request): Promise<Response> {
   const env = getRuntimeEnv();

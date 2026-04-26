@@ -1,4 +1,4 @@
-import { SYNC_PROTOCOL_VERSION, createId, type SyncServerEnvelope } from "@shedflare/chat-domain";
+import { SYNC_PROTOCOL_VERSION, createId, type SyncServerEnvelope } from "#/domain";
 import { createSignal } from "solid-js";
 import * as pendingOps from "./pending-ops";
 

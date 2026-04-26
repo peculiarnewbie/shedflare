@@ -5,7 +5,7 @@ import {
   type SyncClientCommand,
   type SyncCommandPayloadMap,
   type SyncCommandType,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 
 const PENDING_OPS_KEY = "b3.pendingOps";
 

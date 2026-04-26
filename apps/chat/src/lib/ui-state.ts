@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import type { Workspace, Thread } from "@shedflare/chat-domain";
+import type { Workspace, Thread } from "#/domain";
 
 // ---------------------------------------------------------------------------
 // Persisted signals

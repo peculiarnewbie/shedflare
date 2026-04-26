@@ -4,7 +4,7 @@ import {
   getRuntimeEnv,
   purgeModelsCatalogCache,
   requireSession,
-} from "@shedflare/chat-server";
+} from "#/runtime";
 import { runApiTrace } from "../server/api-tracing";
 
 export async function handleModels(request: Request): Promise<Response> {

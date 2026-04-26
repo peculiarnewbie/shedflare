@@ -10,7 +10,7 @@ export {
   type ExtendedStreamChunk,
 } from "./chat-completions-adapter.js";
 export { chat } from "@tanstack/ai";
-import { decodeAppEnv, type AppEnv } from "@shedflare/chat-effect";
+import { createStructuredLogger, decodeAppEnv, type AppEnv } from "#/effect";
 import {
   createLocalJWKSet,
   createRemoteJWKSet,
@@ -25,10 +25,10 @@ import {
   type SyncCommandPayloadMap,
   type SyncCommandType,
   type SyncSnapshot,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import { createAuthIssuer } from "./auth/issuer.js";
 
-export type { AppEnv } from "@shedflare/chat-effect";
+export type { AppEnv } from "#/effect";
 export { subjects } from "./auth/subjects.js";
 export { createAuthIssuer } from "./auth/issuer.js";
 
@@ -66,6 +66,7 @@ const BROWSER_RENDER_MAX_ATTEMPTS = 2;
 const BROWSER_RENDER_RETRY_BACKOFF_MS = 600;
 const SINGLE_USER_SYNC_ID = "default";
 const encoder = new TextEncoder();
+const logger = createStructuredLogger("chat-runtime");
 
 type ExaSearchResult = {
   title?: string;
@@ -333,22 +334,26 @@ export async function getSession(
   if (verified.kind === "expired" && refresh && refreshToken) {
     const rotated = await rotateRefreshToken(refreshToken, env);
     if (!rotated) {
-      console.warn("[auth] refresh failed", { durationMs: Date.now() - startedAt });
+      logger.log("auth_refresh_failed", { durationMs: Date.now() - startedAt }, "warn");
       return null;
     }
     const reverified = await verifyAccessLocally(rotated.access, env);
     if (reverified.kind !== "ok") {
-      console.warn("[auth] rotated access token did not verify", {
-        kind: reverified.kind,
-        durationMs: Date.now() - startedAt,
-      });
+      logger.log(
+        "auth_rotated_access_token_invalid",
+        {
+          kind: reverified.kind,
+          durationMs: Date.now() - startedAt,
+        },
+        "warn",
+      );
       return null;
     }
-    console.info("[auth] session refreshed", { durationMs: Date.now() - startedAt });
+    logger.log("auth_session_refreshed", { durationMs: Date.now() - startedAt });
     return { user: { email: reverified.email }, tokens: rotated };
   }
 
-  console.info("[auth] session not valid", {
+  logger.log("auth_session_not_valid", {
     kind: verified.kind,
     refreshAttempted: verified.kind === "expired" && refresh && Boolean(refreshToken),
     durationMs: Date.now() - startedAt,
@@ -403,7 +408,7 @@ export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
   const cacheKey = new Request(MODELS_CATALOG_URL);
   const cached = await cache.match(cacheKey);
   if (cached) {
-    console.info("[models] catalog cache hit", { durationMs: Date.now() - startedAt });
+    logger.log("models_catalog_cache_hit", { durationMs: Date.now() - startedAt });
     return cached.json();
   }
 
@@ -425,7 +430,7 @@ export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
       },
     }),
   );
-  console.info("[models] catalog fetched", { durationMs: Date.now() - startedAt });
+  logger.log("models_catalog_fetched", { durationMs: Date.now() - startedAt });
   return json;
 }
 

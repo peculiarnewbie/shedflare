@@ -5,14 +5,14 @@ import {
   decodeSearchResultRow,
   type SearchResult,
   type SearchRun,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import {
   clampExaResults,
   exaMcpSearchRawText,
   exaSearch,
   ExaSearchError,
   type AppEnv,
-} from "@shedflare/chat-server";
+} from "#/runtime";
 
 const SEARCH_RESULTS_PER_RUN = 5;
 /** Hard cap on searches per assistant turn. Beyond this, we refuse further

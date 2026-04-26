@@ -1,4 +1,4 @@
-import { getRuntimeEnv, getSession } from "@shedflare/chat-server";
+import { getRuntimeEnv, getSession } from "#/runtime";
 import { runApiTrace } from "../server/api-tracing";
 
 function serializeCookie(

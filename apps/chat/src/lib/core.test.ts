@@ -8,7 +8,7 @@ import {
   resolveThreadMessagePath,
   sortConversationMessages,
   slugify,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import {
   BrowserRenderError,
   chat,
@@ -28,7 +28,7 @@ import {
   parseExaMcpTextResponse,
   truncateExtractedMarkdown,
   verifyUploadToken,
-} from "@shedflare/chat-server";
+} from "#/runtime";
 import { createExaSearchTool } from "../server/search";
 import { createBrowserExtractTool } from "../server/extract";
 import { consumeAssistantStream } from "../server/stream-consumer";

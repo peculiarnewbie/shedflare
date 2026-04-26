@@ -6,8 +6,8 @@
  * activity reporting, etc.).
  */
 
-import { REASONING_CONTENT_EVENT, type ExtendedStreamChunk } from "@shedflare/chat-server";
-import { nowIso, type MessagePart, type TraceSpanKind } from "@shedflare/chat-domain";
+import { REASONING_CONTENT_EVENT, type ExtendedStreamChunk } from "#/runtime";
+import { nowIso, type MessagePart, type TraceSpanKind } from "#/domain";
 import type { SearchProgressEvent } from "./search";
 import { normalizeAssistantError } from "./error-normalization";
 

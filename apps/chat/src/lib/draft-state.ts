@@ -1,11 +1,5 @@
 import { createSignal } from "solid-js";
-import {
-  createThread,
-  nowIso,
-  type ReasoningLevel,
-  type Thread,
-  type Workspace,
-} from "@shedflare/chat-domain";
+import { createThread, nowIso, type ReasoningLevel, type Thread, type Workspace } from "#/domain";
 
 export type DraftAttachmentChip = {
   localId: string;

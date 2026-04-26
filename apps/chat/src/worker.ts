@@ -1,4 +1,5 @@
-import { setRuntimeEnv, type AppEnv } from "@shedflare/chat-server";
+import { setRuntimeEnv, type AppEnv } from "#/runtime";
+import { createStructuredLogger } from "#/effect";
 import { createClient } from "@openauthjs/openauth/client";
 import { handleBootstrap } from "./api/bootstrap";
 import { handleSession } from "./api/session";
@@ -15,6 +16,8 @@ export { SyncEngineDurableObject } from "./server/sync-engine";
 type Env = AppEnv & {
   ASSETS: { fetch(request: Request): Promise<Response> };
 };
+
+const logger = createStructuredLogger("chat-worker");
 
 function serializeCookie(
   name: string,
@@ -71,7 +74,7 @@ export default {
             "code",
             { provider: "google" },
           );
-          console.info("[auth] login redirect created", { durationMs: Date.now() - startedAt });
+          logger.log("auth_login_redirect_created", { durationMs: Date.now() - startedAt });
           return withVersionHeader(Response.redirect(authUrl, 302));
         }
 
@@ -96,10 +99,14 @@ export default {
           );
           if (!tokenResponse.ok) {
             const errorText = await tokenResponse.text();
-            console.warn("[auth] callback token exchange failed", {
-              status: tokenResponse.status,
-              durationMs: Date.now() - startedAt,
-            });
+            logger.log(
+              "auth_callback_token_exchange_failed",
+              {
+                status: tokenResponse.status,
+                durationMs: Date.now() - startedAt,
+              },
+              "warn",
+            );
             return withVersionHeader(
               new Response(`Authentication failed: ${errorText}`, { status: tokenResponse.status }),
             );
@@ -123,7 +130,7 @@ export default {
             }),
           );
           headers.set("Location", "/");
-          console.info("[auth] callback completed", { durationMs: Date.now() - startedAt });
+          logger.log("auth_callback_completed", { durationMs: Date.now() - startedAt });
           return withVersionHeader(new Response(null, { status: 302, headers }));
         }
 
@@ -180,7 +187,11 @@ export default {
       });
     } catch (error) {
       if (error instanceof Response) return withVersionHeader(error);
-      console.error("Unhandled error:", error);
+      logger.log(
+        "unhandled_error",
+        { error: error instanceof Error ? error.message : String(error) },
+        "error",
+      );
       return withVersionHeader(new Response("Internal Server Error", { status: 500 }));
     }
   },

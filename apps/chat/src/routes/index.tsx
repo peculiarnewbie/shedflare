@@ -14,7 +14,7 @@ import {
 } from "solid-js";
 import { createStore } from "solid-js/store";
 import { useLiveQuery } from "@tanstack/solid-db";
-import { createId, nowIso, resolveThreadMessagePath } from "@shedflare/chat-domain";
+import { createId, nowIso, resolveThreadMessagePath } from "#/domain";
 import type {
   AccountSettings,
   Attachment,
@@ -28,7 +28,7 @@ import type {
   TraceRun,
   TraceSpan,
   Workspace,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import type { Citation } from "../components/Markdown";
 import type { TraceDrawerTrace } from "../components/TraceDrawerContent";
 import { explainAssistantError } from "../lib/assistant-errors";

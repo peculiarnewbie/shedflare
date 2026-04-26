@@ -1,12 +1,12 @@
 import { toolDefinition } from "@tanstack/ai";
-import { createExtractRun, type ExtractRun } from "@shedflare/chat-domain";
+import { createExtractRun, type ExtractRun } from "#/domain";
 import {
   BrowserRenderError,
   cloudflareBrowserMarkdown,
   normalizeExtractUrl,
   truncateExtractedMarkdown,
   type AppEnv,
-} from "@shedflare/chat-server";
+} from "#/runtime";
 import type { ToolProgressEvent } from "./search";
 
 /**

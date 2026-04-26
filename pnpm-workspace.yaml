@@ -1,6 +1,5 @@
 packages:
   - apps/*
-  - packages/*
 
 catalog:
   "@better-auth/infra": ^0.1.14
@@ -8,6 +7,7 @@ catalog:
   "@tanstack/solid-db": ^0.2.19
   "@types/node": ^24
   dompurify: ^3.4.0
+  drizzle-orm: 1.0.0-beta.22
   effect: 4.0.0-beta.49
   highlight.js: ^11.11.1
   jose: ^6.2.2

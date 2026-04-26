@@ -2,7 +2,7 @@ import { issuer } from "@openauthjs/openauth";
 import { GoogleOidcProvider } from "@openauthjs/openauth/provider/google";
 import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
 import { subjects } from "./subjects.js";
-import type { AppEnv } from "@shedflare/chat-effect";
+import type { AppEnv } from "#/effect";
 import { normalizeEmail } from "../index.js";
 
 type GoogleOidcClaims = {

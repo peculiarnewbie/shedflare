@@ -4,7 +4,7 @@ import {
   type TraceSpan,
   type TraceSpanKind,
   type TraceStatus,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 import * as Schema from "effect/Schema";
 
@@ -90,13 +90,9 @@ export interface TraceRecorderService {
   log(entry: StructuredLogEntry): Promise<void>;
 }
 
-export const AppEnvTag = Context.Service<AppEnv>("@shedflare/chat-effect/AppEnv");
-export const TraceRecorder = Context.Service<TraceRecorderService>(
-  "@shedflare/chat-effect/TraceRecorder",
-);
-export const TraceContext = Context.Service<TraceContextValue>(
-  "@shedflare/chat-effect/TraceContext",
-);
+export const AppEnvTag = Context.Service<AppEnv>("#/effect/AppEnv");
+export const TraceRecorder = Context.Service<TraceRecorderService>("#/effect/TraceRecorder");
+export const TraceContext = Context.Service<TraceContextValue>("#/effect/TraceContext");
 
 type AppRuntimeInput = {
   env: AppEnv;

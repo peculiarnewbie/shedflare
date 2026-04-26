@@ -11,11 +11,16 @@ import {
   decodeAttachmentRow,
   decodeAccountSettingsRow,
   decodeMessageRow,
+  decodeMessagePartRow,
+  decodeSearchRunRow,
+  decodeSearchResultRow,
+  decodeExtractRunRow,
   decodeThreadRow,
   decodeTraceRunRow,
   decodeTraceSpanRow,
   decodeWorkspaceRow,
   mergeAttachmentLink,
+  isSyncCommandType,
   nowIso,
   summarizeThreadTitle,
   type Attachment,
@@ -43,7 +48,7 @@ import {
   type TraceSpan,
   type Workspace,
   resolveThreadMessagePath,
-} from "@shedflare/chat-domain";
+} from "#/domain";
 import {
   chat,
   completeTextAttachment,
@@ -54,8 +59,11 @@ import {
   isInlineTextAttachment,
   type AppEnv,
   type ModelMessage,
-} from "@shedflare/chat-server";
+} from "#/runtime";
+import * as dbSchema from "#/db/schema";
 import { combineStrategies, maxIterations, untilFinishReason } from "@tanstack/ai";
+import { eq } from "drizzle-orm";
+import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import {
   createStructuredLogger,
   decodeAppEnv,
@@ -63,7 +71,7 @@ import {
   makeTraceRecorder,
   runAppEffect,
   traceEffect,
-} from "@shedflare/chat-effect";
+} from "#/effect";
 import { Effect } from "effect";
 import { createExaSearchTool, type ToolProgressEvent } from "./search";
 import { createBrowserExtractTool } from "./extract";
@@ -83,6 +91,47 @@ function json<T>(value: T) {
 
 function parseJson<T>(value: unknown): T {
   return JSON.parse(String(value)) as T;
+}
+
+async function parseJsonRequest(request: Request) {
+  try {
+    return await request.json();
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+}
+
+function parseInternalCommandBody(value: unknown):
+  | {
+      opId: string;
+      commandType: SyncCommandType;
+      payload: SyncCommandPayloadMap[SyncCommandType];
+    }
+  | Response {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return new Response("Expected JSON object", { status: 400 });
+  }
+  const body = value as Record<string, unknown>;
+  if (typeof body.opId !== "string" || !body.opId.trim()) {
+    return new Response("Invalid opId", { status: 400 });
+  }
+  if (!isSyncCommandType(body.commandType)) {
+    return new Response("Invalid commandType", { status: 400 });
+  }
+  return {
+    opId: body.opId,
+    commandType: body.commandType,
+    payload: body.payload as SyncCommandPayloadMap[SyncCommandType],
+  };
+}
+
+function boolToSql(value: boolean | null | undefined) {
+  if (value === undefined || value === null) return null;
+  return value ? 1 : 0;
+}
+
+function sqlToBool(value: unknown) {
+  return Boolean(Number(value));
 }
 
 function isWebSocketRequest(request: Request) {
@@ -228,6 +277,7 @@ function getProviderModelOptions(
 export class SyncEngineDurableObject {
   private readonly ctx: DurableObjectState;
   private readonly env: AppEnv;
+  private readonly db: DrizzleSqliteDODatabase<typeof dbSchema>;
   /**
    * Per-assistant-message AbortController registry.
    *
@@ -242,6 +292,7 @@ export class SyncEngineDurableObject {
   constructor(ctx: DurableObjectState, env: AppEnv) {
     this.ctx = ctx;
     this.env = decodeAppEnv(env);
+    this.db = drizzle(ctx.storage, { schema: dbSchema, logger: false });
 
     void this.ctx.blockConcurrencyWhile(async () => {
       this.initializeStorage();
@@ -263,11 +314,10 @@ export class SyncEngineDurableObject {
     }
 
     if (url.pathname === "/internal/command" && request.method === "POST") {
-      const body = (await request.json()) as {
-        opId: string;
-        commandType: SyncCommandType;
-        payload: SyncCommandPayloadMap[SyncCommandType];
-      };
+      const jsonBody = await parseJsonRequest(request);
+      if (jsonBody instanceof Response) return jsonBody;
+      const body = parseInternalCommandBody(jsonBody);
+      if (body instanceof Response) return body;
       syncLog("internal_command", {
         opId: body.opId,
         commandType: body.commandType,
@@ -294,7 +344,11 @@ export class SyncEngineDurableObject {
       syncLog("ws_message", { type: envelope.type });
       await this.handleSocketEnvelope(ws, envelope);
     } catch (error) {
-      console.error("[sync] websocket message error", error);
+      syncLogger.log(
+        "ws_message_error",
+        { error: error instanceof Error ? error.message : String(error) },
+        "error",
+      );
       ws.send(
         json({
           type: "sync_reset",
@@ -333,77 +387,161 @@ export class SyncEngineDurableObject {
       );
       CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,
-        archived_at TEXT,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        system_prompt TEXT NOT NULL,
+        default_model_id TEXT NOT NULL,
+        default_reasoning_level TEXT NOT NULL,
+        default_search_mode INTEGER NOT NULL,
+        prefer_free_search INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        archived_at TEXT,
+        sort_key INTEGER NOT NULL,
+        optimistic INTEGER,
+        op_id TEXT
       );
       CREATE TABLE IF NOT EXISTS account_settings (
         id TEXT PRIMARY KEY,
+        expand_reasoning_by_default INTEGER NOT NULL,
+        show_traces INTEGER NOT NULL,
+        title_generation_model_id TEXT,
+        title_generation_model_interleaved_field TEXT,
+        created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        optimistic INTEGER,
+        op_id TEXT
       );
       CREATE TABLE IF NOT EXISTS threads (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,
-        archived_at TEXT,
+        title TEXT NOT NULL,
+        pinned INTEGER NOT NULL,
+        head_message_id TEXT,
+        model_id TEXT,
+        reasoning_level TEXT,
+        created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         last_message_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        archived_at TEXT,
+        optimistic INTEGER,
+        op_id TEXT
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         thread_id TEXT NOT NULL,
+        parent_message_id TEXT,
+        source_message_id TEXT,
         role TEXT NOT NULL,
         status TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        reasoning_level TEXT NOT NULL,
+        text TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        error_code TEXT,
+        error_message TEXT,
+        search_enabled INTEGER NOT NULL,
+        duration_ms INTEGER,
+        ttft_ms INTEGER,
+        prompt_tokens INTEGER,
+        completion_tokens INTEGER,
+        optimistic INTEGER,
+        op_id TEXT
       );
       CREATE TABLE IF NOT EXISTS message_parts (
         id TEXT PRIMARY KEY,
         message_id TEXT NOT NULL,
         seq INTEGER NOT NULL,
-        row_json TEXT NOT NULL
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL,
+        json TEXT
       );
       CREATE TABLE IF NOT EXISTS attachments (
         id TEXT PRIMARY KEY,
         thread_id TEXT NOT NULL,
         message_id TEXT,
+        object_key TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        sha256 TEXT,
+        width INTEGER,
+        height INTEGER,
         status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        optimistic INTEGER,
+        op_id TEXT
       );
       CREATE TABLE IF NOT EXISTS search_runs (
         id TEXT PRIMARY KEY,
         message_id TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        query TEXT NOT NULL,
+        status TEXT NOT NULL,
+        step INTEGER NOT NULL,
+        num_results INTEGER NOT NULL,
+        result_count INTEGER NOT NULL,
+        preview_text TEXT NOT NULL,
+        error_message TEXT,
+        mode TEXT,
+        created_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS search_results (
         id TEXT PRIMARY KEY,
         message_id TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        search_run_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        snippet TEXT NOT NULL,
+        published_at TEXT,
+        domain TEXT NOT NULL,
+        score INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS extract_runs (
         id TEXT PRIMARY KEY,
         message_id TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        url TEXT NOT NULL,
+        status TEXT NOT NULL,
+        step INTEGER NOT NULL,
+        char_count INTEGER NOT NULL,
+        original_length INTEGER,
+        truncated INTEGER NOT NULL,
+        error_message TEXT,
+        created_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS trace_runs (
         id TEXT PRIMARY KEY,
         message_id TEXT,
         thread_id TEXT,
         workspace_id TEXT,
+        trace_id TEXT NOT NULL,
+        root_span_id TEXT NOT NULL,
+        model_id TEXT,
         status TEXT NOT NULL,
         started_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        ended_at TEXT,
+        duration_ms INTEGER,
+        error_code TEXT,
+        error_message TEXT,
+        attrs_json TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS trace_spans (
         id TEXT PRIMARY KEY,
         trace_run_id TEXT,
+        trace_id TEXT NOT NULL,
+        parent_span_id TEXT,
         message_id TEXT,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
         status TEXT NOT NULL,
         started_at TEXT NOT NULL,
-        row_json TEXT NOT NULL
+        ended_at TEXT,
+        duration_ms INTEGER,
+        error_code TEXT,
+        error_message TEXT,
+        attrs_json TEXT NOT NULL,
+        events_json TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_events_seq ON events(seq);
       CREATE INDEX IF NOT EXISTS idx_commands_seq ON commands(acked_seq);
@@ -560,7 +698,7 @@ export class SyncEngineDurableObject {
 
     const createdAt = nowIso();
     let followUp: DeferredFollowUp | undefined;
-    const transactionResult = this.ctx.storage.transactionSync(() => {
+    const transactionResult = this.db.transaction(() => {
       const pendingEvents: SyncServerEvent[] = [];
       switch (commandType) {
         case "bootstrap_session": {
@@ -918,16 +1056,17 @@ export class SyncEngineDurableObject {
         acceptedAt: createdAt,
         commandType,
       };
-      this.exec(
-        `INSERT INTO commands (op_id, type, status, response_json, created_at, acked_seq)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        opId,
-        commandType,
-        "accepted",
-        json(ack),
-        createdAt,
-        ackedSeq,
-      );
+      this.db
+        .insert(dbSchema.commands)
+        .values({
+          opId,
+          type: commandType,
+          status: "accepted",
+          responseJson: json(ack),
+          createdAt,
+          ackedSeq,
+        })
+        .run();
       return { ack, pendingEvents };
     });
     syncLog("process_command_committed", {
@@ -1543,12 +1682,12 @@ export class SyncEngineDurableObject {
     additionalMessages: Message[] = [],
   ) {
     const byId = new Map<string, Message>();
-    const rows = this.queryAll<{ row_json: string }>(
-      `SELECT row_json FROM messages WHERE thread_id = ?`,
+    const rows = this.queryAll<Record<string, unknown>>(
+      `SELECT * FROM messages WHERE thread_id = ?`,
       thread.id,
     );
     for (const row of rows) {
-      const message = parseJson<Message>(row.row_json);
+      const message = this.inflateRow("messages", row) as Message;
       byId.set(message.id, message);
     }
     for (const message of additionalMessages) {
@@ -1654,20 +1793,18 @@ export class SyncEngineDurableObject {
     workspaceId: string,
     threadMessages: Message[],
   ): Promise<{ messages: ModelMessage[]; systemPrompts: string[] }> {
-    const workspaceRow = this.queryOne<{ row_json: string }>(
-      `SELECT row_json FROM workspaces WHERE id = ?`,
-      workspaceId,
-    );
-    const workspace = workspaceRow ? parseJson<Workspace>(workspaceRow.row_json) : undefined;
+    const workspace = this.getWorkspace(workspaceId) ?? undefined;
     const threadId = threadMessages[0]?.threadId;
     const attachmentRows = threadId
-      ? this.queryAll<{ row_json: string }>(
-          `SELECT row_json FROM attachments WHERE thread_id = ? AND status = ?`,
+      ? this.queryAll<Record<string, unknown>>(
+          `SELECT * FROM attachments WHERE thread_id = ? AND status = ?`,
           threadId,
           "ready",
         )
       : [];
-    const attachments = attachmentRows.map((row) => parseJson<Attachment>(row.row_json));
+    const attachments = attachmentRows.map(
+      (row) => this.inflateRow("attachments", row) as Attachment,
+    );
 
     const systemPrompts: string[] = [];
     if (workspace?.systemPrompt) {
@@ -1800,16 +1937,17 @@ export class SyncEngineDurableObject {
   ) {
     const eventId = createId("evt");
     const createdAt = nowIso();
-    this.exec(
-      `INSERT INTO events (event_id, op_id, type, payload_json, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      eventId,
-      opId,
-      eventType,
-      json(payload),
-      createdAt,
-    );
-    const row = this.queryOne<{ seq: number }>("SELECT last_insert_rowid() as seq");
+    const row = this.db
+      .insert(dbSchema.events)
+      .values({
+        eventId,
+        opId,
+        type: eventType,
+        payloadJson: json(payload),
+        createdAt,
+      })
+      .returning({ seq: dbSchema.events.seq })
+      .get();
     const serverSeq = Number(row?.seq ?? 0);
     this.applyEventToMaterializedState(eventType, payload);
     return {
@@ -1827,7 +1965,7 @@ export class SyncEngineDurableObject {
     eventType: T,
     payload: SyncEventPayloadMap[T],
   ) {
-    return this.ctx.storage.transactionSync(() => this.insertEvent(opId, eventType, payload));
+    return this.db.transaction(() => this.insertEvent(opId, eventType, payload));
   }
 
   private applyEventToMaterializedState<T extends SyncEventType>(
@@ -1839,11 +1977,17 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["account_settings_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO account_settings (id, updated_at, row_json)
-           VALUES (?, ?, ?)`,
+          `INSERT OR REPLACE INTO account_settings (id, expand_reasoning_by_default, show_traces, title_generation_model_id, title_generation_model_interleaved_field, created_at, updated_at, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
+          boolToSql(row.expandReasoningByDefault),
+          boolToSql(row.showTraces),
+          row.titleGenerationModelId,
+          row.titleGenerationModelInterleavedField,
+          row.createdAt,
           row.updatedAt,
-          json(row),
+          boolToSql(row.optimistic),
+          row.opId ?? null,
         );
         break;
       }
@@ -1851,12 +1995,22 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["workspace_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO workspaces (id, archived_at, updated_at, row_json)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO workspaces (id, name, slug, system_prompt, default_model_id, default_reasoning_level, default_search_mode, prefer_free_search, created_at, updated_at, archived_at, sort_key, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
-          row.archivedAt,
+          row.name,
+          row.slug,
+          row.systemPrompt,
+          row.defaultModelId,
+          row.defaultReasoningLevel,
+          boolToSql(row.defaultSearchMode),
+          boolToSql(row.preferFreeSearch),
+          row.createdAt,
           row.updatedAt,
-          json(row),
+          row.archivedAt,
+          row.sortKey,
+          boolToSql(row.optimistic),
+          row.opId ?? null,
         );
         break;
       }
@@ -1873,14 +2027,21 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["thread_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO threads (id, workspace_id, archived_at, updated_at, last_message_at, row_json)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, created_at, updated_at, last_message_at, archived_at, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.workspaceId,
-          row.archivedAt,
+          row.title,
+          boolToSql(row.pinned),
+          row.headMessageId,
+          row.modelId,
+          row.reasoningLevel,
+          row.createdAt,
           row.updatedAt,
           row.lastMessageAt,
-          json(row),
+          row.archivedAt,
+          boolToSql(row.optimistic),
+          row.opId ?? null,
         );
         break;
       }
@@ -1897,15 +2058,28 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["message_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO messages (id, thread_id, role, status, created_at, updated_at, row_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO messages (id, thread_id, parent_message_id, source_message_id, role, status, model_id, reasoning_level, text, created_at, updated_at, error_code, error_message, search_enabled, duration_ms, ttft_ms, prompt_tokens, completion_tokens, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.threadId,
+          row.parentMessageId,
+          row.sourceMessageId,
           row.role,
           row.status,
+          row.modelId,
+          row.reasoningLevel,
+          row.text,
           row.createdAt,
           row.updatedAt,
-          json(row),
+          row.errorCode,
+          row.errorMessage,
+          boolToSql(row.searchEnabled),
+          row.durationMs,
+          row.ttftMs,
+          row.promptTokens,
+          row.completionTokens,
+          boolToSql(row.optimistic),
+          row.opId ?? null,
         );
         break;
       }
@@ -1963,12 +2137,14 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["message_part_appended"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO message_parts (id, message_id, seq, row_json)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO message_parts (id, message_id, seq, kind, text, json)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           row.id,
           row.messageId,
           row.seq,
-          json(row),
+          row.kind,
+          row.text,
+          row.json,
         );
         break;
       }
@@ -1976,14 +2152,23 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["attachment_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO attachments (id, thread_id, message_id, status, updated_at, row_json)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO attachments (id, thread_id, message_id, object_key, file_name, mime_type, size_bytes, sha256, width, height, status, created_at, updated_at, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.threadId,
           row.messageId,
+          row.objectKey,
+          row.fileName,
+          row.mimeType,
+          row.sizeBytes,
+          row.sha256,
+          row.width,
+          row.height,
           row.status,
+          row.createdAt,
           row.updatedAt,
-          json(row),
+          boolToSql(row.optimistic),
+          row.opId ?? null,
         );
         break;
       }
@@ -1997,11 +2182,19 @@ export class SyncEngineDurableObject {
         this.exec(`DELETE FROM search_runs WHERE message_id = ?`, event.messageId);
         for (const row of event.rows) {
           this.exec(
-            `INSERT OR REPLACE INTO search_runs (id, message_id, row_json)
-             VALUES (?, ?, ?)`,
+            `INSERT OR REPLACE INTO search_runs (id, message_id, query, status, step, num_results, result_count, preview_text, error_message, mode, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             row.id,
             row.messageId,
-            json(row),
+            row.query,
+            row.status,
+            row.step,
+            row.numResults,
+            row.resultCount,
+            row.previewText,
+            row.errorMessage,
+            row.mode ?? null,
+            row.createdAt,
           );
         }
         break;
@@ -2011,11 +2204,17 @@ export class SyncEngineDurableObject {
         this.exec(`DELETE FROM search_results WHERE message_id = ?`, event.messageId);
         for (const row of event.rows) {
           this.exec(
-            `INSERT OR REPLACE INTO search_results (id, message_id, row_json)
-             VALUES (?, ?, ?)`,
+            `INSERT OR REPLACE INTO search_results (id, message_id, search_run_id, url, title, snippet, published_at, domain, score)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             row.id,
             row.messageId,
-            json(row),
+            row.searchRunId,
+            row.url,
+            row.title,
+            row.snippet,
+            row.publishedAt,
+            row.domain,
+            row.score,
           );
         }
         break;
@@ -2025,11 +2224,18 @@ export class SyncEngineDurableObject {
         this.exec(`DELETE FROM extract_runs WHERE message_id = ?`, event.messageId);
         for (const row of event.rows) {
           this.exec(
-            `INSERT OR REPLACE INTO extract_runs (id, message_id, row_json)
-             VALUES (?, ?, ?)`,
+            `INSERT OR REPLACE INTO extract_runs (id, message_id, url, status, step, char_count, original_length, truncated, error_message, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             row.id,
             row.messageId,
-            json(row),
+            row.url,
+            row.status,
+            row.step,
+            row.charCount,
+            row.originalLength,
+            boolToSql(row.truncated),
+            row.errorMessage,
+            row.createdAt,
           );
         }
         break;
@@ -2038,15 +2244,22 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["trace_run_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO trace_runs (id, message_id, thread_id, workspace_id, status, started_at, row_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO trace_runs (id, message_id, thread_id, workspace_id, trace_id, root_span_id, model_id, status, started_at, ended_at, duration_ms, error_code, error_message, attrs_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.messageId,
           row.threadId,
           row.workspaceId,
+          row.traceId,
+          row.rootSpanId,
+          row.modelId,
           row.status,
           row.startedAt,
-          json(row),
+          row.endedAt,
+          row.durationMs,
+          row.errorCode,
+          row.errorMessage,
+          row.attrsJson,
         );
         break;
       }
@@ -2054,14 +2267,23 @@ export class SyncEngineDurableObject {
         const event = payload as SyncEventPayloadMap["trace_span_upserted"];
         const row = event.row;
         this.exec(
-          `INSERT OR REPLACE INTO trace_spans (id, trace_run_id, message_id, status, started_at, row_json)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO trace_spans (id, trace_run_id, trace_id, parent_span_id, message_id, name, kind, status, started_at, ended_at, duration_ms, error_code, error_message, attrs_json, events_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.traceRunId,
+          row.traceId,
+          row.parentSpanId,
           row.messageId,
+          row.name,
+          row.kind,
           row.status,
           row.startedAt,
-          json(row),
+          row.endedAt,
+          row.durationMs,
+          row.errorCode,
+          row.errorMessage,
+          row.attrsJson,
+          row.eventsJson,
         );
         break;
       }
@@ -2074,7 +2296,7 @@ export class SyncEngineDurableObject {
   }
 
   private replaceSnapshot(snapshot: SyncSnapshot) {
-    this.ctx.storage.transactionSync(() => {
+    this.db.transaction(() => {
       const tables = snapshot.tables ?? {};
       for (const tableName of [
         "workspaces",
@@ -2175,51 +2397,45 @@ export class SyncEngineDurableObject {
   }
 
   private getCommandAck(opId: string) {
-    const row = this.queryOne<{ response_json: string | null }>(
-      `SELECT response_json FROM commands WHERE op_id = ?`,
-      opId,
-    );
-    return row?.response_json ? parseJson<SyncServerAck>(row.response_json) : null;
+    const row = this.db
+      .select({ responseJson: dbSchema.commands.responseJson })
+      .from(dbSchema.commands)
+      .where(eq(dbSchema.commands.opId, opId))
+      .get();
+    return row?.responseJson ? parseJson<SyncServerAck>(row.responseJson) : null;
   }
 
   private getWorkspace(id: string) {
-    const row = this.queryOne<{ row_json: string }>(
-      `SELECT row_json FROM workspaces WHERE id = ?`,
-      id,
+    return (
+      this.db.select().from(dbSchema.workspaces).where(eq(dbSchema.workspaces.id, id)).get() ?? null
     );
-    return row ? parseJson<Workspace>(row.row_json) : null;
   }
 
   private getAccountSettings() {
-    const row = this.queryOne<{ row_json: string }>(
-      `SELECT row_json FROM account_settings WHERE id = ?`,
-      "default",
+    return (
+      this.db
+        .select()
+        .from(dbSchema.accountSettings)
+        .where(eq(dbSchema.accountSettings.id, "default"))
+        .get() ?? null
     );
-    return row ? parseJson<AccountSettings>(row.row_json) : null;
   }
 
   private getThread(id: string) {
-    const row = this.queryOne<{ row_json: string }>(
-      `SELECT row_json FROM threads WHERE id = ?`,
-      id,
-    );
-    return row ? parseJson<Thread>(row.row_json) : null;
+    return this.db.select().from(dbSchema.threads).where(eq(dbSchema.threads.id, id)).get() ?? null;
   }
 
   private getMessage(id: string) {
-    const row = this.queryOne<{ row_json: string }>(
-      `SELECT row_json FROM messages WHERE id = ?`,
-      id,
-    );
-    return row ? parseJson<Message>(row.row_json) : null;
+    const row = this.db.select().from(dbSchema.messages).where(eq(dbSchema.messages.id, id)).get();
+    return row ? decodeMessageRow(row) : null;
   }
 
   private getAttachment(id: string) {
-    const row = this.queryOne<{ row_json: string }>(
-      `SELECT row_json FROM attachments WHERE id = ?`,
+    const row = this.queryOne<Record<string, unknown>>(
+      `SELECT * FROM attachments WHERE id = ?`,
       id,
     );
-    return row ? parseJson<Attachment>(row.row_json) : null;
+    return row ? (this.inflateRow("attachments", row) as Attachment) : null;
   }
 
   private getLastServerSeq() {
@@ -2247,13 +2463,190 @@ export class SyncEngineDurableObject {
   }
 
   private readTable(tableName: string) {
-    const rows = this.queryAll<{ row_json: string }>(`SELECT row_json FROM ${tableName}`);
+    const rows = this.queryAll<Record<string, unknown>>(`SELECT * FROM ${tableName}`);
     const result: Record<string, unknown> = {};
     for (const row of rows) {
-      const parsed = parseJson<{ id: string }>(row.row_json);
+      const parsed = this.inflateRow(tableName, row) as { id: string };
       result[parsed.id] = parsed;
     }
     return result;
+  }
+
+  private inflateRow(tableName: string, row: Record<string, unknown>) {
+    switch (tableName) {
+      case "account_settings":
+        return decodeAccountSettingsRow({
+          id: row.id,
+          expandReasoningByDefault: sqlToBool(row.expand_reasoning_by_default),
+          showTraces: sqlToBool(row.show_traces),
+          titleGenerationModelId: row.title_generation_model_id ?? null,
+          titleGenerationModelInterleavedField:
+            row.title_generation_model_interleaved_field ?? null,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
+          opId: row.op_id ?? undefined,
+        });
+      case "workspaces":
+        return decodeWorkspaceRow({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          systemPrompt: row.system_prompt,
+          defaultModelId: row.default_model_id,
+          defaultReasoningLevel: row.default_reasoning_level,
+          defaultSearchMode: sqlToBool(row.default_search_mode),
+          preferFreeSearch: sqlToBool(row.prefer_free_search),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          archivedAt: row.archived_at ?? null,
+          sortKey: Number(row.sort_key),
+          optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
+          opId: row.op_id ?? undefined,
+        });
+      case "threads":
+        return decodeThreadRow({
+          id: row.id,
+          workspaceId: row.workspace_id,
+          title: row.title,
+          pinned: sqlToBool(row.pinned),
+          headMessageId: row.head_message_id ?? null,
+          modelId: row.model_id ?? null,
+          reasoningLevel: row.reasoning_level ?? null,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          lastMessageAt: row.last_message_at,
+          archivedAt: row.archived_at ?? null,
+          optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
+          opId: row.op_id ?? undefined,
+        });
+      case "messages":
+        return decodeMessageRow({
+          id: row.id,
+          threadId: row.thread_id,
+          parentMessageId: row.parent_message_id ?? null,
+          sourceMessageId: row.source_message_id ?? null,
+          role: row.role,
+          status: row.status,
+          modelId: row.model_id,
+          reasoningLevel: row.reasoning_level,
+          text: row.text,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          errorCode: row.error_code ?? null,
+          errorMessage: row.error_message ?? null,
+          searchEnabled: sqlToBool(row.search_enabled),
+          durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+          ttftMs: row.ttft_ms == null ? null : Number(row.ttft_ms),
+          promptTokens: row.prompt_tokens == null ? null : Number(row.prompt_tokens),
+          completionTokens: row.completion_tokens == null ? null : Number(row.completion_tokens),
+          optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
+          opId: row.op_id ?? undefined,
+        });
+      case "message_parts":
+        return decodeMessagePartRow({
+          id: row.id,
+          messageId: row.message_id,
+          seq: Number(row.seq),
+          kind: row.kind,
+          text: row.text,
+          json: row.json ?? null,
+        });
+      case "attachments":
+        return decodeAttachmentRow({
+          id: row.id,
+          threadId: row.thread_id,
+          messageId: row.message_id ?? null,
+          objectKey: row.object_key,
+          fileName: row.file_name,
+          mimeType: row.mime_type,
+          sizeBytes: Number(row.size_bytes),
+          sha256: row.sha256 ?? null,
+          width: row.width == null ? null : Number(row.width),
+          height: row.height == null ? null : Number(row.height),
+          status: row.status,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
+          opId: row.op_id ?? undefined,
+        });
+      case "search_runs":
+        return decodeSearchRunRow({
+          id: row.id,
+          messageId: row.message_id,
+          query: row.query,
+          status: row.status,
+          step: Number(row.step),
+          numResults: Number(row.num_results),
+          resultCount: Number(row.result_count),
+          previewText: row.preview_text,
+          errorMessage: row.error_message ?? null,
+          mode: row.mode ?? undefined,
+          createdAt: row.created_at,
+        });
+      case "search_results":
+        return decodeSearchResultRow({
+          id: row.id,
+          searchRunId: row.search_run_id,
+          messageId: row.message_id,
+          url: row.url,
+          title: row.title,
+          snippet: row.snippet,
+          publishedAt: row.published_at ?? null,
+          domain: row.domain,
+          score: Number(row.score),
+        });
+      case "extract_runs":
+        return decodeExtractRunRow({
+          id: row.id,
+          messageId: row.message_id,
+          url: row.url,
+          status: row.status,
+          step: Number(row.step),
+          charCount: Number(row.char_count),
+          originalLength: row.original_length == null ? null : Number(row.original_length),
+          truncated: sqlToBool(row.truncated),
+          errorMessage: row.error_message ?? null,
+          createdAt: row.created_at,
+        });
+      case "trace_runs":
+        return decodeTraceRunRow({
+          id: row.id,
+          messageId: row.message_id ?? null,
+          threadId: row.thread_id ?? null,
+          workspaceId: row.workspace_id ?? null,
+          traceId: row.trace_id,
+          rootSpanId: row.root_span_id,
+          modelId: row.model_id ?? null,
+          status: row.status,
+          startedAt: row.started_at,
+          endedAt: row.ended_at ?? null,
+          durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+          errorCode: row.error_code ?? null,
+          errorMessage: row.error_message ?? null,
+          attrsJson: row.attrs_json,
+        });
+      case "trace_spans":
+        return decodeTraceSpanRow({
+          id: row.id,
+          traceRunId: row.trace_run_id ?? null,
+          traceId: row.trace_id,
+          parentSpanId: row.parent_span_id ?? null,
+          messageId: row.message_id ?? null,
+          name: row.name,
+          kind: row.kind,
+          status: row.status,
+          startedAt: row.started_at,
+          endedAt: row.ended_at ?? null,
+          durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+          errorCode: row.error_code ?? null,
+          errorMessage: row.error_message ?? null,
+          attrsJson: row.attrs_json,
+          eventsJson: row.events_json,
+        });
+      default:
+        throw new Error(`Unknown snapshot table ${tableName}`);
+    }
   }
 
   private broadcast(envelope: SyncServerEnvelope) {

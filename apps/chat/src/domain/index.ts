@@ -1,4 +1,17 @@
 import * as Schema from "effect/Schema";
+import {
+  type AccountSettings,
+  type Attachment,
+  type ExtractRun,
+  type Message,
+  type MessagePart,
+  type SearchResult,
+  type SearchRun,
+  type Thread,
+  type TraceRun,
+  type TraceSpan,
+  type Workspace,
+} from "#/db/schema";
 
 export const TABLES = {
   accountSettings: "account_settings",
@@ -19,15 +32,50 @@ export const TABLES = {
 // and reload to pick up the new snapshot shape.
 export const SYNC_PROTOCOL_VERSION = "effect4-extract-v1";
 
+export const ReasoningLevel = Schema.Literals(["off", "low", "medium", "high"]);
+
+export const MessageStatus = Schema.Literals([
+  "queued",
+  "pending",
+  "streaming",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+export const MessageRole = Schema.Literals(["user", "assistant", "system"]);
+
+export const MessagePartKind = Schema.Literals([
+  "activity",
+  "thinking_tokens",
+  "text",
+  "reasoning",
+]);
+
+export const AttachmentStatus = Schema.Literals(["queued", "uploading", "ready", "failed"]);
+
+export const SearchRunStatus = Schema.Literals(["completed", "failed"]);
+
+/**
+ * A single Browser Rendering extract call.
+ *
+ * `charCount` is the length of the clean markdown we actually handed back to
+ * the model (post-truncation), while `originalLength` is what the page
+ * rendered to before the cap — keeping both lets the UI say "Read 48,300
+ * chars (truncated to 12k)" without re-fetching the content.
+ */
+export const ExtractRunStatus = Schema.Literals(["active", "completed", "failed"]);
+
+export const TraceStatus = Schema.Literals(["running", "completed", "failed", "cancelled"]);
+export const TraceSpanKind = Schema.Literals(["root", "internal", "tool", "model", "io", "sync"]);
+
 const NullableString = Schema.NullOr(Schema.String);
 const NullableNumber = Schema.NullOr(Schema.Number);
 
 const OptionalOptimisticRowFields = {
-  optimistic: Schema.optional(Schema.Boolean),
+  optimistic: Schema.optional(Schema.NullOr(Schema.Boolean)),
   opId: Schema.optional(NullableString),
 } as const;
-
-export const ReasoningLevel = Schema.Literals(["off", "low", "medium", "high"]);
 
 export const WorkspaceRow = Schema.Struct({
   id: Schema.String,
@@ -71,21 +119,12 @@ export const ThreadRow = Schema.Struct({
   ...OptionalOptimisticRowFields,
 });
 
-export const MessageStatus = Schema.Literals([
-  "queued",
-  "pending",
-  "streaming",
-  "completed",
-  "failed",
-  "cancelled",
-]);
-
 export const MessageRow = Schema.Struct({
   id: Schema.String,
   threadId: Schema.String,
   parentMessageId: NullableString,
   sourceMessageId: NullableString,
-  role: Schema.String,
+  role: MessageRole,
   status: MessageStatus,
   modelId: Schema.String,
   reasoningLevel: ReasoningLevel,
@@ -102,13 +141,6 @@ export const MessageRow = Schema.Struct({
   ...OptionalOptimisticRowFields,
 });
 
-export const MessagePartKind = Schema.Literals([
-  "activity",
-  "thinking_tokens",
-  "text",
-  "reasoning",
-]);
-
 export const MessagePartRow = Schema.Struct({
   id: Schema.String,
   messageId: Schema.String,
@@ -117,8 +149,6 @@ export const MessagePartRow = Schema.Struct({
   text: Schema.String,
   json: NullableString,
 });
-
-export const AttachmentStatus = Schema.Literals(["queued", "uploading", "ready", "failed"]);
 
 export const AttachmentRow = Schema.Struct({
   id: Schema.String,
@@ -137,8 +167,6 @@ export const AttachmentRow = Schema.Struct({
   ...OptionalOptimisticRowFields,
 });
 
-export const SearchRunStatus = Schema.Literals(["completed", "failed"]);
-
 export const SearchRunRow = Schema.Struct({
   id: Schema.String,
   messageId: Schema.String,
@@ -149,12 +177,7 @@ export const SearchRunRow = Schema.Struct({
   resultCount: Schema.Number,
   previewText: Schema.String,
   errorMessage: NullableString,
-  /**
-   * Which Exa endpoint produced this run. "api" is the paid, structured-rows
-   * path; "mcp" is the public raw-text fallback. Optional for backward
-   * compatibility with runs persisted before the field was introduced.
-   */
-  mode: Schema.optional(Schema.Literals(["api", "mcp"])),
+  mode: Schema.optional(Schema.NullOr(Schema.Literals(["api", "mcp"]))),
   createdAt: Schema.String,
 });
 
@@ -170,16 +193,6 @@ export const SearchResultRow = Schema.Struct({
   score: Schema.Number,
 });
 
-/**
- * A single Browser Rendering extract call.
- *
- * `charCount` is the length of the clean markdown we actually handed back to
- * the model (post-truncation), while `originalLength` is what the page
- * rendered to before the cap — keeping both lets the UI say "Read 48,300
- * chars (truncated to 12k)" without re-fetching the content.
- */
-export const ExtractRunStatus = Schema.Literals(["active", "completed", "failed"]);
-
 export const ExtractRunRow = Schema.Struct({
   id: Schema.String,
   messageId: Schema.String,
@@ -192,9 +205,6 @@ export const ExtractRunRow = Schema.Struct({
   errorMessage: NullableString,
   createdAt: Schema.String,
 });
-
-export const TraceStatus = Schema.Literals(["running", "completed", "failed", "cancelled"]);
-export const TraceSpanKind = Schema.Literals(["root", "internal", "tool", "model", "io", "sync"]);
 
 export const TraceRunRow = Schema.Struct({
   id: Schema.String,
@@ -239,34 +249,78 @@ export function toWire<T extends object>(
   return { ...entity, optimistic: true as const, opId };
 }
 
-export const decodeWorkspaceRow = Schema.decodeUnknownSync(WorkspaceRow);
-export const decodeAccountSettingsRow = Schema.decodeUnknownSync(AccountSettingsRow);
-export const decodeThreadRow = Schema.decodeUnknownSync(ThreadRow);
-export const decodeMessageRow = Schema.decodeUnknownSync(MessageRow);
-export const decodeMessagePartRow = Schema.decodeUnknownSync(MessagePartRow);
-export const decodeAttachmentRow = Schema.decodeUnknownSync(AttachmentRow);
-export const decodeSearchRunRow = Schema.decodeUnknownSync(SearchRunRow);
-export const decodeSearchResultRow = Schema.decodeUnknownSync(SearchResultRow);
-export const decodeExtractRunRow = Schema.decodeUnknownSync(ExtractRunRow);
-export const decodeTraceRunRow = Schema.decodeUnknownSync(TraceRunRow);
-export const decodeTraceSpanRow = Schema.decodeUnknownSync(TraceSpanRow);
+function typedDecode<T>(schema: Parameters<typeof Schema.decodeUnknownSync>[0]) {
+  return Schema.decodeUnknownSync(schema) as unknown as (value: unknown) => T;
+}
 
-export type Workspace = Schema.Schema.Type<typeof WorkspaceRow>;
-export type AccountSettings = Schema.Schema.Type<typeof AccountSettingsRow>;
-export type Thread = Schema.Schema.Type<typeof ThreadRow>;
-export type Message = Schema.Schema.Type<typeof MessageRow>;
-export type MessagePart = Schema.Schema.Type<typeof MessagePartRow>;
-export type Attachment = Schema.Schema.Type<typeof AttachmentRow>;
-export type SearchRun = Schema.Schema.Type<typeof SearchRunRow>;
-export type SearchResult = Schema.Schema.Type<typeof SearchResultRow>;
-export type ExtractRun = Schema.Schema.Type<typeof ExtractRunRow>;
+export const decodeWorkspaceRow = typedDecode<Workspace>(WorkspaceRow);
+export const decodeAccountSettingsRow = typedDecode<AccountSettings>(AccountSettingsRow);
+export const decodeThreadRow = typedDecode<Thread>(ThreadRow);
+export const decodeMessageRow = typedDecode<Message>(MessageRow);
+export const decodeMessagePartRow = typedDecode<MessagePart>(MessagePartRow);
+export const decodeAttachmentRow = typedDecode<Attachment>(AttachmentRow);
+export const decodeSearchRunRow = typedDecode<SearchRun>(SearchRunRow);
+export const decodeSearchResultRow = typedDecode<SearchResult>(SearchResultRow);
+export const decodeExtractRunRow = typedDecode<ExtractRun>(ExtractRunRow);
+export const decodeTraceRunRow = typedDecode<TraceRun>(TraceRunRow);
+export const decodeTraceSpanRow = typedDecode<TraceSpan>(TraceSpanRow);
+
+export type {
+  AccountSettings,
+  Attachment,
+  ExtractRun,
+  Message,
+  MessagePart,
+  SearchResult,
+  SearchRun,
+  Thread,
+  TraceRun,
+  TraceSpan,
+  Workspace,
+};
 export type ExtractRunStatus = Schema.Schema.Type<typeof ExtractRunStatus>;
 export type ReasoningLevel = Schema.Schema.Type<typeof ReasoningLevel>;
+export type MessageRole = Schema.Schema.Type<typeof MessageRole>;
 export type MessagePartKind = Schema.Schema.Type<typeof MessagePartKind>;
 export type TraceStatus = Schema.Schema.Type<typeof TraceStatus>;
 export type TraceSpanKind = Schema.Schema.Type<typeof TraceSpanKind>;
-export type TraceRun = Schema.Schema.Type<typeof TraceRunRow>;
-export type TraceSpan = Schema.Schema.Type<typeof TraceSpanRow>;
+
+type Brand<T, Name extends string> = T & { readonly __brand: Name };
+
+export type WorkspaceId = Brand<string, "WorkspaceId">;
+export type ThreadId = Brand<string, "ThreadId">;
+export type MessageId = Brand<string, "MessageId">;
+export type AttachmentId = Brand<string, "AttachmentId">;
+export type TraceId = Brand<string, "TraceId">;
+export type SpanId = Brand<string, "SpanId">;
+export type ObjectKey = Brand<string, "ObjectKey">;
+export type Email = Brand<string, "Email">;
+export type IsoTimestamp = Brand<string, "IsoTimestamp">;
+
+function brandString<Name extends string>(value: string, brandName: Name): Brand<string, Name> {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`Invalid ${brandName}`);
+  return trimmed as Brand<string, Name>;
+}
+
+export const toWorkspaceId = (value: string) => brandString(value, "WorkspaceId");
+export const toThreadId = (value: string) => brandString(value, "ThreadId");
+export const toMessageId = (value: string) => brandString(value, "MessageId");
+export const toAttachmentId = (value: string) => brandString(value, "AttachmentId");
+export const toTraceId = (value: string) => brandString(value, "TraceId");
+export const toSpanId = (value: string) => brandString(value, "SpanId");
+export const toObjectKey = (value: string) => brandString(value, "ObjectKey");
+
+export function toEmail(value: string): Email {
+  const normalized = value.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new Error(`Invalid Email`);
+  return normalized as Email;
+}
+
+export function toIsoTimestamp(value: string): IsoTimestamp {
+  if (Number.isNaN(Date.parse(value))) throw new Error(`Invalid IsoTimestamp`);
+  return value as IsoTimestamp;
+}
 
 export function mergeAttachmentLink(
   existing: Pick<Attachment, "messageId"> | null | undefined,
@@ -421,6 +475,32 @@ export type SyncCommandPayloadMap = {
 
 export type SyncCommandType = keyof SyncCommandPayloadMap;
 
+export const SYNC_COMMAND_TYPES = [
+  "bootstrap_session",
+  "update_account_settings",
+  "create_workspace",
+  "update_workspace",
+  "archive_workspace",
+  "create_thread",
+  "update_thread",
+  "archive_thread",
+  "create_user_message",
+  "retry_message",
+  "edit_user_message",
+  "start_assistant_turn",
+  "cancel_assistant_turn",
+  "register_attachment",
+  "complete_attachment",
+  "update_attachment",
+  "delete_attachment",
+  "set_search_mode",
+  "reset_storage",
+] as const satisfies readonly SyncCommandType[];
+
+export function isSyncCommandType(value: unknown): value is SyncCommandType {
+  return typeof value === "string" && SYNC_COMMAND_TYPES.includes(value as SyncCommandType);
+}
+
 export type SyncClientHello = {
   type: "hello";
   clientId: string;
@@ -547,7 +627,7 @@ export const nowIso = () => new Date().toISOString();
 export const createId = (prefix: string) =>
   `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
 
-function conversationRoleSortOrder(role: string) {
+function conversationRoleSortOrder(role: MessageRole) {
   switch (role) {
     case "system":
       return 0;
@@ -560,9 +640,9 @@ function conversationRoleSortOrder(role: string) {
   }
 }
 
-export function sortConversationMessages<T extends { id: string; createdAt: string; role: string }>(
-  messages: readonly T[],
-) {
+export function sortConversationMessages<
+  T extends { id: string; createdAt: string; role: MessageRole },
+>(messages: readonly T[]) {
   return [...messages].sort((a, b) => {
     const createdAtOrder = a.createdAt.localeCompare(b.createdAt);
     if (createdAtOrder !== 0) return createdAtOrder;
@@ -653,7 +733,7 @@ export function createMessage(input: {
   threadId: string;
   parentMessageId?: string | null;
   sourceMessageId?: string | null;
-  role: "user" | "assistant" | "system";
+  role: MessageRole;
   modelId: string;
   reasoningLevel?: ReasoningLevel;
   text?: string;
@@ -911,7 +991,7 @@ export function resolveThreadMessagePath<
   T extends {
     id: string;
     createdAt: string;
-    role: string;
+    role: MessageRole;
     parentMessageId?: string | null;
   },
 >(messages: readonly T[], headMessageId?: string | null) {

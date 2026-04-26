@@ -1,6 +1,21 @@
-import { getRuntimeEnv, requireSession, sendInternalSyncCommand } from "@shedflare/chat-server";
-import { decodeAttachmentRow } from "@shedflare/chat-domain";
+import { getRuntimeEnv, requireSession, sendInternalSyncCommand } from "#/runtime";
+import { decodeAttachmentRow } from "#/domain";
 import { runApiTrace } from "../server/api-tracing";
+
+async function parseUploadCompleteBody(request: Request) {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new Response("Invalid JSON", { status: 400 });
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Response("Expected JSON object", { status: 400 });
+  }
+  const attachment = (value as Record<string, unknown>).attachment;
+  if (!attachment) throw new Response("Missing attachment", { status: 400 });
+  return { attachment };
+}
 
 export async function handleUploadComplete(request: Request): Promise<Response> {
   const env = getRuntimeEnv();
@@ -15,7 +30,7 @@ export async function handleUploadComplete(request: Request): Promise<Response> 
     },
     run: async () => {
       await requireSession(request, env, { refresh: false });
-      const body = (await request.json()) as { attachment: unknown };
+      const body = await parseUploadCompleteBody(request);
       const attachment = decodeAttachmentRow(body.attachment);
       const object = await env.UPLOADS.head(attachment.objectKey);
       if (!object) return new Response("Uploaded object not found", { status: 404 });
