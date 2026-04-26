@@ -1,8 +1,13 @@
+import { createClient } from "@openauthjs/openauth/client";
+import { createRemoteJWKSet, errors as joseErrors, jwtVerify } from "jose";
+
 type Env = {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
   FILES: R2Bucket;
   APP_PUBLIC_URL: string;
+  AUTH_ISSUER_URL: string;
+  AUTH_CLIENT_ID: string;
   OWNER_EMAIL: string;
   DEV_AUTH_EMAIL?: string;
 };
@@ -32,6 +37,32 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function serializeCookie(
+  name: string,
+  value: string,
+  opts: {
+    maxAge?: number;
+    path?: string;
+    secure?: boolean;
+    httpOnly?: boolean;
+    sameSite?: string;
+  } = {},
+) {
+  let cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
+  if (opts.maxAge !== undefined) cookie += `; Max-Age=${opts.maxAge}`;
+  cookie += `; Path=${opts.path ?? "/"}`;
+  if (opts.secure !== false) cookie += `; Secure`;
+  if (opts.httpOnly !== false) cookie += `; HttpOnly`;
+  cookie += `; SameSite=${opts.sameSite ?? "Lax"}`;
+  return cookie;
+}
+
+function getCookie(request: Request, name: string) {
+  const cookie = request.headers.get("cookie") ?? "";
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function normalizeTag(tag: string) {
   return tag.trim().toLowerCase().replaceAll(/\s+/g, " ");
 }
@@ -46,18 +77,79 @@ function isLocalRequest(request: Request) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
 }
 
-function getAccessEmail(request: Request, env: Env) {
-  const accessEmail = request.headers.get("cf-access-authenticated-user-email");
-  if (accessEmail) return normalizeEmail(accessEmail);
-  if (env.DEV_AUTH_EMAIL && isLocalRequest(request)) return normalizeEmail(env.DEV_AUTH_EMAIL);
+let jwksUrl: string | null = null;
+let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+function getJwks(env: Env) {
+  const url = `${env.AUTH_ISSUER_URL}/.well-known/jwks.json`;
+  if (!jwks || jwksUrl !== url) {
+    jwksUrl = url;
+    jwks = createRemoteJWKSet(new URL(url));
+  }
+  return jwks;
+}
+
+async function verifyAccessToken(token: string, env: Env) {
+  try {
+    const { payload } = await jwtVerify(token, getJwks(env), { issuer: env.AUTH_ISSUER_URL });
+    if (payload.mode !== "access") return null;
+    const properties = payload.properties as { email?: unknown } | undefined;
+    return typeof properties?.email === "string" ? normalizeEmail(properties.email) : null;
+  } catch (error) {
+    if (error instanceof joseErrors.JWTExpired) return "expired";
+    return null;
+  }
+}
+
+async function rotateRefreshToken(refreshToken: string, env: Env) {
+  const response = await fetch(`${env.AUTH_ISSUER_URL}/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+  if (!response.ok) return null;
+  const tokens = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+  if (!tokens.access_token || !tokens.refresh_token || typeof tokens.expires_in !== "number") {
+    return null;
+  }
+  return {
+    access: tokens.access_token,
+    refresh: tokens.refresh_token,
+    expiresIn: tokens.expires_in,
+  };
+}
+
+async function getSession(request: Request, env: Env) {
+  if (env.DEV_AUTH_EMAIL && isLocalRequest(request))
+    return { email: normalizeEmail(env.DEV_AUTH_EMAIL) };
+  const accessToken = getCookie(request, "auth_access_token");
+  const refreshToken = getCookie(request, "auth_refresh_token");
+  if (!accessToken) return null;
+  const verified = await verifyAccessToken(accessToken, env);
+  if (verified && verified !== "expired") return { email: verified };
+  if (verified === "expired" && refreshToken) {
+    const rotated = await rotateRefreshToken(refreshToken, env);
+    if (!rotated) return null;
+    const email = await verifyAccessToken(rotated.access, env);
+    if (!email || email === "expired") return null;
+    return { email, tokens: rotated };
+  }
   return null;
 }
 
-function requireOwner(request: Request, env: Env) {
-  const email = getAccessEmail(request, env);
+async function requireOwner(request: Request, env: Env) {
+  const session = await getSession(request, env);
+  const email = session?.email;
   if (!email) throw new Response("Unauthorized", { status: 401 });
   if (email !== normalizeEmail(env.OWNER_EMAIL)) throw new Response("Forbidden", { status: 403 });
-  return { email };
+  return session;
 }
 
 function publicFile(row: FileRow) {
@@ -111,7 +203,7 @@ async function getFile(db: D1Database, id: string) {
 }
 
 async function handleList(request: Request, env: Env) {
-  requireOwner(request, env);
+  await requireOwner(request, env);
   const url = new URL(request.url);
   const search = url.searchParams.get("search")?.trim() ?? "";
   const tag = normalizeTag(url.searchParams.get("tag") ?? "");
@@ -138,7 +230,7 @@ async function handleList(request: Request, env: Env) {
 }
 
 async function handleUpload(request: Request, env: Env) {
-  requireOwner(request, env);
+  await requireOwner(request, env);
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return json({ error: "Missing file" }, { status: 400 });
@@ -176,7 +268,7 @@ async function handleUpload(request: Request, env: Env) {
 }
 
 async function handleUpdate(request: Request, env: Env, id: string) {
-  requireOwner(request, env);
+  await requireOwner(request, env);
   const current = await getFile(env.DB, id);
   if (!current) return new Response("Not found", { status: 404 });
 
@@ -198,7 +290,7 @@ async function handleUpdate(request: Request, env: Env, id: string) {
 }
 
 async function handleDownload(request: Request, env: Env, id: string) {
-  requireOwner(request, env);
+  await requireOwner(request, env);
   const row = await getFile(env.DB, id);
   if (!row) return new Response("Not found", { status: 404 });
 
@@ -213,7 +305,7 @@ async function handleDownload(request: Request, env: Env, id: string) {
 }
 
 async function handleDelete(request: Request, env: Env, id: string) {
-  requireOwner(request, env);
+  await requireOwner(request, env);
   const row = await getFile(env.DB, id);
   if (!row) return new Response("Not found", { status: 404 });
   await env.FILES.delete(row.object_key);
@@ -222,7 +314,7 @@ async function handleDelete(request: Request, env: Env, id: string) {
 }
 
 async function handleTags(request: Request, env: Env) {
-  requireOwner(request, env);
+  await requireOwner(request, env);
   const rows = await env.DB.prepare(
     `SELECT tags.name, count(file_tags.file_id) AS count
        FROM tags
@@ -234,8 +326,71 @@ async function handleTags(request: Request, env: Env) {
 }
 
 async function handleSession(request: Request, env: Env) {
-  const session = requireOwner(request, env);
-  return json({ user: session });
+  const session = await requireOwner(request, env);
+  const headers = new Headers({ "content-type": "application/json" });
+  if (session.tokens) {
+    headers.append(
+      "Set-Cookie",
+      serializeCookie("auth_access_token", session.tokens.access, {
+        maxAge: session.tokens.expiresIn,
+      }),
+    );
+    headers.append(
+      "Set-Cookie",
+      serializeCookie("auth_refresh_token", session.tokens.refresh, { maxAge: 60 * 60 * 24 * 365 }),
+    );
+  }
+  return new Response(JSON.stringify({ user: { email: session.email } }), { headers });
+}
+
+async function handleLogin(env: Env) {
+  const client = createClient({ clientID: env.AUTH_CLIENT_ID, issuer: env.AUTH_ISSUER_URL });
+  const { url } = await client.authorize(`${env.APP_PUBLIC_URL}/api/auth/callback`, "code", {
+    provider: "google",
+  });
+  return Response.redirect(url, 302);
+}
+
+async function handleCallback(request: Request, env: Env) {
+  const code = new URL(request.url).searchParams.get("code");
+  if (!code) return new Response("Missing code", { status: 400 });
+  const response = await fetch(`${env.AUTH_ISSUER_URL}/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      redirect_uri: `${env.APP_PUBLIC_URL}/api/auth/callback`,
+      grant_type: "authorization_code",
+      client_id: env.AUTH_CLIENT_ID,
+      code_verifier: "",
+    }),
+  });
+  if (!response.ok)
+    return new Response(`Authentication failed: ${await response.text()}`, {
+      status: response.status,
+    });
+  const tokens = (await response.json()) as {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+  };
+  const headers = new Headers({ Location: "/" });
+  headers.append(
+    "Set-Cookie",
+    serializeCookie("auth_access_token", tokens.access_token, { maxAge: tokens.expires_in }),
+  );
+  headers.append(
+    "Set-Cookie",
+    serializeCookie("auth_refresh_token", tokens.refresh_token, { maxAge: 60 * 60 * 24 * 365 }),
+  );
+  return new Response(null, { status: 302, headers });
+}
+
+function handleLogout() {
+  const headers = new Headers({ Location: "/" });
+  headers.append("Set-Cookie", serializeCookie("auth_access_token", "", { maxAge: 0 }));
+  headers.append("Set-Cookie", serializeCookie("auth_refresh_token", "", { maxAge: 0 }));
+  return new Response(null, { status: 302, headers });
 }
 
 export default {
@@ -245,6 +400,11 @@ export default {
 
     try {
       if (pathname.startsWith("/api/")) {
+        if (pathname === "/api/auth/login" && request.method === "GET")
+          return await handleLogin(env);
+        if (pathname === "/api/auth/callback" && request.method === "GET")
+          return await handleCallback(request, env);
+        if (pathname === "/api/auth/logout" && request.method === "POST") return handleLogout();
         if (pathname === "/api/session" && request.method === "GET")
           return await handleSession(request, env);
         if (pathname === "/api/files" && request.method === "GET")

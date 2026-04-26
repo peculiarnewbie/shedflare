@@ -8,6 +8,8 @@
     "dev:chat": "pnpm --filter @shedflare/chat dev",
     "build:chat": "pnpm --filter @shedflare/chat build",
     "deploy:chat": "pnpm --filter @shedflare/chat deploy",
+    "dev:auth": "pnpm --filter @shedflare/auth dev",
+    "deploy:auth": "pnpm --filter @shedflare/auth deploy",
     "dev:drive": "pnpm --filter @shedflare/drive dev",
     "build:drive": "pnpm --filter @shedflare/drive build",
     "deploy:drive": "pnpm --filter @shedflare/drive deploy",

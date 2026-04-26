@@ -60,11 +60,14 @@
       "APP_PUBLIC_URL": {
         "description": "The canonical public URL of the app. This is configured as a plain Wrangler var because it is not secret."
       },
+      "AUTH_ISSUER_URL": {
+        "description": "Canonical public URL of the central Shedflare Auth issuer."
+      },
+      "AUTH_CLIENT_ID": {
+        "description": "OAuth client ID used by this app when talking to Shedflare Auth."
+      },
       "UPLOAD_TOKEN_SECRET": {
         "description": "A random secret for signing short-lived attachment upload/read URLs. Generate one with `openssl rand -hex 32`."
-      },
-      "GOOGLE_CLIENT_ID": {
-        "description": "Google OAuth client ID for OpenAuth. Create one in Google Cloud Console > APIs & Services > Credentials."
       },
       "DEV_AUTH_EMAIL": {
         "description": "Optional local-only development identity used on localhost when no auth cookie is present."

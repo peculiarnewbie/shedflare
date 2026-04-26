@@ -46,6 +46,7 @@ export default function Home() {
   const [description, setDescription] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
+  const [unauthorized, setUnauthorized] = createSignal(false);
   const [userEmail, setUserEmail] = createSignal("");
 
   const query = createMemo(() => {
@@ -70,14 +71,20 @@ export default function Home() {
     try {
       const session = await requestJson<{ user: { email: string } }>("/api/session");
       setUserEmail(session.user.email);
+      setUnauthorized(false);
       await Promise.all([loadFiles(), loadTags()]);
     } catch (err) {
+      if (err instanceof Error && err.message.includes("Unauthorized")) {
+        setUnauthorized(true);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Could not load Drive");
     }
   }
 
   createEffect(() => {
     void query();
+    if (!userEmail()) return;
     void loadFiles().catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
   });
 
@@ -137,15 +144,25 @@ export default function Home() {
           <div class="owner-card">
             <span>Owner</span>
             <strong>{userEmail()}</strong>
+            <form method="post" action="/api/auth/logout">
+              <button>Sign out</button>
+            </form>
           </div>
         </Show>
       </section>
+
+      <Show when={unauthorized()}>
+        <section class="login-card">
+          <p>Sign in with the central Shedflare auth worker to open your private drive.</p>
+          <a href="/api/auth/login">Sign in</a>
+        </section>
+      </Show>
 
       <Show when={error()}>
         <div class="error-card">{error()}</div>
       </Show>
 
-      <section class="control-panel">
+      <section class="control-panel" classList={{ hidden: unauthorized() }}>
         <form class="upload-card" onSubmit={upload}>
           <label class="file-drop">
             <input name="file" type="file" />
@@ -188,7 +205,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section class="file-grid">
+      <section class="file-grid" classList={{ hidden: unauthorized() }}>
         <Show
           when={files().length > 0}
           fallback={<div class="empty">No files match this shelf.</div>}

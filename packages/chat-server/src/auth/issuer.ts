@@ -14,7 +14,7 @@ export function createAuthIssuer(env: AppEnv) {
   return issuer({
     providers: {
       google: GoogleOidcProvider({
-        clientID: env.GOOGLE_CLIENT_ID,
+        clientID: env.GOOGLE_CLIENT_ID ?? "",
         scopes: ["email", "profile"],
       }),
     },

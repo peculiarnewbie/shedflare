@@ -12,19 +12,14 @@
   },
   "vars": {
     "APP_PUBLIC_URL": "https://sf-chat.example.com",
+    "AUTH_ISSUER_URL": "https://sf-auth.example.com",
+    "AUTH_CLIENT_ID": "shedflare-chat",
     "DEFAULT_MODEL_ID": "auto",
-    "GOOGLE_CLIENT_ID": "replace-me",
     "OWNER_EMAIL": "you@example.com",
   },
   "secrets": {
     "required": ["OPENCODE_GO_BASE_URL", "OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"],
   },
-  "kv_namespaces": [
-    {
-      "binding": "OPENAUTH_STORAGE",
-      "id": "replace-me",
-    },
-  ],
   "observability": {
     "enabled": true,
   },

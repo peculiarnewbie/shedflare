@@ -51,6 +51,25 @@ importers:
 
   .: {}
 
+  apps/auth:
+    dependencies:
+      '@openauthjs/openauth':
+        specifier: ^0.4.3
+        version: 0.4.3(arctic@2.3.4)(hono@4.12.15)
+      valibot:
+        specifier: ^1.3.1
+        version: 1.3.1(typescript@5.9.3)
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20260415.1
+        version: 4.20260415.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.83.0(@cloudflare/workers-types@4.20260415.1)
+
   apps/chat:
     dependencies:
       '@cloudflare/puppeteer':
@@ -132,12 +151,18 @@ importers:
 
   apps/drive:
     dependencies:
+      '@openauthjs/openauth':
+        specifier: ^0.4.3
+        version: 0.4.3(arctic@2.3.4)(hono@4.12.15)
       '@solidjs/meta':
         specifier: ^0.29.4
         version: 0.29.4(solid-js@1.9.12)
       '@solidjs/router':
         specifier: ^0.15.4
         version: 0.15.4(solid-js@1.9.12)
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.2
       solid-js:
         specifier: ^1.9.12
         version: 1.9.12

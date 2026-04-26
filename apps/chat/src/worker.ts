@@ -1,4 +1,4 @@
-import { setRuntimeEnv, type AppEnv, createAuthIssuer } from "@shedflare/chat-server";
+import { setRuntimeEnv, type AppEnv } from "@shedflare/chat-server";
 import { createClient } from "@openauthjs/openauth/client";
 import { handleBootstrap } from "./api/bootstrap";
 import { handleSession } from "./api/session";
@@ -37,7 +37,7 @@ function serializeCookie(
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     setRuntimeEnv(env);
 
     const withVersionHeader = (response: Response) => {
@@ -58,25 +58,13 @@ export default {
     }
 
     try {
-      // OpenAuth expects to be mounted at the issuer root.
-      if (
-        pathname === "/authorize" ||
-        pathname === "/token" ||
-        pathname === "/.well-known/oauth-authorization-server" ||
-        pathname === "/.well-known/jwks.json" ||
-        pathname.startsWith("/google/")
-      ) {
-        const authIssuer = createAuthIssuer(env);
-        return withVersionHeader(await authIssuer.fetch(request, env, ctx));
-      }
-
       // API routing
       if (pathname.startsWith("/api/")) {
         if (pathname === "/api/auth/login" && method === "GET") {
           const startedAt = Date.now();
           const client = createClient({
-            clientID: "shedflare-chat",
-            issuer: env.APP_PUBLIC_URL,
+            clientID: env.AUTH_CLIENT_ID ?? "shedflare-chat",
+            issuer: env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL,
           });
           const { url: authUrl } = await client.authorize(
             `${env.APP_PUBLIC_URL}/api/auth/callback`,
@@ -93,20 +81,18 @@ export default {
           if (!code) {
             return withVersionHeader(new Response("Missing code", { status: 400 }));
           }
-          const tokenResponse = await createAuthIssuer(env).fetch(
-            new Request(`${env.APP_PUBLIC_URL}/token`, {
+          const tokenResponse = await fetch(
+            new Request(`${env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL}/token`, {
               method: "POST",
               headers: { "content-type": "application/x-www-form-urlencoded" },
               body: new URLSearchParams({
                 code,
                 redirect_uri: `${env.APP_PUBLIC_URL}/api/auth/callback`,
                 grant_type: "authorization_code",
-                client_id: "shedflare-chat",
+                client_id: env.AUTH_CLIENT_ID ?? "shedflare-chat",
                 code_verifier: "",
               }),
             }),
-            env,
-            ctx,
           );
           if (!tokenResponse.ok) {
             const errorText = await tokenResponse.text();

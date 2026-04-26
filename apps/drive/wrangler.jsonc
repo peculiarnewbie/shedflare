@@ -11,6 +11,8 @@
   },
   "vars": {
     "APP_PUBLIC_URL": "https://sf-drive.example.com",
+    "AUTH_ISSUER_URL": "https://sf-auth.example.com",
+    "AUTH_CLIENT_ID": "shedflare-drive",
     "OWNER_EMAIL": "you@example.com",
   },
   "observability": {

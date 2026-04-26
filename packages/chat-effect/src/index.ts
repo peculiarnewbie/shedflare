@@ -14,14 +14,16 @@ export const AppEnvConfig = Schema.Struct({
   OPENCODE_GO_MODEL_ALLOWLIST: Schema.optional(Schema.String),
   DEFAULT_MODEL_ID: Schema.String,
   APP_PUBLIC_URL: Schema.String,
+  AUTH_ISSUER_URL: Schema.optional(Schema.String),
+  AUTH_CLIENT_ID: Schema.optional(Schema.String),
   UPLOAD_TOKEN_SECRET: Schema.String,
-  GOOGLE_CLIENT_ID: Schema.String,
+  GOOGLE_CLIENT_ID: Schema.optional(Schema.String),
   OWNER_EMAIL: Schema.String,
   DEV_AUTH_EMAIL: Schema.optional(Schema.String),
   EXA_API_KEY: Schema.optional(Schema.String),
   UPLOADS: Schema.Any,
   SYNC_ENGINE: Schema.Any,
-  OPENAUTH_STORAGE: Schema.Any,
+  OPENAUTH_STORAGE: Schema.optional(Schema.Any),
   /** Cloudflare Browser Rendering binding. Present when `browser` is wired
    *  up in wrangler.jsonc; absent on local builds without the binding.
    *  The extract tool degrades gracefully when this is missing. */

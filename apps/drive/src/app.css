@@ -112,6 +112,52 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.owner-card form {
+  margin: 14px 0 0;
+}
+
+.owner-card button {
+  width: 100%;
+  min-height: 36px;
+  border: 2px solid #271c13;
+  border-radius: 999px;
+  color: #271c13;
+  background: #fffdf8;
+  font-weight: 800;
+}
+
+.login-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-top: 24px;
+  padding: 20px;
+  border: 2px solid #271c13;
+  border-radius: 22px;
+  background: #fff7e8;
+  box-shadow: 7px 7px 0 rgba(39, 28, 19, 0.22);
+}
+
+.login-card p {
+  margin: 0;
+  color: #675544;
+}
+
+.login-card a {
+  padding: 12px 18px;
+  border: 2px solid #271c13;
+  border-radius: 999px;
+  color: #fff7e8;
+  background: #d05724;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
 .error-card {
   margin-top: 24px;
   padding: 16px 18px;

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Deploy Shedflare Chat with Vite+ and Wrangler after creating the required Cloudflare resources in your own account.
+Deploy Shedflare Auth first, then deploy Chat as an OpenAuth client with Vite+ and Wrangler.
 
 ## 1. Install and Log In
 
@@ -11,18 +11,12 @@ pnpm --filter @shedflare/chat exec wrangler login
 
 ## 2. Provision Cloudflare Resources
 
-The Worker config is `apps/chat/wrangler.jsonc`. Two resources need one-time setup; the rest are declared in config and provisioned on deploy.
+The Worker config is `apps/chat/wrangler.jsonc`. One resource needs one-time setup; the rest are declared in config and provisioned on deploy.
 
 Create the private R2 bucket for attachments:
 
 ```bash
 pnpm --filter @shedflare/chat exec wrangler r2 bucket create shedflare-chat-uploads
-```
-
-Create the KV namespace for OpenAuth and copy the returned ID into `kv_namespaces` in `wrangler.jsonc`:
-
-```bash
-pnpm --filter @shedflare/chat exec wrangler kv namespace create "OPENAUTH_STORAGE"
 ```
 
 No setup required for:
@@ -31,15 +25,14 @@ No setup required for:
 - `BROWSER` Browser Rendering binding — enabled per-account in the Cloudflare dashboard.
 - custom domains — add a route in `wrangler.jsonc` or configure one in the Cloudflare dashboard.
 
-## 3. Configure Google OAuth
+## 3. Configure Auth
 
-The app uses OpenAuth with Google OIDC. No Google client secret is needed because OpenAuth verifies Google's signed ID token against Google's public keys.
+Chat uses the central Shedflare Auth Worker as its OpenAuth issuer. Deploy `@shedflare/auth` first, then set these vars in `apps/chat/wrangler.jsonc`:
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) > **APIs & Services** > **Credentials**.
-2. **Create Credentials** > **OAuth client ID** > **Web application**.
-3. **Authorized JavaScript origins**: your deployed origin, e.g. `https://sf-chat.example.com`.
-4. **Authorized redirect URIs**: `https://sf-chat.example.com/google/callback`.
-5. Copy the **Client ID** into `GOOGLE_CLIENT_ID` (see next section).
+```jsonc
+"AUTH_ISSUER_URL": "https://sf-auth.example.com",
+"AUTH_CLIENT_ID": "shedflare-chat"
+```
 
 ## 4. Configure Environment
 
@@ -48,7 +41,8 @@ Plain variables live in `wrangler.jsonc` under `vars`. Secrets are set with `wra
 | Name                          | Kind   | Required | Description                                                                |
 | ----------------------------- | ------ | -------- | -------------------------------------------------------------------------- |
 | `APP_PUBLIC_URL`              | var    | yes      | Canonical public URL, e.g. `https://sf-chat.example.com`.                  |
-| `GOOGLE_CLIENT_ID`            | var    | yes      | OAuth client ID from §3.                                                   |
+| `AUTH_ISSUER_URL`             | var    | yes      | Canonical public URL for `@shedflare/auth`.                                |
+| `AUTH_CLIENT_ID`              | var    | yes      | OAuth client ID for Chat, usually `shedflare-chat`.                        |
 | `OWNER_EMAIL`                 | var    | yes      | The single Google account allowed to sign in. Others get `/forbidden`.     |
 | `DEFAULT_MODEL_ID`            | var    | yes      | Model ID from your OpenCode Go catalog, or `"auto"` to let the app choose. |
 | `OPENCODE_GO_MODEL_ALLOWLIST` | var    | no       | Comma-separated model IDs to expose. Omit to show the full catalog.        |

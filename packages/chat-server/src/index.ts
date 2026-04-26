@@ -13,6 +13,7 @@ export { chat } from "@tanstack/ai";
 import { decodeAppEnv, type AppEnv } from "@shedflare/chat-effect";
 import {
   createLocalJWKSet,
+  createRemoteJWKSet,
   errors as joseErrors,
   exportJWK,
   importSPKI,
@@ -157,6 +158,8 @@ type StoredSigningKey = {
 
 let jwksPromise: Promise<ReturnType<typeof createLocalJWKSet>> | null = null;
 let jwksLoadedAt = 0;
+let remoteJwksUrl: string | null = null;
+let remoteJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 async function loadJwks(env: AppEnv) {
   const namespace = env.OPENAUTH_STORAGE as KVNamespace;
@@ -196,6 +199,15 @@ function getJwks(env: AppEnv) {
   return jwksPromise!;
 }
 
+function getRemoteJwks(env: AppEnv) {
+  const url = `${env.AUTH_ISSUER_URL}/.well-known/jwks.json`;
+  if (!remoteJwks || remoteJwksUrl !== url) {
+    remoteJwksUrl = url;
+    remoteJwks = createRemoteJWKSet(new URL(url));
+  }
+  return remoteJwks;
+}
+
 function invalidateJwks() {
   jwksPromise = null;
   jwksLoadedAt = 0;
@@ -204,6 +216,22 @@ function invalidateJwks() {
 type LocalVerifyResult = { kind: "ok"; email: string } | { kind: "expired" } | { kind: "invalid" };
 
 async function verifyAccessLocally(token: string, env: AppEnv): Promise<LocalVerifyResult> {
+  if (env.AUTH_ISSUER_URL) {
+    try {
+      const { payload } = await jwtVerify(token, getRemoteJwks(env), {
+        issuer: env.AUTH_ISSUER_URL,
+      });
+      if (payload.mode !== "access") return { kind: "invalid" };
+      const properties = payload.properties as { email?: unknown } | undefined;
+      const email = properties?.email;
+      if (typeof email !== "string" || !email) return { kind: "invalid" };
+      return { kind: "ok", email };
+    } catch (error) {
+      if (error instanceof joseErrors.JWTExpired) return { kind: "expired" };
+      return { kind: "invalid" };
+    }
+  }
+
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const jwks = await getJwks(env);
@@ -231,19 +259,22 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
   try {
-    const response = await createAuthIssuer(env).fetch(
-      new Request(`${env.APP_PUBLIC_URL}/token`, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: refreshToken,
-        }),
-        signal: controller.signal,
+    const tokenRequest = new Request(`${env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL}/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
       }),
-      env as unknown as Record<string, unknown>,
-      {} as ExecutionContext,
-    );
+      signal: controller.signal,
+    });
+    const response = env.AUTH_ISSUER_URL
+      ? await fetch(tokenRequest)
+      : await createAuthIssuer(env).fetch(
+          tokenRequest,
+          env as unknown as Record<string, unknown>,
+          {} as ExecutionContext,
+        );
     if (!response.ok) return null;
     const json = (await response.json()) as {
       access_token?: string;
