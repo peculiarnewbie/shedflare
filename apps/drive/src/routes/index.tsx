@@ -31,10 +31,70 @@ function fileGlyph(file: DriveFile) {
   return "DOC";
 }
 
-async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeDriveFile(value: unknown): DriveFile | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.mimeType !== "string" ||
+    typeof value.size !== "number" ||
+    typeof value.description !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    !Array.isArray(value.tags) ||
+    !value.tags.every((tag) => typeof tag === "string")
+  ) {
+    return null;
+  }
+  return value as DriveFile;
+}
+
+function decodeTagSummary(value: unknown): TagSummary | null {
+  if (!isRecord(value) || typeof value.name !== "string" || typeof value.count !== "number")
+    return null;
+  return { name: value.name, count: value.count };
+}
+
+function decodeFilesResponse(value: unknown): { files: DriveFile[] } | null {
+  if (!isRecord(value) || !Array.isArray(value.files)) return null;
+  const files = value.files.map(decodeDriveFile);
+  if (files.some((file) => !file)) return null;
+  return { files: files as DriveFile[] };
+}
+
+function decodeFileResponse(value: unknown): { file: DriveFile } | null {
+  if (!isRecord(value)) return null;
+  const file = decodeDriveFile(value.file);
+  return file ? { file } : null;
+}
+
+function decodeTagsResponse(value: unknown): { tags: TagSummary[] } | null {
+  if (!isRecord(value) || !Array.isArray(value.tags)) return null;
+  const tags = value.tags.map(decodeTagSummary);
+  if (tags.some((tag) => !tag)) return null;
+  return { tags: tags as TagSummary[] };
+}
+
+function decodeSessionResponse(value: unknown): { user: { email: string } } | null {
+  if (!isRecord(value) || !isRecord(value.user) || typeof value.user.email !== "string")
+    return null;
+  return { user: { email: value.user.email } };
+}
+
+async function requestJson<T>(
+  input: RequestInfo | URL,
+  decode: (value: unknown) => T | null,
+  init?: RequestInit,
+) {
   const response = await fetch(input, init);
   if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as T;
+  const data = decode(await response.json());
+  if (!data) throw new Error("Invalid API response");
+  return data;
 }
 
 export default function Home() {
@@ -58,18 +118,18 @@ export default function Home() {
 
   async function loadFiles() {
     const suffix = query() ? `?${query()}` : "";
-    const data = await requestJson<{ files: DriveFile[] }>(`/api/files${suffix}`);
+    const data = await requestJson(`/api/files${suffix}`, decodeFilesResponse);
     setFiles(data.files);
   }
 
   async function loadTags() {
-    const data = await requestJson<{ tags: TagSummary[] }>("/api/tags");
+    const data = await requestJson("/api/tags", decodeTagsResponse);
     setTags(data.tags);
   }
 
   async function bootstrap() {
     try {
-      const session = await requestJson<{ user: { email: string } }>("/api/session");
+      const session = await requestJson("/api/session", decodeSessionResponse);
       setUserEmail(session.user.email);
       setUnauthorized(false);
       await Promise.all([loadFiles(), loadTags()]);
@@ -105,7 +165,7 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      await requestJson("/api/files", { method: "POST", body: data });
+      await requestJson("/api/files", decodeFileResponse, { method: "POST", body: data });
       form.reset();
       setUploadTags("");
       setDescription("");

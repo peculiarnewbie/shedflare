@@ -332,12 +332,101 @@ export function mergeAttachmentLink(
   });
 }
 
-export type SyncTables = Partial<Record<(typeof TABLES)[keyof typeof TABLES], Record<string, any>>>;
+export type SyncTables = Partial<
+  Record<(typeof TABLES)[keyof typeof TABLES], Record<string, unknown>>
+>;
 
 export type SyncSnapshot = {
   serverSeq?: number;
   tables: SyncTables;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeSyncTables(value: unknown): SyncTables | null {
+  if (!isRecord(value)) return null;
+  const tableNames = new Set<string>(Object.values(TABLES));
+  const tables: SyncTables = {};
+  for (const [tableName, rows] of Object.entries(value)) {
+    if (!tableNames.has(tableName)) continue;
+    if (!isRecord(rows)) return null;
+    tables[tableName as (typeof TABLES)[keyof typeof TABLES]] = rows;
+  }
+  return tables;
+}
+
+export function decodeSyncSnapshot(value: unknown): SyncSnapshot | null {
+  if (!isRecord(value)) return null;
+  const tables = decodeSyncTables(value.tables);
+  if (!tables) return null;
+  if (value.serverSeq !== undefined && typeof value.serverSeq !== "number") return null;
+  return { tables, serverSeq: value.serverSeq };
+}
+
+export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | null {
+  if (!isRecord(value) || typeof value.type !== "string") return null;
+  switch (value.type) {
+    case "hello_ack":
+      if (
+        typeof value.protocolVersion !== "string" ||
+        typeof value.serverTime !== "string" ||
+        typeof value.lastServerSeq !== "number"
+      ) {
+        return null;
+      }
+      return value as SyncServerHelloAck;
+    case "ack":
+      if (
+        typeof value.opId !== "string" ||
+        typeof value.serverSeq !== "number" ||
+        typeof value.acceptedAt !== "string" ||
+        typeof value.commandType !== "string"
+      ) {
+        return null;
+      }
+      return value as SyncServerAck;
+    case "reject":
+      if (
+        typeof value.opId !== "string" ||
+        typeof value.reason !== "string" ||
+        typeof value.code !== "string" ||
+        typeof value.retriable !== "boolean"
+      ) {
+        return null;
+      }
+      return value as SyncServerReject;
+    case "event":
+      if (
+        typeof value.serverSeq !== "number" ||
+        typeof value.eventId !== "string" ||
+        typeof value.eventType !== "string" ||
+        !isRecord(value.payload)
+      ) {
+        return null;
+      }
+      return value as SyncServerEvent;
+    case "sync_reset": {
+      if (typeof value.reason !== "string") return null;
+      if (value.protocolVersion !== undefined && typeof value.protocolVersion !== "string")
+        return null;
+      const snapshot = decodeSyncSnapshot(value.snapshot);
+      if (!snapshot) return null;
+      return {
+        type: "sync_reset",
+        reason: value.reason,
+        protocolVersion: value.protocolVersion,
+        snapshot,
+      };
+    }
+    case "pong":
+      if (typeof value.at !== "string") return null;
+      return value as SyncServerPong;
+    default:
+      return null;
+  }
+}
 
 export type BootstrapSessionPayload = {
   defaultModelId: string;

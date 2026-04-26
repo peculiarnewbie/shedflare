@@ -4,6 +4,7 @@ import {
   TABLES,
   type SyncEventPayloadMap,
   type SyncServerEnvelope,
+  type SyncTables,
 } from "#/domain";
 import type { Workspace, Thread, Message, Attachment } from "#/domain";
 import * as conn from "./ws-connection";
@@ -386,7 +387,7 @@ function applyEvent(eventType: string, payload: unknown) {
 // Snapshot replacement — sync_reset and server_state_rebased
 // ---------------------------------------------------------------------------
 
-function applySnapshot(tables: Record<string, Record<string, any>> | undefined) {
+function applySnapshot(tables: SyncTables | undefined) {
   if (!tables) return;
   for (const [tableName, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
     const writer = getSyncWriter(collectionId);

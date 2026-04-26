@@ -7,13 +7,15 @@
  * from under us) and refreshed whenever we receive a new snapshot.
  */
 
+import { decodeSyncSnapshot, type SyncTables } from "#/domain";
+
 const DB_NAME = "shedflare-chat-offline";
 const DB_VERSION = 1;
 const STORE_NAME = "snapshots";
 const SNAPSHOT_KEY = "last";
 
 export type CachedSnapshot = {
-  tables: Record<string, Record<string, any>>;
+  tables: SyncTables;
   lastServerSeq: number;
   cachedAt: number;
 };
@@ -40,8 +42,20 @@ export async function readCachedSnapshot(): Promise<CachedSnapshot | null> {
       const store = tx.objectStore(STORE_NAME);
       const request = store.get(SNAPSHOT_KEY);
       request.onsuccess = () => {
-        const result = request.result as CachedSnapshot | undefined;
-        resolve(result ?? null);
+        const result = request.result;
+        const snapshot = decodeSyncSnapshot({
+          tables: result?.tables,
+          serverSeq: result?.lastServerSeq,
+        });
+        if (!snapshot || typeof result?.cachedAt !== "number") {
+          resolve(null);
+          return;
+        }
+        resolve({
+          tables: snapshot.tables,
+          lastServerSeq: snapshot.serverSeq ?? 0,
+          cachedAt: result.cachedAt,
+        });
       };
       request.onerror = () => reject(request.error);
     });
@@ -50,10 +64,7 @@ export async function readCachedSnapshot(): Promise<CachedSnapshot | null> {
   }
 }
 
-export async function writeCachedSnapshot(
-  tables: Record<string, Record<string, any>>,
-  lastServerSeq: number,
-) {
+export async function writeCachedSnapshot(tables: SyncTables, lastServerSeq: number) {
   try {
     const db = await openDb();
     const tx = db.transaction(STORE_NAME, "readwrite");

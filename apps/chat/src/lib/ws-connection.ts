@@ -1,4 +1,9 @@
-import { SYNC_PROTOCOL_VERSION, createId, type SyncServerEnvelope } from "#/domain";
+import {
+  SYNC_PROTOCOL_VERSION,
+  createId,
+  decodeSyncServerEnvelope,
+  type SyncServerEnvelope,
+} from "#/domain";
 import { createSignal } from "solid-js";
 import * as pendingOps from "./pending-ops";
 
@@ -127,8 +132,12 @@ function connect() {
   });
 
   ws.addEventListener("message", ({ data }) => {
-    const envelope = JSON.parse(String(data)) as SyncServerEnvelope;
-    enqueueEnvelope(envelope);
+    try {
+      const envelope = decodeSyncServerEnvelope(JSON.parse(String(data)));
+      if (envelope) enqueueEnvelope(envelope);
+    } catch {
+      // Ignore malformed sync frames; reconnect/hello will recover state.
+    }
   });
 
   ws.addEventListener("close", () => {

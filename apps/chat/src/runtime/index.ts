@@ -22,6 +22,7 @@ import {
 } from "jose";
 import {
   createId,
+  decodeSyncSnapshot,
   type SyncCommandPayloadMap,
   type SyncCommandType,
   type SyncSnapshot,
@@ -90,6 +91,88 @@ type InternalCommandResponse = {
   reason?: string;
   code?: string;
 };
+
+type TokenResponse = {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function decodeTokenResponse(value: unknown): TokenResponse | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.access_token !== "string" ||
+    !value.access_token ||
+    typeof value.refresh_token !== "string" ||
+    !value.refresh_token ||
+    typeof value.expires_in !== "number"
+  ) {
+    return null;
+  }
+  return {
+    access_token: value.access_token,
+    refresh_token: value.refresh_token,
+    expires_in: value.expires_in,
+  };
+}
+
+function decodeInternalCommandResponse(value: unknown): InternalCommandResponse | null {
+  if (!isRecord(value) || typeof value.ok !== "boolean") return null;
+  const snapshot = value.snapshot === undefined ? undefined : decodeSyncSnapshot(value.snapshot);
+  if (value.snapshot !== undefined && !snapshot) return null;
+  if (value.reason !== undefined && typeof value.reason !== "string") return null;
+  if (value.code !== undefined && typeof value.code !== "string") return null;
+  return { ok: value.ok, snapshot, reason: value.reason, code: value.code };
+}
+
+function decodeExaSearchResponse(value: unknown): ExaSearchResponse | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.autopromptString !== undefined &&
+    value.autopromptString !== null &&
+    typeof value.autopromptString !== "string"
+  )
+    return null;
+  if (value.results !== undefined) {
+    if (!Array.isArray(value.results)) return null;
+    for (const result of value.results) {
+      if (!isRecord(result) || typeof result.url !== "string") return null;
+      if (result.title !== undefined && typeof result.title !== "string") return null;
+      if (
+        result.highlights !== undefined &&
+        (!Array.isArray(result.highlights) ||
+          !result.highlights.every((item) => typeof item === "string"))
+      )
+        return null;
+      if (result.text !== undefined && typeof result.text !== "string") return null;
+      if (
+        result.summary !== undefined &&
+        result.summary !== null &&
+        typeof result.summary !== "string"
+      )
+        return null;
+      if (
+        result.publishedDate !== undefined &&
+        result.publishedDate !== null &&
+        typeof result.publishedDate !== "string"
+      )
+        return null;
+      if (
+        result.highlightScores !== undefined &&
+        (!Array.isArray(result.highlightScores) ||
+          !result.highlightScores.every((item) => typeof item === "number"))
+      )
+        return null;
+      if (result.score !== undefined && result.score !== null && typeof result.score !== "number")
+        return null;
+    }
+  }
+  return value as ExaSearchResponse;
+}
 
 export type AccessSession = {
   user: {
@@ -277,14 +360,8 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
           {} as ExecutionContext,
         );
     if (!response.ok) return null;
-    const json = (await response.json()) as {
-      access_token?: string;
-      refresh_token?: string;
-      expires_in?: number;
-    };
-    if (!json.access_token || !json.refresh_token || typeof json.expires_in !== "number") {
-      return null;
-    }
+    const json = decodeTokenResponse(await response.json());
+    if (!json) return null;
     return {
       access: json.access_token,
       refresh: json.refresh_token,
@@ -394,7 +471,9 @@ export async function sendInternalSyncCommand<T extends SyncCommandType>(
   if (!response.ok) {
     throw new Error(await response.text());
   }
-  return (await response.json()) as InternalCommandResponse;
+  const json = decodeInternalCommandResponse(await response.json());
+  if (!json) throw new Error("Invalid internal sync command response");
+  return json;
 }
 
 const MODELS_CATALOG_URL = "https://models.dev/api.json";
@@ -625,7 +704,12 @@ async function runExaSearchRequest(
         await sleep(EXA_RETRY_BACKOFF_MS * attempt);
         continue;
       }
-      const json = (await response.json()) as ExaSearchResponse;
+      const json = decodeExaSearchResponse(await response.json());
+      if (!json)
+        throw new ExaSearchError("Exa search returned an invalid response", {
+          retryable: false,
+          reason: "http",
+        });
       return json;
     } catch (error) {
       const err = toExaError(error, "network");

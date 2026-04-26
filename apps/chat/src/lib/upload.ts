@@ -29,6 +29,36 @@ export type UploadResult = {
   previewUrl?: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeAttachment(value: unknown): UploadResult["attachment"] | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.threadId !== "string" ||
+    (value.messageId !== null && typeof value.messageId !== "string") ||
+    typeof value.objectKey !== "string" ||
+    typeof value.fileName !== "string" ||
+    typeof value.mimeType !== "string" ||
+    typeof value.sizeBytes !== "number" ||
+    value.status !== "ready"
+  ) {
+    return null;
+  }
+  return value as UploadResult["attachment"];
+}
+
+function decodePresignResponse(
+  value: unknown,
+): { attachment: UploadResult["attachment"]; uploadUrl: string } | null {
+  if (!isRecord(value) || typeof value.uploadUrl !== "string") return null;
+  const attachment = decodeAttachment(value.attachment);
+  if (!attachment) return null;
+  return { attachment, uploadUrl: value.uploadUrl };
+}
+
 export async function uploadFile(
   file: File,
   threadId: string,
@@ -47,10 +77,8 @@ export async function uploadFile(
     }),
   });
   if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.statusText}`);
-  const presignData = (await presignRes.json()) as {
-    attachment: UploadResult["attachment"];
-    uploadUrl: string;
-  };
+  const presignData = decodePresignResponse(await presignRes.json());
+  if (!presignData) throw new Error("Presign failed: invalid response");
   const { attachment, uploadUrl } = presignData;
 
   onProgress?.("uploading");

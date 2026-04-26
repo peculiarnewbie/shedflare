@@ -1,4 +1,4 @@
-import { setRuntimeEnv, type AppEnv } from "#/runtime";
+import { decodeTokenResponse, setRuntimeEnv, type AppEnv } from "#/runtime";
 import { createStructuredLogger } from "#/effect";
 import { createClient } from "@openauthjs/openauth/client";
 import { handleBootstrap } from "./api/bootstrap";
@@ -111,11 +111,15 @@ export default {
               new Response(`Authentication failed: ${errorText}`, { status: tokenResponse.status }),
             );
           }
-          const tokens = (await tokenResponse.json()) as {
-            access_token: string;
-            refresh_token: string;
-            expires_in: number;
-          };
+          const tokens = decodeTokenResponse(await tokenResponse.json());
+          if (!tokens) {
+            logger.log(
+              "auth_callback_token_response_invalid",
+              { durationMs: Date.now() - startedAt },
+              "warn",
+            );
+            return withVersionHeader(new Response("Authentication failed", { status: 502 }));
+          }
           const headers = new Headers();
           headers.append(
             "Set-Cookie",
