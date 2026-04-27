@@ -9,7 +9,6 @@ import { Cause, Context, Effect, Exit, Layer } from "effect";
 import * as Schema from "effect/Schema";
 
 export const AppEnvConfig = Schema.Struct({
-  OPENCODE_GO_BASE_URL: Schema.String,
   OPENCODE_GO_API_KEY: Schema.String,
   OPENCODE_GO_MODEL_ALLOWLIST: Schema.optional(Schema.String),
   DEFAULT_MODEL_ID: Schema.String,

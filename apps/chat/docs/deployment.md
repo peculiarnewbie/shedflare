@@ -46,7 +46,6 @@ Plain variables live in `wrangler.jsonc` under `vars`. Secrets are set with `wra
 | `OWNER_EMAIL`                 | var    | yes      | The single Google account allowed to sign in. Others get `/forbidden`.     |
 | `DEFAULT_MODEL_ID`            | var    | yes      | Model ID from your OpenCode Go catalog, or `"auto"` to let the app choose. |
 | `OPENCODE_GO_MODEL_ALLOWLIST` | var    | no       | Comma-separated model IDs to expose. Omit to show the full catalog.        |
-| `OPENCODE_GO_BASE_URL`        | secret | yes      | OpenCode Go API base URL.                                                  |
 | `OPENCODE_GO_API_KEY`         | secret | yes      | OpenCode Go API key.                                                       |
 | `UPLOAD_TOKEN_SECRET`         | secret | yes      | Signs attachment URLs. Generate with `openssl rand -hex 32`.               |
 | `EXA_API_KEY`                 | secret | no       | Enables the paid Exa API. Without it, search uses Exa's free MCP endpoint. |

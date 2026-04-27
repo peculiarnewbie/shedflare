@@ -32,6 +32,18 @@ export const TABLES = {
 // and reload to pick up the new snapshot shape.
 export const SYNC_PROTOCOL_VERSION = "effect4-extract-v1";
 
+export const MAX_SEARCHES_PER_TURN = 5;
+export const DEFAULT_SEARCHES_PER_TURN = 3;
+export const SEARCHES_PER_TURN_OPTIONS = [1, 2, 3, 4, 5] as const;
+export const MAX_BROWSER_RENDERS_PER_TURN = 5;
+export const MAX_TOOL_ITERATIONS_PER_TURN = 10;
+
+export function clampSearchesPerTurn(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_SEARCHES_PER_TURN;
+  return Math.min(MAX_SEARCHES_PER_TURN, Math.max(1, Math.trunc(numeric)));
+}
+
 export const ReasoningLevel = Schema.Literals(["off", "low", "medium", "high"]);
 
 export const MessageStatus = Schema.Literals([
@@ -473,6 +485,7 @@ export type CreateUserMessagePayload = {
   modelInterleavedField?: string | null;
   reasoningLevel: ReasoningLevel;
   search: boolean;
+  searchLimit?: number;
   preferFreeSearch?: boolean;
   attachmentIds: string[];
 };
@@ -486,6 +499,7 @@ export type RetryMessagePayload = {
   modelInterleavedField?: string | null;
   reasoningLevel: ReasoningLevel;
   search: boolean;
+  searchLimit?: number;
   preferFreeSearch?: boolean;
 };
 
@@ -500,6 +514,7 @@ export type EditUserMessagePayload = {
   modelInterleavedField?: string | null;
   reasoningLevel: ReasoningLevel;
   search: boolean;
+  searchLimit?: number;
   preferFreeSearch?: boolean;
   attachments: Attachment[];
 };
@@ -511,6 +526,7 @@ export type StartAssistantTurnPayload = {
   modelInterleavedField?: string | null;
   reasoningLevel: ReasoningLevel;
   search: boolean;
+  searchLimit?: number;
 };
 
 export type CancelAssistantTurnPayload = {

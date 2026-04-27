@@ -1,5 +1,5 @@
 import { toolDefinition } from "@tanstack/ai";
-import { createExtractRun, type ExtractRun } from "#/domain";
+import { createExtractRun, MAX_BROWSER_RENDERS_PER_TURN, type ExtractRun } from "#/domain";
 import {
   BrowserRenderError,
   cloudflareBrowserMarkdown,
@@ -8,16 +8,6 @@ import {
   type AppEnv,
 } from "#/runtime";
 import type { ToolProgressEvent } from "./search";
-
-/**
- * Cap on extract calls per assistant turn. The limit is about quality, not
- * cost — Cloudflare Browser Rendering is effectively free on Paid
- * (~fractions of a cent per page, well within the included browser-hour
- * budget), while Exa search calls are pay-per-query. The real reason to cap
- * this is to stop the model from doom-extracting link after link instead of
- * answering. Five gives it plenty of room to follow up on a search without
- * going off the rails. */
-const MAX_EXTRACTS_PER_TURN = 5;
 
 type ExtractToolResult =
   | {
@@ -211,7 +201,7 @@ export function createBrowserExtractTool(input: {
       "Do NOT use this tool to discover URLs; use exa_web_search first if you don't already have one.",
       "Do NOT extract homepage URLs hoping to find a specific article; pass the actual article URL.",
       "",
-      "Budget: at most a few extracts per turn. The response is capped to the first ~12k characters; do not re-extract the same URL.",
+      `Budget: at most ${MAX_BROWSER_RENDERS_PER_TURN} browser renders per assistant turn. The response is capped to the first ~12k characters; do not re-extract the same URL.`,
     ].join("\n"),
     inputSchema: {
       type: "object",
@@ -263,7 +253,7 @@ export function createBrowserExtractTool(input: {
     const url = parsed.toString();
 
     // Guard 1: per-turn budget.
-    if (state.extractRuns.length >= MAX_EXTRACTS_PER_TURN) {
+    if (state.extractRuns.length >= MAX_BROWSER_RENDERS_PER_TURN) {
       input.log?.("assistant_turn_tool_extract_rejected", {
         assistantMessageId: input.assistantMessageId,
         reason: "max_extracts_reached",
@@ -272,7 +262,7 @@ export function createBrowserExtractTool(input: {
       });
       await input.onProgress?.({
         tool: "extract",
-        label: `Extract budget reached (${MAX_EXTRACTS_PER_TURN}); answering with existing content`,
+        label: `Extract budget reached (${MAX_BROWSER_RENDERS_PER_TURN}); answering with existing content`,
         state: "failed",
         step: state.extractRuns.length + 1,
         detail: "max extracts per turn",
@@ -280,7 +270,7 @@ export function createBrowserExtractTool(input: {
       return {
         ok: false,
         url,
-        error: `Extract budget reached: ${MAX_EXTRACTS_PER_TURN} pages already fetched this turn.`,
+        error: `Extract budget reached: ${MAX_BROWSER_RENDERS_PER_TURN} pages already fetched this turn.`,
         reason: "max_extracts_reached",
         hint: "Do not call web_extract again this turn. Answer using the content you already have.",
       };

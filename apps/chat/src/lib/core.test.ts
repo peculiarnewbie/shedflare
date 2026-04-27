@@ -1,9 +1,13 @@
 import {
   buildMultiSearchContext,
+  clampSearchesPerTurn,
   createAttachment,
   createMessage,
   createThread,
   createWorkspace,
+  DEFAULT_SEARCHES_PER_TURN,
+  MAX_BROWSER_RENDERS_PER_TURN,
+  MAX_SEARCHES_PER_TURN,
   mergeAttachmentLink,
   resolveThreadMessagePath,
   sortConversationMessages,
@@ -20,6 +24,7 @@ import {
   extractReasoningTokens,
   extractChatCompletionText,
   filterModelsCatalog,
+  normalizeModelsCatalogResponse,
   getSignedAttachmentUrl,
   isImageAttachment,
   isInlineTextAttachment,
@@ -628,7 +633,6 @@ describe("domain helpers", () => {
 
 describe("server helpers", () => {
   const env = {
-    OPENCODE_GO_BASE_URL: "https://api.example.com",
     OPENCODE_GO_API_KEY: "opencode-key",
     OPENCODE_GO_MODEL_ALLOWLIST: "openai/gpt-4.1,anthropic/claude-sonnet-4",
     DEFAULT_MODEL_ID: "openai/gpt-4.1",
@@ -697,6 +701,18 @@ describe("server helpers", () => {
     );
 
     expect(result.models).toHaveLength(2);
+  });
+
+  it("normalizes OpenAI-style model list to internal catalog shape", () => {
+    const normalized = normalizeModelsCatalogResponse({
+      object: "list",
+      data: [
+        { id: "minimax-m2.7", object: "model", created: 1777311000, owned_by: "opencode" },
+        { id: "kimi-k2.6", object: "model", created: 1777311000, owned_by: "opencode" },
+      ],
+    });
+    expect(normalized["opencode-go"].models["0"].id).toBe("minimax-m2.7");
+    expect(normalized["opencode-go"].models["1"].id).toBe("kimi-k2.6");
   });
 
   it("classifies supported attachment types", () => {
@@ -1602,22 +1618,34 @@ describe("server helpers", () => {
       const { tool, state } = createExaSearchTool({
         env: env as any,
         assistantMessageId: "msg_budget",
+        maxSearchesPerTurn: 2,
       });
-      // Issue 4 distinct queries — this should exactly fill the budget.
-      for (let i = 0; i < 4; i++) {
+      // Issue enough distinct queries to exactly fill the budget.
+      let lastOk: any = null;
+      for (let i = 0; i < 2; i++) {
         const ok = (await (tool as any).execute({ query: `alpha query ${i}` })) as any;
         expect(ok.ok).toBe(true);
+        lastOk = ok;
       }
-      expect(state.searchRuns).toHaveLength(4);
-      // 5th must be rejected with max_searches_reached.
+      expect(lastOk.disableFurtherToolCalls).toBe(true);
+      expect(state.searchRuns).toHaveLength(2);
+      // Next distinct query must be rejected with max_searches_reached.
       const rejected = (await (tool as any).execute({ query: "alpha query 5" })) as any;
       expect(rejected.ok).toBe(false);
       expect(rejected.reason).toBe("max_searches_reached");
+      expect(rejected.disableFurtherToolCalls).toBe(true);
       // Budget rejection does NOT add a search run.
-      expect(state.searchRuns).toHaveLength(4);
+      expect(state.searchRuns).toHaveLength(2);
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("clamps search budget to the supported UI range", () => {
+    expect(clampSearchesPerTurn(undefined)).toBe(DEFAULT_SEARCHES_PER_TURN);
+    expect(clampSearchesPerTurn(0)).toBe(1);
+    expect(clampSearchesPerTurn(4.8)).toBe(4);
+    expect(clampSearchesPerTurn(10)).toBe(MAX_SEARCHES_PER_TURN);
   });
 
   it("search tool returns a structured failure instead of throwing on Exa errors", async () => {
@@ -1823,8 +1851,8 @@ describe("server helpers", () => {
       assistantMessageId: "msg_extract_budget",
       extract: async () => "# Page",
     });
-    // Budget is 5 — fill it, then the 6th call should be rejected.
-    for (let i = 0; i < 5; i++) {
+    // Fill the budget, then the next call should be rejected.
+    for (let i = 0; i < MAX_BROWSER_RENDERS_PER_TURN; i++) {
       const ok = (await (tool as any).execute({ url: `https://example.com/page-${i}` })) as any;
       expect(ok.ok).toBe(true);
     }
@@ -1834,7 +1862,7 @@ describe("server helpers", () => {
     expect(rejected.ok).toBe(false);
     expect(rejected.reason).toBe("max_extracts_reached");
     // Budget rejection doesn't create a run record.
-    expect(state.extractRuns).toHaveLength(5);
+    expect(state.extractRuns).toHaveLength(MAX_BROWSER_RENDERS_PER_TURN);
   });
 
   it("extract tool rejects malformed URLs without touching the browser", async () => {

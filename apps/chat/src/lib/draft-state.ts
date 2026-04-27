@@ -1,5 +1,13 @@
 import { createSignal } from "solid-js";
-import { createThread, nowIso, type ReasoningLevel, type Thread, type Workspace } from "#/domain";
+import {
+  DEFAULT_SEARCHES_PER_TURN,
+  clampSearchesPerTurn,
+  createThread,
+  nowIso,
+  type ReasoningLevel,
+  type Thread,
+  type Workspace,
+} from "#/domain";
 
 export type DraftAttachmentChip = {
   localId: string;
@@ -19,6 +27,7 @@ export type DraftChatState = {
   modelId: string;
   reasoningLevel: ReasoningLevel;
   search: boolean;
+  searchLimit: number;
   attachments: DraftAttachmentChip[];
   updatedAt: string;
 };
@@ -76,6 +85,7 @@ function readDrafts() {
     }
     drafts[workspaceId] = {
       ...draft,
+      searchLimit: clampSearchesPerTurn(draft.searchLimit),
       attachments: [],
     };
   }
@@ -156,6 +166,7 @@ export function ensureWorkspaceDraft(input: {
   modelId: string;
   reasoningLevel: ReasoningLevel;
   search: boolean;
+  searchLimit?: number;
 }) {
   const existing = getWorkspaceDraft(input.workspace.id);
   if (existing) return existing;
@@ -167,6 +178,7 @@ export function ensureWorkspaceDraft(input: {
     modelId: input.modelId,
     reasoningLevel: input.reasoningLevel,
     search: input.search,
+    searchLimit: clampSearchesPerTurn(input.searchLimit ?? DEFAULT_SEARCHES_PER_TURN),
     attachments: [],
     updatedAt: nowIso(),
   };

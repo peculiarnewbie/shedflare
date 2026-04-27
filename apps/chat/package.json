@@ -50,9 +50,6 @@
   "packageManager": "pnpm@10.32.1",
   "cloudflare": {
     "bindings": {
-      "OPENCODE_GO_BASE_URL": {
-        "description": "Base URL for the OpenCode Go API backend."
-      },
       "OPENCODE_GO_API_KEY": {
         "description": "API key for authenticating with the OpenCode Go API."
       },

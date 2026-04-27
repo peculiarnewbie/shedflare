@@ -476,10 +476,26 @@ export async function sendInternalSyncCommand<T extends SyncCommandType>(
   return json;
 }
 
+export const OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 const MODELS_CATALOG_URL = "https://models.dev/api.json";
 
 export async function purgeModelsCatalogCache(cache: Cache) {
   await cache.delete(new Request(MODELS_CATALOG_URL));
+}
+
+export function normalizeModelsCatalogResponse(raw: any): any {
+  if (Array.isArray(raw?.data)) {
+    return {
+      "opencode-go": {
+        id: "opencode-go",
+        api: OPENCODE_GO_BASE_URL,
+        models: Object.fromEntries(
+          raw.data.map((m: any, index: number) => [String(index), { id: m.id, name: m.id }]),
+        ),
+      },
+    };
+  }
+  return raw;
 }
 
 export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
@@ -488,7 +504,7 @@ export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
   const cached = await cache.match(cacheKey);
   if (cached) {
     logger.log("models_catalog_cache_hit", { durationMs: Date.now() - startedAt });
-    return cached.json();
+    return normalizeModelsCatalogResponse(await cached.json());
   }
 
   const response = await fetchWithTimeout(
@@ -500,9 +516,10 @@ export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
   );
   if (!response.ok) throw new Error(`Failed to fetch models catalog: ${response.status}`);
   const json = await response.json();
+  const catalog = normalizeModelsCatalogResponse(json);
   await cache.put(
     cacheKey,
-    new Response(JSON.stringify(json), {
+    new Response(JSON.stringify(catalog), {
       headers: {
         "content-type": "application/json",
         "cache-control": `public, max-age=${HOUR_MS / 1000}`,
@@ -510,7 +527,7 @@ export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
     }),
   );
   logger.log("models_catalog_fetched", { durationMs: Date.now() - startedAt });
-  return json;
+  return catalog;
 }
 
 export function filterModelsCatalog(raw: any, env: AppEnv) {
@@ -546,7 +563,7 @@ export function filterModelsCatalog(raw: any, env: AppEnv) {
     .sort((a, b) => a.name.localeCompare(b.name));
   return {
     provider: provider.id ?? "opencode-go",
-    api: provider.api ?? env.OPENCODE_GO_BASE_URL,
+    api: provider.api ?? OPENCODE_GO_BASE_URL,
     models,
   };
 }

@@ -14,7 +14,14 @@ import {
 } from "solid-js";
 import { createStore } from "solid-js/store";
 import { useLiveQuery } from "@tanstack/solid-db";
-import { createId, nowIso, resolveThreadMessagePath } from "#/domain";
+import {
+  DEFAULT_SEARCHES_PER_TURN,
+  SEARCHES_PER_TURN_OPTIONS,
+  clampSearchesPerTurn,
+  createId,
+  nowIso,
+  resolveThreadMessagePath,
+} from "#/domain";
 import type {
   AccountSettings,
   Attachment,
@@ -481,6 +488,7 @@ export default function Home() {
     modelId: "",
     reasoningLevel: "off" as ReasoningLevel,
     search: false,
+    searchLimit: DEFAULT_SEARCHES_PER_TURN,
     sending: false,
     attachments: [] as Array<{
       localId: string;
@@ -574,6 +582,12 @@ export default function Home() {
     isDraftViewActive() ? (activeDraft()?.reasoningLevel ?? "off") : composer.reasoningLevel;
   const composerSearch = () =>
     isDraftViewActive() ? (activeDraft()?.search ?? false) : composer.search;
+  const composerSearchLimit = () =>
+    clampSearchesPerTurn(
+      isDraftViewActive()
+        ? (activeDraft()?.searchLimit ?? DEFAULT_SEARCHES_PER_TURN)
+        : composer.searchLimit,
+    );
   const setComposerTextValue = (text: string) => {
     const workspace = activeWorkspace();
     if (workspace && isDraftViewActive()) {
@@ -796,6 +810,7 @@ export default function Home() {
       thread?.reasoningLevel ?? workspace.defaultReasoningLevel ?? "off",
     );
     setComposer("search", workspace.defaultSearchMode);
+    setComposer("searchLimit", DEFAULT_SEARCHES_PER_TURN);
   });
 
   createEffect(() => {
@@ -2566,6 +2581,7 @@ export default function Home() {
       modelId: composerModelId() || workspace.defaultModelId || models()?.models?.[0]?.id || "auto",
       reasoningLevel: composerReasoningLevel(),
       search: composerSearch(),
+      searchLimit: composerSearchLimit(),
     });
     activateWorkspaceDraftView(workspace.id);
     setSidebarOpen(false);
@@ -2719,6 +2735,23 @@ export default function Home() {
     updateWorkspacePreferences({ defaultSearchMode: search });
   };
 
+  const handleSearchLimitChange = (value: number) => {
+    const searchLimit = clampSearchesPerTurn(value);
+    const workspace = activeWorkspace();
+    if (workspace && isDraftViewActive()) {
+      updateWorkspaceDraft(workspace.id, (draft) => ({
+        ...draft,
+        search: true,
+        searchLimit,
+        updatedAt: nowIso(),
+      }));
+    } else {
+      setComposer("search", true);
+      setComposer("searchLimit", searchLimit);
+    }
+    updateWorkspacePreferences({ defaultSearchMode: true });
+  };
+
   const handleReasoningChange = (reasoningLevel: ReasoningLevel) => {
     const workspace = activeWorkspace();
     const thread = activeThread();
@@ -2800,6 +2833,7 @@ export default function Home() {
       modelInterleavedField: modelInterleavedFieldFor(modelId),
       reasoningLevel: (msg.reasoningLevel ?? "off") as ReasoningLevel,
       search: Boolean(msg.searchEnabled),
+      searchLimit: composerSearchLimit(),
       preferFreeSearch: effectivePreferFreeSearch(),
       attachmentIds,
     });
@@ -2817,6 +2851,7 @@ export default function Home() {
       modelInterleavedField: modelInterleavedFieldFor(modelId),
       reasoningLevel: effectiveComposerReasoningLevel(),
       search: composerSearch(),
+      searchLimit: composerSearchLimit(),
       preferFreeSearch: effectivePreferFreeSearch(),
     });
   };
@@ -2861,6 +2896,7 @@ export default function Home() {
         modelInterleavedField: modelInterleavedFieldFor(modelId),
         reasoningLevel: effectiveComposerReasoningLevel(),
         search: composerSearch(),
+        searchLimit: composerSearchLimit(),
         preferFreeSearch: effectivePreferFreeSearch(),
         attachmentIds,
       });
@@ -3343,7 +3379,11 @@ export default function Home() {
                     type="button"
                     class="composer-action-btn"
                     classList={{ "is-active": composerSearch() }}
-                    title={composerSearch() ? "Disable search" : "Enable search"}
+                    title={
+                      composerSearch()
+                        ? `Disable search (up to ${composerSearchLimit()} searches)`
+                        : `Enable search (up to ${composerSearchLimit()} searches)`
+                    }
                     onClick={() => handleSearchChange(!composerSearch())}
                   >
                     <svg
@@ -3361,6 +3401,17 @@ export default function Home() {
                       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                     </svg>
                   </button>
+                  <select
+                    class="composer-search-limit"
+                    value={composerSearchLimit()}
+                    aria-label="Searches per response"
+                    title={`Allow up to ${composerSearchLimit()} searches per response`}
+                    onChange={(event) => handleSearchLimitChange(Number(event.currentTarget.value))}
+                  >
+                    <For each={SEARCHES_PER_TURN_OPTIONS}>
+                      {(value) => <option value={value}>{value}</option>}
+                    </For>
+                  </select>
                   <ComposerOptions />
                 </div>
                 <div class="composer-actions">

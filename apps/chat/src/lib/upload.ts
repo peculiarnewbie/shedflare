@@ -43,7 +43,8 @@ function decodeAttachment(value: unknown): UploadResult["attachment"] | null {
     typeof value.fileName !== "string" ||
     typeof value.mimeType !== "string" ||
     typeof value.sizeBytes !== "number" ||
-    value.status !== "ready"
+    typeof value.status !== "string" ||
+    !["ready", "queued", "uploading"].includes(value.status)
   ) {
     return null;
   }

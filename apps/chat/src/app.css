@@ -1740,6 +1740,22 @@ a {
   flex-shrink: 0;
 }
 
+.composer-search-limit {
+  width: 42px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 5px 4px;
+  font-size: 0.78rem;
+  text-align: center;
+  outline: none;
+  color: var(--text-secondary);
+}
+
+.composer-search-limit:focus {
+  border-color: var(--accent);
+}
+
 .composer-actions {
   display: flex;
   align-items: center;

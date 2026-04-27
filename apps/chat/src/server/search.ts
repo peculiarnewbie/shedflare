@@ -1,6 +1,7 @@
 import { toolDefinition } from "@tanstack/ai";
 import {
   buildMultiSearchContext,
+  clampSearchesPerTurn,
   createSearchRun,
   decodeSearchResultRow,
   type SearchResult,
@@ -15,11 +16,6 @@ import {
 } from "#/runtime";
 
 const SEARCH_RESULTS_PER_RUN = 5;
-/** Hard cap on searches per assistant turn. Beyond this, we refuse further
- *  searches and tell the model to answer with what it has. This is the
- *  primary defence against "stuck in a search loop" failures with thinking
- *  models that keep reformulating the same question. */
-export const MAX_SEARCHES_PER_TURN = 4;
 /** Minimum normalized query length. Anything shorter is probably garbage
  *  (the model accidentally sending a single word or an empty string). */
 const MIN_QUERY_CHARS = 2;
@@ -205,7 +201,9 @@ export function createExaSearchTool(input: {
   trace?: <A>(name: string, attrs: Record<string, unknown>, run: () => Promise<A>) => Promise<A>;
   onProgress?: (event: SearchProgressEvent) => void | Promise<void>;
   onSearchStateChange?: (state: Readonly<SearchToolState>) => void | Promise<void>;
+  maxSearchesPerTurn?: number;
 }) {
+  const maxSearchesPerTurn = clampSearchesPerTurn(input.maxSearchesPerTurn);
   const state: SearchToolState = {
     searchRuns: [],
     searchResults: [],
@@ -230,9 +228,10 @@ export function createExaSearchTool(input: {
     description: [
       "Run a web search through Exa and receive a grounded block of ranked results (title, URL, snippet).",
       "Use this when external or current information would help answer the user's request.",
+      `Limit: at most ${maxSearchesPerTurn} searches per assistant turn. Do not request another search after the limit is reached.`,
       "- If a query returned poor or irrelevant results, reformulate it. Do not re-issue the same or near-identical query — the tool will refuse it.",
       "",
-      "Budget: at most a handful of searches per turn. Stop once you have enough to answer, and answer — do not keep searching to be thorough.",
+      "Budget: stop once you have enough to answer, and answer — do not keep searching to be thorough.",
     ].join("\n"),
     inputSchema: {
       type: "object",
@@ -298,7 +297,7 @@ export function createExaSearchTool(input: {
     }
 
     // Guard 2: per-turn budget. Absolute ceiling to stop thinking-model loops.
-    if (state.searchRuns.length >= MAX_SEARCHES_PER_TURN) {
+    if (state.searchRuns.length >= maxSearchesPerTurn) {
       input.log?.("assistant_turn_tool_search_rejected", {
         assistantMessageId: input.assistantMessageId,
         reason: "max_searches_reached",
@@ -307,7 +306,7 @@ export function createExaSearchTool(input: {
       });
       await input.onProgress?.({
         tool: "search",
-        label: `Search budget reached (${MAX_SEARCHES_PER_TURN}); answering with existing results`,
+        label: `Search budget reached (${maxSearchesPerTurn}); answering with existing results`,
         state: "failed",
         step: state.searchRuns.length + 1,
         query,
@@ -316,7 +315,7 @@ export function createExaSearchTool(input: {
       return {
         ok: false,
         query,
-        error: `Search budget reached: ${MAX_SEARCHES_PER_TURN} searches already performed this turn.`,
+        error: `Search budget reached: ${maxSearchesPerTurn} searches already performed this turn.`,
         reason: "max_searches_reached",
         hint: "Do not call exa_web_search again this turn. Answer using the results you already have.",
         disableFurtherToolCalls: true,
@@ -457,7 +456,7 @@ export function createExaSearchTool(input: {
           context = buildMultiSearchContext({ runs: [groundingRun] });
           queryCache.set(queryKey, context);
           await publishState();
-          const budgetExhausted = state.searchRuns.length >= MAX_SEARCHES_PER_TURN;
+          const budgetExhausted = state.searchRuns.length >= maxSearchesPerTurn;
           return {
             ok: true,
             query,
@@ -511,7 +510,7 @@ export function createExaSearchTool(input: {
           // Return a structured failure — do NOT throw. Throwing aborts the
           // turn; we want the model to see the failure, adjust, and
           // continue (or decide to answer without search).
-          const budgetExhausted = state.searchRuns.length >= MAX_SEARCHES_PER_TURN;
+          const budgetExhausted = state.searchRuns.length >= maxSearchesPerTurn;
           return {
             ok: false,
             query,
