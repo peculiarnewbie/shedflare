@@ -9,7 +9,6 @@ import {
   createMemo,
   createResource,
   createSignal,
-  onMount,
   Suspense,
 } from "solid-js";
 import { createStore } from "solid-js/store";
@@ -89,6 +88,7 @@ import {
 } from "../lib/draft-state";
 import { start as startConnection, isConnected } from "../lib/ws-connection";
 import { init as initSyncAdapter } from "../lib/sync-adapter";
+import { authFetch } from "../lib/auth-fetch";
 
 type SessionPayload = {
   user?: {
@@ -411,7 +411,7 @@ const fetchBootstrap = async () => {
 
 const fetchModels = async (hasSession: boolean) => {
   if (!hasSession) return null;
-  const response = await fetch("/api/models");
+  const response = await authFetch("/api/models");
   if (!response.ok) {
     const message = await response.text().catch(() => response.statusText);
     throw new Error(message || "Failed to load models");
@@ -441,10 +441,11 @@ export default function Home() {
   const [modelsResource] = createResource(() => Boolean(session()), fetchModels);
   const models = createMemo(() => modelsResource() ?? null);
 
-  // Initialize sync layer
-  onMount(async () => {
-    await initSyncAdapter();
-    startConnection();
+  let syncStarted = false;
+  createEffect(() => {
+    if (!session() || syncStarted) return;
+    syncStarted = true;
+    void initSyncAdapter().then(() => startConnection());
   });
 
   // Reactive collection data via TanStack DB live queries

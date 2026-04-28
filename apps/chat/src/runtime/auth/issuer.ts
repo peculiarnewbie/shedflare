@@ -23,6 +23,8 @@ export function createAuthIssuer(env: AppEnv) {
     ttl: {
       access: 60 * 60 * 24 * 365,
       refresh: 60 * 60 * 24 * 365,
+      reuse: 60 * 60 * 24,
+      retention: 60 * 60 * 24 * 7,
     },
     success: async (ctx, value) => {
       if (value.provider === "google") {

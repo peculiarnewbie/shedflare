@@ -395,10 +395,10 @@ function applySnapshot(tables: SyncTables | undefined) {
     // Truncate and insert in one transaction
     writer.begin();
     writer.truncate();
-    const rows = tables[tableName];
+    const rows = tables[tableName as keyof SyncTables];
     if (rows) {
       for (const [_key, value] of Object.entries(rows)) {
-        writer.write({ type: "insert", value });
+        writer.write({ type: "insert", value: value as object });
       }
     }
     writer.commit();

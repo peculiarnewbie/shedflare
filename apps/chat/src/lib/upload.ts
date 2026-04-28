@@ -1,3 +1,5 @@
+import { authFetch } from "./auth-fetch";
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const ALLOWED_PREFIXES = ["image/", "text/", "application/json"];
@@ -67,7 +69,7 @@ export async function uploadFile(
 ): Promise<UploadResult> {
   onProgress?.("presigning");
 
-  const presignRes = await fetch("/api/uploads/presign", {
+  const presignRes = await authFetch("/api/uploads/presign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -91,7 +93,7 @@ export async function uploadFile(
   if (!putRes.ok) throw new Error(`Upload failed: ${putRes.statusText}`);
 
   onProgress?.("completing");
-  const completeRes = await fetch("/api/uploads/complete", {
+  const completeRes = await authFetch("/api/uploads/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ attachment }),

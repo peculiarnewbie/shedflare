@@ -126,7 +126,7 @@ function decodeInternalCommandResponse(value: unknown): InternalCommandResponse 
   if (value.snapshot !== undefined && !snapshot) return null;
   if (value.reason !== undefined && typeof value.reason !== "string") return null;
   if (value.code !== undefined && typeof value.code !== "string") return null;
-  return { ok: value.ok, snapshot, reason: value.reason, code: value.code };
+  return { ok: value.ok, snapshot: snapshot ?? undefined, reason: value.reason, code: value.code };
 }
 
 function decodeExaSearchResponse(value: unknown): ExaSearchResponse | null {
@@ -359,7 +359,21 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
           env as unknown as Record<string, unknown>,
           {} as ExecutionContext,
         );
-    if (!response.ok) return null;
+    if (!response.ok) {
+      let errorCode: string | undefined;
+      try {
+        const body = (await response.clone().json()) as unknown;
+        if (isRecord(body) && typeof body.error === "string") errorCode = body.error;
+      } catch {
+        // Token endpoint bodies are best-effort diagnostics only.
+      }
+      logger.log(
+        "auth_refresh_token_exchange_failed",
+        { status: response.status, errorCode },
+        "warn",
+      );
+      return null;
+    }
     const json = decodeTokenResponse(await response.json());
     if (!json) return null;
     return {

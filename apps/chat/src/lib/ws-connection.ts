@@ -5,6 +5,7 @@ import {
   type SyncServerEnvelope,
 } from "#/domain";
 import { createSignal } from "solid-js";
+import { refreshAuthSession } from "./auth-fetch";
 import * as pendingOps from "./pending-ops";
 
 // ---------------------------------------------------------------------------
@@ -156,7 +157,9 @@ function scheduleReconnect() {
   if (typeof window === "undefined") return;
   if (reconnectTimer) window.clearTimeout(reconnectTimer);
   const delay = Math.min(10_000, 500 * 2 ** reconnectAttempt++);
-  reconnectTimer = window.setTimeout(() => connect(), delay);
+  reconnectTimer = window.setTimeout(() => {
+    void refreshAuthSession().finally(() => connect());
+  }, delay);
 }
 
 /** Called once from UI onMount. */
