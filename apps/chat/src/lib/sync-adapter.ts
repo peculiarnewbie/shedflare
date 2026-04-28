@@ -532,6 +532,13 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
 export async function init() {
   conn.setOnEnvelopes(processEnvelopes);
 
+  // Mark all collections as ready immediately — with empty data — so the UI
+  // renders without waiting for IndexedDB. Data hydrates async afterwards.
+  for (const [, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
+    const writer = getSyncWriter(collectionId);
+    writer?.markReady();
+  }
+
   // Try to hydrate from IndexedDB cache before WS connects
   const cached = await readCachedSnapshot();
   if (cached) {
@@ -543,11 +550,5 @@ export async function init() {
     applySnapshot(cached.tables);
     const { workspaces: ws, threads: ts } = collectWorkspacesAndThreads();
     reconcileDraftState(ws, ts);
-  }
-
-  // Mark all collections as ready (they start empty and get populated on sync_reset)
-  for (const [, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
-    const writer = getSyncWriter(collectionId);
-    writer?.markReady();
   }
 }

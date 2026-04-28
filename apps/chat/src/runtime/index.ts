@@ -422,10 +422,14 @@ export async function getSession(
   }
 
   const refresh = options.refresh ?? true;
-  if (verified.kind === "expired" && refresh && refreshToken) {
+  if (refresh && refreshToken) {
     const rotated = await rotateRefreshToken(refreshToken, env);
     if (!rotated) {
-      logger.log("auth_refresh_failed", { durationMs: Date.now() - startedAt }, "warn");
+      logger.log(
+        "auth_refresh_failed",
+        { kind: verified.kind, durationMs: Date.now() - startedAt },
+        "warn",
+      );
       return null;
     }
     const reverified = await verifyAccessLocally(rotated.access, env);

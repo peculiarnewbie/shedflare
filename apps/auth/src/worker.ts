@@ -56,6 +56,13 @@ function createIssuer(env: Env) {
   });
 }
 
+let cachedIssuer: ReturnType<typeof createIssuer> | null = null;
+
+function getIssuer(env: Env) {
+  cachedIssuer ??= createIssuer(env);
+  return cachedIssuer;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -67,6 +74,6 @@ export default {
         status: 403,
       });
     }
-    return await createIssuer(env).fetch(request, env, ctx);
+    return await getIssuer(env).fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

@@ -27,6 +27,17 @@ type UpdateFileBody = {
   tags?: string[];
 };
 
+type AccessVerifyResult = { kind: "ok"; email: string } | { kind: "expired" } | { kind: "invalid" };
+
+type Session = {
+  email: string;
+  tokens?: {
+    access: string;
+    refresh: string;
+    expiresIn: number;
+  };
+};
+
 const logger = createStructuredLogger("drive-worker");
 
 function createStructuredLogger(scope: string) {
@@ -170,15 +181,17 @@ function getJwks(env: Env) {
   return jwks;
 }
 
-async function verifyAccessToken(token: string, env: Env) {
+async function verifyAccessToken(token: string, env: Env): Promise<AccessVerifyResult> {
   try {
     const { payload } = await jwtVerify(token, getJwks(env), { issuer: env.AUTH_ISSUER_URL });
-    if (payload.mode !== "access") return null;
+    if (payload.mode !== "access") return { kind: "invalid" };
     const properties = payload.properties as { email?: unknown } | undefined;
-    return typeof properties?.email === "string" ? normalizeEmail(properties.email) : null;
+    return typeof properties?.email === "string"
+      ? { kind: "ok", email: normalizeEmail(properties.email) }
+      : { kind: "invalid" };
   } catch (error) {
-    if (error instanceof joseErrors.JWTExpired) return "expired";
-    return null;
+    if (error instanceof joseErrors.JWTExpired) return { kind: "expired" };
+    return { kind: "invalid" };
   }
 }
 
@@ -201,22 +214,44 @@ async function rotateRefreshToken(refreshToken: string, env: Env) {
   };
 }
 
-async function getSession(request: Request, env: Env) {
+async function getSession(request: Request, env: Env): Promise<Session | null> {
   if (env.DEV_AUTH_EMAIL && isLocalRequest(request))
     return { email: normalizeEmail(env.DEV_AUTH_EMAIL) };
   const accessToken = getCookie(request, "auth_access_token");
   const refreshToken = getCookie(request, "auth_refresh_token");
-  if (!accessToken) return null;
-  const verified = await verifyAccessToken(accessToken, env);
-  if (verified && verified !== "expired") return { email: verified };
-  if (verified === "expired" && refreshToken) {
+  if (!accessToken && !refreshToken) return null;
+  const verified: AccessVerifyResult = accessToken
+    ? await verifyAccessToken(accessToken, env)
+    : { kind: "invalid" };
+  if (verified.kind === "ok") return { email: verified.email };
+  if (refreshToken) {
     const rotated = await rotateRefreshToken(refreshToken, env);
     if (!rotated) return null;
-    const email = await verifyAccessToken(rotated.access, env);
-    if (!email || email === "expired") return null;
-    return { email, tokens: rotated };
+    const reverified = await verifyAccessToken(rotated.access, env);
+    if (reverified.kind !== "ok") return null;
+    return { email: reverified.email, tokens: rotated };
   }
   return null;
+}
+
+function withSessionCookies(response: Response, session: Session) {
+  if (!session.tokens) return response;
+  const headers = new Headers(response.headers);
+  headers.append(
+    "Set-Cookie",
+    serializeCookie("auth_access_token", session.tokens.access, {
+      maxAge: session.tokens.expiresIn,
+    }),
+  );
+  headers.append(
+    "Set-Cookie",
+    serializeCookie("auth_refresh_token", session.tokens.refresh, { maxAge: 60 * 60 * 24 * 365 }),
+  );
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 async function requireOwner(request: Request, env: Env) {
@@ -287,11 +322,16 @@ async function getFile(db: Db, id: string) {
 }
 
 async function handleList(request: Request, env: Env) {
-  await requireOwner(request, env);
+  const session = await requireOwner(request, env);
   const db = getDb(env);
   const url = new URL(request.url);
   const search = url.searchParams.get("search")?.trim() ?? "";
   const tag = normalizeTag(url.searchParams.get("tag") ?? "");
+  const rawLimit = parseInt(url.searchParams.get("limit") ?? "30", 10);
+  const limit = Math.min(Math.max(isNaN(rawLimit) ? 30 : rawLimit, 1), 100);
+  const rawOffset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+  const offset = Math.max(isNaN(rawOffset) ? 0 : rawOffset, 0);
+
   const searchLike = `%${search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
   const searchWhere = search
     ? or(
@@ -322,13 +362,23 @@ async function handleList(request: Request, env: Env) {
     .where(and(searchWhere, tagWhere))
     .groupBy(files.id)
     .orderBy(desc(files.createdAt))
-    .limit(200)
+    .limit(limit + 1)
+    .offset(offset)
     .all();
-  return json({ files: rows.map(publicFile) });
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  return withSessionCookies(
+    json({
+      files: pageRows.map(publicFile),
+      nextOffset: hasMore ? offset + limit : null,
+    }),
+    session,
+  );
 }
 
 async function handleUpload(request: Request, env: Env) {
-  await requireOwner(request, env);
+  const session = await requireOwner(request, env);
   const db = getDb(env);
   const form = await request.formData();
   const file = form.get("file");
@@ -359,11 +409,11 @@ async function handleUpload(request: Request, env: Env) {
   await setFileTags(db, id, tags);
 
   const row = await getFile(db, id);
-  return json({ file: row ? publicFile(row) : null }, { status: 201 });
+  return withSessionCookies(json({ file: row ? publicFile(row) : null }, { status: 201 }), session);
 }
 
 async function handleUpdate(request: Request, env: Env, id: string) {
-  await requireOwner(request, env);
+  const session = await requireOwner(request, env);
   const db = getDb(env);
   const current = await getFile(db, id);
   if (!current) return new Response("Not found", { status: 404 });
@@ -383,11 +433,11 @@ async function handleUpdate(request: Request, env: Env, id: string) {
   await setFileTags(db, id, tags);
 
   const row = await getFile(db, id);
-  return json({ file: row ? publicFile(row) : null });
+  return withSessionCookies(json({ file: row ? publicFile(row) : null }), session);
 }
 
 async function handleDownload(request: Request, env: Env, id: string) {
-  await requireOwner(request, env);
+  const session = await requireOwner(request, env);
   const row = await getFile(getDb(env), id);
   if (!row) return new Response("Not found", { status: 404 });
 
@@ -398,21 +448,21 @@ async function handleDownload(request: Request, env: Env, id: string) {
   object.writeHttpMetadata(headers);
   headers.set("content-length", String(object.size));
   headers.set("content-disposition", `attachment; filename="${row.name.replaceAll('"', "'")}"`);
-  return new Response(object.body, { headers });
+  return withSessionCookies(new Response(object.body, { headers }), session);
 }
 
 async function handleDelete(request: Request, env: Env, id: string) {
-  await requireOwner(request, env);
+  const session = await requireOwner(request, env);
   const db = getDb(env);
   const row = await getFile(db, id);
   if (!row) return new Response("Not found", { status: 404 });
   await env.FILES.delete(row.objectKey);
   await db.delete(files).where(eq(files.id, id));
-  return json({ ok: true });
+  return withSessionCookies(json({ ok: true }), session);
 }
 
 async function handleTags(request: Request, env: Env) {
-  await requireOwner(request, env);
+  const session = await requireOwner(request, env);
   const rows = await getDb(env)
     .select({ name: tags.name, count: count(fileTags.fileId) })
     .from(tags)
@@ -420,7 +470,7 @@ async function handleTags(request: Request, env: Env) {
     .groupBy(tags.id)
     .orderBy(tags.name)
     .all();
-  return json({ tags: rows });
+  return withSessionCookies(json({ tags: rows }), session);
 }
 
 async function handleSession(request: Request, env: Env) {

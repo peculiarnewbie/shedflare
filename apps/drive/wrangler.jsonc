@@ -10,10 +10,10 @@
     "not_found_handling": "none",
   },
   "vars": {
-    "APP_PUBLIC_URL": "https://sf-drive.example.com",
-    "AUTH_ISSUER_URL": "https://sf-auth.example.com",
+    "APP_PUBLIC_URL": "https://drive.peculiarnewbie.com",
+    "AUTH_ISSUER_URL": "https://auth.peculiarnewbie.com",
     "AUTH_CLIENT_ID": "shedflare-drive",
-    "OWNER_EMAIL": "you@example.com",
+    "OWNER_EMAIL": "peculiarnewbie@gmail.com",
   },
   "observability": {
     "enabled": true,
@@ -23,14 +23,21 @@
     {
       "binding": "DB",
       "database_name": "shedflare-drive",
-      "database_id": "replace-me",
-      "migrations_dir": "migrations",
+      "database_id": "dcea2933-735e-4970-a4c5-e85d176a09b4",
+      "remote": true,
     },
   ],
   "r2_buckets": [
     {
       "binding": "FILES",
       "bucket_name": "shedflare-drive-files",
+      "remote": true,
+    },
+  ],
+  "routes": [
+    {
+      "pattern": "drive.peculiarnewbie.com",
+      "custom_domain": true,
     },
   ],
 }

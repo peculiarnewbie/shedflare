@@ -59,11 +59,19 @@ function decodeTagSummary(value: unknown): TagSummary | null {
   return { name: value.name, count: value.count };
 }
 
-function decodeFilesResponse(value: unknown): { files: DriveFile[] } | null {
+function decodeFilesResponse(
+  value: unknown,
+): { files: DriveFile[]; nextOffset: number | null } | null {
   if (!isRecord(value) || !Array.isArray(value.files)) return null;
   const files = value.files.map(decodeDriveFile);
   if (files.some((file) => !file)) return null;
-  return { files: files as DriveFile[] };
+  const nextOffset =
+    value.nextOffset === null
+      ? null
+      : typeof value.nextOffset === "number"
+        ? value.nextOffset
+        : null;
+  return { files: files as DriveFile[], nextOffset };
 }
 
 function decodeFileResponse(value: unknown): { file: DriveFile } | null {
@@ -106,8 +114,13 @@ export default function Home() {
   const [description, setDescription] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
+  const [checkingSession, setCheckingSession] = createSignal(true);
   const [unauthorized, setUnauthorized] = createSignal(false);
   const [userEmail, setUserEmail] = createSignal("");
+  const [offset, setOffset] = createSignal(0);
+  const [hasMore, setHasMore] = createSignal(false);
+  const [editingId, setEditingId] = createSignal("");
+  const [renameValue, setRenameValue] = createSignal("");
 
   const query = createMemo(() => {
     const params = new URLSearchParams();
@@ -116,10 +129,14 @@ export default function Home() {
     return params.toString();
   });
 
-  async function loadFiles() {
-    const suffix = query() ? `?${query()}` : "";
-    const data = await requestJson(`/api/files${suffix}`, decodeFilesResponse);
-    setFiles(data.files);
+  async function loadFiles(append = false, pageOffset = 0) {
+    const base = query() ? `?${query()}&` : "?";
+    const data = await requestJson(
+      `/api/files${base}limit=30&offset=${pageOffset}`,
+      decodeFilesResponse,
+    );
+    setFiles((prev) => (append ? [...prev, ...data.files] : data.files));
+    setHasMore(data.nextOffset !== null);
   }
 
   async function loadTags() {
@@ -132,20 +149,25 @@ export default function Home() {
       const session = await requestJson("/api/session", decodeSessionResponse);
       setUserEmail(session.user.email);
       setUnauthorized(false);
-      await Promise.all([loadFiles(), loadTags()]);
+      await Promise.all([loadFiles(false, 0), loadTags()]);
     } catch (err) {
       if (err instanceof Error && err.message.includes("Unauthorized")) {
         setUnauthorized(true);
         return;
       }
       setError(err instanceof Error ? err.message : "Could not load Drive");
+    } finally {
+      setCheckingSession(false);
     }
   }
 
   createEffect(() => {
     void query();
+    setOffset(0);
     if (!userEmail()) return;
-    void loadFiles().catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
+    void loadFiles(false, 0).catch((err) =>
+      setError(err instanceof Error ? err.message : "Search failed"),
+    );
   });
 
   void bootstrap();
@@ -169,12 +191,26 @@ export default function Home() {
       form.reset();
       setUploadTags("");
       setDescription("");
-      await Promise.all([loadFiles(), loadTags()]);
+      await Promise.all([loadFiles(false, 0), loadTags()]);
+      setOffset(0);
     } catch (err) {
+      if (err instanceof Error && err.message.includes("Unauthorized")) {
+        setUnauthorized(true);
+        setUserEmail("");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  function signIn() {
+    window.location.assign("/api/auth/login");
+  }
+
+  function download(file: DriveFile) {
+    window.location.assign(`/api/files/${file.id}/download`);
   }
 
   async function remove(file: DriveFile) {
@@ -184,10 +220,43 @@ export default function Home() {
       await fetch(`/api/files/${file.id}`, { method: "DELETE" }).then(async (response) => {
         if (!response.ok) throw new Error(await response.text());
       });
-      await Promise.all([loadFiles(), loadTags()]);
+      await Promise.all([loadFiles(false, 0), loadTags()]);
+      setOffset(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
+  }
+
+  async function startRename(file: DriveFile) {
+    setEditingId(file.id);
+    setRenameValue(file.name);
+  }
+
+  async function submitRename(file: DriveFile) {
+    const name = renameValue().trim();
+    if (!name || name === file.name) {
+      setEditingId("");
+      return;
+    }
+    setError("");
+    try {
+      await requestJson(`/api/files/${file.id}`, decodeFileResponse, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      setFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, name } : f)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Rename failed");
+    } finally {
+      setEditingId("");
+    }
+  }
+
+  async function loadMore() {
+    const next = offset() + 30;
+    setOffset(next);
+    await loadFiles(true, next);
   }
 
   return (
@@ -205,16 +274,24 @@ export default function Home() {
             <span>Owner</span>
             <strong>{userEmail()}</strong>
             <form method="post" action="/api/auth/logout">
-              <button>Sign out</button>
+              <button class="btn">Sign out</button>
             </form>
           </div>
         </Show>
       </section>
 
-      <Show when={unauthorized()}>
+      <Show when={checkingSession()}>
+        <section class="login-card">
+          <p>Checking your Shedflare Drive session...</p>
+        </section>
+      </Show>
+
+      <Show when={!checkingSession() && unauthorized()}>
         <section class="login-card">
           <p>Sign in with the central Shedflare auth worker to open your private drive.</p>
-          <a href="/api/auth/login">Sign in</a>
+          <button type="button" class="btn btn-primary" onClick={signIn}>
+            Sign in
+          </button>
         </section>
       </Show>
 
@@ -222,7 +299,7 @@ export default function Home() {
         <div class="error-card">{error()}</div>
       </Show>
 
-      <section class="control-panel" classList={{ hidden: unauthorized() }}>
+      <section class="control-panel" classList={{ hidden: !userEmail() }}>
         <form class="upload-card" onSubmit={upload}>
           <label class="file-drop">
             <input name="file" type="file" />
@@ -238,7 +315,9 @@ export default function Home() {
             onInput={(event) => setDescription(event.currentTarget.value)}
             placeholder="short note"
           />
-          <button disabled={busy()}>{busy() ? "Uploading..." : "Upload"}</button>
+          <button class="btn btn-primary" disabled={busy()}>
+            {busy() ? "Uploading..." : "Upload"}
+          </button>
         </form>
 
         <div class="search-card">
@@ -265,7 +344,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section class="file-grid" classList={{ hidden: unauthorized() }}>
+      <section class="file-grid" classList={{ hidden: !userEmail() }}>
         <Show
           when={files().length > 0}
           fallback={<div class="empty">No files match this shelf.</div>}
@@ -273,9 +352,24 @@ export default function Home() {
           <For each={files()}>
             {(file) => (
               <article class="file-card">
-                <div class="file-mark">{fileGlyph(file)}</div>
+                <div class={`file-mark ${fileGlyph(file).toLowerCase()}`}>{fileGlyph(file)}</div>
                 <div class="file-body">
-                  <h2>{file.name}</h2>
+                  <Show
+                    when={editingId() === file.id}
+                    fallback={<h2 onDblClick={() => startRename(file)}>{file.name}</h2>}
+                  >
+                    <input
+                      class="rename-input"
+                      value={renameValue()}
+                      onInput={(event) => setRenameValue(event.currentTarget.value)}
+                      onBlur={() => submitRename(file)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") submitRename(file);
+                        if (event.key === "Escape") setEditingId("");
+                      }}
+                      autofocus
+                    />
+                  </Show>
                   <p>{file.description || file.mimeType}</p>
                   <div class="meta-row">
                     <span>{formatSize(file.size)}</span>
@@ -286,14 +380,29 @@ export default function Home() {
                   </div>
                 </div>
                 <div class="actions">
-                  <a href={`/api/files/${file.id}/download`}>Download</a>
-                  <button onClick={() => void remove(file)}>Delete</button>
+                  <button type="button" class="btn" onClick={() => download(file)}>
+                    Download
+                  </button>
+                  <button class="btn" onClick={() => startRename(file)}>
+                    Rename
+                  </button>
+                  <button class="btn btn-danger" onClick={() => void remove(file)}>
+                    Delete
+                  </button>
                 </div>
               </article>
             )}
           </For>
         </Show>
       </section>
+
+      <Show when={hasMore()}>
+        <div class="load-more">
+          <button class="btn" onClick={() => void loadMore()}>
+            Load more
+          </button>
+        </div>
+      </Show>
     </main>
   );
 }

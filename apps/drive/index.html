@@ -1,9 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="night">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shedflare Drive</title>
+    <script>
+      (() => {
+        var href =
+          "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap";
+
+        var preconnectGoogle = document.createElement("link");
+        preconnectGoogle.rel = "preconnect";
+        preconnectGoogle.href = "https://fonts.googleapis.com";
+        document.head.append(preconnectGoogle);
+
+        var preconnectStatic = document.createElement("link");
+        preconnectStatic.rel = "preconnect";
+        preconnectStatic.href = "https://fonts.gstatic.com";
+        preconnectStatic.crossOrigin = "";
+        document.head.append(preconnectStatic);
+
+        var fontLink = document.createElement("link");
+        fontLink.rel = "stylesheet";
+        fontLink.href = href;
+        document.head.append(fontLink);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
