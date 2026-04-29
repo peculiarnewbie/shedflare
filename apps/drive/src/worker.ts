@@ -451,6 +451,21 @@ async function handleDownload(request: Request, env: Env, id: string) {
   return withSessionCookies(new Response(object.body, { headers }), session);
 }
 
+async function handlePreview(request: Request, env: Env, id: string) {
+  const session = await requireOwner(request, env);
+  const row = await getFile(getDb(env), id);
+  if (!row) return new Response("Not found", { status: 404 });
+
+  const object = await env.FILES.get(row.objectKey);
+  if (!object) return new Response("File object missing", { status: 404 });
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("content-length", String(object.size));
+  headers.set("content-disposition", "inline");
+  return withSessionCookies(new Response(object.body, { headers }), session);
+}
+
 async function handleDelete(request: Request, env: Env, id: string) {
   const session = await requireOwner(request, env);
   const db = getDb(env);
@@ -562,6 +577,10 @@ export default {
         const downloadMatch = pathname.match(/^\/api\/files\/([^/]+)\/download$/);
         if (downloadMatch && request.method === "GET")
           return await handleDownload(request, env, downloadMatch[1]!);
+
+        const previewMatch = pathname.match(/^\/api\/files\/([^/]+)\/preview$/);
+        if (previewMatch && request.method === "GET")
+          return await handlePreview(request, env, previewMatch[1]!);
 
         const fileMatch = pathname.match(/^\/api\/files\/([^/]+)$/);
         if (fileMatch && request.method === "PATCH")

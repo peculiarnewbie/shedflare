@@ -2978,46 +2978,7 @@ export default function Home() {
   );
 
   return (
-    <Show
-      when={session()}
-      fallback={
-        <main class="auth-shell">
-          <Show
-            when={!bootstrap.loading}
-            fallback={
-              <section class="auth-card">
-                <p class="eyebrow">Personal deployment</p>
-                <h1>b3 chat</h1>
-                <p>Checking session...</p>
-                <p class="app-version" title={BUILD_INFO.tooltip}>
-                  {BUILD_INFO.label}
-                </p>
-              </section>
-            }
-          >
-            <section class="auth-card">
-              <p class="eyebrow">Personal deployment</p>
-              <h1>b3 chat</h1>
-              <p>Sign in to continue.</p>
-              <p class="app-version" title={BUILD_INFO.tooltip}>
-                {BUILD_INFO.label}
-              </p>
-              <a
-                class="btn btn-primary"
-                href="/api/auth/login"
-                onClick={(event) => {
-                  event.preventDefault();
-                  window.location.assign("/api/auth/login");
-                }}
-                style="text-align:center;text-decoration:none"
-              >
-                Sign in with Google
-              </a>
-            </section>
-          </Show>
-        </main>
-      }
-    >
+    <>
       <div class="shell">
         <Show when={sidebarOpen()}>
           <div class="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
@@ -3281,7 +3242,7 @@ export default function Home() {
 
             <footer
               class="composer"
-              classList={{ "composer-dragging": isDragging(), "composer-disabled": !isConnected() }}
+              classList={{ "composer-dragging": isDragging() }}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
               onDragOver={handleDragOver}
@@ -3354,7 +3315,6 @@ export default function Home() {
                 placeholder={
                   composerAttachments().length > 0 ? "Add a message (optional)..." : "Message..."
                 }
-                disabled={!isConnected()}
                 rows={1}
               />
               <div class="composer-row">
@@ -3508,6 +3468,48 @@ export default function Home() {
           )}
         </Show>
       </div>
-    </Show>
+
+      <Show when={bootstrap.loading}>
+        <div class="session-overlay">
+          <div class="session-overlay-card">
+            <div class="session-spinner" />
+            <p class="eyebrow" style="margin-bottom:4px">
+              Personal deployment
+            </p>
+            <h1 class="session-title">b3 chat</h1>
+            <p>Checking session…</p>
+            <p class="app-version" title={BUILD_INFO.tooltip}>
+              {BUILD_INFO.label}
+            </p>
+          </div>
+        </div>
+      </Show>
+
+      <Show when={!bootstrap.loading && !session()}>
+        <div class="session-overlay">
+          <div class="session-overlay-card">
+            <p class="eyebrow" style="margin-bottom:4px">
+              Personal deployment
+            </p>
+            <h1 class="session-title">b3 chat</h1>
+            <p>Sign in to continue.</p>
+            <p class="app-version" title={BUILD_INFO.tooltip}>
+              {BUILD_INFO.label}
+            </p>
+            <a
+              class="btn btn-primary"
+              href="/api/auth/login"
+              onClick={(event) => {
+                event.preventDefault();
+                window.location.assign("/api/auth/login");
+              }}
+              style="text-align:center;text-decoration:none;margin-top:4px"
+            >
+              Sign in with Google
+            </a>
+          </div>
+        </div>
+      </Show>
+    </>
   );
 }
