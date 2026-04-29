@@ -2254,8 +2254,21 @@ a {
   cursor: pointer;
 }
 
+.settings-toggle--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-toggle--disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+
 .settings-toggle input[type="checkbox"] {
   cursor: pointer;
+}
+
+.settings-hint--warning {
+  color: var(--warning, #b08800);
 }
 
 .settings-danger {

@@ -1,3 +1,5 @@
+import { Show } from "solid-js";
+
 type SettingsPageProps = {
   workspaceName: string | undefined;
   systemPromptDraft: string;
@@ -9,6 +11,7 @@ type SettingsPageProps = {
   onExpandReasoningChange: (checked: boolean) => void;
   preferFreeSearch: boolean;
   onPreferFreeSearchChange: (checked: boolean) => void;
+  exaApiKeyConfigured: boolean;
   showTraces: boolean;
   onShowTracesChange: (checked: boolean) => void;
   onResetAllData: () => void;
@@ -98,19 +101,34 @@ export default function SettingsPage(props: SettingsPageProps) {
         </div>
 
         <div class="settings-section">
-          <label class="settings-toggle">
+          <label
+            class="settings-toggle"
+            classList={{ "settings-toggle--disabled": !props.exaApiKeyConfigured }}
+          >
             <input
               type="checkbox"
               checked={props.preferFreeSearch}
+              disabled={!props.exaApiKeyConfigured}
               onChange={(e) => props.onPreferFreeSearchChange(e.currentTarget.checked)}
             />
             <span class="settings-label">Use free web search</span>
           </label>
-          <p class="settings-hint">
-            Route web searches through Exa&apos;s public MCP endpoint instead of the paid API.
-            Slower and returns raw text instead of ranked results, but avoids usage on your Exa API
-            key.
-          </p>
+          <Show
+            when={props.exaApiKeyConfigured}
+            fallback={
+              <p class="settings-hint settings-hint--warning">
+                No Exa API key configured. Set <code>EXA_API_KEY</code> as a Worker secret to enable
+                the paid search API with ranked results. Web search is using the free public
+                endpoint in the meantime.
+              </p>
+            }
+          >
+            <p class="settings-hint">
+              Route web searches through Exa&apos;s public MCP endpoint instead of the paid API.
+              Slower and returns raw text instead of ranked results, but avoids usage on your Exa
+              API key.
+            </p>
+          </Show>
         </div>
 
         <div class="settings-section settings-danger">

@@ -1,5 +1,20 @@
 <!--VITE PLUS START-->
 
+# Shedflare Chat — Agent Guidance
+
+## This is a personal suite, not a multi-user SaaS
+
+Shedflare is a **self-hosted suite of personal productivity tools** meant to be deployed by a single person for their own use. There are no "users," no sign-up flow, no tenant isolation, and no per-user settings that differ from the deployment owner's preferences.
+
+- Auth exists solely to protect the deployment from public access — it gates the owner's own sessions, not a user base.
+- API keys (OpenCode, Exa) are the owner's keys. There is no concept of "bring your own key" because there is only one person.
+- Settings, workspaces, threads — all belong to the single owner.
+- **Do not add multi-user features** like user registration, per-user API keys, role-based access, or tenant-scoped storage unless explicitly requested.
+
+When reasoning about architecture decisions, assume exactly one human interacts with the deployed app.
+
+---
+
 # Using Vite+, the Unified Toolchain for the Web
 
 This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, but it invokes Vite through `vp dev` and `vp build`.

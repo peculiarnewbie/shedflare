@@ -56,6 +56,7 @@ export async function handleBootstrap(request: Request): Promise<Response> {
       return new Response(
         JSON.stringify({
           session: { user: session.user },
+          exaApiKeyConfigured: Boolean(env.EXA_API_KEY?.trim()),
         }),
         { headers },
       );

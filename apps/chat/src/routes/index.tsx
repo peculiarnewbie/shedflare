@@ -98,6 +98,7 @@ type SessionPayload = {
 
 type BootstrapPayload = {
   session: SessionPayload | null;
+  exaApiKeyConfigured: boolean;
 };
 
 type ModelsPayload = {
@@ -438,6 +439,7 @@ function LazyMarkdownBlock(props: { text: string; streaming?: boolean; citations
 export default function Home() {
   const [bootstrap] = createResource(fetchBootstrap);
   const session = createMemo(() => bootstrap()?.session ?? null);
+  const exaApiKeyConfigured = createMemo(() => bootstrap()?.exaApiKeyConfigured ?? false);
   const [modelsResource] = createResource(() => Boolean(session()), fetchModels);
   const models = createMemo(() => modelsResource() ?? null);
 
@@ -3200,6 +3202,7 @@ export default function Home() {
                   onExpandReasoningChange={handleExpandReasoningSettingChange}
                   preferFreeSearch={effectivePreferFreeSearch()}
                   onPreferFreeSearchChange={handlePreferFreeSearchSettingChange}
+                  exaApiKeyConfigured={exaApiKeyConfigured()}
                   showTraces={effectiveShowTraces()}
                   onShowTracesChange={handleShowTracesSettingChange}
                   models={models()?.models ?? []}
