@@ -9,6 +9,8 @@ export {
   getAllManifests,
   isAppId,
   getWorkspaceRoot,
+  hasD1Resource,
+  getD1DatabaseName,
 } from "./manifests.js";
 
 export { BUILTIN_MANIFESTS } from "./manifests-data.js";
@@ -40,6 +42,7 @@ export {
   createDraft,
   validateDraft,
   createPlan,
+  buildPlanFromConfig,
 } from "./init-draft.js";
 
 export { writeAppFiles, writeWorkspaceFiles } from "./generate.js";
@@ -50,6 +53,7 @@ export { type CheckResult, type DriftReport, runDoctor, checkDrift } from "./val
 
 export {
   type WranglerUser,
+  type DeployResult,
   whoami,
   login,
   createKv,
@@ -57,4 +61,5 @@ export {
   createR2,
   putSecret,
   deploy,
+  listSecrets,
 } from "./wrangler.js";

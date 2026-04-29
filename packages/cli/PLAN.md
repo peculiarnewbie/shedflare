@@ -21,17 +21,12 @@ packages/cli-tui/    (npm: @shedflare/tui — optional, requires OpenTUI Node su
 
 ```
 shedflare init              Create a new Shedflare workspace + guide deploy
+shedflare add <app>         Add an app to an existing workspace
 shedflare configure         Regenerate wrangler.jsonc from config + manifests
 shedflare configure --check Validate generated configs (diff check, part of root check)
+shedflare provision         Idempotently create missing Cloudflare resources
+shedflare deploy [app]      Build and deploy apps to Cloudflare
 shedflare doctor            Validate workspace health
-```
-
-Future (Phase 2):
-
-```
-shedflare add <app>         Add an app to an existing workspace
-shedflare provision          Idempotently create missing Cloudflare resources
-shedflare deploy [app]      Deploy apps in dependency order
 ```
 
 ## Data Flow
@@ -66,7 +61,10 @@ packages/cli/src/
   index.ts              cac CLI routing
   commands/
     init.ts             Parse flags → prompts → draft → plan → provision → generate
+    add.ts              Add an app to an existing workspace
     configure.ts        Read config → call template → write or diff
+    provision.ts        Idempotent resource creation
+    deploy.ts           Pre-flight → D1 migrate → build+deploy in order → verify
     doctor.ts           Run all checks → print or --json
   core/
     manifests.ts        AppId union, AppManifest type, loadManifest(), getAllManifests()
@@ -196,9 +194,12 @@ The root `pnpm check` includes this (`pnpm cli:check`), so config drift breaks C
 | 10   | `commands/init.ts`        | DONE   |
 | 11   | `commands/configure.ts`   | DONE   |
 | 12   | `commands/doctor.ts`      | DONE   |
-| 13   | `core/index.ts`           | DONE   |
-| 14   | Tests (3 files, 29 tests) | DONE   |
-| 15   | TUI (future)              | —      |
+| 13   | `commands/provision.ts`   | DONE   |
+| 14   | `commands/deploy.ts`      | DONE   |
+| 15   | `commands/add.ts`         | DONE   |
+| 16   | `core/index.ts`           | DONE   |
+| 16   | Tests (4 files, 34 tests) | DONE   |
+| 17   | TUI (future)              | —      |
 
 ### Hardening (completed Apr 30)
 
@@ -207,9 +208,9 @@ The root `pnpm check` includes this (`pnpm cli:check`), so config drift breaks C
 - `getMissingSecrets()` in `validate.ts` replaced placeholder with a real check that reports apps with required secrets needing `wrangler secret put`
 - Core test suite added: `init-draft.test.ts` (14), `template.test.ts` (9), `config.test.ts` (6) = 29 tests total
 
-### What's next (Phase 2)
+### Phase 2 — May 2025
 
-- `shedflare provision` — standalone idempotent resource provisioning (best first Phase 2 command — core logic exists, needs skip-if-present and standalone wiring)
-- `shedflare add <app>` — add an app to an existing workspace (needs provision first for idempotency)
-- `shedflare deploy [app]` — deploy apps in dependency order
+- **`shedflare provision`** — DONE. Idempotent resource provisioning with `--app` and `--mock-resources` flags. Hardened `provisionResources()` to skip resources already present in `config.resources`, and added `buildPlanFromConfig()` to reuse existing config instead of re-running init prompts.
+- **`shedflare deploy [app]`** — DONE. Pre-flight checks (wrangler login, secret verification, config drift), auto-configure, D1 migrations, build+deploy in dependency order via `npm run deploy`, optional `--verify` for post-deploy URL checking. Uses real `wrangler secret list` instead of the old placeholder.
+- **`shedflare add <app>`** — DONE. Add an app to an existing workspace with dependency validation, idempotent provisioning, and config merging. Supports `--subdomain`, `--yes`, and `--mock-resources` flags.
 - TUI with OpenTUI (when Node.js support lands)

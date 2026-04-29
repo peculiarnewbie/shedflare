@@ -72,3 +72,12 @@ export function getAllManifests(): AppManifest[] {
 export function isAppId(value: string): value is AppId {
   return (APP_IDS as readonly string[]).includes(value);
 }
+
+export function hasD1Resource(manifest: AppManifest): boolean {
+  return manifest.resources.some((r) => r.type === "d1");
+}
+
+export function getD1DatabaseName(manifest: AppManifest): string | undefined {
+  const d1 = manifest.resources.find((r) => r.type === "d1");
+  return d1 ? d1.name : undefined;
+}

@@ -18,6 +18,16 @@ cli
   });
 
 cli
+  .command("add <app>", "Add an app to an existing workspace")
+  .option("--subdomain <subdomain>", "Subdomain for the app")
+  .option("--yes", "Skip all prompts and use defaults")
+  .option("--mock-resources", "Generate fake resource IDs instead of provisioning")
+  .action(async (options) => {
+    const { addCommand } = await import("./commands/add.js");
+    await addCommand(options);
+  });
+
+cli
   .command(
     "configure",
     "Generate wrangler.jsonc files from shedflare.config.jsonc and app manifests",
@@ -30,11 +40,29 @@ cli
   });
 
 cli
+  .command("provision", "Idempotently create missing Cloudflare resources for enabled apps")
+  .option("--app <app>", "Only provision resources for a specific app")
+  .option("--mock-resources", "Generate fake resource IDs instead of provisioning")
+  .action(async (options) => {
+    const { provisionCommand } = await import("./commands/provision.js");
+    await provisionCommand(options);
+  });
+
+cli
   .command("doctor", "Check the workspace for common issues and missing configuration")
   .option("--json", "Output results as JSON for CI and scripting")
   .action(async (options) => {
     const { doctorCommand } = await import("./commands/doctor.js");
     await doctorCommand(options);
+  });
+
+cli
+  .command("deploy [app]", "Build and deploy apps to Cloudflare")
+  .option("--verify", "Verify each app URL is reachable after deploy")
+  .option("--yes", "Skip confirmation prompts")
+  .action(async (options) => {
+    const { deployCommand } = await import("./commands/deploy.js");
+    await deployCommand(options);
   });
 
 cli.help();

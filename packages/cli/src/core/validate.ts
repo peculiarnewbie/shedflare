@@ -112,7 +112,7 @@ export async function runDoctor(): Promise<CheckResult[]> {
 
   // Missing required secrets
   if (config) {
-    const missingSecrets = getMissingSecrets(config);
+    const missingSecrets = await getMissingSecrets(config);
     if (missingSecrets.length > 0) {
       checks.push({
         name: "missing-secrets",
@@ -178,7 +178,7 @@ export async function checkDrift(
   return { hasDrift: diffs.length > 0, diffs };
 }
 
-function getMissingSecrets(config: import("./config.js").ShedflareConfig): string[] {
+async function getMissingSecrets(config: import("./config.js").ShedflareConfig): Promise<string[]> {
   const requireSecrets: string[] = [];
 
   for (const [appId, appConfig] of Object.entries(config.apps)) {
@@ -186,8 +186,16 @@ function getMissingSecrets(config: import("./config.js").ShedflareConfig): strin
 
     try {
       const manifes = loadManifest(appId as AppId);
-      const hasRequired = Object.values(manifes.secrets).some((d) => d.required);
-      if (hasRequired && !hasAccessedWranglerSecrets(appId)) {
+      const requiredSecrets = Object.entries(manifes.secrets)
+        .filter(([_, d]) => d.required)
+        .map(([name]) => name);
+      if (requiredSecrets.length === 0) continue;
+
+      const setSecrets = await wrangler.listSecrets({
+        cwd: join(getWorkspaceRoot(), "apps", appId),
+      });
+      const missing = requiredSecrets.filter((s) => !setSecrets.includes(s));
+      if (missing.length > 0) {
         requireSecrets.push(appId);
       }
     } catch {
@@ -196,11 +204,4 @@ function getMissingSecrets(config: import("./config.js").ShedflareConfig): strin
   }
 
   return requireSecrets;
-}
-
-function hasAccessedWranglerSecrets(_appId: string): boolean {
-  // Placeholder: secrets are set via wrangler at deploy time, not stored in config.
-  // A future enhancement could verify via `wrangler secret list` in the app directory.
-  // For now, always return false so the doctor check flags apps with required secrets.
-  return false;
 }

@@ -14,17 +14,29 @@ function generateMockId(type: string): string {
 
 export async function provisionResources(plan: InitPlan): Promise<ProvisionResult> {
   const resourceIds: Record<string, Record<string, string>> = {};
+
+  // Start with existing IDs already present in the plan
+  for (const [appId, ids] of Object.entries(plan.resourceIds)) {
+    resourceIds[appId] = { ...ids };
+  }
+
   const warnings: string[] = [];
 
   for (const app of plan.apps) {
-    const appIds: Record<string, string> = {};
+    const appIds: Record<string, string> = resourceIds[app.id] ?? {};
     for (const resource of app.resources) {
+      const idField = "idField" in resource ? resource.idField : undefined;
+      if (idField && appIds[idField]) {
+        // Already provisioned — skip idempotently
+        continue;
+      }
+
       const result = await provisionSingleResource(resource, app, plan);
       if (result.warning) {
         warnings.push(result.warning);
       }
-      if (result.id && "idField" in resource) {
-        appIds[(resource as ResourceDef & { idField: string }).idField] = result.id;
+      if (result.id && idField) {
+        appIds[idField] = result.id;
       }
     }
     resourceIds[app.id] = appIds;

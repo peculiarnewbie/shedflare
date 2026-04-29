@@ -70,6 +70,63 @@ export async function putSecret(
   await proc;
 }
 
-export async function deploy(options?: { cwd?: string }): Promise<void> {
-  await wrangler(["deploy"], options);
+export interface DeployResult {
+  url?: string;
+  version?: string;
+  warnings: string[];
+}
+
+export async function deploy(options?: { cwd?: string }): Promise<DeployResult> {
+  const result = await wrangler(["deploy"], options);
+  const warnings: string[] = [];
+  let url: string | undefined;
+  let version: string | undefined;
+
+  for (const line of result.stdout.split("\n")) {
+    const trimmed = line.trim();
+    // wrangler outputs: "Published <name> (<version>)"
+    const versionMatch = trimmed.match(/Published\s+\S+\s+\(([^)]+)\)/);
+    if (versionMatch) {
+      version = versionMatch[1];
+    }
+    // wrangler outputs the deployed URL in various formats
+    const urlMatch = trimmed.match(/https?:\/\/[^\s]+/);
+    if (urlMatch && !url) {
+      url = urlMatch[0];
+    }
+    if (trimmed.toLowerCase().includes("warning")) {
+      warnings.push(trimmed);
+    }
+  }
+
+  return { url, version, warnings };
+}
+
+export async function listSecrets(options?: { cwd?: string }): Promise<string[]> {
+  try {
+    const result = await wrangler(["secret", "list", "--format", "json"], options);
+    const parsed = JSON.parse(result.stdout) as {
+      result?: { secrets?: Array<{ name: string }> };
+    };
+    if (parsed.result?.secrets) {
+      return parsed.result.secrets.map((s) => s.name);
+    }
+  } catch {
+    // Fallback: try parsing table output (older wrangler versions)
+    try {
+      const result = await wrangler(["secret", "list"], options);
+      const names: string[] = [];
+      for (const line of result.stdout.split("\n")) {
+        // Table rows have format: │ NAME │ ... │
+        const match = line.match(/│\s*(\w+)\s*│/);
+        if (match && match[1] !== "NAME") {
+          names.push(match[1]);
+        }
+      }
+      return names;
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
