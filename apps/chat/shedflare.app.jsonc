@@ -1,0 +1,58 @@
+{
+  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "id": "chat",
+  "name": "Shedflare Chat",
+  "description": "AI chat interface with browser automation",
+  "dependsOn": ["auth"],
+  "defaultSubdomain": "chat",
+  "vars": {
+    "APP_PUBLIC_URL": {
+      "from": "appUrl",
+      "description": "Public URL of this chat app",
+    },
+    "AUTH_ISSUER_URL": {
+      "from": "appUrl",
+      "app": "auth",
+      "description": "Auth issuer URL",
+    },
+    "AUTH_CLIENT_ID": {
+      "from": "appId",
+      "description": "OAuth client ID for this app",
+    },
+    "DEFAULT_MODEL_ID": {
+      "from": "user",
+      "default": "auto",
+      "description": "Default LLM model ID",
+    },
+    "OWNER_EMAIL": {
+      "from": "ownerEmail",
+      "description": "Deployment owner email",
+    },
+  },
+  "secrets": {
+    "OPENCODE_GO_API_KEY": {
+      "description": "API key for OpenCode Go backend",
+      "required": true,
+    },
+    "UPLOAD_TOKEN_SECRET": {
+      "description": "Random secret for signing upload URLs",
+      "required": true,
+    },
+  },
+  "resources": [
+    {
+      "type": "r2",
+      "binding": "UPLOADS",
+      "name": "shedflare-chat-uploads",
+    },
+    {
+      "type": "durable_object",
+      "binding": "SYNC_ENGINE",
+    },
+    {
+      "type": "browser",
+      "binding": "BROWSER",
+      "manualEnable": true,
+    },
+  ],
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "id": "drive",
+  "name": "Shedflare Drive",
+  "description": "File storage and management",
+  "dependsOn": ["auth"],
+  "defaultSubdomain": "drive",
+  "vars": {
+    "APP_PUBLIC_URL": {
+      "from": "appUrl",
+      "description": "Public URL of this drive app",
+    },
+    "AUTH_ISSUER_URL": {
+      "from": "appUrl",
+      "app": "auth",
+      "description": "Auth issuer URL",
+    },
+    "AUTH_CLIENT_ID": {
+      "from": "appId",
+      "description": "OAuth client ID for this app",
+    },
+    "OWNER_EMAIL": {
+      "from": "ownerEmail",
+      "description": "Deployment owner email",
+    },
+  },
+  "secrets": {},
+  "resources": [
+    {
+      "type": "d1",
+      "binding": "DB",
+      "name": "shedflare-drive",
+      "idField": "DB_ID",
+    },
+    {
+      "type": "r2",
+      "binding": "FILES",
+      "name": "shedflare-drive-files",
+    },
+  ],
+}

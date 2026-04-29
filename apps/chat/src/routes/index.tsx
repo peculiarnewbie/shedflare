@@ -839,6 +839,13 @@ export default function Home() {
     (models()?.models ?? []).find((model) => model.id === modelId)?.interleaved?.field?.trim() ||
     null;
   const selectedModelSupportsReasoning = createMemo(() => Boolean(selectedModel()?.reasoning));
+  const selectedModelSupportsAttachments = createMemo(() => Boolean(selectedModel()?.attachment));
+  const hasImageAttachments = createMemo(() =>
+    composerAttachments().some((a) => a.status !== "failed" && isImageMime(a.mimeType)),
+  );
+  const imageAttachmentsWarning = createMemo(
+    () => hasImageAttachments() && !selectedModelSupportsAttachments(),
+  );
   const effectiveComposerReasoningLevel = createMemo<ReasoningLevel>(() =>
     selectedModelSupportsReasoning() ? composerReasoningLevel() : "off",
   );
@@ -2890,7 +2897,13 @@ export default function Home() {
       const modelId =
         composerModelId() || workspace?.defaultModelId || models()?.models?.[0]?.id || "auto";
       const attachmentIds = composerAttachments()
-        .filter((a) => a.status === "ready" && a.attachmentId)
+        .filter((a) => {
+          if (a.status !== "ready" || !a.attachmentId) return false;
+          // If the model doesn't support images, skip image attachments
+          // so the request doesn't fail. Text/file attachments still work.
+          if (!selectedModelSupportsAttachments() && isImageMime(a.mimeType)) return false;
+          return true;
+        })
         .map((a) => a.attachmentId!);
       sendMessageAction({
         thread,
@@ -3265,6 +3278,27 @@ export default function Home() {
                 </button>
               </Show>
 
+              <Show when={imageAttachmentsWarning()}>
+                <div class="composer-warning">
+                  <span class="composer-warning-icon">⚠</span>
+                  <span>
+                    {selectedModel()?.name ?? "This model"} doesn't support image uploads.{" "}
+                    <button
+                      type="button"
+                      class="composer-warning-link"
+                      onClick={() => {
+                        const compatible = (models()?.models ?? []).find(
+                          (m) => m.attachment && m.id !== composerModelId(),
+                        );
+                        if (compatible) handleModelChange(compatible.id);
+                      }}
+                    >
+                      Switch to a compatible model
+                    </button>{" "}
+                    or remove the images.
+                  </span>
+                </div>
+              </Show>
               <Show when={composerAttachments().length > 0}>
                 <div class="attachment-strip">
                   <For each={composerAttachments()}>

@@ -4,30 +4,19 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-03-22",
   "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
   "assets": {
     "directory": "dist/client",
     "binding": "ASSETS",
     "html_handling": "none",
     "not_found_handling": "none",
   },
-  "vars": {
-    "APP_PUBLIC_URL": "https://chat.peculiarnewbie.com",
-    "AUTH_ISSUER_URL": "https://auth.peculiarnewbie.com",
-    "AUTH_CLIENT_ID": "shedflare-chat",
-    "DEFAULT_MODEL_ID": "auto",
-    "OWNER_EMAIL": "peculiarnewbie@gmail.com",
-  },
-  "secrets": {
-    "required": ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"],
-  },
-  "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1,
-  },
   "r2_buckets": [
     {
       "binding": "UPLOADS",
-      "bucket_name": "shedflare-chat-uploads",
     },
   ],
   "durable_objects": {
@@ -45,12 +34,6 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["SyncEngineDurableObject"],
-    },
-  ],
-  "routes": [
-    {
-      "pattern": "chat.peculiarnewbie.com",
-      "custom_domain": true,
     },
   ],
 }

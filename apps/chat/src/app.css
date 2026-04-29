@@ -1933,6 +1933,46 @@ a {
 
 /* ── Attachment strip ─────────────────────────────── */
 
+/* ── Composer image-unsupported warning ─────────── */
+
+.composer-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: #fbbf24;
+  line-height: 1.5;
+  animation: strip-enter 0.25s ease-out;
+}
+
+.composer-warning-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.composer-warning-link {
+  background: none;
+  border: none;
+  color: #fcd34d;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.composer-warning-link:hover {
+  color: #fde68a;
+}
+
+/* ── Attachments strip ──────────────────────────── */
+
 .attachment-strip {
   display: flex;
   gap: 6px;

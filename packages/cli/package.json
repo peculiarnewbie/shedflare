@@ -1,0 +1,44 @@
+{
+  "name": "shedflare",
+  "version": "0.0.0",
+  "private": false,
+  "description": "Set up and deploy a self-hosted Shedflare app suite to your Cloudflare account.",
+  "license": "MIT",
+  "bin": {
+    "shedflare": "./dist/index.js"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./core/*": {
+      "import": "./dist/core/*.js",
+      "types": "./dist/core/*.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "test": "vp test",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.2",
+    "cac": "^7",
+    "jsonc-parser": "^3",
+    "nano-spawn": "^2.1",
+    "valibot": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "./packages/cli/schemas/shedflare-config-schema.json",
+  "domain": "example.com",
+  "ownerEmail": "you@example.com",
+  "apps": {
+    "auth": {
+      "enabled": true,
+      "subdomain": "auth",
+    },
+    "chat": {
+      "enabled": true,
+      "subdomain": "chat",
+    },
+    "drive": {
+      "enabled": true,
+      "subdomain": "drive",
+    },
+  },
+  "vars": {
+    "auth": {
+      "GOOGLE_CLIENT_ID": "",
+    },
+    "chat": {
+      "DEFAULT_MODEL_ID": "auto",
+    },
+    "drive": {},
+  },
+  "resources": {
+    "auth": {
+      "OPENAUTH_STORAGE_ID": "",
+    },
+    "chat": {},
+    "drive": {
+      "DB_ID": "",
+    },
+  },
+}

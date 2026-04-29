@@ -25,6 +25,7 @@ type AssistantErrorFacts = {
   isCancelled: boolean;
   isTimeout: boolean;
   isReasoningIncompatible: boolean;
+  isImageNotSupported: boolean;
   isInvalidRequest: boolean;
   isAuth: boolean;
   isRateLimited: boolean;
@@ -143,6 +144,10 @@ export function extractAssistantErrorFacts(
       /reasoning_content is missing|thinking is enabled but reasoning_content is missing/.test(
         haystack,
       ),
+    isImageNotSupported:
+      /image_url.*not.*support|does not support.*(image|vision|multimodal)|unsupported.*image|image.*unsupported|content.*type.*image.*reject|image.*not.*(allowed|permitted|available)|multimodal.*not|not.*multimodal/.test(
+        haystack,
+      ),
     isInvalidRequest:
       statusCode === 400 ||
       /invalid request|unsupported field|unsupported parameter|unsupported option|missing required|bad request|invalid value|invalid parameter/.test(
@@ -184,6 +189,19 @@ export function explainAssistantError(input: {
       details: facts.rawMessage,
       retryable: true,
       category: "cancelled",
+      providerMessage: facts.providerMessage,
+    };
+  }
+
+  if (facts.isImageNotSupported) {
+    return {
+      title: "Response failed",
+      summary: "This model doesn't support image uploads.",
+      explanation:
+        "The selected model received one or more images as part of the request, but this model only accepts text. Remove the images from the message or switch to a model that supports vision.",
+      details: facts.rawMessage,
+      retryable: false,
+      category: "invalid_request",
       providerMessage: facts.providerMessage,
     };
   }

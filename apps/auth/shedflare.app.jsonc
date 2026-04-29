@@ -1,0 +1,31 @@
+{
+  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "id": "auth",
+  "name": "Shedflare Auth",
+  "description": "OAuth2/OIDC authentication provider using OpenAuth",
+  "dependsOn": [],
+  "defaultSubdomain": "auth",
+  "vars": {
+    "APP_PUBLIC_URL": {
+      "from": "appUrl",
+      "description": "Public URL of this auth app",
+    },
+    "GOOGLE_CLIENT_ID": {
+      "from": "user",
+      "description": "Google OAuth client ID",
+    },
+    "OWNER_EMAIL": {
+      "from": "ownerEmail",
+      "description": "Deployment owner email",
+    },
+  },
+  "secrets": {},
+  "resources": [
+    {
+      "type": "kv",
+      "binding": "OPENAUTH_STORAGE",
+      "name": "shedflare-auth-storage",
+      "idField": "OPENAUTH_STORAGE_ID",
+    },
+  ],
+}

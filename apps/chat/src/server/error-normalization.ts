@@ -38,6 +38,15 @@ export function normalizeAssistantError(input: {
     };
   }
 
+  if (facts.isImageNotSupported) {
+    return {
+      errorCode: "provider_image_not_supported",
+      errorMessage: facts.rawMessage,
+      providerName,
+      retryable: false,
+    };
+  }
+
   if (facts.isReasoningIncompatible) {
     return {
       errorCode: "provider_reasoning_incompatible",

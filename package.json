@@ -14,7 +14,10 @@
     "dev:drive": "pnpm --filter @shedflare/drive dev",
     "build:drive": "pnpm --filter @shedflare/drive build",
     "deploy:drive": "pnpm --filter @shedflare/drive deploy",
-    "check": "pnpm -r check",
+    "cli:init": "pnpm --filter shedflare exec shedflare init --yes --mock-resources",
+    "cli:doctor": "pnpm --filter shedflare exec shedflare doctor",
+    "cli:check": "pnpm --filter shedflare exec shedflare configure --check",
+    "check": "pnpm -r check && pnpm cli:check",
     "test": "pnpm -r test"
   },
   "engines": {
