@@ -180,28 +180,36 @@ The root `pnpm check` includes this (`pnpm cli:check`), so config drift breaks C
 
 ## Implementation Status
 
-| Step | Module                   | Status |
-| ---- | ------------------------ | ------ |
-| 1    | `core/manifests.ts`      | DONE   |
-| —    | `core/manifests-data.ts` | DONE   |
-| 2    | `core/config.ts`         | DONE   |
-| 3    | `core/wrangler.ts`       | DONE   |
-| 4    | `core/template.ts`       | DONE   |
-| —    | `core/templates-data.ts` | DONE   |
-| 5    | `core/init-draft.ts`     | DONE   |
-| 6    | `core/generate.ts`       | DONE   |
-| 7    | `core/provision.ts`      | DONE   |
-| 8    | `core/validate.ts`       | DONE   |
-| 9    | `headless/prompts.ts`    | DONE   |
-| 10   | `commands/init.ts`       | DONE   |
-| 11   | `commands/configure.ts`  | DONE   |
-| 12   | `commands/doctor.ts`     | DONE   |
-| 13   | `core/index.ts`          | DONE   |
-| 14   | TUI (future)             | —      |
+| Step | Module                    | Status |
+| ---- | ------------------------- | ------ |
+| 1    | `core/manifests.ts`       | DONE   |
+| —    | `core/manifests-data.ts`  | DONE   |
+| 2    | `core/config.ts`          | DONE   |
+| 3    | `core/wrangler.ts`        | DONE   |
+| 4    | `core/template.ts`        | DONE   |
+| —    | `core/templates-data.ts`  | DONE   |
+| 5    | `core/init-draft.ts`      | DONE   |
+| 6    | `core/generate.ts`        | DONE   |
+| 7    | `core/provision.ts`       | DONE   |
+| 8    | `core/validate.ts`        | DONE   |
+| 9    | `headless/prompts.ts`     | DONE   |
+| 10   | `commands/init.ts`        | DONE   |
+| 11   | `commands/configure.ts`   | DONE   |
+| 12   | `commands/doctor.ts`      | DONE   |
+| 13   | `core/index.ts`           | DONE   |
+| 14   | Tests (3 files, 29 tests) | DONE   |
+| 15   | TUI (future)              | —      |
+
+### Hardening (completed Apr 30)
+
+- `createDraft()` now throws on unknown app IDs instead of silently dropping them
+- `createPlan()` uses two-pass URL resolution — all URLs computed before var resolution, fixing cross-app URL refs when apps are listed out of dependency order; throws if a cross-app ref targets a non-selected app
+- `getMissingSecrets()` in `validate.ts` replaced placeholder with a real check that reports apps with required secrets needing `wrangler secret put`
+- Core test suite added: `init-draft.test.ts` (14), `template.test.ts` (9), `config.test.ts` (6) = 29 tests total
 
 ### What's next (Phase 2)
 
-- `shedflare add <app>` — add an app to an existing workspace
-- `shedflare provision` — standalone idempotent resource provisioning
+- `shedflare provision` — standalone idempotent resource provisioning (best first Phase 2 command — core logic exists, needs skip-if-present and standalone wiring)
+- `shedflare add <app>` — add an app to an existing workspace (needs provision first for idempotency)
 - `shedflare deploy [app]` — deploy apps in dependency order
 - TUI with OpenTUI (when Node.js support lands)
