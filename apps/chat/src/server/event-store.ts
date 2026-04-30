@@ -354,6 +354,10 @@ export class EventStore {
         this.access.exec(`DELETE FROM attachments WHERE id = ?`, payload.id);
         break;
       }
+      case "thread_deleted": {
+        this.access.deleteThreadCascade(payload.id);
+        break;
+      }
       case "search_runs_replaced": {
         this.access.exec(`DELETE FROM search_runs WHERE message_id = ?`, payload.messageId);
         for (const row of payload.rows) {

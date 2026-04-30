@@ -2317,6 +2317,112 @@ a {
   border-top: 1px solid var(--line);
 }
 
+/* ── Settings tabs ────────────────────────────────── */
+
+.settings-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.settings-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.active {
+  color: var(--accent);
+}
+
+.settings-tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.settings-tab-badge {
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+/* ── Archived threads list ────────────────────────── */
+
+.settings-empty {
+  text-align: center;
+  padding: 48px 16px;
+}
+
+.archived-threads-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.archived-thread-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  gap: 12px;
+}
+
+.archived-thread-row:hover {
+  background: var(--hover);
+}
+
+.archived-thread-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.archived-thread-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-thread-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── Scrollbar ────────────────────────────────────── */
 
 .timeline::-webkit-scrollbar,

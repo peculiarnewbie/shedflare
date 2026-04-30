@@ -11,6 +11,8 @@
     "deploy:chat": "pnpm --filter @shedflare/chat deploy",
     "dev:auth": "pnpm --filter @shedflare/auth dev",
     "deploy:auth": "pnpm --filter @shedflare/auth deploy",
+    "deploy:auth:alchemy": "vp exec alchemy deploy apps/auth/alchemy.run.ts",
+    "destroy:auth:alchemy": "vp exec alchemy destroy apps/auth/alchemy.run.ts",
     "dev:drive": "pnpm --filter @shedflare/drive dev",
     "build:drive": "pnpm --filter @shedflare/drive build",
     "deploy:drive": "pnpm --filter @shedflare/drive deploy",
@@ -19,6 +21,13 @@
     "cli:check": "pnpm --filter shedflare exec shedflare configure --check",
     "check": "pnpm -r check && pnpm cli:check",
     "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@types/node": "catalog:",
+    "alchemy": "catalog:",
+    "effect": "catalog:",
+    "jsonc-parser": "catalog:"
   },
   "engines": {
     "node": ">=22.12.0"

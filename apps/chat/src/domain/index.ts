@@ -554,6 +554,10 @@ export type SetSearchModePayload = {
   defaultSearchMode: boolean;
 };
 
+export type DeleteThreadPayload = {
+  id: string;
+};
+
 export type ResetStoragePayload = Record<string, never>;
 
 export type SyncCommandPayloadMap = {
@@ -575,6 +579,7 @@ export type SyncCommandPayloadMap = {
   update_attachment: UpdateAttachmentPayload;
   delete_attachment: DeleteAttachmentPayload;
   set_search_mode: SetSearchModePayload;
+  delete_thread: DeleteThreadPayload;
   reset_storage: ResetStoragePayload;
 };
 
@@ -599,6 +604,7 @@ export const SYNC_COMMAND_TYPES = [
   "update_attachment",
   "delete_attachment",
   "set_search_mode",
+  "delete_thread",
   "reset_storage",
 ] as const satisfies readonly SyncCommandType[];
 
@@ -663,6 +669,7 @@ export type SyncEventPayloadMap = {
   extract_runs_replaced: { messageId: string; rows: ExtractRun[] };
   trace_run_upserted: { row: TraceRun };
   trace_span_upserted: { row: TraceSpan };
+  thread_deleted: { id: string };
   server_state_rebased: { snapshot: SyncSnapshot };
 };
 

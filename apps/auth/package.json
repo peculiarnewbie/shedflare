@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "check": "tsc --noEmit",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "deploy:alchemy": "vp exec alchemy deploy alchemy.run.ts",
+    "destroy:alchemy": "vp exec alchemy destroy alchemy.run.ts"
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",

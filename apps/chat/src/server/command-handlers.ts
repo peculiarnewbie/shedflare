@@ -194,6 +194,17 @@ export function handleUpsertThread(
   };
 }
 
+export function handleDeleteThread(
+  opId: string,
+  payload: SyncCommandPayloadMap["delete_thread"],
+  ctx: CommandHandlerContext,
+): CommandHandlerResult {
+  if (!ctx.access.getThread(payload.id)) throw new Error("Thread not found");
+  return {
+    events: [ctx.eventStore.insertEvent(opId, "thread_deleted", { id: payload.id })],
+  };
+}
+
 export function handleArchiveThread(
   opId: string,
   payload: SyncCommandPayloadMap["archive_thread"],

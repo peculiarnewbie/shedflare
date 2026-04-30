@@ -22,6 +22,7 @@ import {
   workspaces,
   accountSettings,
   threads,
+  messages,
   attachments,
   applyLocalDelete,
   applyLocalInsert,
@@ -156,6 +157,19 @@ export function createThreadAction(workspaceId: string) {
   trackOptimistic(opId, [deleteRow("threads", thread.id)]);
 
   dispatch("create_thread", { thread: toWire(thread, opId) }, { opId });
+}
+
+export function deleteThreadAction(threadId: string) {
+  const opId = createId("op");
+  applyLocalDelete("threads", threadId);
+  // Also optimistically remove messages belonging to this thread
+  for (const [key, message] of messages.state.entries()) {
+    if ((message as any).threadId === threadId) {
+      applyLocalDelete("messages", key);
+    }
+  }
+  dispatch("delete_thread", { id: threadId }, { opId });
+  ensureActiveSelection([...workspaces.state.values()], [...threads.state.values()]);
 }
 
 export function archiveThreadAction(threadId: string) {

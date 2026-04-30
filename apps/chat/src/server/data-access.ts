@@ -355,6 +355,34 @@ export class DataAccess {
     return this.db.select().from(dbSchema.threads).where(eq(dbSchema.threads.id, id)).get() ?? null;
   }
 
+  deleteThreadCascade(id: string) {
+    // Collect all message IDs for this thread
+    const messageIds = this.queryAll<{ id: string }>(
+      `SELECT id FROM messages WHERE thread_id = ?`,
+      id,
+    ).map((r) => r.id);
+
+    if (messageIds.length > 0) {
+      const placeholders = messageIds.map(() => "?").join(",");
+
+      // Delete deeply nested child data first
+      this.exec(
+        `DELETE FROM trace_spans WHERE trace_run_id IN (SELECT id FROM trace_runs WHERE message_id IN (${placeholders}))`,
+        ...messageIds,
+      );
+      this.exec(`DELETE FROM trace_runs WHERE message_id IN (${placeholders})`, ...messageIds);
+      this.exec(`DELETE FROM search_results WHERE message_id IN (${placeholders})`, ...messageIds);
+      this.exec(`DELETE FROM search_runs WHERE message_id IN (${placeholders})`, ...messageIds);
+      this.exec(`DELETE FROM extract_runs WHERE message_id IN (${placeholders})`, ...messageIds);
+      this.exec(`DELETE FROM message_parts WHERE message_id IN (${placeholders})`, ...messageIds);
+      this.exec(`DELETE FROM messages WHERE id IN (${placeholders})`, ...messageIds);
+    }
+
+    // Delete attachments & the thread itself
+    this.exec(`DELETE FROM attachments WHERE thread_id = ?`, id);
+    this.exec(`DELETE FROM threads WHERE id = ?`, id);
+  }
+
   getMessage(id: string) {
     const row = this.db.select().from(dbSchema.messages).where(eq(dbSchema.messages.id, id)).get();
     return row ? decodeMessageRow(row) : null;

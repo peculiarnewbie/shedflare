@@ -10,6 +10,10 @@ coverage/
 .dev.vars.*
 .wrangler/
 **/.wrangler/
+.alchemy/
+**/.alchemy/
+out/
+**/out/
 .vite-hooks/
 **/.vite-hooks/
 npm-debug.log*

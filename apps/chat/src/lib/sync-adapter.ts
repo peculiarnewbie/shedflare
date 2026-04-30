@@ -236,6 +236,23 @@ function applyEvent(eventType: string, payload: unknown) {
       }
       break;
     }
+    case "thread_deleted": {
+      const event = payload as SyncEventPayloadMap["thread_deleted"];
+      syncDelete("threads", event.id);
+      // Remove all messages for this thread
+      for (const [key, message] of messages.state.entries()) {
+        if ((message as any).threadId === event.id) {
+          syncDelete("messages", key as string);
+        }
+      }
+      // Remove attachments for this thread
+      for (const [key, attachment] of attachments.state.entries()) {
+        if ((attachment as any).threadId === event.id) {
+          syncDelete("attachments", key as string);
+        }
+      }
+      break;
+    }
     case "message_upserted": {
       const event = payload as SyncEventPayloadMap["message_upserted"];
       syncUpsert("messages", event.row.id, event.row);

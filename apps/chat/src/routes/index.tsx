@@ -57,6 +57,7 @@ import {
 import {
   createWorkspaceAction,
   archiveThreadAction,
+  deleteThreadAction,
   archiveWorkspaceAction,
   updateThreadAction,
   updateWorkspaceAction,
@@ -539,6 +540,28 @@ export default function Home() {
       .filter((workspace) => !workspace.archivedAt)
       .sort((a, b) => b.sortKey - a.sortKey),
   );
+  const allWorkspacesNoFilter = createMemo(() =>
+    (allWorkspaces() as Workspace[]).sort((a, b) => b.sortKey - a.sortKey),
+  );
+  const workspaceNameById = createMemo(() => {
+    const map: Record<string, string> = {};
+    for (const ws of allWorkspacesNoFilter()) {
+      map[ws.id] = ws.name;
+    }
+    return map;
+  });
+  const archivedThreads = createMemo(() =>
+    (allThreads() as Thread[])
+      .filter((thread) => thread.archivedAt)
+      .map((thread) => ({
+        id: thread.id,
+        title: thread.title,
+        workspaceName: workspaceNameById()[thread.workspaceId] ?? "Unknown",
+        archivedAt: thread.archivedAt!,
+      }))
+      .sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)),
+  );
+
   const activeWorkspace = createMemo(
     () => workspaces().find((workspace) => workspace.id === activeWorkspaceId()) ?? workspaces()[0],
   );
@@ -3225,6 +3248,10 @@ export default function Home() {
                     if (confirm("Delete ALL data? This cannot be undone.")) {
                       resetAllData();
                     }
+                  }}
+                  archivedThreads={archivedThreads()}
+                  onDeleteThreadPermanently={(threadId) => {
+                    deleteThreadAction(threadId);
                   }}
                 />
               </Suspense>
