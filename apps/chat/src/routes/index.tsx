@@ -58,6 +58,7 @@ import {
   createWorkspaceAction,
   archiveThreadAction,
   deleteThreadAction,
+  forkThreadAction,
   archiveWorkspaceAction,
   updateThreadAction,
   updateWorkspaceAction,
@@ -1725,6 +1726,36 @@ export default function Home() {
                             <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                           </svg>
                         </button>
+                        <button
+                          type="button"
+                          class="msg-action-btn"
+                          aria-label="Fork thread from here"
+                          title="Fork thread from this message"
+                          onClick={() =>
+                            forkThreadAction({
+                              sourceThreadId: message().threadId,
+                              sourceMessageId: message().id,
+                              workspaceId: activeWorkspace()?.id ?? message().threadId,
+                            })
+                          }
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <line x1="6" y1="3" x2="6" y2="15" />
+                            <circle cx="18" cy="6" r="3" />
+                            <circle cx="6" cy="21" r="3" />
+                            <line x1="15" y1="9" x2="9" y2="17" />
+                          </svg>
+                        </button>
                       </div>
                       <div class="msg-user-stack">
                         <Show when={userImageAttachments(message().id).length > 0}>
@@ -2286,6 +2317,36 @@ export default function Home() {
                           <Show when={message().modelId}>
                             <span class="msg-stats-model">{message().modelId}</span>
                           </Show>
+                          <button
+                            type="button"
+                            class="msg-action-btn fork-btn"
+                            aria-label="Fork thread from here"
+                            title="Fork thread from this message"
+                            onClick={() =>
+                              forkThreadAction({
+                                sourceThreadId: message().threadId,
+                                sourceMessageId: message().id,
+                                workspaceId: activeWorkspace()?.id ?? message().threadId,
+                              })
+                            }
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
+                              <line x1="6" y1="3" x2="6" y2="15" />
+                              <circle cx="18" cy="6" r="3" />
+                              <circle cx="6" cy="21" r="3" />
+                              <line x1="15" y1="9" x2="9" y2="17" />
+                            </svg>
+                          </button>
                         </div>
                       </Show>
                       <Show
@@ -2585,6 +2646,36 @@ export default function Home() {
                           <Show when={message().modelId}>
                             <span class="msg-stats-model">{message().modelId}</span>
                           </Show>
+                          <button
+                            type="button"
+                            class="msg-action-btn fork-btn"
+                            aria-label="Fork thread from here"
+                            title="Fork thread from this message"
+                            onClick={() =>
+                              forkThreadAction({
+                                sourceThreadId: message().threadId,
+                                sourceMessageId: message().id,
+                                workspaceId: activeWorkspace()?.id ?? message().threadId,
+                              })
+                            }
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
+                              <line x1="6" y1="3" x2="6" y2="15" />
+                              <circle cx="18" cy="6" r="3" />
+                              <circle cx="6" cy="21" r="3" />
+                              <line x1="15" y1="9" x2="9" y2="17" />
+                            </svg>
+                          </button>
                         </div>
                       </Show>
                     </div>
@@ -3155,6 +3246,15 @@ export default function Home() {
                               <div class="nav-item-row">
                                 <Show when={busyThreadIds().has(thread.id)}>
                                   <span class="thread-spinner" />
+                                </Show>
+                                <Show when={(thread as any).forkedFromThreadId}>
+                                  <span
+                                    class="fork-badge"
+                                    title="Forked from another thread"
+                                    aria-label="Forked thread"
+                                  >
+                                    ⑂
+                                  </span>
                                 </Show>
                                 <strong>{thread.title}</strong>
                                 <div class="nav-item-actions">

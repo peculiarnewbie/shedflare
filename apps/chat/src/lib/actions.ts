@@ -5,12 +5,14 @@ import {
   createThread,
   createWorkspace,
   nowIso,
+  resolveThreadMessagePath,
   toWire,
   type AccountSettings,
   type Attachment,
   type CancelAssistantTurnPayload,
   type CreateUserMessagePayload,
   type EditUserMessagePayload,
+  type ForkThreadPayload,
   type Message,
   type ReasoningLevel,
   type RetryMessagePayload,
@@ -170,6 +172,131 @@ export function deleteThreadAction(threadId: string) {
   }
   dispatch("delete_thread", { id: threadId }, { opId });
   ensureActiveSelection([...workspaces.state.values()], [...threads.state.values()]);
+}
+
+export function forkThreadAction(input: {
+  sourceThreadId: string;
+  sourceMessageId: string;
+  workspaceId: string;
+}) {
+  const opId = createId("op");
+
+  // Walk message path from fork point back to root
+  const allMessages = [...messages.state.values()] as Message[];
+  const threadMessages = allMessages.filter((m) => m.threadId === input.sourceThreadId);
+  const sourceThread = threads.get(input.sourceThreadId) as Thread | undefined;
+  const path = resolveThreadMessagePath(threadMessages, sourceThread?.headMessageId ?? null);
+
+  // Find the fork index — we copy everything up to and including sourceMessageId
+  const forkIndex = path.findIndex((m) => m.id === input.sourceMessageId);
+  if (forkIndex === -1) return;
+
+  const messagesToCopy = path.slice(0, forkIndex + 1);
+  const originalIds = new Set(messagesToCopy.map((m) => m.id));
+
+  // Create new thread with fork tracking
+  const newThread = {
+    ...createThread({
+      workspaceId: input.workspaceId,
+      title: sourceThread?.title ?? "Forked Chat",
+      forkedFromThreadId: input.sourceThreadId,
+      forkedFromMessageId: input.sourceMessageId,
+    }),
+    optimistic: false as const,
+    opId,
+  };
+
+  // Map old message IDs to new message objects (preserving order)
+  const copiedMessages: Message[] = [];
+  const originalToNewId = new Map<string, string>();
+  let lastNewMessageId: string | null = null;
+
+  for (const original of messagesToCopy) {
+    const newMessage = {
+      ...createMessage({
+        threadId: newThread.id,
+        parentMessageId: lastNewMessageId,
+        sourceMessageId: original.id,
+        role: original.role,
+        modelId: original.modelId,
+        reasoningLevel: original.reasoningLevel,
+        text: original.text,
+        searchEnabled: original.searchEnabled,
+      }),
+      status: "completed" as const,
+      optimistic: false as const,
+      opId,
+    };
+    copiedMessages.push(newMessage);
+    originalToNewId.set(original.id, newMessage.id);
+    lastNewMessageId = newMessage.id;
+  }
+
+  // Set headMessageId to the last copied message (the fork point)
+  if (lastNewMessageId) {
+    newThread.headMessageId = lastNewMessageId;
+  }
+
+  // Clone attachments belonging to the copied messages
+  const allAttachments = [...attachments.state.values()] as Attachment[];
+  const sourceAttachments = allAttachments.filter(
+    (a) => a.threadId === input.sourceThreadId && a.messageId && originalIds.has(a.messageId),
+  );
+  const copiedAttachments: Attachment[] = [];
+
+  for (const original of sourceAttachments) {
+    const newMessageId = original.messageId ? originalToNewId.get(original.messageId) : null;
+    if (!newMessageId) continue;
+
+    const clonedAttachment = {
+      ...createAttachment({
+        threadId: newThread.id,
+        messageId: newMessageId,
+        objectKey: original.objectKey,
+        fileName: original.fileName,
+        mimeType: original.mimeType,
+        sizeBytes: original.sizeBytes,
+        sha256: original.sha256,
+        status: original.status as "ready" | "queued" | "uploading" | "failed",
+      }),
+      width: original.width,
+      height: original.height,
+      optimistic: false as const,
+      opId,
+    };
+    copiedAttachments.push(clonedAttachment);
+  }
+
+  // Optimistically apply to local collections
+  applyLocalInsert("threads", newThread);
+  for (const msg of copiedMessages) {
+    applyLocalInsert("messages", msg);
+  }
+  for (const att of copiedAttachments) {
+    applyLocalInsert("attachments", att);
+  }
+
+  const rollbackEntries: OptimisticEntry[] = [
+    deleteRow("threads", newThread.id),
+    ...copiedMessages.map((msg) => deleteRow("messages", msg.id)),
+    ...copiedAttachments.map((att) => deleteRow("attachments", att.id)),
+  ];
+  trackOptimistic(opId, rollbackEntries);
+
+  // Switch to the new thread
+  setActiveThreadId(newThread.id);
+
+  dispatch(
+    "fork_thread",
+    {
+      sourceThreadId: input.sourceThreadId,
+      sourceMessageId: input.sourceMessageId,
+      newThread: toWire(newThread, opId),
+      copiedMessages: copiedMessages.map((msg) => toWire(msg, opId)),
+      copiedAttachments: copiedAttachments.map((att) => toWire(att, opId)),
+    } satisfies ForkThreadPayload,
+    { opId },
+  );
 }
 
 export function archiveThreadAction(threadId: string) {

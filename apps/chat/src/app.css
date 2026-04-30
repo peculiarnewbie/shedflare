@@ -315,6 +315,14 @@ a {
   text-overflow: ellipsis;
 }
 
+.fork-badge {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  margin-right: 2px;
+  line-height: 1;
+}
+
 .nav-item-actions {
   position: absolute;
   top: 50%;
@@ -1610,6 +1618,12 @@ a {
 
 .msg-stats-model {
   margin-left: auto;
+}
+
+.fork-btn.msg-action-btn {
+  margin-top: 0;
+  width: 22px;
+  height: 22px;
 }
 
 .thinking-indicator {

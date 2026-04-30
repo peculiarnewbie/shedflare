@@ -30,7 +30,7 @@ export const TABLES = {
 // Bumped from "effect4-trace-v1" because we added a new persisted table
 // (extract_runs). Clients on the old schema will see a hello_ack mismatch
 // and reload to pick up the new snapshot shape.
-export const SYNC_PROTOCOL_VERSION = "effect4-extract-v1";
+export const SYNC_PROTOCOL_VERSION = "effect4-fork-v1";
 
 export const MAX_SEARCHES_PER_TURN = 5;
 export const DEFAULT_SEARCHES_PER_TURN = 3;
@@ -554,6 +554,14 @@ export type SetSearchModePayload = {
   defaultSearchMode: boolean;
 };
 
+export type ForkThreadPayload = {
+  sourceThreadId: string;
+  sourceMessageId: string;
+  newThread: Thread;
+  copiedMessages: Message[];
+  copiedAttachments: Attachment[];
+};
+
 export type DeleteThreadPayload = {
   id: string;
 };
@@ -580,6 +588,7 @@ export type SyncCommandPayloadMap = {
   delete_attachment: DeleteAttachmentPayload;
   set_search_mode: SetSearchModePayload;
   delete_thread: DeleteThreadPayload;
+  fork_thread: ForkThreadPayload;
   reset_storage: ResetStoragePayload;
 };
 
@@ -605,6 +614,7 @@ export const SYNC_COMMAND_TYPES = [
   "delete_attachment",
   "set_search_mode",
   "delete_thread",
+  "fork_thread",
   "reset_storage",
 ] as const satisfies readonly SyncCommandType[];
 
@@ -824,6 +834,8 @@ export function createThread(input: {
   title?: string;
   modelId?: string | null;
   reasoningLevel?: ReasoningLevel | null;
+  forkedFromThreadId?: string | null;
+  forkedFromMessageId?: string | null;
 }) {
   const now = nowIso();
   return decodeThreadRow({
@@ -838,6 +850,8 @@ export function createThread(input: {
     updatedAt: now,
     lastMessageAt: now,
     archivedAt: null,
+    forkedFromThreadId: input.forkedFromThreadId ?? null,
+    forkedFromMessageId: input.forkedFromMessageId ?? null,
   });
 }
 

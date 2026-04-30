@@ -76,6 +76,8 @@ export const threads = sqliteTable(
     updatedAt: text("updated_at").notNull(),
     lastMessageAt: text("last_message_at").notNull(),
     archivedAt: text("archived_at"),
+    forkedFromThreadId: text("forked_from_thread_id"),
+    forkedFromMessageId: text("forked_from_message_id"),
     optimistic: integer("optimistic", { mode: "boolean" }),
     opId: text("op_id"),
   },

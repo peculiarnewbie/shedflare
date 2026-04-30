@@ -69,6 +69,8 @@ export function normalizeThread(row: Thread, opId: string) {
   return decodeThreadRow({
     ...row,
     headMessageId: row.headMessageId ?? null,
+    forkedFromThreadId: row.forkedFromThreadId ?? null,
+    forkedFromMessageId: row.forkedFromMessageId ?? null,
     optimistic: false,
     opId,
     updatedAt: row.updatedAt || nowIso(),
@@ -140,6 +142,8 @@ export function inflateRow(tableName: string, row: Record<string, unknown>) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         lastMessageAt: row.last_message_at,
+        forkedFromThreadId: row.forked_from_thread_id ?? null,
+        forkedFromMessageId: row.forked_from_message_id ?? null,
         archivedAt: row.archived_at ?? null,
         optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
         opId: row.op_id ?? undefined,

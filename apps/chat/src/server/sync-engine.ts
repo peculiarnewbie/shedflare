@@ -40,6 +40,7 @@ import {
   handleStartAssistantTurn,
   handleCancelAssistantTurn,
   handleDeleteThread,
+  handleForkThread,
   handleUpsertAttachment,
   handleDeleteAttachment,
   handleSetSearchMode,
@@ -92,6 +93,7 @@ function buildHandlerRegistry(): Map<SyncCommandType, CommandHandlerFn> {
     ["update_attachment", handleUpsertAttachment as CommandHandlerFn],
     ["delete_attachment", handleDeleteAttachment as CommandHandlerFn],
     ["delete_thread", handleDeleteThread as CommandHandlerFn],
+    ["fork_thread", handleForkThread as CommandHandlerFn],
     ["set_search_mode", handleSetSearchMode as CommandHandlerFn],
     ["reset_storage", handleResetStorage as CommandHandlerFn],
   ]);

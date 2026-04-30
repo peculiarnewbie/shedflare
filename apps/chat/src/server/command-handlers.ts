@@ -6,6 +6,7 @@ import {
   mergeAttachmentLink,
   type CreateUserMessagePayload,
   type EditUserMessagePayload,
+  type ForkThreadPayload,
   type RetryMessagePayload,
   type SyncCommandPayloadMap,
   type SyncServerEvent,
@@ -192,6 +193,51 @@ export function handleUpsertThread(
       }),
     ],
   };
+}
+
+export function handleForkThread(
+  opId: string,
+  payload: ForkThreadPayload,
+  ctx: CommandHandlerContext,
+): CommandHandlerResult {
+  const { sourceThreadId, sourceMessageId, newThread, copiedMessages, copiedAttachments } = payload;
+
+  // Validate source thread exists
+  const sourceThread = ctx.access.getThread(sourceThreadId);
+  if (!sourceThread) throw new Error(`Source thread ${sourceThreadId} not found`);
+
+  // Validate source message exists in the source thread
+  const sourceMessage = ctx.access.getMessage(sourceMessageId);
+  if (!sourceMessage) throw new Error(`Source message ${sourceMessageId} not found`);
+  if (sourceMessage.threadId !== sourceThreadId) {
+    throw new Error(
+      `Source message ${sourceMessageId} does not belong to thread ${sourceThreadId}`,
+    );
+  }
+
+  const events: SyncServerEvent[] = [
+    ctx.eventStore.insertEvent(opId, "thread_upserted", {
+      row: normalizeThread(newThread, opId),
+    }),
+  ];
+
+  for (const message of copiedMessages) {
+    events.push(
+      ctx.eventStore.insertEvent(opId, "message_upserted", {
+        row: normalizeMessage(message, opId),
+      }),
+    );
+  }
+
+  for (const attachment of copiedAttachments) {
+    events.push(
+      ctx.eventStore.insertEvent(opId, "attachment_upserted", {
+        row: normalizeAttachment(attachment, opId),
+      }),
+    );
+  }
+
+  return { events };
 }
 
 export function handleDeleteThread(

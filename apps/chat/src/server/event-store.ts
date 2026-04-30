@@ -200,8 +200,8 @@ export class EventStore {
       case "thread_upserted": {
         const row = payload.row;
         this.access.exec(
-          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, created_at, updated_at, last_message_at, archived_at, optimistic, op_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, created_at, updated_at, last_message_at, archived_at, forked_from_thread_id, forked_from_message_id, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.workspaceId,
           row.title,
@@ -213,6 +213,8 @@ export class EventStore {
           row.updatedAt,
           row.lastMessageAt,
           row.archivedAt,
+          row.forkedFromThreadId ?? null,
+          row.forkedFromMessageId ?? null,
           boolToSql(row.optimistic),
           row.opId ?? null,
         );
