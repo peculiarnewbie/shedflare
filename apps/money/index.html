@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="emerald">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d1117" />
+    <title>Shedflare Money</title>
+    <script>
+      (() => {
+        var href =
+          "https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap";
+
+        var preconnectGoogle = document.createElement("link");
+        preconnectGoogle.rel = "preconnect";
+        preconnectGoogle.href = "https://fonts.googleapis.com";
+        document.head.append(preconnectGoogle);
+
+        var preconnectStatic = document.createElement("link");
+        preconnectStatic.rel = "preconnect";
+        preconnectStatic.href = "https://fonts.gstatic.com";
+        preconnectStatic.crossOrigin = "";
+        document.head.append(preconnectStatic);
+
+        var fontLink = document.createElement("link");
+        fontLink.rel = "stylesheet";
+        fontLink.href = href;
+        document.head.append(fontLink);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>
