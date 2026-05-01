@@ -15,6 +15,11 @@ The `shedflare` CLI lives in `packages/cli` and is the primary user-facing tool.
 ### Architecture
 
 ```
+alchemy.run.ts          # Root suite stack — composes all app stacks
+infra/alchemy-config.ts # Shared Alchemy helpers (config loading, physical naming)
+apps/*/
+  alchemy.run.ts        # Per-app Alchemy stack (resource lifecycle + Worker deploy)
+  alchemy.test.ts       # Live smoke tests (guarded by SHEDFLARE_LIVE_ALCHEMY_TESTS)
 packages/cli/
   src/
     index.ts         # Entry point – commander routing
@@ -25,6 +30,10 @@ packages/cli-tui/
   src/
     index.ts         # OpenTUI interactive installer (stub – needs OpenTUI Node support)
 ```
+
+**Alchemy** (`alchemy.run.ts` stacks) is the primary deployment lifecycle. Each app's stack declares its Cloudflare resources (Workers, D1, R2, Durable Objects, KV) and wires them together. The root `alchemy.run.ts` composes all app stacks for a one-command suite deploy.
+
+Wrangler-based deploy (via `wrangler deploy` and `wrangler.base.jsonc`) is being phased out in favor of Alchemy. The old scripts remain for backward compatibility during migration.
 
 ### Design Rules
 
@@ -44,7 +53,12 @@ packages/cli-tui/
 5. Register the app ID in `packages/cli/src/core/manifests.ts` type union.
 6. Add a deploy script in the app's `package.json`.
 7. Add root convenience scripts in the root `package.json`.
-8. Run `shedflare doctor` to validate.
+8. Create `apps/<name>/alchemy.run.ts` with the Alchemy stack (Worker, resources, bindings).
+9. Create `apps/<name>/alchemy.test.ts` with a live smoke test.
+10. Register the app ID in `infra/alchemy-config.ts` AppId type union.
+11. Add `deploy:<name>:alchemy` and `destroy:<name>:alchemy` scripts to root `package.json`.
+12. Update root `alchemy.run.ts` to compose the new stack.
+13. Run `shedflare doctor` to validate.
 
 ### CLI vs TUI
 
@@ -58,6 +72,8 @@ packages/cli-tui/
 - The root `check` script should include this check.
 - CI should run `shedflare init --yes --mock-resources` into a temp dir to prove the user path still works.
 - Every app change that touches bindings, vars, or resources must also update `shedflare.app.jsonc`.
+- Alchemy stacks (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If a stack is modified, run `alchemy deploy` to apply changes.
+- The root `alchemy.run.ts` must be updated when adding a new app to the suite or changing app dependencies (e.g., auth URL wiring).
 
 ## Using Vite+
 

@@ -1,0 +1,16 @@
+{
+  "name": "shedflare-youtube",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-03-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/client",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shedflare-youtube",
+      "database_id": "",
+    },
+  ],
+}

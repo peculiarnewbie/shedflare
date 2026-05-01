@@ -1,0 +1,30 @@
+{
+  "name": "@shedflare/youtube",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "deploy": "vp build && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply shedflare-youtube --local",
+    "db:migrate": "wrangler d1 migrations apply shedflare-youtube --remote",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "^0.4.3",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.4",
+    "drizzle-orm": "catalog:",
+    "jose": "catalog:",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.0.0",
+    "@cloudflare/workers-types": "^4.20250401.0",
+    "drizzle-kit": "catalog:",
+    "vite-plugin-solid": "^2.11.6",
+    "vite-plus": "catalog:",
+    "wrangler": "^4.14.1"
+  }
+}

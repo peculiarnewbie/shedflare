@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["apps"]
+  "include": ["apps", "infra", "alchemy.run.ts"]
 }

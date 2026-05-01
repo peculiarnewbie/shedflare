@@ -65,6 +65,20 @@ cli
     await deployCommand(options);
   });
 
+cli.command("youtube", "YouTube integration commands").action(async (options) => {
+  const { youtubeCommand } = await import("./commands/youtube.js");
+  await youtubeCommand(options);
+});
+
+cli
+  .command("youtube sync", "Fetch YouTube Watch Later and notifications data and sync to dashboard")
+  .option("--watch-only", "Only sync Watch Later")
+  .option("--notif-only", "Only sync notifications")
+  .action(async (options) => {
+    const { youtubeSyncCommand } = await import("./commands/youtube.js");
+    await youtubeSyncCommand(options);
+  });
+
 cli.help();
 cli.version("0.0.0");
 

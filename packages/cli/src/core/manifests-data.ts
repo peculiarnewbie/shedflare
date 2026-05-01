@@ -63,4 +63,23 @@ export const BUILTIN_MANIFESTS: Record<string, AppManifest> = {
       { type: "r2", binding: "FILES", name: "shedflare-drive-files" },
     ],
   },
+  youtube: {
+    id: "youtube",
+    name: "Shedflare YouTube",
+    description: "YouTube Watch Later manager + notification dashboard",
+    dependsOn: ["auth"],
+    defaultSubdomain: "youtube",
+    vars: {
+      APP_PUBLIC_URL: { from: "appUrl", description: "Public URL of this YouTube app" },
+      AUTH_ISSUER_URL: { from: "appUrl", app: "auth", description: "Auth issuer URL" },
+      AUTH_CLIENT_ID: { from: "appId", description: "OAuth client ID for this app" },
+      OWNER_EMAIL: { from: "ownerEmail", description: "Deployment owner email" },
+      SYNC_SECRET: {
+        from: "user",
+        description: "Shared secret to authenticate sync requests from CLI",
+      },
+    },
+    secrets: {},
+    resources: [{ type: "d1", binding: "DB", name: "shedflare-youtube", idField: "DB_ID" }],
+  },
 };
