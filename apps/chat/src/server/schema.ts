@@ -22,7 +22,7 @@ export const DATA_TABLES = [
  * All tables including the event log and commands ledger.
  * Used by full resets that drop everything (protocol version change).
  */
-const ALL_TABLES = [...DATA_TABLES, "events", "commands"] as const;
+const ALL_TABLES = [...DATA_TABLES, "events", "commands", "pending_turns"] as const;
 
 const DDL = `
   CREATE TABLE IF NOT EXISTS events (
@@ -214,6 +214,12 @@ const DDL = `
   CREATE INDEX IF NOT EXISTS idx_extract_runs_message ON extract_runs(message_id);
   CREATE INDEX IF NOT EXISTS idx_trace_runs_message ON trace_runs(message_id);
   CREATE INDEX IF NOT EXISTS idx_trace_spans_trace_run ON trace_spans(trace_run_id);
+
+  CREATE TABLE IF NOT EXISTS pending_turns (
+    message_id TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `;
 
 export function initializeStorage(

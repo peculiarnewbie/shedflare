@@ -45,6 +45,24 @@ export const BUILTIN_MANIFESTS: Record<string, AppManifest> = {
       { type: "browser", binding: "BROWSER", manualEnable: true },
     ],
   },
+  money: {
+    id: "money",
+    name: "Shedflare Money",
+    description: "Envelope-budgeting personal finance app",
+    dependsOn: ["auth"],
+    defaultSubdomain: "money",
+    vars: {
+      APP_PUBLIC_URL: { from: "appUrl", description: "Public URL of this money app" },
+      AUTH_ISSUER_URL: { from: "appUrl", app: "auth", description: "Auth issuer URL" },
+      AUTH_CLIENT_ID: { from: "appId", description: "OAuth client ID for this app" },
+      OWNER_EMAIL: { from: "ownerEmail", description: "Deployment owner email" },
+    },
+    secrets: {},
+    resources: [
+      { type: "durable_object", binding: "BUDGET_DO" },
+      { type: "r2", binding: "UPLOADS", name: "shedflare-money-uploads" },
+    ],
+  },
   drive: {
     id: "drive",
     name: "Shedflare Drive",

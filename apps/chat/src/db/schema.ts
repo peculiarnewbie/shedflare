@@ -244,6 +244,12 @@ export const traceSpans = sqliteTable(
   (table) => [index("idx_trace_spans_trace_run").on(table.traceRunId)],
 );
 
+export const pendingTurns = sqliteTable("pending_turns", {
+  messageId: text("message_id").primaryKey(),
+  payloadJson: text("payload_json").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
 type SyncMeta<T extends { optimistic: boolean | null; opId: string | null }> = Omit<
   T,
   "optimistic" | "opId"

@@ -75,6 +75,15 @@ Wrangler-based deploy (via `wrangler deploy` and `wrangler.base.jsonc`) is being
 - Alchemy stacks (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If a stack is modified, run `alchemy deploy` to apply changes.
 - The root `alchemy.run.ts` must be updated when adding a new app to the suite or changing app dependencies (e.g., auth URL wiring).
 
+### Schema Convention
+
+For apps using SQLite (DO storage):
+
+- **`src/db/schema.ts`** — Drizzle table definitions (single source of truth for types)
+- **`src/server/schema.ts`** — Raw `CREATE TABLE IF NOT EXISTS` DDL strings
+
+Both must be kept in sync. The DDL runs on DO cold start. Raw SQL is only for dynamic-table operations and DDL — all other queries should use Drizzle.
+
 ## Using Vite+
 
 The apps in this repo use Vite+. See `apps/chat/AGENTS.md` for detailed Vite+ workflow guidance.

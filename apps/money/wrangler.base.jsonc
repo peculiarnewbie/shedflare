@@ -14,9 +14,23 @@
     "html_handling": "none",
     "not_found_handling": "none",
   },
-  "d1_databases": [
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BUDGET_DO",
+        "class_name": "MoneyBudgetDO",
+      },
+    ],
+  },
+  "migrations": [
     {
-      "binding": "DB",
+      "tag": "v1",
+      "new_sqlite_classes": ["MoneyBudgetDO"],
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
     },
   ],
 }

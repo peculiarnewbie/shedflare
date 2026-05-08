@@ -1,29 +1,37 @@
 {
   "name": "@shedflare/money",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#/*": "./src/*.ts"
+  },
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
+    "test": "vp test",
     "check": "vp check",
-    "deploy": "vp build && wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply shedflare-money --local",
-    "db:migrate": "wrangler d1 migrations apply shedflare-money --remote",
+    "deploy": "node ./scripts/deploy.mjs",
+    "db:generate": "drizzle-kit generate",
     "prepare": "vp config"
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
+    "@tanstack/db": "catalog:",
+    "@tanstack/solid-db": "catalog:",
+    "d3": "^7.9.0",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "jose": "catalog:",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "@types/d3": "^7.4.3",
     "drizzle-kit": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

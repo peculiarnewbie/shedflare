@@ -1,0 +1,235 @@
+/**
+ * REST API handlers for the DO — provides read endpoints for initial data loading.
+ * These are convenience endpoints; the real-time data path is through WebSocket sync.
+ */
+import type { DataAccess } from "./data-access";
+import { computeMonthBudget, computeNetWorthHistory, computeCashFlow, computeSpendingByCategory, computeAgeOfMoney } from "./budget-engine";
+
+export function handleApiRequest(
+  pathname: string,
+  method: string,
+  access: DataAccess,
+): Response | null {
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  // Accounts list
+  if (pathname === "/api/accounts" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM accounts ORDER BY sort_order, name",
+    );
+    return json({ accounts: rows });
+  }
+
+  // Single account
+  const accountMatch = pathname.match(/^\/api\/accounts\/([^/]+)$/);
+  if (accountMatch && method === "GET") {
+    const row = access.queryOne<Record<string, unknown>>(
+      "SELECT * FROM accounts WHERE id = ?",
+      accountMatch[1],
+    );
+    if (!row) return json({ error: "Not found" }, 404);
+    return json(row);
+  }
+
+  // Account transactions
+  const accountTxMatch = pathname.match(/^\/api\/accounts\/([^/]+)\/transactions$/);
+  if (accountTxMatch && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT t.*, c.name as category_name
+       FROM transactions t
+       LEFT JOIN categories c ON t.category_id = c.id
+       WHERE t.account_id = ?
+       ORDER BY t.date DESC, t.created_at DESC`,
+      accountTxMatch[1],
+    );
+    return json({ transactions: rows });
+  }
+
+  // Budget overview
+  if (pathname === "/api/budget/overview" && method === "GET") {
+    const netWorth = access.queryOne<{ total: number | null }>(
+      "SELECT COALESCE(SUM(balance_current), 0) as total FROM accounts WHERE closed = 0",
+    );
+    const onBudget = access.queryOne<{ total: number | null }>(
+      "SELECT COALESCE(SUM(balance_current), 0) as total FROM accounts WHERE offbudget = 0 AND closed = 0",
+    );
+    const accountCount = access.queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM accounts WHERE closed = 0",
+    );
+
+    const now = new Date();
+    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+    const income = access.queryOne<{ total: number | null }>(
+      `SELECT COALESCE(SUM(t.amount), 0) as total
+       FROM transactions t
+       JOIN categories c ON t.category_id = c.id
+       WHERE t.date >= ? AND t.date < ? AND c.is_income = 1 AND t.is_child = 0`,
+      startDate, endDate,
+    );
+
+    const expense = access.queryOne<{ total: number | null }>(
+      `SELECT COALESCE(SUM(t.amount), 0) as total
+       FROM transactions t
+       JOIN categories c ON t.category_id = c.id
+       WHERE t.date >= ? AND t.date < ? AND c.is_income = 0 AND t.is_child = 0`,
+      startDate, endDate,
+    );
+
+    return json({
+      netWorth: netWorth?.total ?? 0,
+      onBudget: onBudget?.total ?? 0,
+      accountCount: accountCount?.count ?? 0,
+      income: income?.total ?? 0,
+      expense: expense?.total ?? 0,
+    });
+  }
+
+  // Budget for a specific month
+  const budgetMatch = pathname.match(/^\/api\/budget\/(\d{6})$/);
+  if (budgetMatch && method === "GET") {
+    const month = parseInt(budgetMatch[1]);
+    const result = computeMonthBudget(access, month);
+    return json(result ?? { categories: [], toBudget: 0, buffered: 0, month });
+  }
+
+  // Categories
+  if (pathname === "/api/categories" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT c.*, cg.name as group_name
+       FROM categories c
+       LEFT JOIN category_groups cg ON c.group_id = cg.id
+       ORDER BY cg.sort_order, c.sort_order`,
+    );
+    return json({ categories: rows });
+  }
+
+  // Payees
+  if (pathname === "/api/payees" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT p.*, (SELECT COUNT(*) FROM transactions WHERE payee = p.name) as transaction_count
+       FROM payees p ORDER BY p.name`,
+    );
+    return json({ payees: rows });
+  }
+
+  // Schedules
+  if (pathname === "/api/schedules" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM schedules ORDER BY name",
+    );
+    return json({ schedules: rows });
+  }
+
+  // Rules
+  if (pathname === "/api/rules" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM rules ORDER BY created_at",
+    );
+    return json({ rules: rows });
+  }
+
+  // Tags
+  if (pathname === "/api/tags" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM tags ORDER BY name",
+    );
+    return json({ tags: rows });
+  }
+
+  // Exchange rates
+  if (pathname === "/api/rates" && method === "GET") {
+    const row = access.queryOne<Record<string, unknown>>(
+      "SELECT * FROM exchange_rates WHERE id = 'latest'",
+    );
+    return json(row ?? { id: "latest", usdToIdr: 16000 });
+  }
+
+  // Report: net worth over time
+  if (pathname === "/api/reports/net-worth" && method === "GET") {
+    const history = computeNetWorthHistory(access, 12);
+    const points = history.map((h) => ({
+      date: h.month,
+      value: h.netWorth,
+    }));
+    return json({ points });
+  }
+
+  // Report: cash flow
+  if (pathname === "/api/reports/cash-flow" && method === "GET") {
+    const months = computeCashFlow(access, 12);
+    return json({ months });
+  }
+
+  // Report: spending by category
+  if (pathname === "/api/reports/spending" && method === "GET") {
+    const now = new Date();
+    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const cats = computeSpendingByCategory(access, startDate, endDate);
+    const categories = cats.map((c) => ({
+      label: c.categoryName,
+      value: Math.abs(c.amount),
+      groupName: c.groupName,
+    }));
+    return json({ categories });
+  }
+
+  // Report: budget vs actuals
+  if (pathname === "/api/reports/budget-analysis" && method === "GET") {
+    const now = new Date();
+    const monthInt = now.getFullYear() * 100 + (now.getMonth() + 1);
+    const result = computeMonthBudget(access, monthInt);
+    const categories = (result?.categories ?? []).map((c) => ({
+      category: c.categoryName,
+      budgeted: c.budgeted,
+      actual: c.spent,
+    }));
+    return json({ categories });
+  }
+
+  // Report: age of money
+  if (pathname === "/api/reports/age-of-money" && method === "GET") {
+    const days = computeAgeOfMoney(access);
+    return json({ days });
+  }
+
+  // CSV export
+  if (pathname === "/api/export/csv" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT t.date, t.amount, t.payee, c.name as category,
+              t.notes, a.name as account
+       FROM transactions t
+       LEFT JOIN categories c ON t.category_id = c.id
+       LEFT JOIN accounts a ON t.account_id = a.id
+       ORDER BY t.date DESC`,
+    );
+
+    const header = "Date,Amount,Payee,Category,Notes,Account\n";
+    const csvLines = rows.map((r) =>
+      [
+        r.date,
+        Number(r.amount ?? 0) / 100,
+        `"${String(r.payee ?? "")}"`,
+        `"${String(r.category ?? "")}"`,
+        `"${String(r.notes ?? "")}"`,
+        `"${String(r.account ?? "")}"`,
+      ].join(","),
+    );
+    const csv = header + csvLines.join("\n");
+
+    return new Response(csv, {
+      headers: {
+        "content-type": "text/csv",
+        "content-disposition": 'attachment; filename="shedflare-export.csv"',
+      },
+    });
+  }
+
+  return null;
+}

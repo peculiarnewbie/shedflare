@@ -85,4 +85,19 @@ For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
 - [ ] Run `vp check` and `vp test` to validate changes.
+
+## Database Schema
+
+The SQLite schema lives in **two places** that must be kept in sync:
+
+1. **`src/db/schema.ts`** — Drizzle table definitions (single source of truth for types)
+2. **`src/server/schema.ts`** — Raw `CREATE TABLE IF NOT EXISTS` DDL strings inside `const DDL`
+
+When adding or modifying a table: **update both files.** The DDL in `schema.ts` runs on every DO cold start via `blockConcurrencyWhile` and must match the Drizzle schema exactly. There are no Drizzle migrations — just `CREATE TABLE IF NOT EXISTS`.
+
+### Query layer
+
+- **Drizzle** for all queries (`db.insert().values()`, `db.select()`, `db.delete()`, `db.update()`) — LSP-safe, catches drift
+- **Raw SQL** only where Drizzle doesn't support the pattern: dynamic table names (`readTable`, `replaceSnapshot`), DDL strings, bulk reset operations
+- The event store materialized writes in `event-store.ts` should use Drizzle `onConflictDoUpdate` — if you see a raw `INSERT OR REPLACE`, convert it.
 <!--VITE PLUS END-->
