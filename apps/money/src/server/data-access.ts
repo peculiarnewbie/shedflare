@@ -32,23 +32,22 @@ export class DataAccess {
   // -----------------------------------------------------------------------
 
   getLastServerSeq(): number {
-    const row = this.queryOne<{ seq: number }>(
-      "SELECT coalesce(max(seq), 0) as seq FROM events",
-    );
+    const row = this.queryOne<{ seq: number }>("SELECT coalesce(max(seq), 0) as seq FROM events");
     return Number(row?.seq ?? 0);
   }
 
   getOldestEventSeq(): number {
-    const row = this.queryOne<{ min_seq: number | null }>(
-      "SELECT MIN(seq) as min_seq FROM events",
-    );
+    const row = this.queryOne<{ min_seq: number | null }>("SELECT MIN(seq) as min_seq FROM events");
     return row?.min_seq ?? 0;
   }
 
   getEventsAfter(afterSeq: number) {
     return this.queryAll<{
-      seq: number; event_id: string; op_id: string | null;
-      type: string; payload_json: string;
+      seq: number;
+      event_id: string;
+      op_id: string | null;
+      type: string;
+      payload_json: string;
     }>(
       "SELECT seq, event_id, op_id, type, payload_json FROM events WHERE seq > ? ORDER BY seq ASC",
       afterSeq,
@@ -68,9 +67,9 @@ export class DataAccess {
       .from(schema.commands)
       .where(eq(schema.commands.opId, opId))
       .get();
-    return row?.responseJson ? parseJson<import("../domain/events").SyncServerAck>(
-      row.responseJson,
-    ) : null;
+    return row?.responseJson
+      ? parseJson<import("../domain/events").SyncServerAck>(row.responseJson)
+      : null;
   }
 
   // -----------------------------------------------------------------------
@@ -82,15 +81,22 @@ export class DataAccess {
   }
 
   getTransaction(id: string) {
-    return this.db.select().from(schema.transactions).where(eq(schema.transactions.id, id)).get() ?? null;
+    return (
+      this.db.select().from(schema.transactions).where(eq(schema.transactions.id, id)).get() ?? null
+    );
   }
 
   getCategory(id: string) {
-    return this.db.select().from(schema.categories).where(eq(schema.categories.id, id)).get() ?? null;
+    return (
+      this.db.select().from(schema.categories).where(eq(schema.categories.id, id)).get() ?? null
+    );
   }
 
   getCategoryGroup(id: string) {
-    return this.db.select().from(schema.categoryGroups).where(eq(schema.categoryGroups.id, id)).get() ?? null;
+    return (
+      this.db.select().from(schema.categoryGroups).where(eq(schema.categoryGroups.id, id)).get() ??
+      null
+    );
   }
 
   getPayee(id: string) {
@@ -102,21 +108,23 @@ export class DataAccess {
   }
 
   getBudget(month: number, categoryId: string) {
-    return this.db
-      .select()
-      .from(schema.budgets)
-      .where(
-        eq(schema.budgets.id, `${month}-${categoryId}`),
-      )
-      .get() ?? null;
+    return (
+      this.db
+        .select()
+        .from(schema.budgets)
+        .where(eq(schema.budgets.id, `${month}-${categoryId}`))
+        .get() ?? null
+    );
   }
 
   getBudgetMonth(monthKey: string) {
-    return this.db
-      .select()
-      .from(schema.budgetMonths)
-      .where(eq(schema.budgetMonths.id, monthKey))
-      .get() ?? null;
+    return (
+      this.db
+        .select()
+        .from(schema.budgetMonths)
+        .where(eq(schema.budgetMonths.id, monthKey))
+        .get() ?? null
+    );
   }
 
   // -----------------------------------------------------------------------

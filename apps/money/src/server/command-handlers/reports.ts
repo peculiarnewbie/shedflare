@@ -54,12 +54,15 @@ export function handleReportCommands(
           payload.id,
         );
         const updated = access.queryOne<Record<string, unknown>>(
-          `SELECT * FROM custom_reports WHERE id = ?`, payload.id,
+          `SELECT * FROM custom_reports WHERE id = ?`,
+          payload.id,
         );
         if (updated) {
-          events.push(eventStore.insertEvent(opId, "report_updated", {
-            row: updated as any,
-          }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "report_updated", {
+              row: updated as any,
+            }) as SyncServerEvent,
+          );
         }
       }
       break;
@@ -81,7 +84,9 @@ export function handleReportCommands(
           meta: w.meta ?? null,
         }),
       );
-      events.push(eventStore.insertEvent(opId, "dashboard_updated", { widgets }) as SyncServerEvent);
+      events.push(
+        eventStore.insertEvent(opId, "dashboard_updated", { widgets }) as SyncServerEvent,
+      );
       break;
     }
   }

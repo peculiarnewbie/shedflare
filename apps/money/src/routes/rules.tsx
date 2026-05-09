@@ -17,7 +17,7 @@ export default function RulesPage() {
     try {
       const res = await fetch("/api/rules");
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         setRules(data.rules ?? []);
       }
     } catch {
@@ -63,11 +63,12 @@ export default function RulesPage() {
                     <div class="rule-conditions">
                       Conditions: {rule.conditions?.slice(0, 80)}...
                     </div>
-                    <div class="rule-actions-summary">
-                      Actions: {rule.actions?.slice(0, 80)}...
-                    </div>
+                    <div class="rule-actions-summary">Actions: {rule.actions?.slice(0, 80)}...</div>
                   </div>
-                  <button class="btn btn-icon btn-ghost btn-xs" onClick={() => handleDelete(rule.id)}>
+                  <button
+                    class="btn btn-icon btn-ghost btn-xs"
+                    onClick={() => handleDelete(rule.id)}
+                  >
                     🗑️
                   </button>
                 </div>
@@ -114,12 +115,17 @@ function RuleForm(props: { onClose: () => void }) {
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>New Rule</h2>
-          <button class="modal-close" onClick={props.onClose}>✕</button>
+          <button class="modal-close" onClick={props.onClose}>
+            ✕
+          </button>
         </div>
         <form onSubmit={handleSubmit}>
           <h3>Condition</h3>
           <div class="form-row">
-            <select value={conditionField()} onChange={(e) => setConditionField(e.currentTarget.value)}>
+            <select
+              value={conditionField()}
+              onChange={(e) => setConditionField(e.currentTarget.value)}
+            >
               <option value="payee">Payee</option>
               <option value="imported_description">Description</option>
               <option value="notes">Notes</option>
@@ -156,7 +162,9 @@ function RuleForm(props: { onClose: () => void }) {
           </div>
 
           <div class="form-actions">
-            <button type="button" class="btn btn-ghost" onClick={props.onClose}>Cancel</button>
+            <button type="button" class="btn btn-ghost" onClick={props.onClose}>
+              Cancel
+            </button>
             <button type="submit" class="btn btn-primary" disabled={saving()}>
               {saving() ? "Saving..." : "Create"}
             </button>

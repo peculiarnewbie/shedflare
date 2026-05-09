@@ -94,14 +94,17 @@ export default function BudgetBar(props: BudgetBarProps) {
 
       // Overspend indicator (red extension beyond budget bar)
       const overshoot = aW > bW ? aW - bW : 0;
-      const overshootBar = overshoot > 4 ? {
-        x: labelWidth + bW,
-        y: y + rowH() * 0.5,
-        width: overshoot,
-        height: rowH() * 0.4,
-        fill: CHART_COLORS.negative,
-        opacity: 0.6,
-      } : null;
+      const overshootBar =
+        overshoot > 4
+          ? {
+              x: labelWidth + bW,
+              y: y + rowH() * 0.5,
+              width: overshoot,
+              height: rowH() * 0.4,
+              fill: CHART_COLORS.negative,
+              opacity: 0.6,
+            }
+          : null;
 
       return {
         item,
@@ -123,13 +126,7 @@ export default function BudgetBar(props: BudgetBarProps) {
           preserveAspectRatio="xMidYMid meet"
         >
           {/* Header */}
-          <text
-            x={0}
-            y={14}
-            fill="var(--text-secondary)"
-            font-size="11"
-            font-weight="600"
-          >
+          <text x={0} y={14} fill="var(--text-secondary)" font-size="11" font-weight="600">
             Category
           </text>
           <text
@@ -162,26 +159,15 @@ export default function BudgetBar(props: BudgetBarProps) {
                 </text>
 
                 {/* Budget bar (background) */}
-                <rect
-                  {...row.budgetBar}
-                  rx="2"
-                  opacity="0.3"
-                />
+                <rect {...row.budgetBar} rx="2" opacity="0.3" />
 
                 {/* Overshoot indicator */}
                 <Show when={row.overshootBar}>
-                  <rect
-                    {...row.overshootBar!}
-                    rx="2"
-                  />
+                  <rect {...row.overshootBar!} rx="2" />
                 </Show>
 
                 {/* Actual bar */}
-                <rect
-                  {...row.actualBar}
-                  rx="2"
-                  opacity="0.85"
-                >
+                <rect {...row.actualBar} rx="2" opacity="0.85">
                   <title>
                     {`${row.item.category}: Budgeted ${formatChartTooltip(row.item.budgeted)}, Spent ${formatChartTooltip(row.item.actual)}`}
                   </title>
@@ -215,14 +201,17 @@ export default function BudgetBar(props: BudgetBarProps) {
 
 function EmptyChart() {
   return (
-    <div class="chart-empty" style={{
-      height: "100px",
-      display: "flex",
-      "align-items": "center",
-      "justify-content": "center",
-      color: "var(--text-muted)",
-      "font-size": "0.9rem",
-    }}>
+    <div
+      class="chart-empty"
+      style={{
+        height: "100px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        color: "var(--text-muted)",
+        "font-size": "0.9rem",
+      }}
+    >
       No budget data for this period
     </div>
   );

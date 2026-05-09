@@ -23,7 +23,9 @@ export function handleTagCommands(
 
     case "delete_tag": {
       access.exec(`DELETE FROM transaction_tags WHERE tag_id = ?`, payload.id);
-      events.push(eventStore.insertEvent(opId, "tag_deleted", { id: payload.id }) as SyncServerEvent);
+      events.push(
+        eventStore.insertEvent(opId, "tag_deleted", { id: payload.id }) as SyncServerEvent,
+      );
       break;
     }
   }

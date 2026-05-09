@@ -84,6 +84,8 @@ const DDL = `
     updated_at TEXT NOT NULL,
     last_message_at TEXT NOT NULL,
     archived_at TEXT,
+    forked_from_thread_id TEXT,
+    forked_from_message_id TEXT,
     optimistic INTEGER,
     op_id TEXT
   );
@@ -229,6 +231,15 @@ export function initializeStorage(
 ) {
   log("initialize");
   exec(DDL);
+  {
+    const cols = queryOne<{ sql: string }>(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='threads'`,
+    );
+    if (cols && !cols.sql.includes("forked_from_thread_id")) {
+      exec(`ALTER TABLE threads ADD COLUMN forked_from_thread_id TEXT`);
+      exec(`ALTER TABLE threads ADD COLUMN forked_from_message_id TEXT`);
+    }
+  }
   const version = queryOne<{ value: string }>(
     `SELECT value FROM metadata WHERE key = 'sync_protocol_version'`,
   );

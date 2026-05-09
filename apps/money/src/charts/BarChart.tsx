@@ -133,9 +133,7 @@ export default function BarChart(props: BarChartProps) {
         for (let vi = 0; vi < grp.values.length; vi++) {
           const val = grp.values[vi]!;
           const barHeight = Math.abs(ys(0) - ys(Math.abs(val.value)));
-          const y = val.value >= 0
-            ? ys(0) - yOffset - barHeight
-            : ys(0) + yOffset;
+          const y = val.value >= 0 ? ys(0) - yOffset - barHeight : ys(0) + yOffset;
           result.push({
             key: `${grp.category}-${vi}`,
             x: xs(grp.category)!,
@@ -190,17 +188,35 @@ export default function BarChart(props: BarChartProps) {
       <div class="chart-container">
         {/* Legend */}
         <Show when={legend().length > 0}>
-          <div class="chart-legend" style={{
-            display: "flex", gap: "16px", "justify-content": "center",
-            "margin-bottom": "8px", "flex-wrap": "wrap",
-          }}>
+          <div
+            class="chart-legend"
+            style={{
+              display: "flex",
+              gap: "16px",
+              "justify-content": "center",
+              "margin-bottom": "8px",
+              "flex-wrap": "wrap",
+            }}
+          >
             <For each={legend()}>
               {(item) => (
-                <div style={{ display: "flex", "align-items": "center", gap: "6px", "font-size": "0.8rem" }}>
-                  <span style={{
-                    width: "12px", height: "12px", "border-radius": "2px",
-                    background: item.color, display: "inline-block",
-                  }} />
+                <div
+                  style={{
+                    display: "flex",
+                    "align-items": "center",
+                    gap: "6px",
+                    "font-size": "0.8rem",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      "border-radius": "2px",
+                      background: item.color,
+                      display: "inline-block",
+                    }}
+                  />
                   <span style={{ color: "var(--text-secondary)" }}>{item.label}</span>
                 </div>
               )}
@@ -292,14 +308,17 @@ export default function BarChart(props: BarChartProps) {
 
 function EmptyChart() {
   return (
-    <div class="chart-empty" style={{
-      height: "200px",
-      display: "flex",
-      "align-items": "center",
-      "justify-content": "center",
-      color: "var(--text-muted)",
-      "font-size": "0.9rem",
-    }}>
+    <div
+      class="chart-empty"
+      style={{
+        height: "200px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        color: "var(--text-muted)",
+        "font-size": "0.9rem",
+      }}
+    >
       Insufficient data for chart
     </div>
   );

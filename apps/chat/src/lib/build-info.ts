@@ -1,6 +1,7 @@
-const version = import.meta.env.VITE_APP_VERSION || "0.0.0-dev";
-const commit = import.meta.env.VITE_GIT_SHA || "dev";
-const builtAt = import.meta.env.VITE_BUILD_TIME || "";
+const env = import.meta.env as Record<string, string | undefined> | undefined;
+const version = env?.VITE_APP_VERSION || "0.0.0-dev";
+const commit = env?.VITE_GIT_SHA || "dev";
+const builtAt = env?.VITE_BUILD_TIME || "";
 
 function formatBuiltAt(value: string) {
   if (!value) return "";

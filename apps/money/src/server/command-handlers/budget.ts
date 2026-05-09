@@ -29,20 +29,24 @@ export function handleBudgetCommands(
           amount: payload.amount,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId,
-          amount: payload.amount,
-          carryover: existing.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId,
+            amount: payload.amount,
+            carryover: existing.carryover,
+          }) as SyncServerEvent,
+        );
       } else {
         const row = createBudget({ month, categoryId, amount: payload.amount });
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId,
-          amount: payload.amount,
-          carryover: row.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId,
+            amount: payload.amount,
+            carryover: row.carryover,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, month);
@@ -60,20 +64,24 @@ export function handleBudgetCommands(
           carryover: payload.carryover,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId,
-          amount: existing.amount,
-          carryover: payload.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId,
+            amount: existing.amount,
+            carryover: payload.carryover,
+          }) as SyncServerEvent,
+        );
       } else {
         const row = createBudget({ month, categoryId, carryover: payload.carryover });
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId,
-          amount: 0,
-          carryover: payload.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId,
+            amount: 0,
+            carryover: payload.carryover,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, month);
@@ -88,18 +96,22 @@ export function handleBudgetCommands(
           buffered: payload.amount,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-          month: toMonthInt(payload.month),
-          toBudget: 0,
-          buffered: payload.amount,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "budget_recalculated", {
+            month: toMonthInt(payload.month),
+            toBudget: 0,
+            buffered: payload.amount,
+          }) as SyncServerEvent,
+        );
       } else {
         const row = createBudgetMonth({ monthKey: payload.month, buffered: payload.amount });
-        events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-          month: toMonthInt(payload.month),
-          toBudget: 0,
-          buffered: payload.amount,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "budget_recalculated", {
+            month: toMonthInt(payload.month),
+            toBudget: 0,
+            buffered: payload.amount,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, toMonthInt(payload.month));
@@ -113,10 +125,11 @@ export function handleBudgetCommands(
       const prevMonth = toMonthInt(prevMk);
 
       // Get previous month's budgets
-      const prevBudgets = access.queryAll<{ category_id: string; amount: number; carryover: number }>(
-        `SELECT category_id, amount, carryover FROM budgets WHERE month = ?`,
-        prevMonth,
-      );
+      const prevBudgets = access.queryAll<{
+        category_id: string;
+        amount: number;
+        carryover: number;
+      }>(`SELECT category_id, amount, carryover FROM budgets WHERE month = ?`, prevMonth);
 
       for (const pb of prevBudgets) {
         const existing = access.getBudget(month, String(pb.category_id));
@@ -127,12 +140,14 @@ export function handleBudgetCommands(
             amount: Number(pb.amount),
             carryover: Boolean(pb.carryover),
           });
-          events.push(eventStore.insertEvent(opId, "category_budget_set", {
-            month,
-            categoryId: row.categoryId,
-            amount: row.amount,
-            carryover: row.carryover,
-          }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "category_budget_set", {
+              month,
+              categoryId: row.categoryId,
+              amount: row.amount,
+              carryover: row.carryover,
+            }) as SyncServerEvent,
+          );
         }
       }
 
@@ -167,20 +182,24 @@ export function handleBudgetCommands(
           const avg = Math.round(amounts.reduce((a, b) => a + b, 0) / amounts.length);
           const existing = access.getBudget(month, categoryId);
           if (existing) {
-            events.push(eventStore.insertEvent(opId, "category_budget_set", {
-              month,
-              categoryId,
-              amount: avg,
-              carryover: existing.carryover,
-            }) as SyncServerEvent);
+            events.push(
+              eventStore.insertEvent(opId, "category_budget_set", {
+                month,
+                categoryId,
+                amount: avg,
+                carryover: existing.carryover,
+              }) as SyncServerEvent,
+            );
           } else {
             const row = createBudget({ month, categoryId, amount: avg });
-            events.push(eventStore.insertEvent(opId, "category_budget_set", {
-              month,
-              categoryId,
-              amount: avg,
-              carryover: false,
-            }) as SyncServerEvent);
+            events.push(
+              eventStore.insertEvent(opId, "category_budget_set", {
+                month,
+                categoryId,
+                amount: avg,
+                carryover: false,
+              }) as SyncServerEvent,
+            );
           }
         }
       }
@@ -209,12 +228,14 @@ export function handleBudgetCommands(
         if (amounts.length > 0) {
           const avg = Math.round(amounts.reduce((a, b) => a + b, 0) / amounts.length);
           const existing = access.getBudget(month, categoryId);
-          events.push(eventStore.insertEvent(opId, "category_budget_set", {
-            month,
-            categoryId,
-            amount: avg,
-            carryover: existing?.carryover ?? false,
-          }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "category_budget_set", {
+              month,
+              categoryId,
+              amount: avg,
+              carryover: existing?.carryover ?? false,
+            }) as SyncServerEvent,
+          );
         }
       }
 
@@ -229,12 +250,14 @@ export function handleBudgetCommands(
       const cats = access.queryAll<{ id: string }>("SELECT id FROM categories WHERE hidden = 0");
       for (const cat of cats) {
         const row = createBudget({ month, categoryId: String(cat.id), amount: 0 });
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId: row.categoryId,
-          amount: 0,
-          carryover: false,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId: row.categoryId,
+            amount: 0,
+            carryover: false,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, month);
@@ -270,12 +293,14 @@ export function handleBudgetCommands(
 
           if (amount > 0) {
             const existing = access.getBudget(month, categoryId);
-            events.push(eventStore.insertEvent(opId, "category_budget_set", {
-              month,
-              categoryId,
-              amount,
-              carryover: existing?.carryover ?? false,
-            }) as SyncServerEvent);
+            events.push(
+              eventStore.insertEvent(opId, "category_budget_set", {
+                month,
+                categoryId,
+                amount,
+                carryover: existing?.carryover ?? false,
+              }) as SyncServerEvent,
+            );
           }
         } catch {
           // Ignore parse errors in goal defs
@@ -296,34 +321,40 @@ export function handleBudgetCommands(
       const fromBudget = access.getBudget(month, fromCategoryId);
       const toBudget = access.getBudget(month, toCategoryId);
 
-      const transferAmount = amount ?? (toBudget?.amount ?? 0);
+      const transferAmount = amount ?? toBudget?.amount ?? 0;
 
       // Reduce from category
       if (fromBudget) {
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId: fromCategoryId,
-          amount: Math.max(0, fromBudget.amount - transferAmount),
-          carryover: fromBudget.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId: fromCategoryId,
+            amount: Math.max(0, fromBudget.amount - transferAmount),
+            carryover: fromBudget.carryover,
+          }) as SyncServerEvent,
+        );
       }
 
       // Increase to category
       if (toBudget) {
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId: toCategoryId,
-          amount: toBudget.amount + transferAmount,
-          carryover: toBudget.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId: toCategoryId,
+            amount: toBudget.amount + transferAmount,
+            carryover: toBudget.carryover,
+          }) as SyncServerEvent,
+        );
       } else {
         const row = createBudget({ month, categoryId: toCategoryId, amount: transferAmount });
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId: toCategoryId,
-          amount: transferAmount,
-          carryover: false,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId: toCategoryId,
+            amount: transferAmount,
+            carryover: false,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, month);
@@ -340,19 +371,23 @@ export function handleBudgetCommands(
       const toBudget = access.getBudget(month, toCategoryId);
 
       if (fromBudget && amount <= fromBudget.amount) {
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId: fromCategoryId,
-          amount: fromBudget.amount - amount,
-          carryover: fromBudget.carryover,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId: fromCategoryId,
+            amount: fromBudget.amount - amount,
+            carryover: fromBudget.carryover,
+          }) as SyncServerEvent,
+        );
 
-        events.push(eventStore.insertEvent(opId, "category_budget_set", {
-          month,
-          categoryId: toCategoryId,
-          amount: (toBudget?.amount ?? 0) + amount,
-          carryover: toBudget?.carryover ?? false,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_budget_set", {
+            month,
+            categoryId: toCategoryId,
+            amount: (toBudget?.amount ?? 0) + amount,
+            carryover: toBudget?.carryover ?? false,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, month);
@@ -363,18 +398,22 @@ export function handleBudgetCommands(
       const month = toMonthInt(payload.month);
       const existing = access.getBudgetMonth(payload.month);
       if (existing) {
-        events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-          month,
-          toBudget: 0,
-          buffered: payload.amount,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "budget_recalculated", {
+            month,
+            toBudget: 0,
+            buffered: payload.amount,
+          }) as SyncServerEvent,
+        );
       } else {
         const row = createBudgetMonth({ monthKey: payload.month, buffered: payload.amount });
-        events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-          month,
-          toBudget: 0,
-          buffered: payload.amount,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "budget_recalculated", {
+            month,
+            toBudget: 0,
+            buffered: payload.amount,
+          }) as SyncServerEvent,
+        );
       }
 
       appendBudgetRecalc(events, opId, access, eventStore, month);
@@ -395,20 +434,24 @@ function appendBudgetRecalc(
   const result = computeMonthBudget(access, month);
   if (!result) return;
 
-  events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-    month: result.month,
-    toBudget: result.toBudget,
-    buffered: result.buffered,
-  }) as SyncServerEvent);
+  events.push(
+    eventStore.insertEvent(opId, "budget_recalculated", {
+      month: result.month,
+      toBudget: result.toBudget,
+      buffered: result.buffered,
+    }) as SyncServerEvent,
+  );
 
   for (const cl of result.categoryLeftovers) {
-    events.push(eventStore.insertEvent(opId, "category_leftover_changed", {
-      month: result.month,
-      categoryId: cl.categoryId,
-      leftover: cl.leftover,
-      leftoverPos: cl.leftoverPos,
-      budgeted: cl.budgeted,
-      spent: cl.spent,
-    }) as SyncServerEvent);
+    events.push(
+      eventStore.insertEvent(opId, "category_leftover_changed", {
+        month: result.month,
+        categoryId: cl.categoryId,
+        leftover: cl.leftover,
+        leftoverPos: cl.leftoverPos,
+        budgeted: cl.budgeted,
+        spent: cl.spent,
+      }) as SyncServerEvent,
+    );
   }
 }

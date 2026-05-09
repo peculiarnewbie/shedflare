@@ -61,11 +61,7 @@ export default function Layout(props: RouteSectionProps) {
         <nav class="sidebar-nav">
           <For each={NAV_ITEMS}>
             {(item) => (
-              <A
-                href={item.path}
-                class="nav-item"
-                classList={{ active: isActive(item.path) }}
-              >
+              <A href={item.path} class="nav-item" classList={{ active: isActive(item.path) }}>
                 <span class="nav-icon">{item.icon}</span>
                 <span class="nav-label">{item.label}</span>
               </A>
@@ -78,17 +74,16 @@ export default function Layout(props: RouteSectionProps) {
             <span class="sync-text">{isConnected() ? "Synced" : "Offline"}</span>
           </div>
           <form method="post" action="/api/auth/logout">
-            <button class="btn btn-ghost btn-sm" style="width:100%">Sign out</button>
+            <button class="btn btn-ghost btn-sm" style="width:100%">
+              Sign out
+            </button>
           </form>
         </div>
       </aside>
 
       {/* Mobile top bar */}
       <header class="mobile-top-bar">
-        <button
-          class="btn btn-icon btn-ghost"
-          onClick={() => setShowMobileMenu(!showMobileMenu())}
-        >
+        <button class="btn btn-icon btn-ghost" onClick={() => setShowMobileMenu(!showMobileMenu())}>
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:24px;height:24px">
             <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
           </svg>
@@ -123,9 +118,7 @@ export default function Layout(props: RouteSectionProps) {
       </Show>
 
       {/* Main content */}
-      <main class="main-content">
-        {props.children as any}
-      </main>
+      <main class="main-content">{props.children as any}</main>
 
       {/* Mobile bottom tab bar */}
       <nav class="bottom-tab-bar">

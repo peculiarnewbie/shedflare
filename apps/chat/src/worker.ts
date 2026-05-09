@@ -13,7 +13,11 @@ import { BUILD_INFO } from "./lib/build-info";
 // Re-export Durable Object class so Cloudflare can discover it
 export { SyncEngineDurableObject } from "./server/sync-engine";
 
-type Env = AppEnv & {
+type SecretsStoreBinding = { get(): Promise<string> };
+
+type Env = Omit<AppEnv, "OPENCODE_GO_API_KEY" | "UPLOAD_TOKEN_SECRET"> & {
+  OPENCODE_GO_API_KEY: SecretsStoreBinding;
+  UPLOAD_TOKEN_SECRET: SecretsStoreBinding;
   ASSETS: { fetch(request: Request): Promise<Response> };
 };
 
@@ -41,7 +45,22 @@ function serializeCookie(
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    setRuntimeEnv(env);
+    const raw = env as unknown as Record<string, unknown>;
+    const resolved: Record<string, unknown> = {};
+    for (const key of Object.keys(raw)) {
+      const val = raw[key];
+      if (
+        val &&
+        typeof val === "object" &&
+        "get" in val &&
+        typeof (val as any).get === "function"
+      ) {
+        resolved[key] = await (val as { get(): Promise<string> }).get();
+      } else {
+        resolved[key] = val;
+      }
+    }
+    setRuntimeEnv(resolved);
 
     const withVersionHeader = (response: Response) => {
       const wrapped = new Response(response.body, response);

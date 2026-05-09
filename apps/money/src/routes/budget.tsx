@@ -45,7 +45,7 @@ export default function BudgetPage() {
       const monthInt = y * 100 + m;
       const res = await fetch(`/api/budget/${monthInt}`);
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         setCategories(data.categories ?? []);
         setToBudget(data.toBudget ?? 0);
       }
@@ -107,16 +107,23 @@ export default function BudgetPage() {
       <div class="page-header">
         <h1 class="page-title">Budget</h1>
         <div class="month-nav">
-          <button class="btn btn-icon btn-ghost" onClick={prevMonth}>◀</button>
+          <button class="btn btn-icon btn-ghost" onClick={prevMonth}>
+            ◀
+          </button>
           <span class="month-label">{monthKey()}</span>
-          <button class="btn btn-icon btn-ghost" onClick={nextMonth}>▶</button>
+          <button class="btn btn-icon btn-ghost" onClick={nextMonth}>
+            ▶
+          </button>
         </div>
       </div>
 
       <div class="budget-summary">
         <div class="summary-item">
           <span class="summary-label">To Budget</span>
-          <span class="summary-value" classList={{ positive: toBudget() >= 0, negative: toBudget() < 0 }}>
+          <span
+            class="summary-value"
+            classList={{ positive: toBudget() >= 0, negative: toBudget() < 0 }}
+          >
             {formatCents(toBudget())}
           </span>
         </div>
@@ -152,20 +159,31 @@ export default function BudgetPage() {
                         />
                       </span>
                       <span class="col-spent">{formatCents(cat.spent)}</span>
-                      <span class="col-leftover" classList={{
-                        positive: cat.leftover >= 0,
-                        negative: cat.leftover < 0,
-                      }}>
+                      <span
+                        class="col-leftover"
+                        classList={{
+                          positive: cat.leftover >= 0,
+                          negative: cat.leftover < 0,
+                        }}
+                      >
                         {formatCents(cat.leftover)}
                       </span>
                     </div>
                   )}
                 </For>
                 <div class="budget-row budget-group-total">
-                  <span class="col-category"><strong>Group Total</strong></span>
-                  <span class="col-budgeted"><strong>{formatCents(group.groupBudgeted)}</strong></span>
-                  <span class="col-spent"><strong>{formatCents(group.groupSpent)}</strong></span>
-                  <span class="col-leftover"><strong>{formatCents(group.groupLeftover)}</strong></span>
+                  <span class="col-category">
+                    <strong>Group Total</strong>
+                  </span>
+                  <span class="col-budgeted">
+                    <strong>{formatCents(group.groupBudgeted)}</strong>
+                  </span>
+                  <span class="col-spent">
+                    <strong>{formatCents(group.groupSpent)}</strong>
+                  </span>
+                  <span class="col-leftover">
+                    <strong>{formatCents(group.groupLeftover)}</strong>
+                  </span>
                 </div>
               </div>
             )}

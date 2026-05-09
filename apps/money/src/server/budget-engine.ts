@@ -56,7 +56,12 @@ export function computeMonthBudget(
     `SELECT category_id, amount, carryover FROM budgets WHERE month = ?`,
     month,
   );
-  const budgetMap = new Map(budgetRows.map((b) => [String(b.category_id), { amount: Number(b.amount), carryover: Boolean(b.carryover) }]));
+  const budgetMap = new Map(
+    budgetRows.map((b) => [
+      String(b.category_id),
+      { amount: Number(b.amount), carryover: Boolean(b.carryover) },
+    ]),
+  );
 
   // Get previous month's leftovers for carryover
   const prevMk = prevMonthKey(mk);
@@ -144,9 +149,7 @@ function getMonthLeftovers(
   const boundaries = monthBoundaries(monthKey);
 
   // Get all categories
-  const cats = access.queryAll<{ id: string }>(
-    `SELECT id FROM categories WHERE hidden = 0`,
-  );
+  const cats = access.queryAll<{ id: string }>(`SELECT id FROM categories WHERE hidden = 0`);
 
   // Get spending
   const spending = access.getCategorySpending(month);

@@ -37,22 +37,31 @@ export function handleTransactionCommands(
         const updated = {
           ...existing,
           accountId: payload.fields.accountId ?? existing.accountId,
-          categoryId: payload.fields.categoryId !== undefined ? payload.fields.categoryId : existing.categoryId,
+          categoryId:
+            payload.fields.categoryId !== undefined
+              ? payload.fields.categoryId
+              : existing.categoryId,
           amount: payload.fields.amount ?? existing.amount,
           payee: payload.fields.payee !== undefined ? payload.fields.payee : existing.payee,
           notes: payload.fields.notes !== undefined ? payload.fields.notes : existing.notes,
           date: payload.fields.date ?? existing.date,
           cleared: payload.fields.cleared ?? existing.cleared,
-          importedDescription: payload.fields.importedDescription !== undefined
-            ? payload.fields.importedDescription : existing.importedDescription,
+          importedDescription:
+            payload.fields.importedDescription !== undefined
+              ? payload.fields.importedDescription
+              : existing.importedDescription,
           sortOrder: payload.fields.sortOrder ?? existing.sortOrder,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "transaction_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "transaction_updated", { row: updated }) as SyncServerEvent,
+        );
 
         // Recalculate budget for old and new month
         const oldMonth = toMonthInt(existing.date.slice(0, 7));
-        const newMonth = payload.fields.date ? toMonthInt(payload.fields.date.slice(0, 7)) : oldMonth;
+        const newMonth = payload.fields.date
+          ? toMonthInt(payload.fields.date.slice(0, 7))
+          : oldMonth;
         if (oldMonth !== newMonth) {
           appendBudgetRecalculation(events, opId, access, eventStore, oldMonth);
         }
@@ -64,7 +73,11 @@ export function handleTransactionCommands(
     case "delete_transaction": {
       const existing = access.getTransaction(payload.id);
       if (existing) {
-        events.push(eventStore.insertEvent(opId, "transaction_deleted", { id: payload.id }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "transaction_deleted", {
+            id: payload.id,
+          }) as SyncServerEvent,
+        );
 
         // Recalculate budget for the affected month
         const month = toMonthInt(existing.date.slice(0, 7));
@@ -82,7 +95,11 @@ export function handleTransactionCommands(
           isParent: true,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "transaction_updated", { row: updatedParent }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "transaction_updated", {
+            row: updatedParent,
+          }) as SyncServerEvent,
+        );
 
         // Create child transactions
         for (const childInput of (payload.children as any[]) ?? []) {
@@ -93,7 +110,9 @@ export function handleTransactionCommands(
             isChild: true,
             parentId: parent.id,
           });
-          events.push(eventStore.insertEvent(opId, "transaction_created", { row: child }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "transaction_created", { row: child }) as SyncServerEvent,
+          );
         }
 
         const month = toMonthInt(parent.date.slice(0, 7));
@@ -117,20 +136,24 @@ function appendBudgetRecalculation(
   const result = computeMonthBudget(access, month);
   if (!result) return;
 
-  events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-    month: result.month,
-    toBudget: result.toBudget,
-    buffered: result.buffered,
-  }) as SyncServerEvent);
+  events.push(
+    eventStore.insertEvent(opId, "budget_recalculated", {
+      month: result.month,
+      toBudget: result.toBudget,
+      buffered: result.buffered,
+    }) as SyncServerEvent,
+  );
 
   for (const cl of result.categoryLeftovers) {
-    events.push(eventStore.insertEvent(opId, "category_leftover_changed", {
-      month: result.month,
-      categoryId: cl.categoryId,
-      leftover: cl.leftover,
-      leftoverPos: cl.leftoverPos,
-      budgeted: cl.budgeted,
-      spent: cl.spent,
-    }) as SyncServerEvent);
+    events.push(
+      eventStore.insertEvent(opId, "category_leftover_changed", {
+        month: result.month,
+        categoryId: cl.categoryId,
+        leftover: cl.leftover,
+        leftoverPos: cl.leftoverPos,
+        budgeted: cl.budgeted,
+        spent: cl.spent,
+      }) as SyncServerEvent,
+    );
   }
 }

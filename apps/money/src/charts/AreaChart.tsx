@@ -164,20 +164,33 @@ export default function AreaChart(props: AreaChartProps) {
     <Show when={sorted().length > 1} fallback={<EmptyChart />}>
       <div class="chart-container" style={{ position: "relative" }}>
         {/* Summary overlay */}
-        <div class="chart-summary" style={{
-          position: "absolute", top: "8px", left: "16px", "z-index": 1,
-        }}>
+        <div
+          class="chart-summary"
+          style={{
+            position: "absolute",
+            top: "8px",
+            left: "16px",
+            "z-index": 1,
+          }}
+        >
           <Show when={lastValue()}>
-            <div class="chart-last-value" style={{
-              "font-size": "1.5rem", "font-weight": 700, color: "var(--text)",
-            }}>
+            <div
+              class="chart-last-value"
+              style={{
+                "font-size": "1.5rem",
+                "font-weight": 700,
+                color: "var(--text)",
+              }}
+            >
               {formatChartTooltip(lastValue()?.value ?? 0)}
             </div>
             <Show when={change() !== null}>
-              <div style={{
-                "font-size": "0.85rem",
-                color: (change() ?? 0) >= 0 ? CHART_COLORS.positive : CHART_COLORS.negative,
-              }}>
+              <div
+                style={{
+                  "font-size": "0.85rem",
+                  color: (change() ?? 0) >= 0 ? CHART_COLORS.positive : CHART_COLORS.negative,
+                }}
+              >
                 {(change() ?? 0) >= 0 ? "+" : ""}
                 {formatChartTooltip(change() ?? 0)} this period
               </div>
@@ -242,7 +255,11 @@ export default function AreaChart(props: AreaChartProps) {
           </For>
 
           {/* Zero line (if y-domain crosses zero) */}
-          <Show when={yScale() && yScale()!(0) >= bounds().y && yScale()!(0) <= bounds().y + bounds().height}>
+          <Show
+            when={
+              yScale() && yScale()!(0) >= bounds().y && yScale()!(0) <= bounds().y + bounds().height
+            }
+          >
             <line
               x1={bounds().x}
               x2={bounds().x + bounds().width}
@@ -256,11 +273,7 @@ export default function AreaChart(props: AreaChartProps) {
           </Show>
 
           {/* Area fill */}
-          <path
-            d={areaPath()}
-            fill={fillColor()}
-            fill-opacity="0.15"
-          />
+          <path d={areaPath()} fill={fillColor()} fill-opacity="0.15" />
 
           {/* Line */}
           <path
@@ -291,14 +304,17 @@ export default function AreaChart(props: AreaChartProps) {
 
 function EmptyChart() {
   return (
-    <div class="chart-empty" style={{
-      height: "200px",
-      display: "flex",
-      "align-items": "center",
-      "justify-content": "center",
-      color: "var(--text-muted)",
-      "font-size": "0.9rem",
-    }}>
+    <div
+      class="chart-empty"
+      style={{
+        height: "200px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        color: "var(--text-muted)",
+        "font-size": "0.9rem",
+      }}
+    >
       Not enough data to display chart
     </div>
   );

@@ -35,7 +35,9 @@ export function handleAccountCommands(
           offbudget: payload.offBudget ?? existing.offbudget,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
+        );
       }
       break;
     }
@@ -49,11 +51,15 @@ export function handleAccountCommands(
           lastReconciled: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent);
-        events.push(eventStore.insertEvent(opId, "account_closed", {
-          id: payload.id,
-          closedAt: new Date().toISOString(),
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
+        );
+        events.push(
+          eventStore.insertEvent(opId, "account_closed", {
+            id: payload.id,
+            closedAt: new Date().toISOString(),
+          }) as SyncServerEvent,
+        );
       }
       break;
     }
@@ -66,7 +72,9 @@ export function handleAccountCommands(
           closed: false,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
+        );
       }
       break;
     }
@@ -80,7 +88,9 @@ export function handleAccountCommands(
             sortOrder: i,
             updatedAt: new Date().toISOString(),
           };
-          events.push(eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
+          );
         }
       }
       break;
@@ -88,10 +98,12 @@ export function handleAccountCommands(
 
     case "update_exchange_rate": {
       const now = new Date().toISOString();
-      events.push(eventStore.insertEvent(opId, "exchange_rate_updated", {
-        usdToIdr: payload.usdToIdr,
-        updatedAt: now,
-      }) as SyncServerEvent);
+      events.push(
+        eventStore.insertEvent(opId, "exchange_rate_updated", {
+          usdToIdr: payload.usdToIdr,
+          updatedAt: now,
+        }) as SyncServerEvent,
+      );
       break;
     }
   }

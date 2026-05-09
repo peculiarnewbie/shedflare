@@ -5,6 +5,7 @@ import {
   appConfig,
   loadShedflareConfig,
   physicalName,
+  requireSecretVar,
   requireVar,
 } from "../../infra/alchemy-config.ts";
 
@@ -23,10 +24,17 @@ export const YouTubeStack = Alchemy.Stack(
       migrationsDir: "apps/youtube/src/migrations",
     });
 
+    const secrets = yield* Cloudflare.SecretsStore("ShedflareSecrets");
+
+    const _syncSecret = yield* Cloudflare.StoreSecret("SYNC_SECRET", {
+      store: secrets,
+      value: requireSecretVar("youtube", "SYNC_SECRET"),
+    });
+
     const worker = yield* Cloudflare.Worker("YouTubeWorker", {
       name: physicalName(stage, "youtube"),
       main: "apps/youtube/src/worker.ts",
-      assets: "apps/youtube/dist/client",
+      assets: "apps/youtube/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],
@@ -39,7 +47,6 @@ export const YouTubeStack = Alchemy.Stack(
         AUTH_ISSUER_URL: requireVar(config, "AUTH_ISSUER_URL"),
         AUTH_CLIENT_ID: `shedflare-youtube`,
         OWNER_EMAIL: config.ownerEmail,
-        SYNC_SECRET: requireVar(config, "SYNC_SECRET"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });

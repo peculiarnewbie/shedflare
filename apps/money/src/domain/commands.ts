@@ -1,5 +1,13 @@
 import * as Schema from "effect/Schema";
-import { NullableString, TransactionInput, ScheduleInput, RuleInput, CustomReportInput, ParsedTransaction, type SyncCommandType } from "./types";
+import {
+  NullableString,
+  TransactionInput,
+  ScheduleInput,
+  RuleInput,
+  CustomReportInput,
+  ParsedTransaction,
+  type SyncCommandType,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Each command is defined as an Effect/Schema struct.
@@ -229,15 +237,17 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
   }),
 
   update_dashboard: Schema.Struct({
-    widgets: Schema.Array(Schema.Struct({
-      id: Schema.String,
-      type: Schema.String,
-      x: Schema.Number,
-      y: Schema.Number,
-      width: Schema.Number,
-      height: Schema.Number,
-      meta: Schema.optional(NullableString),
-    })),
+    widgets: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        type: Schema.String,
+        x: Schema.Number,
+        y: Schema.Number,
+        width: Schema.Number,
+        height: Schema.Number,
+        meta: Schema.optional(NullableString),
+      }),
+    ),
   }),
 
   update_exchange_rate: Schema.Struct({
@@ -258,7 +268,11 @@ export interface CommandPayloadMap {
   update_transaction: { id: string; fields: Partial<import("./types").TransactionInput> };
   delete_transaction: { id: string };
   split_transaction: { parentId: string; children: import("./types").TransactionInput[] };
-  import_transactions: { accountId: string; transactions: import("./types").ParsedTransaction[]; isPreview?: boolean };
+  import_transactions: {
+    accountId: string;
+    transactions: import("./types").ParsedTransaction[];
+    isPreview?: boolean;
+  };
   set_budget_amount: { month: number; categoryId: string; amount: number };
   set_budget_carryover: { month: number; categoryId: string; carryover: boolean };
   set_buffer: { month: string; amount: number };
@@ -292,7 +306,17 @@ export interface CommandPayloadMap {
   create_report: { report: import("./types").CustomReportInput };
   update_report: { id: string; fields: import("./types").CustomReportInput };
   delete_report: { id: string };
-  update_dashboard: { widgets: Array<{ id: string; type: string; x: number; y: number; width: number; height: number; meta?: string | null }> };
+  update_dashboard: {
+    widgets: Array<{
+      id: string;
+      type: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      meta?: string | null;
+    }>;
+  };
   update_exchange_rate: { usdToIdr: number };
 }
 

@@ -30,7 +30,9 @@ export function handlePayeeCommands(
           favorite: payload.favorite ?? existing.favorite,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "payee_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "payee_updated", { row: updated }) as SyncServerEvent,
+        );
       }
       break;
     }
@@ -45,14 +47,17 @@ export function handlePayeeCommands(
             // Update transactions that have this payee name
             access.exec(
               `UPDATE transactions SET payee = ? WHERE payee = ?`,
-              target.name, source.name,
+              target.name,
+              source.name,
             );
           }
         }
-        events.push(eventStore.insertEvent(opId, "payees_merged", {
-          targetId: payload.targetId,
-          sourceIds: payload.sourceIds,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "payees_merged", {
+            targetId: payload.targetId,
+            sourceIds: payload.sourceIds,
+          }) as SyncServerEvent,
+        );
       }
       break;
     }

@@ -10,18 +10,20 @@ export function parseJson<T>(data: string): T {
   return JSON.parse(data) as T;
 }
 
-export async function parseJsonRequest(request: Request): Promise<Record<string, unknown> | Response> {
+export async function parseJsonRequest(
+  request: Request,
+): Promise<Record<string, unknown> | Response> {
   try {
-    const body = await request.json() as Record<string, unknown>;
+    const body = (await request.json()) as Record<string, unknown>;
     return body;
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }
 }
 
-export function parseInternalCommandBody(body: Record<string, unknown>): 
-  { opId: string; commandType: string; payload: unknown } | Response 
-{
+export function parseInternalCommandBody(
+  body: Record<string, unknown>,
+): { opId: string; commandType: string; payload: unknown } | Response {
   const { opId, commandType, payload } = body;
   if (typeof opId !== "string" || typeof commandType !== "string" || !payload) {
     return new Response("Invalid command body", { status: 400 });

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as Redacted from "effect/Redacted";
 import { parse } from "jsonc-parser";
 
 export type AppId = "auth" | "chat" | "drive" | "money" | "youtube";
@@ -67,6 +68,16 @@ export function requireVar(config: AppStackConfig, name: string): string {
     );
   }
   return value;
+}
+
+export function requireSecretVar(appId: AppId, name: string): Redacted.Redacted<string> {
+  const fromEnv = process.env[`SHEDFLARE_${appId.toUpperCase()}_${name}`];
+  if (!fromEnv) {
+    throw new Error(
+      `Missing ${appId} secret ${name}. Set SHEDFLARE_${appId.toUpperCase()}_${name}=<value> and re-run.`,
+    );
+  }
+  return Redacted.make(fromEnv);
 }
 
 export function physicalName(stage: string | undefined, ...parts: string[]): string {

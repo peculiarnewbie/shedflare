@@ -100,7 +100,8 @@ async function getSession(request: Request, env: Env): Promise<Session | null> {
       });
       if (payload.mode === "access") {
         const properties = payload.properties as { email?: unknown } | undefined;
-        const email = typeof properties?.email === "string" ? normalizeEmail(properties.email) : null;
+        const email =
+          typeof properties?.email === "string" ? normalizeEmail(properties.email) : null;
         if (email) return { email };
       }
     }
@@ -120,7 +121,7 @@ async function getSession(request: Request, env: Env): Promise<Session | null> {
         }),
       });
       if (response.ok) {
-        const tokens = await response.json() as Record<string, unknown>;
+        const tokens = (await response.json()) as Record<string, unknown>;
         if (
           typeof tokens.access_token === "string" &&
           typeof tokens.refresh_token === "string" &&
@@ -130,7 +131,8 @@ async function getSession(request: Request, env: Env): Promise<Session | null> {
             issuer: env.AUTH_ISSUER_URL,
           });
           const properties = payload.properties as { email?: unknown } | undefined;
-          const email = typeof properties?.email === "string" ? normalizeEmail(properties.email) : null;
+          const email =
+            typeof properties?.email === "string" ? normalizeEmail(properties.email) : null;
           if (email) {
             return {
               email,
@@ -217,7 +219,7 @@ export default {
             status: response.status,
           });
         }
-        const tokens = await response.json() as Record<string, unknown>;
+        const tokens = (await response.json()) as Record<string, unknown>;
         if (
           typeof tokens.access_token !== "string" ||
           typeof tokens.refresh_token !== "string" ||
@@ -232,7 +234,9 @@ export default {
         );
         headers.append(
           "Set-Cookie",
-          serializeCookie("auth_refresh_token", tokens.refresh_token, { maxAge: 60 * 60 * 24 * 365 }),
+          serializeCookie("auth_refresh_token", tokens.refresh_token, {
+            maxAge: 60 * 60 * 24 * 365,
+          }),
         );
         return new Response(null, { status: 302, headers });
       }
@@ -267,10 +271,12 @@ export default {
       }
 
       // All other API routes proxy to DO (accounts, budget, categories, etc.)
-      if (pathname.startsWith("/api/") &&
-          !pathname.startsWith("/api/auth/") &&
-          pathname !== "/api/session" &&
-          pathname !== "/api/upload") {
+      if (
+        pathname.startsWith("/api/") &&
+        !pathname.startsWith("/api/auth/") &&
+        pathname !== "/api/session" &&
+        pathname !== "/api/upload"
+      ) {
         try {
           await requireOwner(request, env);
         } catch {

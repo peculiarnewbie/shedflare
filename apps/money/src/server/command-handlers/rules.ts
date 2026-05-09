@@ -44,12 +44,15 @@ export function handleRuleCommands(
           payload.id,
         );
         const updated = access.queryOne<Record<string, unknown>>(
-          `SELECT * FROM rules WHERE id = ?`, payload.id,
+          `SELECT * FROM rules WHERE id = ?`,
+          payload.id,
         );
         if (updated) {
-          events.push(eventStore.insertEvent(opId, "rule_updated", {
-            row: updated as any,
-          }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "rule_updated", {
+              row: updated as any,
+            }) as SyncServerEvent,
+          );
         }
       }
       break;

@@ -11,6 +11,7 @@ import * as Schema from "effect/Schema";
 export const AppEnvConfig = Schema.Struct({
   OPENCODE_GO_API_KEY: Schema.String,
   OPENCODE_GO_MODEL_ALLOWLIST: Schema.optional(Schema.String),
+  OPENCODE_GO_MODEL_CAPABILITIES: Schema.optional(Schema.String),
   DEFAULT_MODEL_ID: Schema.String,
   APP_PUBLIC_URL: Schema.String,
   AUTH_ISSUER_URL: Schema.optional(Schema.String),

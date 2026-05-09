@@ -19,7 +19,7 @@ export default function PayeesPage() {
     try {
       const res = await fetch("/api/payees");
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         setPayees(data.payees ?? []);
       }
     } catch {
@@ -73,24 +73,14 @@ export default function PayeesPage() {
       <div class="merge-section">
         <h3>Merge Payees</h3>
         <div class="inline-form">
-          <select
-            value={mergeSource()}
-            onChange={(e) => setMergeSource(e.currentTarget.value)}
-          >
+          <select value={mergeSource()} onChange={(e) => setMergeSource(e.currentTarget.value)}>
             <option value="">Source (will be merged)</option>
-            <For each={payees()}>
-              {(p) => <option value={p.id}>{p.name}</option>}
-            </For>
+            <For each={payees()}>{(p) => <option value={p.id}>{p.name}</option>}</For>
           </select>
           <span>→</span>
-          <select
-            value={mergeTarget()}
-            onChange={(e) => setMergeTarget(e.currentTarget.value)}
-          >
+          <select value={mergeTarget()} onChange={(e) => setMergeTarget(e.currentTarget.value)}>
             <option value="">Target (will remain)</option>
-            <For each={payees()}>
-              {(p) => <option value={p.id}>{p.name}</option>}
-            </For>
+            <For each={payees()}>{(p) => <option value={p.id}>{p.name}</option>}</For>
           </select>
           <button
             class="btn btn-secondary btn-sm"
@@ -104,10 +94,7 @@ export default function PayeesPage() {
 
       {/* Payee list */}
       <Show when={!loading()} fallback={<div class="loading">Loading payees...</div>}>
-        <Show
-          when={payees().length > 0}
-          fallback={<div class="empty-state">No payees yet.</div>}
-        >
+        <Show when={payees().length > 0} fallback={<div class="empty-state">No payees yet.</div>}>
           <div class="payee-list">
             <For each={payees()}>
               {(payee) => (

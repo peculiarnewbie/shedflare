@@ -35,18 +35,22 @@ export function handleCategoryCommands(
           groupId: payload.groupId !== undefined ? payload.groupId : existing.groupId,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "category_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_updated", { row: updated }) as SyncServerEvent,
+        );
 
         // Recalculate budget if category was hidden/unhidden (affects totals)
         if (payload.hidden !== undefined && payload.hidden !== existing.hidden) {
           // Emit a budget recalc for the current month
           const now = new Date();
           const month = now.getFullYear() * 100 + (now.getMonth() + 1);
-          events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-            month,
-            toBudget: 0,
-            buffered: 0,
-          }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "budget_recalculated", {
+              month,
+              toBudget: 0,
+              buffered: 0,
+            }) as SyncServerEvent,
+          );
         }
       }
       break;
@@ -55,9 +59,11 @@ export function handleCategoryCommands(
     case "delete_category": {
       const existing = access.getCategory(payload.id);
       if (existing) {
-        events.push(eventStore.insertEvent(opId, "category_updated", {
-          row: { ...existing, hidden: true, updatedAt: new Date().toISOString() },
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_updated", {
+            row: { ...existing, hidden: true, updatedAt: new Date().toISOString() },
+          }) as SyncServerEvent,
+        );
       }
       break;
     }
@@ -67,7 +73,9 @@ export function handleCategoryCommands(
         name: payload.name,
         isIncome: payload.isIncome,
       });
-      events.push(eventStore.insertEvent(opId, "category_group_created", { row }) as SyncServerEvent);
+      events.push(
+        eventStore.insertEvent(opId, "category_group_created", { row }) as SyncServerEvent,
+      );
       break;
     }
 
@@ -80,7 +88,11 @@ export function handleCategoryCommands(
           hidden: payload.hidden ?? existing.hidden,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "category_group_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "category_group_updated", {
+            row: updated,
+          }) as SyncServerEvent,
+        );
       }
       break;
     }
@@ -94,7 +106,9 @@ export function handleCategoryCommands(
             sortOrder: i,
             updatedAt: new Date().toISOString(),
           };
-          events.push(eventStore.insertEvent(opId, "category_updated", { row: updated }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "category_updated", { row: updated }) as SyncServerEvent,
+          );
         }
       }
       break;

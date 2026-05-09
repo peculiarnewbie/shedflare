@@ -31,7 +31,7 @@ export default function AccountsPage() {
     try {
       const res = await fetch("/api/accounts");
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         setAccounts(data.accounts ?? []);
       }
     } catch {
@@ -68,15 +68,9 @@ export default function AccountsPage() {
   }
 
   // Separate on-budget and off-budget accounts
-  const onBudgetAccounts = createMemo(() =>
-    accounts().filter((a) => !a.offbudget && !a.closed),
-  );
-  const offBudgetAccounts = createMemo(() =>
-    accounts().filter((a) => a.offbudget && !a.closed),
-  );
-  const closedAccounts = createMemo(() =>
-    accounts().filter((a) => a.closed),
-  );
+  const onBudgetAccounts = createMemo(() => accounts().filter((a) => !a.offbudget && !a.closed));
+  const offBudgetAccounts = createMemo(() => accounts().filter((a) => a.offbudget && !a.closed));
+  const closedAccounts = createMemo(() => accounts().filter((a) => a.closed));
 
   return (
     <div class="page">
@@ -92,7 +86,9 @@ export default function AccountsPage() {
           <div class="modal" onClick={(e) => e.stopPropagation()}>
             <div class="modal-header">
               <h2>Add Account</h2>
-              <button class="modal-close" onClick={() => setShowAddForm(false)}>✕</button>
+              <button class="modal-close" onClick={() => setShowAddForm(false)}>
+                ✕
+              </button>
             </div>
             <form onSubmit={handleCreate}>
               <div class="form-group">
@@ -126,7 +122,9 @@ export default function AccountsPage() {
                 <label for="off-budget">Off-budget (e.g. credit card, investment)</label>
               </div>
               <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Create</button>
+                <button type="submit" class="btn btn-primary">
+                  Create
+                </button>
               </div>
             </form>
           </div>
@@ -134,9 +132,24 @@ export default function AccountsPage() {
       </Show>
 
       <Show when={!loading()} fallback={<div class="loading">Loading accounts...</div>}>
-        <RenderAccountGroup title="On Budget" accounts={onBudgetAccounts()} navigate={navigate} formatBalance={formatBalance} />
-        <RenderAccountGroup title="Off Budget" accounts={offBudgetAccounts()} navigate={navigate} formatBalance={formatBalance} />
-        <RenderAccountGroup title="Closed" accounts={closedAccounts()} navigate={navigate} formatBalance={formatBalance} />
+        <RenderAccountGroup
+          title="On Budget"
+          accounts={onBudgetAccounts()}
+          navigate={navigate}
+          formatBalance={formatBalance}
+        />
+        <RenderAccountGroup
+          title="Off Budget"
+          accounts={offBudgetAccounts()}
+          navigate={navigate}
+          formatBalance={formatBalance}
+        />
+        <RenderAccountGroup
+          title="Closed"
+          accounts={closedAccounts()}
+          navigate={navigate}
+          formatBalance={formatBalance}
+        />
       </Show>
     </div>
   );
@@ -155,16 +168,11 @@ function RenderAccountGroup(props: {
         <div class="account-list">
           <For each={props.accounts}>
             {(account) => (
-              <div
-                class="account-card"
-                onClick={() => props.navigate(`/accounts/${account.id}`)}
-              >
+              <div class="account-card" onClick={() => props.navigate(`/accounts/${account.id}`)}>
                 <div class="account-info">
                   <div class="account-name">{account.name}</div>
                 </div>
-                <div class="account-balance">
-                  {props.formatBalance(account.balanceCurrent)}
-                </div>
+                <div class="account-balance">{props.formatBalance(account.balanceCurrent)}</div>
               </div>
             )}
           </For>

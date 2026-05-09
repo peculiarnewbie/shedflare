@@ -145,7 +145,7 @@ export function extractAssistantErrorFacts(
         haystack,
       ),
     isImageNotSupported:
-      /image_url.*not.*support|does not support.*(image|vision|multimodal)|unsupported.*image|image.*unsupported|content.*type.*image.*reject|image.*not.*(allowed|permitted|available)|multimodal.*not|not.*multimodal/.test(
+      /image_url.*not.*support|does not support.*(image|vision|multimodal)|unsupported.*image|image.*unsupported|content.*type.*image.*reject|image.*not.*(allowed|permitted|available)|multimodal.*not|not.*multimodal|No endpoints found that support image input/.test(
         haystack,
       ),
     isInvalidRequest:

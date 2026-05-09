@@ -3,7 +3,13 @@
  * These are convenience endpoints; the real-time data path is through WebSocket sync.
  */
 import type { DataAccess } from "./data-access";
-import { computeMonthBudget, computeNetWorthHistory, computeCashFlow, computeSpendingByCategory, computeAgeOfMoney } from "./budget-engine";
+import {
+  computeMonthBudget,
+  computeNetWorthHistory,
+  computeCashFlow,
+  computeSpendingByCategory,
+  computeAgeOfMoney,
+} from "./budget-engine";
 
 export function handleApiRequest(
   pathname: string,
@@ -70,7 +76,8 @@ export function handleApiRequest(
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
        WHERE t.date >= ? AND t.date < ? AND c.is_income = 1 AND t.is_child = 0`,
-      startDate, endDate,
+      startDate,
+      endDate,
     );
 
     const expense = access.queryOne<{ total: number | null }>(
@@ -78,7 +85,8 @@ export function handleApiRequest(
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
        WHERE t.date >= ? AND t.date < ? AND c.is_income = 0 AND t.is_child = 0`,
-      startDate, endDate,
+      startDate,
+      endDate,
     );
 
     return json({
@@ -120,9 +128,7 @@ export function handleApiRequest(
 
   // Schedules
   if (pathname === "/api/schedules" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM schedules ORDER BY name",
-    );
+    const rows = access.queryAll<Record<string, unknown>>("SELECT * FROM schedules ORDER BY name");
     return json({ schedules: rows });
   }
 
@@ -136,9 +142,7 @@ export function handleApiRequest(
 
   // Tags
   if (pathname === "/api/tags" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM tags ORDER BY name",
-    );
+    const rows = access.queryAll<Record<string, unknown>>("SELECT * FROM tags ORDER BY name");
     return json({ tags: rows });
   }
 

@@ -1,4 +1,15 @@
-import type { Account, Transaction, Category, CategoryGroup, Payee, Schedule, Rule, Tag, CustomReport, DashboardWidget } from "../db/schema";
+import type {
+  Account,
+  Transaction,
+  Category,
+  CategoryGroup,
+  Payee,
+  Schedule,
+  Rule,
+  Tag,
+  CustomReport,
+  DashboardWidget,
+} from "../db/schema";
 
 // ---------------------------------------------------------------------------
 // Event payloads (server → client WebSocket events)
@@ -42,7 +53,14 @@ export interface SyncEventPayloadMap {
 
   // Computed value events (triggered by budget engine)
   budget_recalculated: { month: number; toBudget: number; buffered: number };
-  category_leftover_changed: { month: number; categoryId: string; leftover: number; leftoverPos: number; budgeted: number; spent: number };
+  category_leftover_changed: {
+    month: number;
+    categoryId: string;
+    leftover: number;
+    leftoverPos: number;
+    budgeted: number;
+    spent: number;
+  };
   category_budget_set: { month: number; categoryId: string; amount: number; carryover: boolean };
 
   // Sync lifecycle events
@@ -218,7 +236,8 @@ export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | n
         typeof value.protocolVersion !== "string" ||
         typeof value.serverTime !== "string" ||
         typeof value.lastServerSeq !== "number"
-      ) return null;
+      )
+        return null;
       return value as unknown as SyncServerHelloAck;
     case "ack":
       if (
@@ -226,7 +245,8 @@ export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | n
         typeof value.serverSeq !== "number" ||
         typeof value.acceptedAt !== "string" ||
         typeof value.commandType !== "string"
-      ) return null;
+      )
+        return null;
       return value as unknown as SyncServerAck;
     case "reject":
       if (
@@ -234,7 +254,8 @@ export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | n
         typeof value.reason !== "string" ||
         typeof value.code !== "string" ||
         typeof value.retriable !== "boolean"
-      ) return null;
+      )
+        return null;
       return value as unknown as SyncServerReject;
     case "event":
       if (
@@ -242,14 +263,21 @@ export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | n
         typeof value.eventId !== "string" ||
         typeof value.eventType !== "string" ||
         !isRecord(value.payload)
-      ) return null;
+      )
+        return null;
       return value as unknown as SyncServerEvent;
     case "sync_reset": {
       if (typeof value.reason !== "string") return null;
-      if (value.protocolVersion !== undefined && typeof value.protocolVersion !== "string") return null;
+      if (value.protocolVersion !== undefined && typeof value.protocolVersion !== "string")
+        return null;
       const snapshot = decodeSyncSnapshot(value.snapshot);
       if (!snapshot) return null;
-      return { type: "sync_reset", reason: value.reason, protocolVersion: value.protocolVersion, snapshot };
+      return {
+        type: "sync_reset",
+        reason: value.reason,
+        protocolVersion: value.protocolVersion,
+        snapshot,
+      };
     }
     case "pong":
       if (typeof value.at !== "string") return null;

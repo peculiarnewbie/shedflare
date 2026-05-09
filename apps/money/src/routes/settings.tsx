@@ -19,7 +19,7 @@ export default function SettingsPage() {
       // Load current settings
       const ratesRes = await fetch("/api/rates");
       if (ratesRes.ok) {
-        const data = await ratesRes.json() as any;
+        const data = (await ratesRes.json()) as any;
         setExchangeRate(data.usdToIdr ?? 16000);
       }
     } catch {
@@ -47,7 +47,9 @@ export default function SettingsPage() {
         {/* Exchange Rate */}
         <div class="settings-section">
           <h2>Exchange Rate</h2>
-          <p class="settings-description">1 USD to IDR conversion rate for dual-currency display.</p>
+          <p class="settings-description">
+            1 USD to IDR conversion rate for dual-currency display.
+          </p>
           <div class="inline-form">
             <input
               type="number"
@@ -71,14 +73,20 @@ export default function SettingsPage() {
           <div class="settings-options">
             <button
               class="btn"
-              classList={{ "btn-primary": budgetType() === "envelope", "btn-secondary": budgetType() !== "envelope" }}
+              classList={{
+                "btn-primary": budgetType() === "envelope",
+                "btn-secondary": budgetType() !== "envelope",
+              }}
               onClick={() => setBudgetType("envelope")}
             >
               Envelope Budget
             </button>
             <button
               class="btn"
-              classList={{ "btn-primary": budgetType() === "tracking", "btn-secondary": budgetType() !== "tracking" }}
+              classList={{
+                "btn-primary": budgetType() === "tracking",
+                "btn-secondary": budgetType() !== "tracking",
+              }}
               onClick={() => setBudgetType("tracking")}
             >
               Tracking Budget

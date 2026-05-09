@@ -606,10 +606,7 @@ export class SyncEngineDurableObject {
    * Recover a turn that was interrupted by DO eviction. Marks the stale
    * assistant message as failed, creates a new one, and restarts the turn.
    */
-  private async recoverTurn(
-    staleMessageId: string,
-    params: SavedTurnParams,
-  ): Promise<void> {
+  private async recoverTurn(staleMessageId: string, params: SavedTurnParams): Promise<void> {
     const thread = this.access.getThread(params.threadId);
     if (!thread) {
       syncLog("recover_turn_thread_not_found", { threadId: params.threadId });
@@ -651,38 +648,28 @@ export class SyncEngineDurableObject {
     // Mark stale assistant message as failed due to eviction.
     const now = nowIso();
     const recoveredAt = now;
-    const failEvent = this.eventStore.insertEvent(
-      createId("srvop"),
-      "message_failed",
-      {
-        messageId: staleMessageId,
-        errorCode: "interrupted",
-        errorMessage: "Response interrupted (DO restarted) — recovering...",
-        updatedAt: recoveredAt,
-      },
-    );
+    const failEvent = this.eventStore.insertEvent(createId("srvop"), "message_failed", {
+      messageId: staleMessageId,
+      errorCode: "interrupted",
+      errorMessage: "Response interrupted (DO restarted) — recovering...",
+      updatedAt: recoveredAt,
+    });
     this.broadcast(failEvent);
 
     // Update thread head to point to new message.
-    const threadEvent = this.eventStore.insertEvent(
-      createId("srvop"),
-      "thread_upserted",
-      {
-        row: {
-          ...thread,
-          headMessageId: newMessageId,
-          updatedAt: recoveredAt,
-          lastMessageAt: recoveredAt,
-        },
+    const threadEvent = this.eventStore.insertEvent(createId("srvop"), "thread_upserted", {
+      row: {
+        ...thread,
+        headMessageId: newMessageId,
+        updatedAt: recoveredAt,
+        lastMessageAt: recoveredAt,
       },
-    );
+    });
     this.broadcast(threadEvent);
 
-    const msgEvent = this.eventStore.insertEvent(
-      createId("srvop"),
-      "message_upserted",
-      { row: normalized },
-    );
+    const msgEvent = this.eventStore.insertEvent(createId("srvop"), "message_upserted", {
+      row: normalized,
+    });
     this.broadcast(msgEvent);
 
     // Now re-run the turn with the new message.
@@ -693,20 +680,12 @@ export class SyncEngineDurableObject {
     });
 
     try {
-      await this.runRecoveredTurn(
-        params.threadId,
-        userMessage,
-        normalized,
-        params,
-      );
+      await this.runRecoveredTurn(params.threadId, userMessage, normalized, params);
     } finally {
       this.activeTurnMessageIds.delete(newMessageId);
       const refreshed = this.access.getMessage(newMessageId);
       // Only clear params if the message reached a terminal state.
-      if (
-        refreshed &&
-        (refreshed.status === "completed" || refreshed.status === "failed")
-      ) {
+      if (refreshed && (refreshed.status === "completed" || refreshed.status === "failed")) {
         this.clearTurnParams(newMessageId);
         void this.ctx.storage.deleteAlarm().catch(() => {});
       }

@@ -23,6 +23,7 @@ import {
   ExaSearchError,
   extractReasoningTokens,
   extractChatCompletionText,
+  clearEnvOverrideCache,
   filterModelsCatalog,
   normalizeModelsCatalogResponse,
   getSignedAttachmentUrl,
@@ -632,6 +633,8 @@ describe("domain helpers", () => {
 });
 
 describe("server helpers", () => {
+  beforeEach(() => clearEnvOverrideCache());
+
   const env = {
     OPENCODE_GO_API_KEY: "opencode-key",
     OPENCODE_GO_MODEL_ALLOWLIST: "openai/gpt-4.1,anthropic/claude-sonnet-4",
@@ -656,7 +659,7 @@ describe("server helpers", () => {
     expect(normalizeEmail(" Owner@Example.com ")).toBe("owner@example.com");
   });
 
-  it("filters models.dev data to the allowlist", () => {
+  it("filters model catalog data to the allowlist", () => {
     const result = filterModelsCatalog(
       {
         "opencode-go": {
@@ -701,6 +704,69 @@ describe("server helpers", () => {
     );
 
     expect(result.models).toHaveLength(2);
+  });
+
+  it("merges local capability registry with endpoint model", () => {
+    const { OPENCODE_GO_MODEL_ALLOWLIST: _, ...noAllowlist } = env;
+    const result = filterModelsCatalog(
+      {
+        "opencode-go": {
+          id: "opencode-go",
+          api: "https://api.example.com",
+          models: {
+            a: { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
+            b: { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
+            c: { id: "unknown-model", name: "Unknown Model" },
+          },
+        },
+      },
+      noAllowlist as any,
+    );
+
+    expect(result.models).toHaveLength(3);
+    const ids = result.models.map((m) => m.id);
+    expect(ids).toContain("mimo-v2.5-pro");
+    expect(ids).toContain("mimo-v2-omni");
+    expect(ids).toContain("unknown-model");
+
+    const mimoPro = result.models.find((m) => m.id === "mimo-v2.5-pro")!;
+    expect(mimoPro.attachment).toBe(false);
+    expect(mimoPro.reasoning).toBe(true);
+    expect(mimoPro.toolCall).toBe(true);
+    expect(mimoPro.family).toBe("mimo-v2.5-pro");
+
+    const mimoOmni = result.models.find((m) => m.id === "mimo-v2-omni")!;
+    expect(mimoOmni.attachment).toBe(true);
+    expect(mimoOmni.reasoning).toBe(true);
+
+    const unknown = result.models.find((m) => m.id === "unknown-model")!;
+    expect(unknown.attachment).toBe(false);
+    expect(unknown.reasoning).toBe(false);
+    expect(unknown.toolCall).toBe(false);
+    expect(unknown.family).toBe("unknown");
+  });
+
+  it("env var override overrides local registry", () => {
+    const { OPENCODE_GO_MODEL_ALLOWLIST: _, ...noAllowlist } = env;
+    const overrideEnv = {
+      ...noAllowlist,
+      OPENCODE_GO_MODEL_CAPABILITIES: '{"mimo-v2.5-pro":{"attachment":true}}',
+    };
+    const result = filterModelsCatalog(
+      {
+        "opencode-go": {
+          id: "opencode-go",
+          api: "https://api.example.com",
+          models: {
+            a: { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
+          },
+        },
+      },
+      overrideEnv as any,
+    );
+
+    expect(result.models).toHaveLength(1);
+    expect(result.models[0]?.attachment).toBe(true);
   });
 
   it("normalizes OpenAI-style model list to internal catalog shape", () => {

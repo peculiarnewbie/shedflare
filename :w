@@ -1,6 +1,6 @@
 {
-  "domain": "example.com",
-  "ownerEmail": "you@example.com",
+  "domain": "peculiarnewbie.com",
+  "ownerEmail": "peculiarnewbie@gmail.com",
   "apps": {
     "auth": {
       "enabled": true,
@@ -26,6 +26,7 @@
   "vars": {
     "auth": {},
     "chat": {
+      "AUTH_ISSUER_URL": "https://auth.peculiarnewbie.com",
       "DEFAULT_MODEL_ID": "auto",
     },
     "drive": {},

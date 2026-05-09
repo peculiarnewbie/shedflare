@@ -33,7 +33,8 @@ export default function DonutChart(props: DonutChartProps) {
   const { width, height } = dims();
   const radius = Math.min(width, height) / 2 - 10;
   const innerRatio = () => props.innerRadiusRatio ?? 0.6;
-  const innerRadius = () => props.thickness ? Math.max(0, radius - props.thickness) : radius * innerRatio();
+  const innerRadius = () =>
+    props.thickness ? Math.max(0, radius - props.thickness) : radius * innerRatio();
   const cx = width / 2;
   const cy = height / 2 + 10; // shift down slightly to leave room for legend
 
@@ -61,11 +62,10 @@ export default function DonutChart(props: DonutChartProps) {
       .sort(null)(colored());
 
     // Arc generators
-    const arc = d3.arc<d3.PieArcDatum<PieSlice>>()
-      .innerRadius(innerRadius())
-      .outerRadius(radius);
+    const arc = d3.arc<d3.PieArcDatum<PieSlice>>().innerRadius(innerRadius()).outerRadius(radius);
 
-    const hoverArc = d3.arc<d3.PieArcDatum<PieSlice>>()
+    const hoverArc = d3
+      .arc<d3.PieArcDatum<PieSlice>>()
       .innerRadius(innerRadius())
       .outerRadius(radius + 8);
 
@@ -80,9 +80,7 @@ export default function DonutChart(props: DonutChartProps) {
   const total = createMemo(() => d3.sum(colored(), (d) => d.value));
 
   // Legend items (sorted largest first)
-  const legendItems = createMemo(() =>
-    [...colored()].sort((a, b) => b.value - a.value),
-  );
+  const legendItems = createMemo(() => [...colored()].sort((a, b) => b.value - a.value));
 
   // Empty state
   const hasData = () => pie().length > 0;
@@ -107,7 +105,7 @@ export default function DonutChart(props: DonutChartProps) {
                   opacity="0.9"
                 >
                   <title>
-                    {`${arc.data.label}: ${formatChartTooltip(arc.data.value)} (${(arc.data.value / total() * 100).toFixed(1)}%)`}
+                    {`${arc.data.label}: ${formatChartTooltip(arc.data.value)} (${((arc.data.value / total()) * 100).toFixed(1)}%)`}
                   </title>
                 </path>
               </g>
@@ -125,13 +123,7 @@ export default function DonutChart(props: DonutChartProps) {
           >
             {formatChartTooltip(total())}
           </text>
-          <text
-            x={cx}
-            y={cy + 14}
-            text-anchor="middle"
-            fill="var(--text-secondary)"
-            font-size="12"
-          >
+          <text x={cx} y={cy + 14} text-anchor="middle" fill="var(--text-secondary)" font-size="12">
             Total
           </text>
 
@@ -140,31 +132,15 @@ export default function DonutChart(props: DonutChartProps) {
             <g transform={`translate(${cx - Math.min(width * 0.4, 200)}, ${height + 10})`}>
               <For each={legendItems()}>
                 {(item, i) => (
-                  <g transform={`translate(${(i() % 2) * (Math.min(width * 0.4, 200) + 20)}, ${Math.floor(i() / 2) * 22})`}>
-                    <rect
-                      x={0}
-                      y={-7}
-                      width={10}
-                      height={10}
-                      rx={2}
-                      fill={item.color}
-                    />
-                    <text
-                      x={16}
-                      y={2}
-                      fill="var(--text-secondary)"
-                      font-size="11"
-                    >
+                  <g
+                    transform={`translate(${(i() % 2) * (Math.min(width * 0.4, 200) + 20)}, ${Math.floor(i() / 2) * 22})`}
+                  >
+                    <rect x={0} y={-7} width={10} height={10} rx={2} fill={item.color} />
+                    <text x={16} y={2} fill="var(--text-secondary)" font-size="11">
                       {item.label}
                     </text>
-                    <text
-                      x={160}
-                      y={2}
-                      text-anchor="end"
-                      fill="var(--text)"
-                      font-size="11"
-                    >
-                      {(item.value / total() * 100).toFixed(1)}%
+                    <text x={160} y={2} text-anchor="end" fill="var(--text)" font-size="11">
+                      {((item.value / total()) * 100).toFixed(1)}%
                     </text>
                   </g>
                 )}
@@ -179,14 +155,17 @@ export default function DonutChart(props: DonutChartProps) {
 
 function EmptyChart() {
   return (
-    <div class="chart-empty" style={{
-      height: "200px",
-      display: "flex",
-      "align-items": "center",
-      "justify-content": "center",
-      color: "var(--text-muted)",
-      "font-size": "0.9rem",
-    }}>
+    <div
+      class="chart-empty"
+      style={{
+        height: "200px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        color: "var(--text-muted)",
+        "font-size": "0.9rem",
+      }}
+    >
       No spending data for this period
     </div>
   );

@@ -5,7 +5,10 @@
 import { syncLog } from "./sync-utils";
 
 type SqlExecFn = (query: string, ...params: any[]) => void;
-type SqlQueryOneFn = <T extends Record<string, unknown>>(query: string, ...params: any[]) => T | null;
+type SqlQueryOneFn = <T extends Record<string, unknown>>(
+  query: string,
+  ...params: any[]
+) => T | null;
 
 const CREATE_TABLES = [
   // accounts
@@ -245,6 +248,8 @@ export function initializeStorage(
   // Insert default exchange rate
   exec(
     "INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES (?, ?, ?)",
-    "latest", 16000, new Date().toISOString(),
+    "latest",
+    16000,
+    new Date().toISOString(),
   );
 }

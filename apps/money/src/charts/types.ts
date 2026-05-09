@@ -59,8 +59,16 @@ export const CHART_COLORS = {
 /** Categorical palette (auto-generated 10-color scheme) */
 export function categoryColor(index: number): string {
   const palette = [
-    "#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#a78bfa",
-    "#06b6d4", "#f97316", "#84cc16", "#ec4899", "#14b8a6",
+    "#6366f1",
+    "#22c55e",
+    "#f59e0b",
+    "#ef4444",
+    "#a78bfa",
+    "#06b6d4",
+    "#f97316",
+    "#84cc16",
+    "#ec4899",
+    "#14b8a6",
   ];
   return palette[index % palette.length];
 }
@@ -71,7 +79,7 @@ export function categoryColor(index: number): string {
 
 /** A single point on a time-series line/area chart */
 export interface TimeSeriesPoint {
-  date: string;  // ISO date or "YYYY-MM"
+  date: string; // ISO date or "YYYY-MM"
   value: number; // in cents
   label?: string;
 }
@@ -99,7 +107,7 @@ export interface PieSlice {
 export interface BudgetPair {
   category: string;
   budgeted: number; // in cents
-  actual: number;   // in cents (spent)
+  actual: number; // in cents (spent)
   color?: string;
 }
 

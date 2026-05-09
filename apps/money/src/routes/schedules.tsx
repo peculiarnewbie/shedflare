@@ -17,7 +17,7 @@ export default function SchedulesPage() {
     try {
       const res = await fetch("/api/schedules");
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         setSchedules(data.schedules ?? []);
       }
     } catch {
@@ -120,7 +120,9 @@ function ScheduleForm(props: { onClose: () => void }) {
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>New Schedule</h2>
-          <button class="modal-close" onClick={props.onClose}>✕</button>
+          <button class="modal-close" onClick={props.onClose}>
+            ✕
+          </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div class="form-group">
@@ -156,7 +158,9 @@ function ScheduleForm(props: { onClose: () => void }) {
             </select>
           </div>
           <div class="form-actions">
-            <button type="button" class="btn btn-ghost" onClick={props.onClose}>Cancel</button>
+            <button type="button" class="btn btn-ghost" onClick={props.onClose}>
+              Cancel
+            </button>
             <button type="submit" class="btn btn-primary" disabled={saving()}>
               {saving() ? "Saving..." : "Create"}
             </button>

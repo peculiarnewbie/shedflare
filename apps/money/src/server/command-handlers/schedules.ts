@@ -37,18 +37,24 @@ export function handleScheduleCommands(
           active: fields.active ?? existing.active,
           completed: fields.completed ?? existing.completed,
           postsTransaction: fields.postsTransaction ?? existing.postsTransaction,
-          customUpcomingLength: fields.customUpcomingLength !== undefined
-            ? fields.customUpcomingLength : existing.customUpcomingLength,
+          customUpcomingLength:
+            fields.customUpcomingLength !== undefined
+              ? fields.customUpcomingLength
+              : existing.customUpcomingLength,
           nextDate: fields.nextDate !== undefined ? fields.nextDate : existing.nextDate,
           updatedAt: new Date().toISOString(),
         };
-        events.push(eventStore.insertEvent(opId, "schedule_updated", { row: updated }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "schedule_updated", { row: updated }) as SyncServerEvent,
+        );
       }
       break;
     }
 
     case "delete_schedule": {
-      events.push(eventStore.insertEvent(opId, "schedule_deleted", { id: payload.id }) as SyncServerEvent);
+      events.push(
+        eventStore.insertEvent(opId, "schedule_deleted", { id: payload.id }) as SyncServerEvent,
+      );
       break;
     }
 
@@ -65,7 +71,9 @@ export function handleScheduleCommands(
             nextDate: d.toISOString().slice(0, 10),
             updatedAt: new Date().toISOString(),
           };
-          events.push(eventStore.insertEvent(opId, "schedule_updated", { row: updated }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "schedule_updated", { row: updated }) as SyncServerEvent,
+          );
         }
       }
       break;
@@ -83,7 +91,9 @@ export function handleScheduleCommands(
             : undefined,
           date: new Date().toISOString().slice(0, 10),
         });
-        events.push(eventStore.insertEvent(opId, "transaction_created", { row: tx }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "transaction_created", { row: tx }) as SyncServerEvent,
+        );
 
         // Update next date
         if (existing.nextDate) {
@@ -94,7 +104,9 @@ export function handleScheduleCommands(
             nextDate: d.toISOString().slice(0, 10),
             updatedAt: new Date().toISOString(),
           };
-          events.push(eventStore.insertEvent(opId, "schedule_updated", { row: updated }) as SyncServerEvent);
+          events.push(
+            eventStore.insertEvent(opId, "schedule_updated", { row: updated }) as SyncServerEvent,
+          );
         }
       }
       break;

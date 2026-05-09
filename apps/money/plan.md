@@ -45,17 +45,17 @@ Actual Budget has all of this in an MIT-licensed codebase. We port the business 
 
 ## 2. What We Keep from Money
 
-| Feature | Keep? | Notes |
-|---------|-------|-------|
-| **USD/IDR dual currency** | ✅ Yes | Add to the currency system (Actual already supports 46 currencies + custom number formats) |
-| **Exchange rate config** | ✅ Yes | Keep as a user setting |
-| **Monthly navigation** | ✅ Yes | Actual works per-month too |
-| **CSS variable pattern** | ✅ Yes | Reuse existing styling patterns |
-| **Auth (@shedflare/auth)** | ✅ Yes | Already shared across shedflare apps |
-| **D1 database** | ❌ Drop | Fresh start with **Durable Objects SQLite** — blow up old schema |
-| **Simple REST API** | ❌ Drop | Replace with **WebSocket sync + command/event protocol** |
-| **Cents-based amounts** | ✅ Yes | Actual already uses integer amounts for precision |
-| **Old money data** | ❌ Drop | Greenfield — no migration from old D1 schema. Manual re-entry or CSV import |
+| Feature                    | Keep?   | Notes                                                                                      |
+| -------------------------- | ------- | ------------------------------------------------------------------------------------------ |
+| **USD/IDR dual currency**  | ✅ Yes  | Add to the currency system (Actual already supports 46 currencies + custom number formats) |
+| **Exchange rate config**   | ✅ Yes  | Keep as a user setting                                                                     |
+| **Monthly navigation**     | ✅ Yes  | Actual works per-month too                                                                 |
+| **CSS variable pattern**   | ✅ Yes  | Reuse existing styling patterns                                                            |
+| **Auth (@shedflare/auth)** | ✅ Yes  | Already shared across shedflare apps                                                       |
+| **D1 database**            | ❌ Drop | Fresh start with **Durable Objects SQLite** — blow up old schema                           |
+| **Simple REST API**        | ❌ Drop | Replace with **WebSocket sync + command/event protocol**                                   |
+| **Cents-based amounts**    | ✅ Yes  | Actual already uses integer amounts for precision                                          |
+| **Old money data**         | ❌ Drop | Greenfield — no migration from old D1 schema. Manual re-entry or CSV import                |
 
 ## 3. What We Port from Actual Budget
 
@@ -63,53 +63,53 @@ Actual Budget has all of this in an MIT-licensed codebase. We port the business 
 
 ### Core Business Logic (port, not rewrite)
 
-| Module | Source Path | Effort | Complexity |
-|--------|------------|--------|------------|
-| Envelope budget engine | `packages/loot-core/src/server/budget/envelope.ts` | 3-5 days | High — spreadsheet-based reactive cells |
-| Tracking budget engine | `packages/loot-core/src/server/budget/tracking.ts` | 1-2 days | Medium — simpler than envelope |
-| Budget actions | `packages/loot-core/src/server/budget/actions.ts` | 2 days | Medium — copy/set/average/cover |
-| Goal templates | `packages/loot-core/src/server/budget/goal-template.ts` | 2 days | Medium — template DSL parser |
-| Schedule logic | `packages/loot-core/src/server/schedules/app.ts` | 1 day | Low — mostly CRUD + rschedule |
-| Transaction rules | `packages/loot-core/src/server/rules/*.ts` | 2 days | Medium — condition/action engine |
-| CSV import parser | `packages/loot-core/src/server/transactions/import/parse-file.ts` | 0.5 day | Low — pure JS, no platform deps |
-| Transaction merge | `packages/loot-core/src/server/transactions/merge.ts` | 1 day | Medium |
-| Transaction transfer | `packages/loot-core/src/server/transactions/transfer.ts` | 0.5 day | Low |
-| Account sync (no bank) | `packages/loot-core/src/server/accounts/sync.ts` | 1 day | Medium — reconcile logic |
-| Date/months utilities | `packages/loot-core/src/shared/months.ts` | 0.5 day | Low — pure utilities |
-| Currency formatting | `packages/loot-core/src/shared/currencies.ts` | 0.5 day | Low — data only |
-| Reports data | `packages/loot-core/src/server/reports/app.ts` | 2 days | Medium — custom report builder |
-| Dashboard data | `packages/loot-core/src/server/dashboard/app.ts` | 1 day | Medium — widget data |
-| Notes | `packages/loot-core/src/server/notes/app.ts` | 0.5 day | Low |
+| Module                 | Source Path                                                       | Effort   | Complexity                              |
+| ---------------------- | ----------------------------------------------------------------- | -------- | --------------------------------------- |
+| Envelope budget engine | `packages/loot-core/src/server/budget/envelope.ts`                | 3-5 days | High — spreadsheet-based reactive cells |
+| Tracking budget engine | `packages/loot-core/src/server/budget/tracking.ts`                | 1-2 days | Medium — simpler than envelope          |
+| Budget actions         | `packages/loot-core/src/server/budget/actions.ts`                 | 2 days   | Medium — copy/set/average/cover         |
+| Goal templates         | `packages/loot-core/src/server/budget/goal-template.ts`           | 2 days   | Medium — template DSL parser            |
+| Schedule logic         | `packages/loot-core/src/server/schedules/app.ts`                  | 1 day    | Low — mostly CRUD + rschedule           |
+| Transaction rules      | `packages/loot-core/src/server/rules/*.ts`                        | 2 days   | Medium — condition/action engine        |
+| CSV import parser      | `packages/loot-core/src/server/transactions/import/parse-file.ts` | 0.5 day  | Low — pure JS, no platform deps         |
+| Transaction merge      | `packages/loot-core/src/server/transactions/merge.ts`             | 1 day    | Medium                                  |
+| Transaction transfer   | `packages/loot-core/src/server/transactions/transfer.ts`          | 0.5 day  | Low                                     |
+| Account sync (no bank) | `packages/loot-core/src/server/accounts/sync.ts`                  | 1 day    | Medium — reconcile logic                |
+| Date/months utilities  | `packages/loot-core/src/shared/months.ts`                         | 0.5 day  | Low — pure utilities                    |
+| Currency formatting    | `packages/loot-core/src/shared/currencies.ts`                     | 0.5 day  | Low — data only                         |
+| Reports data           | `packages/loot-core/src/server/reports/app.ts`                    | 2 days   | Medium — custom report builder          |
+| Dashboard data         | `packages/loot-core/src/server/dashboard/app.ts`                  | 1 day    | Medium — widget data                    |
+| Notes                  | `packages/loot-core/src/server/notes/app.ts`                      | 0.5 day  | Low                                     |
 
 ### What We DO NOT Port
 
-| Feature | Reason |
-|---------|--------|
-| **CRDT sync** (`@actual-app/crdt`) | Replace with DO + WebSocket command/event protocol |
-| **Sync server** (Express + better-sqlite3) | Replace with Cloudflare Durable Objects |
-| **Bank sync providers** (GoCardless, SimpleFin, PluggyAI) | No equivalent for Indonesia |
-| **OFX/QFX import** | Desktop formats, not relevant for Indonesian web banking |
-| **QIF import** | Legacy Quicken format |
-| **Electron desktop** | Web-only PWA |
-| **`better-sqlite3`** | Replace with DO SQLite via Drizzle |
-| **Spreadsheet reactive engine** | Replace with SQL computed queries broadcast as events |
-| **Redux** | Replace with TanStack DB collections |
-| **React** | Replace with SolidJS |
+| Feature                                                   | Reason                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| **CRDT sync** (`@actual-app/crdt`)                        | Replace with DO + WebSocket command/event protocol       |
+| **Sync server** (Express + better-sqlite3)                | Replace with Cloudflare Durable Objects                  |
+| **Bank sync providers** (GoCardless, SimpleFin, PluggyAI) | No equivalent for Indonesia                              |
+| **OFX/QFX import**                                        | Desktop formats, not relevant for Indonesian web banking |
+| **QIF import**                                            | Legacy Quicken format                                    |
+| **Electron desktop**                                      | Web-only PWA                                             |
+| **`better-sqlite3`**                                      | Replace with DO SQLite via Drizzle                       |
+| **Spreadsheet reactive engine**                           | Replace with SQL computed queries broadcast as events    |
+| **Redux**                                                 | Replace with TanStack DB collections                     |
+| **React**                                                 | Replace with SolidJS                                     |
 
 ## 4. Architecture Overview
 
 ### Design Decisions
 
-| Decision | Value |
-|----------|-------|
-| **Database** | Durable Objects SQLite (`drizzle-orm/durable-sqlite`) |
-| **Schema validation** | `effect/Schema` (not Valibot) for all domain types |
-| **Sync** | Money-specific WebSocket + command/event protocol |
-| **State management** | TanStack DB (client) + DO (server) |
-| **DO naming** | `MoneyBudgetDO` — fixed name, owner-only deployment |
-| **Offline cache** | IndexedDB snapshot (pattern inspired by chat app) |
-| **Multi-user** | No — owner-only, like the rest of shedflare |
-| **R2 bucket** | `shedflare-money-uploads` — money-specific for import files |
+| Decision              | Value                                                       |
+| --------------------- | ----------------------------------------------------------- |
+| **Database**          | Durable Objects SQLite (`drizzle-orm/durable-sqlite`)       |
+| **Schema validation** | `effect/Schema` (not Valibot) for all domain types          |
+| **Sync**              | Money-specific WebSocket + command/event protocol           |
+| **State management**  | TanStack DB (client) + DO (server)                          |
+| **DO naming**         | `MoneyBudgetDO` — fixed name, owner-only deployment         |
+| **Offline cache**     | IndexedDB snapshot (pattern inspired by chat app)           |
+| **Multi-user**        | No — owner-only, like the rest of shedflare                 |
+| **R2 bucket**         | `shedflare-money-uploads` — money-specific for import files |
 
 ### Stack Diagram
 
@@ -437,23 +437,23 @@ Server → Client (WebSocket messages):
 
 ### Client-side Files
 
-| File | Purpose |
-|------|---------|
+| File                       | Purpose                                                             |
+| -------------------------- | ------------------------------------------------------------------- |
 | `src/lib/ws-connection.ts` | WebSocket lifecycle, envelope batching, clientId/cursor persistence |
-| `src/lib/pending-ops.ts` | Optimistic op tracking, dispatch, ack/reject resolution |
-| `src/lib/offline-cache.ts` | IndexedDB snapshot read/write for offline hydration |
-| `src/lib/collections.ts` | TanStack DB collection definitions for all budget tables |
-| `src/lib/sync-adapter.ts` | Event envelope processor — maps events to collection mutations |
+| `src/lib/pending-ops.ts`   | Optimistic op tracking, dispatch, ack/reject resolution             |
+| `src/lib/offline-cache.ts` | IndexedDB snapshot read/write for offline hydration                 |
+| `src/lib/collections.ts`   | TanStack DB collection definitions for all budget tables            |
+| `src/lib/sync-adapter.ts`  | Event envelope processor — maps events to collection mutations      |
 
 ### Server-side Files
 
-| File | Purpose |
-|------|---------|
-| `src/server/sync-utils.ts` | JSON helpers, logging, WebSocket detection |
-| `src/server/data-access.ts` | Raw SQL queries, row inflation, snapshot builder |
-| `src/server/event-store.ts` | Event persistence + materialized state application |
-| `src/server/budget-engine.ts` | Computed budget derivation (leftover, to_budget, etc.) |
-| `src/server/command-handlers/*.ts` | One file per domain aggregate (10 files) |
+| File                               | Purpose                                                |
+| ---------------------------------- | ------------------------------------------------------ |
+| `src/server/sync-utils.ts`         | JSON helpers, logging, WebSocket detection             |
+| `src/server/data-access.ts`        | Raw SQL queries, row inflation, snapshot builder       |
+| `src/server/event-store.ts`        | Event persistence + materialized state application     |
+| `src/server/budget-engine.ts`      | Computed budget derivation (leftover, to_budget, etc.) |
+| `src/server/command-handlers/*.ts` | One file per domain aggregate (10 files)               |
 
 ## 7. Domain Events & Commands
 
@@ -486,73 +486,77 @@ type CategoryId = string & { readonly __brand: "CategoryId" };
 ```typescript
 type CommandMap = {
   // Accounts
-  create_account:       { name: string; offBudget?: boolean; balance?: number }
-  update_account:       { id: string; name?: string; offBudget?: boolean }
-  close_account:        { id: string; transferAccountId?: string }
-  reopen_account:       { id: string }
-  reorder_accounts:     { ids: string[] }
+  create_account: { name: string; offBudget?: boolean; balance?: number };
+  update_account: { id: string; name?: string; offBudget?: boolean };
+  close_account: { id: string; transferAccountId?: string };
+  reopen_account: { id: string };
+  reorder_accounts: { ids: string[] };
 
   // Transactions
-  create_transaction:   { row: TransactionInput }
-  update_transaction:   { id: string; fields: Partial<TransactionInput> }
-  delete_transaction:   { id: string }
-  split_transaction:    { parentId: string; children: TransactionInput[] }
-  import_transactions:  { accountId: string; transactions: ParsedTransaction[]; isPreview?: boolean }
+  create_transaction: { row: TransactionInput };
+  update_transaction: { id: string; fields: Partial<TransactionInput> };
+  delete_transaction: { id: string };
+  split_transaction: { parentId: string; children: TransactionInput[] };
+  import_transactions: {
+    accountId: string;
+    transactions: ParsedTransaction[];
+    isPreview?: boolean;
+  };
 
   // Budget
-  set_budget_amount:    { month: number; categoryId: string; amount: number }
-  set_budget_carryover: { month: number; categoryId: string; carryover: boolean }
-  set_buffer:           { month: string; amount: number }
-  copy_previous_month:  { month: string }
-  set_3month_avg:       { month: string }
-  set_nmonth_avg:       { month: string; months: number }
-  set_zero:             { month: string }
-  apply_goal_templates: { month: string }
-  cover_overspending:   { month: string; from: string; to: string; amount?: number }
-  transfer_budget:      { month: string; from: string; to: string; amount: number }
-  hold_for_next_month:  { month: string; amount: number }
+  set_budget_amount: { month: number; categoryId: string; amount: number };
+  set_budget_carryover: { month: number; categoryId: string; carryover: boolean };
+  set_buffer: { month: string; amount: number };
+  copy_previous_month: { month: string };
+  set_3month_avg: { month: string };
+  set_nmonth_avg: { month: string; months: number };
+  set_zero: { month: string };
+  apply_goal_templates: { month: string };
+  cover_overspending: { month: string; from: string; to: string; amount?: number };
+  transfer_budget: { month: string; from: string; to: string; amount: number };
+  hold_for_next_month: { month: string; amount: number };
 
   // Categories
-  create_category:       { name: string; groupId: string; isIncome?: boolean }
-  update_category:       { id: string; name?: string; hidden?: boolean }
-  delete_category:       { id: string; transferToId?: string }
-  create_category_group: { name: string; isIncome?: boolean }
-  update_category_group: { id: string; name?: string; hidden?: boolean }
-  reorder_categories:   { ids: string[] }
+  create_category: { name: string; groupId: string; isIncome?: boolean };
+  update_category: { id: string; name?: string; hidden?: boolean };
+  delete_category: { id: string; transferToId?: string };
+  create_category_group: { name: string; isIncome?: boolean };
+  update_category_group: { id: string; name?: string; hidden?: boolean };
+  reorder_categories: { ids: string[] };
 
   // Payees
-  create_payee:         { name: string }
-  update_payee:         { id: string; name?: string; favorite?: boolean }
-  merge_payees:         { targetId: string; sourceIds: string[] }
+  create_payee: { name: string };
+  update_payee: { id: string; name?: string; favorite?: boolean };
+  merge_payees: { targetId: string; sourceIds: string[] };
 
   // Schedules
-  create_schedule:      { schedule: ScheduleInput }
-  update_schedule:      { id: string; fields: Partial<ScheduleInput> }
-  delete_schedule:      { id: string }
-  skip_schedule_date:   { id: string }
-  post_schedule_transaction: { scheduleId: string }
+  create_schedule: { schedule: ScheduleInput };
+  update_schedule: { id: string; fields: Partial<ScheduleInput> };
+  delete_schedule: { id: string };
+  skip_schedule_date: { id: string };
+  post_schedule_transaction: { scheduleId: string };
 
   // Rules
-  create_rule:          { rule: RuleInput }
-  update_rule:          { id: string; fields: Partial<RuleInput> }
-  delete_rule:          { id: string }
+  create_rule: { rule: RuleInput };
+  update_rule: { id: string; fields: Partial<RuleInput> };
+  delete_rule: { id: string };
 
   // Tags
-  create_tag:           { name: string; color?: string }
-  delete_tag:           { id: string }
+  create_tag: { name: string; color?: string };
+  delete_tag: { id: string };
 
   // Reports
-  create_report:        { report: CustomReportInput }
-  update_report:        { id: string; fields: Partial<CustomReportInput> }
-  delete_report:        { id: string }
+  create_report: { report: CustomReportInput };
+  update_report: { id: string; fields: Partial<CustomReportInput> };
+  delete_report: { id: string };
 
   // Dashboard
-  update_dashboard:     { widgets: DashboardWidget[] }
+  update_dashboard: { widgets: DashboardWidget[] };
 
   // Currency
-  set_currency:         { code: string; symbol: string; decimalPlaces: number }
-  update_exchange_rate: { usdToIdr: number }
-}
+  set_currency: { code: string; symbol: string; decimalPlaces: number };
+  update_exchange_rate: { usdToIdr: number };
+};
 ```
 
 ### Events (DO → client)
@@ -560,38 +564,43 @@ type CommandMap = {
 ```typescript
 type EventMap = {
   // Row-level events
-  account_created:           { row: Account }
-  account_updated:           { row: Account }
-  account_closed:            { id: string; closedAt: string }
-  transaction_created:       { row: Transaction }
-  transaction_updated:       { row: Transaction }
-  transaction_deleted:       { id: string }
-  transactions_imported:     { accountId: string; added: number; updated: number }
-  category_created:          { row: Category }
-  category_updated:          { row: Category }
-  category_group_created:    { row: CategoryGroup }
-  category_group_updated:    { row: CategoryGroup }
-  payee_created:             { row: Payee }
-  payee_updated:             { row: Payee }
-  payees_merged:             { targetId: string; sourceIds: string[] }
-  schedule_created:          { row: Schedule }
-  schedule_updated:          { row: Schedule }
-  schedule_deleted:          { id: string }
-  rule_created:              { row: Rule }
-  rule_updated:              { row: Rule }
-  tag_created:               { row: Tag }
-  tag_deleted:               { id: string }
+  account_created: { row: Account };
+  account_updated: { row: Account };
+  account_closed: { id: string; closedAt: string };
+  transaction_created: { row: Transaction };
+  transaction_updated: { row: Transaction };
+  transaction_deleted: { id: string };
+  transactions_imported: { accountId: string; added: number; updated: number };
+  category_created: { row: Category };
+  category_updated: { row: Category };
+  category_group_created: { row: CategoryGroup };
+  category_group_updated: { row: CategoryGroup };
+  payee_created: { row: Payee };
+  payee_updated: { row: Payee };
+  payees_merged: { targetId: string; sourceIds: string[] };
+  schedule_created: { row: Schedule };
+  schedule_updated: { row: Schedule };
+  schedule_deleted: { id: string };
+  rule_created: { row: Rule };
+  rule_updated: { row: Rule };
+  tag_created: { row: Tag };
+  tag_deleted: { id: string };
 
   // Computed value events (triggered by budget engine)
-  budget_recalculated:       { month: number; toBudget: number; buffered: number }
-  category_leftover_changed: { month: number; categoryId: string; leftover: number; leftoverPos: number }
-  category_budget_set:       { month: number; categoryId: string; amount: number; carryover: boolean }
+  budget_recalculated: { month: number; toBudget: number; buffered: number };
+  category_leftover_changed: {
+    month: number;
+    categoryId: string;
+    leftover: number;
+    leftoverPos: number;
+  };
+  category_budget_set: { month: number; categoryId: string; amount: number; carryover: boolean };
 
   // Report/dashboard updates
-  report_created:            { row: CustomReport }
-  report_updated:            { row: CustomReport }
-  dashboard_updated:         { widgets: DashboardWidget[] }
-}
+  report_created: { row: CustomReport };
+  report_updated: { row: CustomReport };
+  dashboard_updated: { widgets: DashboardWidget[] };
+};
 ```
 
 ## 8. Budget Engine
@@ -611,12 +620,14 @@ group-budget = sum(child_categories.budget)
 ```
 
 The `pos_leftover` (positive leftover) vs `leftover` distinction is critical:
+
 - **`leftover`**: The actual leftover (can be negative = overspent)
 - **`pos_leftover`**: `max(leftover, 0)` — used when carryover is disabled, so overspending doesn't carry forward
 
 #### When Recalculation Happens
 
 The budget engine recalculates on:
+
 - Transaction created/updated/deleted (amount or category changed)
 - Budget amount set/reset
 - Carryover toggle changed
@@ -624,6 +635,7 @@ The budget engine recalculates on:
 - Buffer amount changed
 
 Recalculation scope:
+
 - Affected month only (where the change occurred)
 - Plus next month if carryover is involved (carryover cascades forward)
 - The DO broadcasts `budget_recalculated` events to all connected clients
@@ -712,14 +724,14 @@ The `apply_goal_templates` command runs the parser and sets budget amounts accor
 
 ### Import Sources (v1)
 
-| Source | Support | Reason |
-|--------|---------|--------|
-| Manual entry | ✅ Full UI | Add transactions one-by-one |
-| CSV upload | ✅ Full support | Bank-exported CSV files |
-| OFX/QFX | ❌ Deferred | Desktop format, not relevant for Indonesia |
-| QIF | ❌ Deferred | Legacy format |
-| OCR from bank statements | ❌ Future | Deferred to later phase |
-| Bank sync API | ❌ Never | No free Indonesia aggregator |
+| Source                   | Support         | Reason                                     |
+| ------------------------ | --------------- | ------------------------------------------ |
+| Manual entry             | ✅ Full UI      | Add transactions one-by-one                |
+| CSV upload               | ✅ Full support | Bank-exported CSV files                    |
+| OFX/QFX                  | ❌ Deferred     | Desktop format, not relevant for Indonesia |
+| QIF                      | ❌ Deferred     | Legacy format                              |
+| OCR from bank statements | ❌ Future       | Deferred to later phase                    |
+| Bank sync API            | ❌ Never        | No free Indonesia aggregator               |
 
 ### Import Pipeline
 
@@ -740,6 +752,7 @@ User drags file on account page →
 ### CSV Format
 
 The CSV parser from Actual handles:
+
 - Configurable delimiter (`,` or `\t`)
 - Header row auto-detection
 - Date format auto-detection
@@ -770,15 +783,15 @@ For Indonesian bank CSV exports (BCA, Mandiri, BRI, BNI), the user maps columns 
 │   ────────   │                                           │
 │   [Sign Out] │                                           │
 └──────────────┴──────────────────────────────────────────┘
-     Mobile:                                                
-     ┌──────────────────────────────────────────┐          
-     │ Top Bar (title + month nav + currency)   │          
-     ├──────────────────────────────────────────┤          
-     │            Main Content                   │          
-     │                                           │          
-     ├──────────────────────────────────────────┤          
-     │ [Dash][Budg][Accnt][Rprts][More▸]        │          
-     └──────────────────────────────────────────┘          
+     Mobile:
+     ┌──────────────────────────────────────────┐
+     │ Top Bar (title + month nav + currency)   │
+     ├──────────────────────────────────────────┤
+     │            Main Content                   │
+     │                                           │
+     ├──────────────────────────────────────────┤
+     │ [Dash][Budg][Accnt][Rprts][More▸]        │
+     └──────────────────────────────────────────┘
 ```
 
 Desktop: sidebar navigation. Mobile: bottom tab bar (5 tabs + overflow menu).
@@ -807,12 +820,14 @@ Desktop: sidebar navigation. Mobile: bottom tab bar (5 tabs + overflow menu).
 ### Chart Library
 
 Custom SolidJS chart components built on top of D3, rather than using Chart.js. This gives:
+
 - Full control over rendering and animation
 - Tighter integration with SolidJS reactive system
 - Smaller bundle (D3 is modular, can tree-shake)
 - Consistent look with the app's design system
 
 Charts for v1:
+
 - **AreaChart** — Net worth over time
 - **BarChart** — Cash flow (income vs expenses by month)
 - **DonutChart** — Spending breakdown by category
@@ -820,25 +835,26 @@ Charts for v1:
 
 ### Key UI Components
 
-| Component | Description |
-|-----------|-------------|
-| `BudgetTable` | Month grid: category rows × budgeted/spent/leftover columns |
-| `BudgetCell` | Inline-editable budget amount input |
-| `BalanceCell` | Shows leftover or overspent amount with color coding |
-| `TransactionsTable` | Filterable, sortable transaction list with inline editing |
-| `AccountPage` | Account header (balance, reconciliation) + transaction list |
-| `ScheduleForm` | Recurrence rule editor using rschedule |
-| `RuleEditor` | Condition/action builder (drag-and-drop rules) |
-| `ManageRules` | List view of all rules with enable/disable |
-| `CategorySelector` | Category dropdown with groups |
-| `PayeeAutocomplete` | Type-ahead payee search + quick-add |
-| `AmountInput` | Currency-aware amount field (handles cents) |
-| `ImportModal` | Drag-and-drop CSV upload with column mapping preview |
-| `Modal` | Reusable modal component (the current app pattern) |
+| Component           | Description                                                 |
+| ------------------- | ----------------------------------------------------------- |
+| `BudgetTable`       | Month grid: category rows × budgeted/spent/leftover columns |
+| `BudgetCell`        | Inline-editable budget amount input                         |
+| `BalanceCell`       | Shows leftover or overspent amount with color coding        |
+| `TransactionsTable` | Filterable, sortable transaction list with inline editing   |
+| `AccountPage`       | Account header (balance, reconciliation) + transaction list |
+| `ScheduleForm`      | Recurrence rule editor using rschedule                      |
+| `RuleEditor`        | Condition/action builder (drag-and-drop rules)              |
+| `ManageRules`       | List view of all rules with enable/disable                  |
+| `CategorySelector`  | Category dropdown with groups                               |
+| `PayeeAutocomplete` | Type-ahead payee search + quick-add                         |
+| `AmountInput`       | Currency-aware amount field (handles cents)                 |
+| `ImportModal`       | Drag-and-drop CSV upload with column mapping preview        |
+| `Modal`             | Reusable modal component (the current app pattern)          |
 
 ## 11. Phased Rollout
 
 ### Phase 1: Infrastructure + Data Model (Week 1)
+
 - [ ] Define all Drizzle schema tables with proper indexes
 - [ ] Write domain types using Effect/Schema (commands, events, row types)
 - [ ] Create `MoneyBudgetDO` class with command/event infrastructure
@@ -850,6 +866,7 @@ Charts for v1:
 - [ ] **Deliverable:** Connect to DO, see empty budget, sync works
 
 ### Phase 2: Accounts + Transactions CRUD (Week 2)
+
 - [ ] Account command handlers (create, update, close, reopen, reorder)
 - [ ] Transaction command handlers (create, update, delete, split)
 - [ ] Account list page (sidebar + mobile)
@@ -860,6 +877,7 @@ Charts for v1:
 - [ ] **Deliverable:** Can add accounts, import transactions, edit them
 
 ### Phase 3: Budget Engine (Weeks 3-4)
+
 - [ ] Implement SQL-based budget computation queries
 - [ ] Budget month grid: categories, budgeted, spent, leftover
 - [ ] Budget actions: set amount, cover overspending, transfer, hold
@@ -871,6 +889,7 @@ Charts for v1:
 - [ ] **Deliverable:** Full envelope budgeting works
 
 ### Phase 4: Rules + Schedules + Tags (Week 5)
+
 - [ ] Port rules engine (conditions + actions) from Actual
 - [ ] Rules UI: condition builder, action list, enable/disable
 - [ ] Auto-categorization on import
@@ -881,6 +900,7 @@ Charts for v1:
 - [ ] **Deliverable:** Automation features work
 
 ### Phase 5: Reports + Dashboard (Week 6)
+
 - [ ] D3-based chart components (AreaChart, BarChart, DonutChart)
 - [ ] Net worth chart (account balances over time)
 - [ ] Cash flow chart (income vs expenses)
@@ -892,6 +912,7 @@ Charts for v1:
 - [ ] **Deliverable:** Full reporting suite
 
 ### Phase 6: Settings + Polish (Week 7)
+
 - [ ] Currency settings (46 currencies from Actual)
 - [ ] Number format settings
 - [ ] Budget type toggle (envelope vs tracking)
@@ -904,6 +925,7 @@ Charts for v1:
 - [ ] **Deliverable:** Feature-complete
 
 ### Phase 7: Tests + Hardening (Week 8)
+
 - [ ] Port Actual Budget's MIT-licensed tests for:
   - Budget engine calculations (envelope + tracking)
   - Rules engine (condition matching + action application)
@@ -968,28 +990,24 @@ Add to `templates-data.ts`:
     "not_found_handling": "none"
   },
   "durable_objects": {
-    "bindings": [
-      { "name": "BUDGET_DO", "class_name": "MoneyBudgetDO" }
-    ]
+    "bindings": [{ "name": "BUDGET_DO", "class_name": "MoneyBudgetDO" }]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["MoneyBudgetDO"] }
-  ],
-  "r2_buckets": [
-    { "binding": "UPLOADS" }
-  ]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MoneyBudgetDO"] }],
+  "r2_buckets": [{ "binding": "UPLOADS" }]
 }
 ```
 
 ### Provisioning
 
 The CLI's `provision.ts` already handles:
+
 - `durable_object` — no-op (DOs are code-defined, not provisioned via API)
 - `r2` — creates bucket via `wrangler r2 bucket create`
 
 ### Doctor Check
 
 Add a `shedflare doctor` check that:
+
 1. Sends a ping to the DO via WebSocket
 2. Verifies a pong response
 3. Checks the DO's event store is operating (get lastServerSeq)
@@ -1001,13 +1019,13 @@ Add a `shedflare doctor` check that:
 
 Actual Budget has MIT-licensed tests in `packages/loot-core/src/`:
 
-| Test Suite | Path | Priority |
-|-----------|------|----------|
-| Budget envelope | `server/budget/*.test.ts` | High — core logic |
-| Rules engine | `server/rules/*.test.ts` | Medium |
-| Transaction merge | `server/transactions/merge.test.ts` | Medium |
-| Schedules | `server/schedules/*.test.ts` | Low — mostly CRUD |
-| Goal templates | `server/budget/goal-template.test.ts` | Low — parser is pure JS |
+| Test Suite        | Path                                  | Priority                |
+| ----------------- | ------------------------------------- | ----------------------- |
+| Budget envelope   | `server/budget/*.test.ts`             | High — core logic       |
+| Rules engine      | `server/rules/*.test.ts`              | Medium                  |
+| Transaction merge | `server/transactions/merge.test.ts`   | Medium                  |
+| Schedules         | `server/schedules/*.test.ts`          | Low — mostly CRUD       |
+| Goal templates    | `server/budget/goal-template.test.ts` | Low — parser is pure JS |
 
 ### Porting Approach
 
@@ -1040,33 +1058,33 @@ Tests without platform deps run as normal Vitest tests.
 
 ### Key Source Files in Actual Budget
 
-| What | Path in Actual | License |
-|------|---------------|---------|
-| Envelope budget | `packages/loot-core/src/server/budget/envelope.ts` | MIT |
-| Tracking budget | `packages/loot-core/src/server/budget/tracking.ts` | MIT |
-| Budget actions | `packages/loot-core/src/server/budget/actions.ts` | MIT |
-| Budget base | `packages/loot-core/src/server/budget/base.ts` | MIT |
-| Goal templates | `packages/loot-core/src/server/budget/goal-template.ts` | MIT |
-| Goal template parser | `packages/loot-core/src/server/budget/goal-template.pegjs` | MIT |
-| Schedules | `packages/loot-core/src/server/schedules/app.ts` | MIT |
-| Rules engine | `packages/loot-core/src/server/rules/*.ts` | MIT |
-| Rules condition parser | `packages/loot-core/src/server/rules/condition.ts` | MIT |
-| Rules action parser | `packages/loot-core/src/server/rules/action.ts` | MIT |
-| CSV import | `packages/loot-core/src/server/transactions/import/parse-file.ts` | MIT |
-| Transaction merge | `packages/loot-core/src/server/transactions/merge.ts` | MIT |
-| Transaction transfer | `packages/loot-core/src/server/transactions/transfer.ts` | MIT |
-| Reports | `packages/loot-core/src/server/reports/app.ts` | MIT |
-| Dashboard | `packages/loot-core/src/server/dashboard/app.ts` | MIT |
-| Account management | `packages/loot-core/src/server/accounts/app.ts` | MIT |
-| Payee management | `packages/loot-core/src/server/payees/app.ts` | MIT |
-| Tags | `packages/loot-core/src/server/tags/app.ts` | MIT |
-| Currency data | `packages/loot-core/src/shared/currencies.ts` | MIT |
-| Month utils | `packages/loot-core/src/shared/months.ts` | MIT |
-| Notes | `packages/loot-core/src/server/notes/app.ts` | MIT |
-| DB schema | `packages/loot-core/src/server/sql/init.sql` | MIT |
-| Filters | `packages/loot-core/src/server/filters/app.ts` | MIT |
-| Budget tests | `packages/loot-core/src/server/budget/*.test.ts` | MIT |
-| Rules tests | `packages/loot-core/src/server/rules/*.test.ts` | MIT |
+| What                   | Path in Actual                                                    | License |
+| ---------------------- | ----------------------------------------------------------------- | ------- |
+| Envelope budget        | `packages/loot-core/src/server/budget/envelope.ts`                | MIT     |
+| Tracking budget        | `packages/loot-core/src/server/budget/tracking.ts`                | MIT     |
+| Budget actions         | `packages/loot-core/src/server/budget/actions.ts`                 | MIT     |
+| Budget base            | `packages/loot-core/src/server/budget/base.ts`                    | MIT     |
+| Goal templates         | `packages/loot-core/src/server/budget/goal-template.ts`           | MIT     |
+| Goal template parser   | `packages/loot-core/src/server/budget/goal-template.pegjs`        | MIT     |
+| Schedules              | `packages/loot-core/src/server/schedules/app.ts`                  | MIT     |
+| Rules engine           | `packages/loot-core/src/server/rules/*.ts`                        | MIT     |
+| Rules condition parser | `packages/loot-core/src/server/rules/condition.ts`                | MIT     |
+| Rules action parser    | `packages/loot-core/src/server/rules/action.ts`                   | MIT     |
+| CSV import             | `packages/loot-core/src/server/transactions/import/parse-file.ts` | MIT     |
+| Transaction merge      | `packages/loot-core/src/server/transactions/merge.ts`             | MIT     |
+| Transaction transfer   | `packages/loot-core/src/server/transactions/transfer.ts`          | MIT     |
+| Reports                | `packages/loot-core/src/server/reports/app.ts`                    | MIT     |
+| Dashboard              | `packages/loot-core/src/server/dashboard/app.ts`                  | MIT     |
+| Account management     | `packages/loot-core/src/server/accounts/app.ts`                   | MIT     |
+| Payee management       | `packages/loot-core/src/server/payees/app.ts`                     | MIT     |
+| Tags                   | `packages/loot-core/src/server/tags/app.ts`                       | MIT     |
+| Currency data          | `packages/loot-core/src/shared/currencies.ts`                     | MIT     |
+| Month utils            | `packages/loot-core/src/shared/months.ts`                         | MIT     |
+| Notes                  | `packages/loot-core/src/server/notes/app.ts`                      | MIT     |
+| DB schema              | `packages/loot-core/src/server/sql/init.sql`                      | MIT     |
+| Filters                | `packages/loot-core/src/server/filters/app.ts`                    | MIT     |
+| Budget tests           | `packages/loot-core/src/server/budget/*.test.ts`                  | MIT     |
+| Rules tests            | `packages/loot-core/src/server/rules/*.test.ts`                   | MIT     |
 
 ### What We Copy vs. What We Port
 

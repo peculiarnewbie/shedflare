@@ -12,7 +12,7 @@ type Env = {
   AUTH_ISSUER_URL: string;
   AUTH_CLIENT_ID: string;
   OWNER_EMAIL: string;
-  SYNC_SECRET: string;
+  SYNC_SECRET: SecretsStoreSecret;
   DEV_AUTH_EMAIL?: string;
 };
 
@@ -169,7 +169,7 @@ function getDb(env: Env) {
 
 async function handleSync(request: Request, env: Env) {
   const secret = request.headers.get("x-sync-secret");
-  if (!secret || secret !== env.SYNC_SECRET) {
+  if (!secret || secret !== (await env.SYNC_SECRET.get())) {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
 

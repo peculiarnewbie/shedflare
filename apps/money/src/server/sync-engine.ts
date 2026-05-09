@@ -5,7 +5,15 @@
  * and broadcasts state changes to all connected clients.
  */
 import { SYNC_PROTOCOL_VERSION, createId, nowIso } from "../domain/types";
-import type { SyncEventPayloadMap, SyncEventType, SyncServerEnvelope, SyncServerAck, SyncServerEvent, SyncClientEnvelope, SyncClientHello } from "../domain/events";
+import type {
+  SyncEventPayloadMap,
+  SyncEventType,
+  SyncServerEnvelope,
+  SyncServerAck,
+  SyncServerEvent,
+  SyncClientEnvelope,
+  SyncClientHello,
+} from "../domain/events";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import * as dbSchema from "../db/schema";
 import { json, parseJson, isWebSocketRequest, syncLog, syncLogError } from "./sync-utils";
@@ -136,7 +144,10 @@ export class MoneyBudgetDO implements DurableObject {
           ctx.storage.sql.exec(query, ...params);
         },
         (query: string, ...params: any[]) => {
-          const rows = ctx.storage.sql.exec(query, ...params).toArray() as Record<string, unknown>[];
+          const rows = ctx.storage.sql.exec(query, ...params).toArray() as Record<
+            string,
+            unknown
+          >[];
           return (rows[0] ?? null) as any;
         },
         (message: string) => syncLog(message),
@@ -165,11 +176,16 @@ export class MoneyBudgetDO implements DurableObject {
 
     // Internal command endpoint (for import file processing)
     if (url.pathname === "/internal/command" && request.method === "POST") {
-      const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (!body || typeof body.opId !== "string" || typeof body.commandType !== "string") {
         return new Response("Invalid command body", { status: 400 });
       }
-      const result = await this.processCommand(body.opId as string, body.commandType as string, body.payload, true);
+      const result = await this.processCommand(
+        body.opId as string,
+        body.commandType as string,
+        body.payload,
+        true,
+      );
       return Response.json({ ok: true, ack: result.ack });
     }
 
@@ -221,12 +237,14 @@ export class MoneyBudgetDO implements DurableObject {
     } catch (error) {
       syncLogError("ws_message_error", error);
       // Send sync_reset on fatal errors to recover client state
-      ws.send(json({
-        type: "sync_reset",
-        reason: error instanceof Error ? error.message : "Unknown error",
-        protocolVersion: SYNC_PROTOCOL_VERSION,
-        snapshot: this.access.getSnapshot(),
-      } satisfies SyncServerEnvelope));
+      ws.send(
+        json({
+          type: "sync_reset",
+          reason: error instanceof Error ? error.message : "Unknown error",
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          snapshot: this.access.getSnapshot(),
+        } satisfies SyncServerEnvelope),
+      );
     }
   }
 
@@ -246,38 +264,45 @@ export class MoneyBudgetDO implements DurableObject {
     });
 
     const lastServerSeq = this.access.getLastServerSeq();
-    ws.send(json({
-      type: "hello_ack",
-      protocolVersion: SYNC_PROTOCOL_VERSION,
-      serverTime: nowIso(),
-      lastServerSeq,
-    } satisfies SyncServerEnvelope));
+    ws.send(
+      json({
+        type: "hello_ack",
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        serverTime: nowIso(),
+        lastServerSeq,
+      } satisfies SyncServerEnvelope),
+    );
 
     // Protocol mismatch → full reset
     if (hello.protocolVersion !== SYNC_PROTOCOL_VERSION) {
       syncLog("sync_reset", { reason: "protocol_mismatch" });
-      ws.send(json({
-        type: "sync_reset",
-        reason: "protocol_mismatch",
-        protocolVersion: SYNC_PROTOCOL_VERSION,
-        snapshot: this.access.getSnapshot(),
-      } satisfies SyncServerEnvelope));
+      ws.send(
+        json({
+          type: "sync_reset",
+          reason: "protocol_mismatch",
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          snapshot: this.access.getSnapshot(),
+        } satisfies SyncServerEnvelope),
+      );
       return;
     }
 
     // Stale cursor or first sync → full snapshot
     const oldestSeq = this.access.getOldestEventSeq();
-    const needsFullSync = hello.lastServerSeq <= 0 || (oldestSeq > 0 && hello.lastServerSeq < oldestSeq);
+    const needsFullSync =
+      hello.lastServerSeq <= 0 || (oldestSeq > 0 && hello.lastServerSeq < oldestSeq);
 
     if (needsFullSync) {
       const reason = hello.lastServerSeq <= 0 ? "initial_sync" : "cursor_stale";
       syncLog("sync_reset", { reason, clientSeq: hello.lastServerSeq, oldestSeq });
-      ws.send(json({
-        type: "sync_reset",
-        reason,
-        protocolVersion: SYNC_PROTOCOL_VERSION,
-        snapshot: this.access.getSnapshot(),
-      } satisfies SyncServerEnvelope));
+      ws.send(
+        json({
+          type: "sync_reset",
+          reason,
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          snapshot: this.access.getSnapshot(),
+        } satisfies SyncServerEnvelope),
+      );
     } else {
       // Replay events since last known seq
       const events = this.access.getEventsAfter(hello.lastServerSeq);
@@ -324,9 +349,10 @@ export class MoneyBudgetDO implements DurableObject {
     const result = this.db.transaction(() => {
       const { events: resultEvents } = handler(opId, payload, this.access, this.eventStore);
 
-      const ackedSeq = resultEvents.length > 0
-        ? resultEvents[resultEvents.length - 1]!.serverSeq
-        : this.access.getLastServerSeq();
+      const ackedSeq =
+        resultEvents.length > 0
+          ? resultEvents[resultEvents.length - 1]!.serverSeq
+          : this.access.getLastServerSeq();
 
       const ack = {
         type: "ack" as const,
@@ -341,7 +367,12 @@ export class MoneyBudgetDO implements DurableObject {
       this.access.exec(
         `INSERT OR REPLACE INTO commands (op_id, type, status, response_json, acked_seq, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        opId, commandType, "accepted", ackJson, ackedSeq, createdAt,
+        opId,
+        commandType,
+        "accepted",
+        ackJson,
+        ackedSeq,
+        createdAt,
       );
 
       return { ack, events: resultEvents };

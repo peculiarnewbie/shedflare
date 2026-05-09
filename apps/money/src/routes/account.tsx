@@ -37,9 +37,9 @@ export default function AccountPage() {
         fetch(`/api/accounts/${accountId}`),
         fetch(`/api/accounts/${accountId}/transactions`),
       ]);
-      if (acctRes.ok) setAccount(await acctRes.json() as any);
+      if (acctRes.ok) setAccount((await acctRes.json()) as any);
       if (txRes.ok) {
-        const data = await txRes.json() as any;
+        const data = (await txRes.json()) as any;
         setTransactions(data.transactions ?? []);
       }
     } catch {
@@ -75,9 +75,7 @@ export default function AccountPage() {
 
       <Show when={account()}>
         <div class="account-header">
-          <div class="account-balance-large">
-            {formatCents(account().balanceCurrent ?? 0)}
-          </div>
+          <div class="account-balance-large">{formatCents(account().balanceCurrent ?? 0)}</div>
         </div>
       </Show>
 
@@ -104,14 +102,20 @@ export default function AccountPage() {
                   <span class="tx-col-date">{tx.date}</span>
                   <span class="tx-col-payee">{tx.payee ?? "—"}</span>
                   <span class="tx-col-category">{tx.categoryName ?? "Uncategorized"}</span>
-                  <span class="tx-col-amount" classList={{
-                    positive: (tx.amount ?? 0) > 0,
-                    negative: (tx.amount ?? 0) < 0,
-                  }}>
+                  <span
+                    class="tx-col-amount"
+                    classList={{
+                      positive: (tx.amount ?? 0) > 0,
+                      negative: (tx.amount ?? 0) < 0,
+                    }}
+                  >
                     {formatCents(tx.amount ?? 0)}
                   </span>
                   <span class="tx-col-actions">
-                    <button class="btn btn-icon btn-ghost btn-xs" onClick={() => handleDelete(tx.id)}>
+                    <button
+                      class="btn btn-icon btn-ghost btn-xs"
+                      onClick={() => handleDelete(tx.id)}
+                    >
                       🗑️
                     </button>
                   </span>
@@ -169,7 +173,9 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>Import CSV</h2>
-          <button class="modal-close" onClick={props.onClose}>✕</button>
+          <button class="modal-close" onClick={props.onClose}>
+            ✕
+          </button>
         </div>
         <div class="modal-body">
           <p>Drag and drop a CSV file from your bank, or click to select.</p>
@@ -179,7 +185,9 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
             onChange={(e) => setFile(e.currentTarget.files?.[0] ?? null)}
           />
           <Show when={file()}>
-            <p class="file-info">{file()?.name} ({(file()?.size ?? 0 / 1024).toFixed(1)} KB)</p>
+            <p class="file-info">
+              {file()?.name} ({(file()?.size ?? 0 / 1024).toFixed(1)} KB)
+            </p>
           </Show>
           <Show when={result()}>
             <div class="import-result">
@@ -193,12 +201,10 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
           </Show>
         </div>
         <div class="form-actions">
-          <button class="btn btn-ghost" onClick={props.onClose}>Cancel</button>
-          <button
-            class="btn btn-primary"
-            onClick={handleImport}
-            disabled={!file() || importing()}
-          >
+          <button class="btn btn-ghost" onClick={props.onClose}>
+            Cancel
+          </button>
+          <button class="btn btn-primary" onClick={handleImport} disabled={!file() || importing()}>
             {importing() ? "Importing..." : "Import"}
           </button>
         </div>

@@ -1,11 +1,11 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import * as Redacted from "effect/Redacted";
 import {
   appConfig,
   loadShedflareConfig,
   physicalName,
+  requireSecretVar,
   requireVar,
 } from "../../infra/alchemy-config.ts";
 
@@ -36,10 +36,22 @@ export const ChatStack = Alchemy.Stack(
     // Or add it to the Worker's wrangler.jsonc after generation:
     //   "browser": { "binding": "BROWSER" }
 
+    const secrets = yield* Cloudflare.SecretsStore("ShedflareSecrets");
+
+    const _opencodeGoApiKey = yield* Cloudflare.StoreSecret("OPENCODE_GO_API_KEY", {
+      store: secrets,
+      value: requireSecretVar("chat", "OPENCODE_GO_API_KEY"),
+    });
+
+    const _uploadTokenSecret = yield* Cloudflare.StoreSecret("UPLOAD_TOKEN_SECRET", {
+      store: secrets,
+      value: requireSecretVar("chat", "UPLOAD_TOKEN_SECRET"),
+    });
+
     const worker = yield* Cloudflare.Worker("ChatWorker", {
       name: physicalName(stage, "chat"),
       main: "apps/chat/src/worker.ts",
-      assets: "apps/chat/dist/client",
+      assets: "apps/chat/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],
@@ -54,8 +66,6 @@ export const ChatStack = Alchemy.Stack(
         AUTH_CLIENT_ID: `shedflare-chat`,
         OWNER_EMAIL: config.ownerEmail,
         DEFAULT_MODEL_ID: requireVar(config, "DEFAULT_MODEL_ID"),
-        OPENCODE_GO_API_KEY: Redacted.make(requireVar(config, "OPENCODE_GO_API_KEY")),
-        UPLOAD_TOKEN_SECRET: Redacted.make(requireVar(config, "UPLOAD_TOKEN_SECRET")),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });

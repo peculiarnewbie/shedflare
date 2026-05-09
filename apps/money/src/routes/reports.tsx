@@ -9,11 +9,26 @@ import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts"
 type ReportId = "net-worth" | "cash-flow" | "spending" | "budget-analysis" | "age-of-money";
 
 const REPORTS: Array<{ id: ReportId; label: string; icon: string; description: string }> = [
-  { id: "net-worth", label: "Net Worth", icon: "📈", description: "Total assets minus liabilities over time" },
+  {
+    id: "net-worth",
+    label: "Net Worth",
+    icon: "📈",
+    description: "Total assets minus liabilities over time",
+  },
   { id: "cash-flow", label: "Cash Flow", icon: "💵", description: "Monthly income vs expenses" },
   { id: "spending", label: "Spending", icon: "🍩", description: "Spending breakdown by category" },
-  { id: "budget-analysis", label: "Budget vs Actual", icon: "📊", description: "Budgeted vs actual spending per category" },
-  { id: "age-of-money", label: "Age of Money", icon: "⏰", description: "How many days your money lasts" },
+  {
+    id: "budget-analysis",
+    label: "Budget vs Actual",
+    icon: "📊",
+    description: "Budgeted vs actual spending per category",
+  },
+  {
+    id: "age-of-money",
+    label: "Age of Money",
+    icon: "⏰",
+    description: "How many days your money lasts",
+  },
 ];
 
 export default function ReportsPage() {
@@ -39,7 +54,7 @@ export default function ReportsPage() {
         case "net-worth": {
           const res = await fetch("/api/reports/net-worth");
           if (res.ok) {
-            const data = (await res.json() as any).points ?? [];
+            const data = ((await res.json()) as any).points ?? [];
             setNetWorthData(data as TimeSeriesPoint[]);
           }
           break;
@@ -47,7 +62,7 @@ export default function ReportsPage() {
         case "cash-flow": {
           const res = await fetch("/api/reports/cash-flow");
           if (res.ok) {
-            const data = (await res.json() as any).months ?? [];
+            const data = ((await res.json()) as any).months ?? [];
             const groups: BarGroup[] = data.map((m: any) => ({
               category: m.month,
               values: [
@@ -62,7 +77,7 @@ export default function ReportsPage() {
         case "spending": {
           const res = await fetch("/api/reports/spending");
           if (res.ok) {
-            const data = (await res.json() as any).categories ?? [];
+            const data = ((await res.json()) as any).categories ?? [];
             setSpendingData(data as PieSlice[]);
           }
           break;
@@ -70,7 +85,7 @@ export default function ReportsPage() {
         case "budget-analysis": {
           const res = await fetch("/api/reports/budget-analysis");
           if (res.ok) {
-            const data = (await res.json() as any).categories ?? [];
+            const data = ((await res.json()) as any).categories ?? [];
             setBudgetData(data as BudgetPair[]);
           }
           break;
@@ -78,7 +93,7 @@ export default function ReportsPage() {
         case "age-of-money": {
           const res = await fetch("/api/reports/age-of-money");
           if (res.ok) {
-            const data = await res.json() as any;
+            const data = (await res.json()) as any;
             setAgeOfMoney(data.days ?? null);
           }
           break;
@@ -126,7 +141,9 @@ export default function ReportsPage() {
           <Show when={activeReport() === "net-worth"}>
             <div class="report-card">
               <h2 class="report-title">Net Worth Over Time</h2>
-              <p class="report-description">Your total assets minus liabilities, tracked monthly.</p>
+              <p class="report-description">
+                Your total assets minus liabilities, tracked monthly.
+              </p>
               <AreaChart
                 data={netWorthData()}
                 dimensions={{ width: 700, height: 300, marginBottom: 40 }}
@@ -151,10 +168,7 @@ export default function ReportsPage() {
             <div class="report-card">
               <h2 class="report-title">Spending by Category</h2>
               <p class="report-description">Where your money went this period.</p>
-              <DonutChart
-                slices={spendingData()}
-                dimensions={{ width: 500, height: 350 }}
-              />
+              <DonutChart slices={spendingData()} dimensions={{ width: 500, height: 350 }} />
             </div>
           </Show>
 
@@ -162,10 +176,7 @@ export default function ReportsPage() {
             <div class="report-card">
               <h2 class="report-title">Budget vs Actuals</h2>
               <p class="report-description">How each category compares to its budget.</p>
-              <BudgetBar
-                data={budgetData()}
-                maxCategories={15}
-              />
+              <BudgetBar data={budgetData()} maxCategories={15} />
             </div>
           </Show>
 
@@ -178,12 +189,21 @@ export default function ReportsPage() {
               <div class="age-display" style={{ padding: "32px" }}>
                 <Show
                   when={ageOfMoney() !== null}
-                  fallback={<span style={{ color: "var(--text-muted)" }}>Not enough data to calculate</span>}
+                  fallback={
+                    <span style={{ color: "var(--text-muted)" }}>Not enough data to calculate</span>
+                  }
                 >
                   <span class="age-number" style={{ "font-size": "3rem", "font-weight": 700 }}>
                     {ageOfMoney()}
                   </span>
-                  <span class="age-unit" style={{ "font-size": "1rem", "color": "var(--text-secondary)", "margin-left": "8px" }}>
+                  <span
+                    class="age-unit"
+                    style={{
+                      "font-size": "1rem",
+                      color: "var(--text-secondary)",
+                      "margin-left": "8px",
+                    }}
+                  >
                     days
                   </span>
                 </Show>

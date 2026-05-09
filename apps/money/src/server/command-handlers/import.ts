@@ -45,9 +45,7 @@ export function handleImportCommands(
   );
 
   // Load all payees for matching
-  const allPayees = access.queryAll<{ id: string; name: string }>(
-    `SELECT id, name FROM payees`,
-  );
+  const allPayees = access.queryAll<{ id: string; name: string }>(`SELECT id, name FROM payees`);
   const payeeByName = new Map(allPayees.map((p) => [p.name.toLowerCase(), p.id]));
 
   for (const txInput of transactions) {
@@ -65,20 +63,29 @@ export function handleImportCommands(
             // Simple condition matching: if any condition matches payee or description
             const matches = conditions.some((cond: any) => {
               if (!cond || !cond.field) return false;
-              const fieldValue = cond.field === "payee" ? payeeName
-                : cond.field === "imported_description" ? txInput.importedDescription
-                : "";
+              const fieldValue =
+                cond.field === "payee"
+                  ? payeeName
+                  : cond.field === "imported_description"
+                    ? txInput.importedDescription
+                    : "";
               const op = cond.op ?? "is";
               const value = String(cond.value ?? "").toLowerCase();
               const fv = String(fieldValue ?? "").toLowerCase();
 
               switch (op) {
-                case "is": return fv === value;
-                case "contains": return fv.includes(value);
-                case "matches": return new RegExp(value).test(fv);
-                case "isnot": return fv !== value;
-                case "oneOf": return (cond.value as string[] ?? []).includes(fv);
-                default: return false;
+                case "is":
+                  return fv === value;
+                case "contains":
+                  return fv.includes(value);
+                case "matches":
+                  return new RegExp(value).test(fv);
+                case "isnot":
+                  return fv !== value;
+                case "oneOf":
+                  return ((cond.value as string[]) ?? []).includes(fv);
+                default:
+                  return false;
               }
             });
 
@@ -120,14 +127,20 @@ export function handleImportCommands(
       if (existing) {
         // Update existing
         row.id = existing.id;
-        events.push(eventStore.insertEvent(opId, "transaction_updated", { row }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "transaction_updated", { row }) as SyncServerEvent,
+        );
         updated++;
       } else {
-        events.push(eventStore.insertEvent(opId, "transaction_created", { row }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "transaction_created", { row }) as SyncServerEvent,
+        );
         added++;
       }
     } catch (err) {
-      errors.push(`Failed to import transaction: ${err instanceof Error ? err.message : String(err)}`);
+      errors.push(
+        `Failed to import transaction: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -138,21 +151,25 @@ export function handleImportCommands(
       const month = toMonthInt(firstTx.date.slice(0, 7));
       const result = computeMonthBudget(access, month);
       if (result) {
-        events.push(eventStore.insertEvent(opId, "budget_recalculated", {
-          month: result.month,
-          toBudget: result.toBudget,
-          buffered: result.buffered,
-        }) as SyncServerEvent);
+        events.push(
+          eventStore.insertEvent(opId, "budget_recalculated", {
+            month: result.month,
+            toBudget: result.toBudget,
+            buffered: result.buffered,
+          }) as SyncServerEvent,
+        );
       }
     }
   }
 
-  events.push(eventStore.insertEvent(opId, "transactions_imported", {
-    accountId,
-    added,
-    updated,
-    errors,
-  }) as SyncServerEvent);
+  events.push(
+    eventStore.insertEvent(opId, "transactions_imported", {
+      accountId,
+      added,
+      updated,
+      errors,
+    }) as SyncServerEvent,
+  );
 
   return { events };
 }

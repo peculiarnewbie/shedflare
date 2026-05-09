@@ -11,6 +11,7 @@ export {
 } from "./chat-completions-adapter.js";
 export { chat } from "@tanstack/ai";
 import { createStructuredLogger, decodeAppEnv, type AppEnv } from "#/effect";
+import { MODEL_CAPABILITY_REGISTRY, type ModelCapabilitySource } from "#/server/model-capabilities";
 import {
   createLocalJWKSet,
   createRemoteJWKSet,
@@ -495,7 +496,7 @@ export async function sendInternalSyncCommand<T extends SyncCommandType>(
 }
 
 export const OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
-const MODELS_CATALOG_URL = "https://models.dev/api.json";
+const MODELS_CATALOG_URL = `${OPENCODE_GO_BASE_URL}/models`;
 
 export async function purgeModelsCatalogCache(cache: Cache) {
   await cache.delete(new Request(MODELS_CATALOG_URL));
@@ -548,6 +549,25 @@ export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
   return catalog;
 }
 
+let envOverrideCache: Record<string, ModelCapabilitySource> | null = null;
+
+function parseEnvCapabilityOverrides(
+  raw: string | undefined | null,
+): Record<string, ModelCapabilitySource> {
+  if (!raw) return {};
+  if (envOverrideCache) return envOverrideCache;
+  try {
+    envOverrideCache = JSON.parse(raw) as Record<string, ModelCapabilitySource>;
+  } catch {
+    envOverrideCache = {};
+  }
+  return envOverrideCache;
+}
+
+export function clearEnvOverrideCache() {
+  envOverrideCache = null;
+}
+
 export function filterModelsCatalog(raw: any, env: AppEnv) {
   const provider = raw["opencode-go"] ?? {};
   const allowed = new Set(
@@ -556,28 +576,42 @@ export function filterModelsCatalog(raw: any, env: AppEnv) {
       .map((item) => item.trim())
       .filter(Boolean),
   );
+  const overrides = parseEnvCapabilityOverrides(env.OPENCODE_GO_MODEL_CAPABILITIES);
   const models = Object.values<any>(provider.models ?? {})
     .filter((model) => allowed.size === 0 || allowed.has(model.id))
-    .map((model) => ({
-      id: model.id,
-      name: model.name ?? model.id,
-      attachment: !!model.attachment || model.modalities?.input?.includes("image"),
-      reasoning:
-        !!model.reasoning ||
-        (model.interleaved &&
-          typeof model.interleaved === "object" &&
-          model.interleaved.field === "reasoning_content"),
-      toolCall: !!model.tool_call,
-      interleaved:
-        model.interleaved && typeof model.interleaved === "object"
-          ? {
-              field: typeof model.interleaved.field === "string" ? model.interleaved.field : null,
-            }
-          : null,
-      context: model.limit?.context ?? null,
-      output: model.limit?.output ?? null,
-      family: model.family ?? "unknown",
-    }))
+    .map((model) => {
+      const registry = MODEL_CAPABILITY_REGISTRY[model.id] ?? {};
+      const override = overrides[model.id] ?? {};
+      const merged: Record<string, any> = {
+        ...model,
+        ...registry,
+        ...override,
+        id: model.id,
+        name: model.name ?? model.id,
+      };
+      return {
+        id: model.id,
+        name: model.name ?? model.id,
+        attachment: !!(merged.attachment || merged.modalities?.input?.includes("image")),
+        reasoning: !!(
+          merged.reasoning ||
+          (merged.interleaved &&
+            typeof merged.interleaved === "object" &&
+            merged.interleaved.field === "reasoning_content")
+        ),
+        toolCall: !!merged.tool_call,
+        interleaved:
+          merged.interleaved && typeof merged.interleaved === "object"
+            ? {
+                field:
+                  typeof merged.interleaved.field === "string" ? merged.interleaved.field : null,
+              }
+            : null,
+        context: merged.limit?.context ?? null,
+        output: merged.limit?.output ?? null,
+        family: merged.family ?? "unknown",
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
   return {
     provider: provider.id ?? "opencode-go",

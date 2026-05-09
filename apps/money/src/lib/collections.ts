@@ -4,8 +4,19 @@
  */
 import { createCollection, type ChangeMessageOrDeleteKeyMessage } from "@tanstack/db";
 import type {
-  Account, Transaction, Category, CategoryGroup, Payee,
-  Schedule, Rule, Tag, CustomReport, DashboardWidget, Budget, BudgetMonth, ExchangeRate,
+  Account,
+  Transaction,
+  Category,
+  CategoryGroup,
+  Payee,
+  Schedule,
+  Rule,
+  Tag,
+  CustomReport,
+  DashboardWidget,
+  Budget,
+  BudgetMonth,
+  ExchangeRate,
 } from "../db/schema";
 
 // ---------------------------------------------------------------------------
@@ -40,7 +51,9 @@ export type CollectionId = (typeof COLLECTION_IDS)[number];
 
 const channels = new Map<string, SyncWriter<any, any>>();
 
-export function getSyncWriter<T extends object>(collectionId: string): SyncWriter<T, string> | undefined {
+export function getSyncWriter<T extends object>(
+  collectionId: string,
+): SyncWriter<T, string> | undefined {
   return channels.get(collectionId);
 }
 
@@ -85,18 +98,36 @@ function createSyncedCollection<T extends object>(id: string, getKey: (item: T) 
 // ---------------------------------------------------------------------------
 
 export const accountsCollection = createSyncedCollection<Account>("accounts", (a) => a.id);
-export const transactionsCollection = createSyncedCollection<Transaction>("transactions", (t) => t.id);
+export const transactionsCollection = createSyncedCollection<Transaction>(
+  "transactions",
+  (t) => t.id,
+);
 export const categoriesCollection = createSyncedCollection<Category>("categories", (c) => c.id);
-export const categoryGroupsCollection = createSyncedCollection<CategoryGroup>("categoryGroups", (cg) => cg.id);
+export const categoryGroupsCollection = createSyncedCollection<CategoryGroup>(
+  "categoryGroups",
+  (cg) => cg.id,
+);
 export const budgetsCollection = createSyncedCollection<Budget>("budgets", (b) => b.id);
-export const budgetMonthsCollection = createSyncedCollection<BudgetMonth>("budgetMonths", (bm) => bm.id);
+export const budgetMonthsCollection = createSyncedCollection<BudgetMonth>(
+  "budgetMonths",
+  (bm) => bm.id,
+);
 export const payeesCollection = createSyncedCollection<Payee>("payees", (p) => p.id);
 export const schedulesCollection = createSyncedCollection<Schedule>("schedules", (s) => s.id);
 export const rulesCollection = createSyncedCollection<Rule>("rules", (r) => r.id);
 export const tagsCollection = createSyncedCollection<Tag>("tags", (t) => t.id);
-export const customReportsCollection = createSyncedCollection<CustomReport>("customReports", (cr) => cr.id);
-export const dashboardWidgetsCollection = createSyncedCollection<DashboardWidget>("dashboardWidgets", (dw) => dw.id);
-export const exchangeRatesCollection = createSyncedCollection<ExchangeRate>("exchangeRates", (er) => er.id);
+export const customReportsCollection = createSyncedCollection<CustomReport>(
+  "customReports",
+  (cr) => cr.id,
+);
+export const dashboardWidgetsCollection = createSyncedCollection<DashboardWidget>(
+  "dashboardWidgets",
+  (dw) => dw.id,
+);
+export const exchangeRatesCollection = createSyncedCollection<ExchangeRate>(
+  "exchangeRates",
+  (er) => er.id,
+);
 
 // ---------------------------------------------------------------------------
 // Helpers

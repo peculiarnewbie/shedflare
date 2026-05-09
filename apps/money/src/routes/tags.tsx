@@ -18,7 +18,7 @@ export default function TagsPage() {
     try {
       const res = await fetch("/api/tags");
       if (res.ok) {
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
         setTags(data.tags ?? []);
       }
     } catch {
@@ -73,10 +73,7 @@ export default function TagsPage() {
             <For each={tags()}>
               {(tag) => (
                 <div class="tag-chip">
-                  <span
-                    class="tag-dot"
-                    style={{ "background-color": tag.color ?? "#4f46e5" }}
-                  />
+                  <span class="tag-dot" style={{ "background-color": tag.color ?? "#4f46e5" }} />
                   <span class="tag-name">{tag.name}</span>
                   <button
                     class="btn btn-icon btn-ghost btn-xs"

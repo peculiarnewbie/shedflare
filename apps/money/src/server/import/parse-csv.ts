@@ -80,7 +80,11 @@ function detectFieldMap(headers: string[]): CsvFieldMap {
     }
 
     // Payee
-    if (/^(payee|merchant|beneficiary|counterparty|name|description|desc|narasi|keterangan|recipient|party)$/.test(h)) {
+    if (
+      /^(payee|merchant|beneficiary|counterparty|name|description|desc|narasi|keterangan|recipient|party)$/.test(
+        h,
+      )
+    ) {
       map.payee = headers[i]!;
       continue;
     }
@@ -116,14 +120,14 @@ function parseDate(value: string): string | null {
   }
 
   // DD/MM/YYYY or DD-MM-YYYY
-  const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const dmyMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (dmyMatch) {
     const [, d, m, y] = dmyMatch;
     return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
 
   // MM/DD/YYYY or MM-DD-YYYY
-  const mdyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const mdyMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (mdyMatch) {
     const [, m, d, y] = mdyMatch;
     return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -133,8 +137,18 @@ function parseDate(value: string): string | null {
   const textMatch = trimmed.match(/^(\w+)\s+(\d{1,2}),?\s*(\d{4})$/);
   if (textMatch) {
     const months: Record<string, string> = {
-      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
-      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+      jan: "01",
+      feb: "02",
+      mar: "03",
+      apr: "04",
+      may: "05",
+      jun: "06",
+      jul: "07",
+      aug: "08",
+      sep: "09",
+      oct: "10",
+      nov: "11",
+      dec: "12",
     };
     const monthStr = textMatch[1]!.toLowerCase().slice(0, 3);
     const month = months[monthStr];
