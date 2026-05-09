@@ -25,4 +25,4 @@ CREATE TABLE `tags` (
 --> statement-breakpoint
 CREATE INDEX `idx_files_created_at` ON `files` (`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_files_name` ON `files` (`name`);--> statement-breakpoint
-CREATE INDEX `idx_tags_normalized_name` ON `tags` (`normalized_name`);
+CREATE UNIQUE INDEX `idx_tags_normalized_name` ON `tags` (`normalized_name`);

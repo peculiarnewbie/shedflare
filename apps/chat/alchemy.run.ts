@@ -38,12 +38,12 @@ export const ChatStack = Alchemy.Stack(
 
     const secrets = yield* Cloudflare.SecretsStore("ShedflareSecrets");
 
-    const _opencodeGoApiKey = yield* Cloudflare.StoreSecret("OPENCODE_GO_API_KEY", {
+    const _opencodeGoApiKey = yield* Cloudflare.Secret("OPENCODE_GO_API_KEY", {
       store: secrets,
       value: requireSecretVar("chat", "OPENCODE_GO_API_KEY"),
     });
 
-    const _uploadTokenSecret = yield* Cloudflare.StoreSecret("UPLOAD_TOKEN_SECRET", {
+    const _uploadTokenSecret = yield* Cloudflare.Secret("UPLOAD_TOKEN_SECRET", {
       store: secrets,
       value: requireSecretVar("chat", "UPLOAD_TOKEN_SECRET"),
     });

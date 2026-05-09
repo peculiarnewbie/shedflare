@@ -26,7 +26,7 @@ export const YouTubeStack = Alchemy.Stack(
 
     const secrets = yield* Cloudflare.SecretsStore("ShedflareSecrets");
 
-    const _syncSecret = yield* Cloudflare.StoreSecret("SYNC_SECRET", {
+    const _syncSecret = yield* Cloudflare.Secret("SYNC_SECRET", {
       store: secrets,
       value: requireSecretVar("youtube", "SYNC_SECRET"),
     });

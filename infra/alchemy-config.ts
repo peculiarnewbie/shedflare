@@ -3,6 +3,32 @@ import { dirname, join } from "node:path";
 import * as Redacted from "effect/Redacted";
 import { parse } from "jsonc-parser";
 
+function loadEnvFiles(root: string) {
+  for (const file of [".env", ".env.local"]) {
+    const path = join(root, file);
+    if (!existsSync(path)) continue;
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const sep = trimmed.indexOf("=");
+      if (sep === -1) continue;
+      const key = trimmed.slice(0, sep).trim();
+      let value = trimmed.slice(sep + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (key && !process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+loadEnvFiles(process.cwd());
+
 export type AppId = "auth" | "chat" | "drive" | "money" | "youtube";
 
 export interface ShedflareAlchemyConfig {
