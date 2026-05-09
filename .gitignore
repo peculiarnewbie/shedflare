@@ -12,6 +12,8 @@ coverage/
 **/.wrangler/
 .alchemy/
 **/.alchemy/
+.shedflare/
+**/.shedflare/
 out/
 **/out/
 .vite-hooks/

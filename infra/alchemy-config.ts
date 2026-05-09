@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import * as Redacted from "effect/Redacted";
 import { parse } from "jsonc-parser";
 
@@ -70,14 +70,41 @@ export function requireVar(config: AppStackConfig, name: string): string {
   return value;
 }
 
-export function requireSecretVar(appId: AppId, name: string): Redacted.Redacted<string> {
-  const fromEnv = process.env[`SHEDFLARE_${appId.toUpperCase()}_${name}`];
-  if (!fromEnv) {
-    throw new Error(
-      `Missing ${appId} secret ${name}. Set SHEDFLARE_${appId.toUpperCase()}_${name}=<value> and re-run.`,
-    );
+const SECRETS_CACHE = ".shedflare/secrets.json";
+
+function readSecretsCache(root: string): Record<string, Record<string, string>> {
+  const path = join(root, SECRETS_CACHE);
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return {};
   }
-  return Redacted.make(fromEnv);
+}
+
+function writeSecretsCache(root: string, appId: AppId, name: string, value: string) {
+  const path = join(root, SECRETS_CACHE);
+  mkdirSync(dirname(path), { recursive: true });
+  const cache = readSecretsCache(root);
+  const app = (cache[appId] ??= {});
+  app[name] = value;
+  writeFileSync(path, JSON.stringify(cache, null, 2));
+}
+
+export function requireSecretVar(appId: AppId, name: string): Redacted.Redacted<string> {
+  const envKey = `SHEDFLARE_${appId.toUpperCase()}_${name}`;
+  const fromEnv = process.env[envKey];
+  if (fromEnv) {
+    writeSecretsCache(process.cwd(), appId, name, fromEnv);
+    return Redacted.make(fromEnv);
+  }
+  const cache = readSecretsCache(process.cwd());
+  const cached = cache[appId]?.[name];
+  if (cached) return Redacted.make(cached);
+  throw new Error(
+    `Missing ${appId} secret ${name}. Set ${envKey}=<value> and re-run.\n` +
+      `After the first deploy, the value is cached locally so you won't need to set it again.`,
+  );
 }
 
 export function physicalName(stage: string | undefined, ...parts: string[]): string {
