@@ -18,9 +18,12 @@ export const MoneyStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = appConfig(loadShedflareConfig(), "money");
 
-    const db = yield* Cloudflare.D1Database("DB", {
-      name: physicalName(stage, "money"),
-      migrationsDir: "apps/money/src/migrations",
+    const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
+      name: physicalName(stage, "money", "uploads"),
+    });
+
+    const budgetDO = Cloudflare.DurableObjectNamespace("BUDGET_DO", {
+      className: "MoneyBudgetDO",
     });
 
     const worker = yield* Cloudflare.Worker("MoneyWorker", {
@@ -32,7 +35,8 @@ export const MoneyStack = Alchemy.Stack(
         flags: ["nodejs_compat"],
       },
       bindings: {
-        DB: db,
+        UPLOADS: uploads,
+        BUDGET_DO: budgetDO,
       },
       env: {
         APP_PUBLIC_URL: config.url,
@@ -48,7 +52,7 @@ export const MoneyStack = Alchemy.Stack(
       url: worker.url ?? config.url,
       configuredUrl: config.url,
       workerName: worker.workerName,
-      dbId: db.databaseId,
+      bucketName: uploads.bucketName,
     };
   }),
 );
