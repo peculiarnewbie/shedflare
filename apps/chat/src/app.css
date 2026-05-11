@@ -585,6 +585,21 @@ a {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-anchor: none;
+}
+
+.timeline * {
+  overflow-anchor: none;
+}
+
+.timeline-anchor {
+  height: 1px;
+  overflow-anchor: none;
+  flex-shrink: 0;
+}
+
+.timeline-anchor.active {
+  overflow-anchor: auto;
 }
 
 .msg {

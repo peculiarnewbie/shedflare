@@ -3377,6 +3377,7 @@ export default function Home() {
 
             <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
               <For each={messageIds()}>{renderMessage}</For>
+              <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
             </section>
 
             <Show when={!isConnected()}>
