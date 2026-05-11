@@ -228,6 +228,16 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     id: Schema.String,
   }),
 
+  add_transaction_tag: Schema.Struct({
+    transactionId: Schema.String,
+    tagId: Schema.String,
+  }),
+
+  remove_transaction_tag: Schema.Struct({
+    transactionId: Schema.String,
+    tagId: Schema.String,
+  }),
+
   create_report: Schema.Struct({
     report: CustomReportInput,
   }),

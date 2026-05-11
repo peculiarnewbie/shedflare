@@ -100,6 +100,8 @@ function buildHandlerRegistry(): Map<string, CommandHandlerFn> {
     // Tags
     ["create_tag", handleTagCommands as CommandHandlerFn],
     ["delete_tag", handleTagCommands as CommandHandlerFn],
+    ["add_transaction_tag", handleTagCommands as CommandHandlerFn],
+    ["remove_transaction_tag", handleTagCommands as CommandHandlerFn],
     // Import
     ["import_transactions", handleImportCommands as CommandHandlerFn],
     // Reports

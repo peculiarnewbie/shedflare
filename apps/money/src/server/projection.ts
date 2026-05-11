@@ -115,6 +115,22 @@ export class Projection {
         access.exec(`DELETE FROM tags WHERE id = ?`, payload.id);
         break;
       }
+      case "transaction_tag_added": {
+        access.exec(
+          `INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)`,
+          payload.transactionId,
+          payload.tagId,
+        );
+        break;
+      }
+      case "transaction_tag_removed": {
+        access.exec(
+          `DELETE FROM transaction_tags WHERE transaction_id = ? AND tag_id = ?`,
+          payload.transactionId,
+          payload.tagId,
+        );
+        break;
+      }
       case "report_created":
       case "report_updated": {
         const row = payload.row as CustomReport;
@@ -201,6 +217,9 @@ export class Projection {
       }
       for (const row of Object.values(tables.tags ?? {})) {
         this.apply("tag_created", { row });
+      }
+      for (const row of Object.values(tables.transaction_tags ?? {})) {
+        this.apply("transaction_tag_added", row);
       }
       for (const row of Object.values(tables.budgets ?? {})) {
         this.apply("category_budget_set", {

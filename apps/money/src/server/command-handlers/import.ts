@@ -43,7 +43,7 @@ export function handleImportCommands(
   const allPayees = access.queryAll<{ id: string; name: string }>(`SELECT id, name FROM payees`);
   const payeeByName = new Map(allPayees.map((p) => [p.name.toLowerCase(), p.id]));
 
-  for (const txInput of transactions) {
+  txLoop: for (const txInput of transactions) {
     try {
       let categoryId: string | null = null;
       let payeeName = txInput.payee ?? null;
@@ -144,11 +144,23 @@ export function handleImportCommands(
 
             if (matches) {
               for (const action of actions) {
+                if (action.op === "delete-transaction") {
+                  continue txLoop;
+                }
                 if (action.op === "set" && action.field === "category") {
                   categoryId = action.value;
                 }
                 if (action.op === "set" && action.field === "payee") {
                   payeeName = action.value;
+                }
+                if (action.op === "set" && action.field === "notes") {
+                  txInput.notes = action.value;
+                }
+                if (action.op === "prepend-notes") {
+                  txInput.notes = action.value + (txInput.notes ?? "");
+                }
+                if (action.op === "append-notes") {
+                  txInput.notes = (txInput.notes ?? "") + action.value;
                 }
               }
             }

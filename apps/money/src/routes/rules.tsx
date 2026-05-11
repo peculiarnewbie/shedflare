@@ -69,7 +69,7 @@ export default function RulesPage() {
                     <div class="rule-conditions">
                       Conditions: {rule.conditions?.slice(0, 80)}...
                     </div>
-                    <div class="rule-actions-summary">Actions: {rule.actions?.slice(0, 80)}...</div>
+                    <div class="rule-actions-summary">{summarizeActions(rule.actions)}</div>
                   </div>
                   <div class="rule-actions">
                     <button
@@ -95,6 +95,23 @@ export default function RulesPage() {
       </Show>
     </div>
   );
+}
+
+function summarizeActions(actionsJson: string): string {
+  try {
+    const actions = JSON.parse(actionsJson) as Array<any>;
+    return actions
+      .map((a: any) => {
+        if (a.op === "delete-transaction") return "Delete transaction";
+        if (a.op === "prepend-notes") return `Prepend notes: "${(a.value ?? "").slice(0, 30)}"`;
+        if (a.op === "append-notes") return `Append notes: "${(a.value ?? "").slice(0, 30)}"`;
+        if (a.op === "set") return `Set ${a.field} to "${(a.value ?? "").slice(0, 30)}"`;
+        return `${a.op}: ${(a.value ?? "").slice(0, 30)}`;
+      })
+      .join("; ");
+  } catch {
+    return actionsJson?.slice(0, 80) ?? "";
+  }
 }
 
 const CONDITION_FIELD_META: Record<string, { type: string; ops: string[]; label: string }> = {
@@ -138,11 +155,19 @@ const OP_LABELS: Record<string, string> = {
   lte: "less than or equal",
 };
 
+const ACTION_OP_LABELS: Record<string, string> = {
+  set: "Set field",
+  "prepend-notes": "Prepend notes",
+  "append-notes": "Append notes",
+  "delete-transaction": "Delete transaction",
+};
+
 function RuleForm(props: { onClose: () => void }) {
   const [conditionField, setConditionField] = createSignal("payee");
   const [conditionOp, setConditionOp] = createSignal("contains");
   const [conditionValue, setConditionValue] = createSignal("");
   const [conditionValue2, setConditionValue2] = createSignal("");
+  const [actionOp, setActionOp] = createSignal("set");
   const [actionField, setActionField] = createSignal("category");
   const [actionValue, setActionValue] = createSignal("");
   const [saving, setSaving] = createSignal(false);
@@ -161,7 +186,6 @@ function RuleForm(props: { onClose: () => void }) {
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
-    if (!actionValue().trim()) return;
 
     setSaving(true);
 
@@ -181,12 +205,18 @@ function RuleForm(props: { onClose: () => void }) {
     }
 
     const conditions = JSON.stringify([cond]);
-    const actions = JSON.stringify([
-      { op: "set", field: actionField(), value: actionValue().trim() },
-    ]);
+    let actions: any[];
+
+    if (actionOp() === "delete-transaction") {
+      actions = [{ op: "delete-transaction" }];
+    } else if (actionOp() === "set") {
+      actions = [{ op: "set", field: actionField(), value: actionValue().trim() }];
+    } else {
+      actions = [{ op: actionOp(), value: actionValue().trim() }];
+    }
 
     dispatch("create_rule", {
-      rule: { conditions, actions },
+      rule: { conditions, actions: JSON.stringify(actions) },
     });
 
     setSaving(false);
@@ -282,18 +312,42 @@ function RuleForm(props: { onClose: () => void }) {
 
           <h3>Action</h3>
           <div class="form-row">
-            <select value={actionField()} onChange={(e) => setActionField(e.currentTarget.value)}>
-              <option value="category">Set category</option>
-              <option value="payee">Set payee</option>
-              <option value="notes">Set notes</option>
+            <select value={actionOp()} onChange={(e) => setActionOp(e.currentTarget.value)}>
+              <For each={Object.entries(ACTION_OP_LABELS)}>
+                {([value, label]) => <option value={value}>{label}</option>}
+              </For>
             </select>
-            <input
-              type="text"
-              placeholder="Value..."
-              value={actionValue()}
-              onInput={(e) => setActionValue(e.currentTarget.value)}
-              required
-            />
+
+            <Show when={actionOp() === "set"}>
+              <select value={actionField()} onChange={(e) => setActionField(e.currentTarget.value)}>
+                <option value="category">Field: category</option>
+                <option value="payee">Field: payee</option>
+                <option value="notes">Field: notes</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Value..."
+                value={actionValue()}
+                onInput={(e) => setActionValue(e.currentTarget.value)}
+                required={actionOp() === "set"}
+              />
+            </Show>
+
+            <Show when={actionOp() === "prepend-notes" || actionOp() === "append-notes"}>
+              <input
+                type="text"
+                placeholder="Note text..."
+                value={actionValue()}
+                onInput={(e) => setActionValue(e.currentTarget.value)}
+                required
+              />
+            </Show>
+
+            <Show when={actionOp() === "delete-transaction"}>
+              <span style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>
+                Transaction will be deleted
+              </span>
+            </Show>
           </div>
 
           <div class="form-actions">

@@ -17,6 +17,7 @@ interface TransactionRow {
   isParent?: boolean;
   isChild?: boolean;
   parentId?: string | null;
+  tags?: { id: string; name: string; color: string | null }[];
 }
 
 interface CategoryRow {
@@ -35,6 +36,14 @@ interface SplitChild {
 }
 
 export default function AccountPage() {
+  // Close tag picker on outside click
+  createEffect(() => {
+    if (showTagPicker()) {
+      const handler = () => setShowTagPicker(null);
+      document.addEventListener("click", handler);
+      onCleanup(() => document.removeEventListener("click", handler));
+    }
+  });
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [account, setAccount] = createSignal<any>(null);
@@ -48,6 +57,12 @@ export default function AccountPage() {
 
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [editingField, setEditingField] = createSignal<TxField | null>(null);
+
+  const [tagList, setTagList] = createSignal<any[]>([]);
+  const [txTags, setTxTags] = createSignal<
+    Record<string, { id: string; name: string; color: string | null }[]>
+  >({});
+  const [showTagPicker, setShowTagPicker] = createSignal<string | null>(null);
 
   const [txDate, setTxDate] = createSignal(new Date().toISOString().slice(0, 10));
   const [txPayee, setTxPayee] = createSignal("");
@@ -122,6 +137,7 @@ export default function AccountPage() {
     if (accountId) {
       void loadAccount();
       void loadCategories();
+      void loadTags();
     }
   });
 
@@ -140,9 +156,10 @@ export default function AccountPage() {
 
   async function loadAccount() {
     try {
-      const [acctRes, txRes] = await Promise.all([
+      const [acctRes, txRes, txTagsRes] = await Promise.all([
         fetch(`/api/accounts/${accountId}`),
         fetch(`/api/accounts/${accountId}/transactions`),
+        fetch(`/api/accounts/${accountId}/tags`),
       ]);
       if (acctRes.ok) setAccount((await acctRes.json()) as any);
       if (txRes.ok) {
@@ -150,6 +167,20 @@ export default function AccountPage() {
         if (data.transactions && data.transactions.length > 0) {
           setTransactions(data.transactions);
         }
+      }
+      if (txTagsRes.ok) {
+        const data = (await txTagsRes.json()) as any;
+        const map: Record<string, { id: string; name: string; color: string | null }[]> = {};
+        for (const tt of data.transactionTags ?? []) {
+          const txId = String(tt.transaction_id);
+          if (!map[txId]) map[txId] = [];
+          map[txId].push({
+            id: String(tt.tag_id),
+            name: String(tt.tag_name),
+            color: tt.tag_color ? String(tt.tag_color) : null,
+          });
+        }
+        setTxTags(map);
       }
     } catch {
       // Will work once sync is connected
@@ -168,6 +199,41 @@ export default function AccountPage() {
     } catch {
       // ignore
     }
+  }
+
+  async function loadTags() {
+    try {
+      const res = await fetch("/api/tags");
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        setTagList(data.tags ?? []);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleAddTag(txId: string, tagId: string) {
+    dispatch("add_transaction_tag", { transactionId: txId, tagId });
+    const tag = tagList().find((t: any) => t.id === tagId);
+    if (tag) {
+      setTxTags((prev) => {
+        const existing = [...(prev[txId] ?? [])];
+        if (!existing.find((t) => t.id === tagId)) {
+          existing.push({ id: tag.id, name: tag.name, color: tag.color ?? null });
+        }
+        return { ...prev, [txId]: existing };
+      });
+    }
+    setShowTagPicker(null);
+  }
+
+  function handleRemoveTag(txId: string, tagId: string) {
+    dispatch("remove_transaction_tag", { transactionId: txId, tagId });
+    setTxTags((prev) => ({
+      ...prev,
+      [txId]: (prev[txId] ?? []).filter((t) => t.id !== tagId),
+    }));
   }
 
   async function handleDelete(txId: string) {
@@ -449,6 +515,7 @@ export default function AccountPage() {
               <span class="tx-col-date">Date</span>
               <span class="tx-col-payee">Payee</span>
               <span class="tx-col-category">Category</span>
+              <span class="tx-col-tags">Tags</span>
               <span class="tx-col-amount">Amount ({fmt().symbol})</span>
               <span class="tx-col-balance">Balance</span>
               <span class="tx-col-actions" />
@@ -570,6 +637,83 @@ export default function AccountPage() {
                             {tx.isParent ? "Split" : (tx.categoryName ?? "Uncategorized")}
                           </span>
                         )}
+                      </span>
+
+                      <span class="tx-col-tags">
+                        <div
+                          style={{
+                            display: "flex",
+                            "flex-wrap": "wrap",
+                            gap: "2px",
+                            "align-items": "center",
+                          }}
+                        >
+                          <For each={txTags()[tx.id] ?? []}>
+                            {(tag) => (
+                              <span
+                                class="tag-chip-sm"
+                                style={{
+                                  background: tag.color ?? "#4f46e5",
+                                  color: "#fff",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => handleRemoveTag(tx.id, tag.id)}
+                                title={`Remove tag "${tag.name}"`}
+                              >
+                                {tag.name} ✕
+                              </span>
+                            )}
+                          </For>
+                          <button
+                            class="btn btn-icon btn-xs btn-ghost"
+                            style={{ "font-size": "0.65rem", padding: "1px 4px" }}
+                            onClick={() =>
+                              setShowTagPicker(showTagPicker() === tx.id ? null : tx.id)
+                            }
+                            title="Add tag"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <Show when={showTagPicker() === tx.id}>
+                          <div class="tag-picker-dropdown" onClick={(e) => e.stopPropagation()}>
+                            <For
+                              each={tagList().filter(
+                                (t: any) => !(txTags()[tx.id] ?? []).find((tt) => tt.id === t.id),
+                              )}
+                            >
+                              {(tag: any) => (
+                                <button
+                                  class="btn btn-ghost btn-xs tag-picker-option"
+                                  onClick={() => handleAddTag(tx.id, tag.id)}
+                                >
+                                  <span
+                                    class="tag-dot-sm"
+                                    style={{ background: tag.color ?? "#4f46e5" }}
+                                  />
+                                  {tag.name}
+                                </button>
+                              )}
+                            </For>
+                            <Show
+                              when={
+                                tagList().filter(
+                                  (t: any) => !(txTags()[tx.id] ?? []).find((tt) => tt.id === t.id),
+                                ).length === 0
+                              }
+                            >
+                              <span
+                                style={{
+                                  color: "var(--text-muted)",
+                                  "font-size": "0.75rem",
+                                  padding: "4px",
+                                }}
+                              >
+                                No more tags
+                              </span>
+                            </Show>
+                          </div>
+                        </Show>
                       </span>
 
                       <span

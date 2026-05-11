@@ -1,5 +1,5 @@
 /**
- * Tag command handlers — create, delete.
+ * Tag command handlers — create, delete, assign to transactions.
  */
 import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
@@ -27,6 +27,50 @@ export function handleTagCommands(
       access.exec(`DELETE FROM transaction_tags WHERE tag_id = ?`, payload.id);
       events.push(
         eventStore.insertEvent(opId, "tag_deleted", { id: payload.id }) as SyncServerEvent,
+      );
+      break;
+    }
+
+    case "add_transaction_tag": {
+      const valid = decodeCommand("add_transaction_tag", payload);
+      const existing = access.queryOne<Record<string, unknown>>(
+        `SELECT 1 FROM transaction_tags WHERE transaction_id = ? AND tag_id = ?`,
+        valid.transactionId,
+        valid.tagId,
+      );
+      if (!existing) {
+        const tag = access.queryOne<{ name: string }>(
+          `SELECT name FROM tags WHERE id = ?`,
+          valid.tagId,
+        );
+        access.exec(
+          `INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)`,
+          valid.transactionId,
+          valid.tagId,
+        );
+        events.push(
+          eventStore.insertEvent(opId, "transaction_tag_added", {
+            transactionId: valid.transactionId,
+            tagId: valid.tagId,
+            tagName: tag?.name ?? "",
+          }) as SyncServerEvent,
+        );
+      }
+      break;
+    }
+
+    case "remove_transaction_tag": {
+      const valid = decodeCommand("remove_transaction_tag", payload);
+      access.exec(
+        `DELETE FROM transaction_tags WHERE transaction_id = ? AND tag_id = ?`,
+        valid.transactionId,
+        valid.tagId,
+      );
+      events.push(
+        eventStore.insertEvent(opId, "transaction_tag_removed", {
+          transactionId: valid.transactionId,
+          tagId: valid.tagId,
+        }) as SyncServerEvent,
       );
       break;
     }

@@ -43,6 +43,7 @@ export const COLLECTION_IDS = [
   "schedules",
   "rules",
   "tags",
+  "transactionTags",
   "customReports",
   "dashboardWidgets",
   "exchangeRates",
@@ -118,6 +119,10 @@ export const payeesCollection = createSyncedCollection<Payee>("payees", (p) => p
 export const schedulesCollection = createSyncedCollection<Schedule>("schedules", (s) => s.id);
 export const rulesCollection = createSyncedCollection<Rule>("rules", (r) => r.id);
 export const tagsCollection = createSyncedCollection<Tag>("tags", (t) => t.id);
+export const transactionTagsCollection = createSyncedCollection<{
+  transactionId: string;
+  tagId: string;
+}>("transactionTags", (tt) => `${tt.transactionId}_${tt.tagId}`);
 export const customReportsCollection = createSyncedCollection<CustomReport>(
   "customReports",
   (cr) => cr.id,
@@ -172,6 +177,7 @@ export const TABLE_TO_COLLECTION: Record<string, string> = {
   schedules: "schedules",
   rules: "rules",
   tags: "tags",
+  transaction_tags: "transactionTags",
   custom_reports: "customReports",
   dashboard_widgets: "dashboardWidgets",
   exchange_rates: "exchangeRates",

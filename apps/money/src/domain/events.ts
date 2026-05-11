@@ -46,6 +46,8 @@ export interface SyncEventPayloadMap {
 
   tag_created: { row: Tag };
   tag_deleted: { id: string };
+  transaction_tag_added: { transactionId: string; tagId: string; tagName: string };
+  transaction_tag_removed: { transactionId: string; tagId: string };
 
   report_created: { row: CustomReport };
   report_updated: { row: CustomReport };
@@ -95,6 +97,8 @@ export const SYNC_EVENT_TYPES: readonly SyncEventType[] = [
   "rule_updated",
   "tag_created",
   "tag_deleted",
+  "transaction_tag_added",
+  "transaction_tag_removed",
   "report_created",
   "report_updated",
   "dashboard_updated",

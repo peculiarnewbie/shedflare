@@ -170,6 +170,21 @@ export function handleApiRequest(
     return json({ rules: rows });
   }
 
+  // Tags for a specific transaction
+  const txTagsMatch = pathname.match(/^\/api\/accounts\/([^/]+)\/tags$/);
+  if (txTagsMatch && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT tt.transaction_id, tt.tag_id, t.name as tag_name, t.color as tag_color
+       FROM transaction_tags tt
+       JOIN tags t ON t.id = tt.tag_id
+       JOIN transactions tx ON tx.id = tt.transaction_id
+       WHERE tx.account_id = ?
+       ORDER BY t.name`,
+      txTagsMatch[1],
+    );
+    return json({ transactionTags: rows });
+  }
+
   // Tags
   if (pathname === "/api/tags" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>("SELECT * FROM tags ORDER BY name");

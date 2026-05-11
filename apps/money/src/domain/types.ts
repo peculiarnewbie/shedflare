@@ -45,6 +45,8 @@ export const SYNC_COMMAND_TYPES = [
   "delete_rule",
   "create_tag",
   "delete_tag",
+  "add_transaction_tag",
+  "remove_transaction_tag",
   "create_report",
   "update_report",
   "delete_report",

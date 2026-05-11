@@ -38,6 +38,7 @@ import {
   schedulesCollection,
   rulesCollection,
   tagsCollection,
+  transactionTagsCollection,
   customReportsCollection,
   dashboardWidgetsCollection,
   exchangeRatesCollection,
@@ -130,6 +131,7 @@ function hasRow(collectionId: string, key: string): boolean {
     schedules: schedulesCollection,
     rules: rulesCollection,
     tags: tagsCollection,
+    transactionTags: transactionTagsCollection,
     customReports: customReportsCollection,
     dashboardWidgets: dashboardWidgetsCollection,
     exchangeRates: exchangeRatesCollection,
@@ -188,6 +190,9 @@ function eventTypeToCollection(eventType: string): string | null {
       return "tags";
     case "tag_deleted":
       return "tags";
+    case "transaction_tag_added":
+    case "transaction_tag_removed":
+      return "transactionTags";
     case "report_created":
     case "report_updated":
       return "customReports";
@@ -285,6 +290,19 @@ function applyEvent(eventType: string, payload: unknown) {
     case "tag_deleted": {
       const event = payload as SyncEventPayloadMap["tag_deleted"];
       syncDelete("tags", event.id);
+      break;
+    }
+    case "transaction_tag_added": {
+      const event = payload as SyncEventPayloadMap["transaction_tag_added"];
+      syncUpsert("transactionTags", `${event.transactionId}_${event.tagId}`, {
+        transactionId: event.transactionId,
+        tagId: event.tagId,
+      });
+      break;
+    }
+    case "transaction_tag_removed": {
+      const event = payload as SyncEventPayloadMap["transaction_tag_removed"];
+      syncDelete("transactionTags", `${event.transactionId}_${event.tagId}`);
       break;
     }
     case "budget_recalculated": {
@@ -475,6 +493,7 @@ function buildCachedSnapshotTables(): SyncTables {
     schedules: schedulesCollection,
     rules: rulesCollection,
     tags: tagsCollection,
+    transactionTags: transactionTagsCollection,
     customReports: customReportsCollection,
     dashboardWidgets: dashboardWidgetsCollection,
     exchangeRates: exchangeRatesCollection,

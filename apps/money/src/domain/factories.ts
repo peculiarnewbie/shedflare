@@ -175,6 +175,13 @@ export function createRule(input: {
   } satisfies schema.Rule;
 }
 
+export function createTransactionTag(input: { transactionId: string; tagId: string }) {
+  return {
+    transactionId: input.transactionId,
+    tagId: input.tagId,
+  } satisfies schema.TransactionTag;
+}
+
 export function createTag(input: { name: string; color?: string }) {
   const now = nowIso();
   return {
