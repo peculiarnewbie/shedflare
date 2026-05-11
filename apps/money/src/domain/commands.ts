@@ -148,6 +148,7 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     name: Schema.optional(Schema.String),
     hidden: Schema.optional(Schema.Boolean),
     groupId: Schema.optional(NullableString),
+    goalDef: Schema.optional(NullableString),
   }),
 
   delete_category: Schema.Struct({

@@ -37,6 +37,7 @@ export function handleCategoryCommands(
           name: valid.name ?? existing.name,
           hidden: valid.hidden ?? existing.hidden,
           groupId: valid.groupId !== undefined ? valid.groupId : existing.groupId,
+          goalDef: valid.goalDef !== undefined ? valid.goalDef : existing.goalDef,
           updatedAt: new Date().toISOString(),
         };
         events.push(

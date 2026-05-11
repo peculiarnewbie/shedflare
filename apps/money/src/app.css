@@ -1239,3 +1239,33 @@ button {
   position: relative;
   min-width: 0;
 }
+
+/* Goal template editor */
+.goal-badge {
+  font-size: 0.72rem;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.goal-editor {
+  padding: 8px 16px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.goal-editor .form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.goal-editor select,
+.goal-editor input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 0.85rem;
+}

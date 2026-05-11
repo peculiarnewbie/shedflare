@@ -26,26 +26,26 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Transactions
 
-| Gap                                  | Notes                                                                   |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| ~~Split transaction UI~~             | ✅ Inline split form with child inputs, dispatches `split_transaction`  |
-| Reconciliation workflow              | `last_reconciled` field on accounts exists, no reconcile wizard or UI   |
-| ~~Reconciled flag on transactions~~  | ✅ `reconciled` column + lock-icon toggle button in transaction table   |
-| Tag assignment per transaction       | `transaction_tags` join table exists, no UI to assign tags in txn table |
-| Undo/redo                            | Not implemented                                                         |
-| Notes entity                         | Generic notes key-value store not implemented                           |
-| Transaction filters (saved searches) | Not implemented                                                         |
-| Link schedules from transactions     | Not implemented                                                         |
-| Payee learn categories               | Not implemented                                                         |
+| Gap                                  | Notes                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| ~~Split transaction UI~~             | ✅ Inline split form with child inputs, dispatches `split_transaction` |
+| Reconciliation workflow              | `last_reconciled` field on accounts exists, no reconcile wizard or UI  |
+| ~~Reconciled flag on transactions~~  | ✅ `reconciled` column + lock-icon toggle button in transaction table  |
+| ~~Tag assignment per transaction~~   | ✅ Tag picker in tx table rows, colored chips, add/remove via commands |
+| Undo/redo                            | Not implemented                                                        |
+| Notes entity                         | Generic notes key-value store not implemented                          |
+| Transaction filters (saved searches) | Not implemented                                                        |
+| Link schedules from transactions     | Not implemented                                                        |
+| Payee learn categories               | Not implemented                                                        |
 
 ## Budget
 
-| Gap                                     | Notes                                                                         |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| Goal template UI editor                 | Goal engine (`apply_goal_templates`) works server-side, no category editor UI |
-| Notes-based DSL for goals               | Not implemented                                                               |
-| Spreadsheet engine (reactive dep graph) | Shedflare uses SQL-computed values instead; no reactive cell graph            |
-| AQL query language                      | Not implemented                                                               |
+| Gap                                     | Notes                                                                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| ~~Goal template UI editor~~             | ✅ Inline editor on categories page: select monthly/byDate, set amount/target date, saves to `goal_def` JSON              |
+| Notes-based DSL for goals               | Not implemented                                                                                                             |
+| Spreadsheet engine (reactive dep graph) | Shedflare uses SQL-computed values instead; no reactive cell graph                                                          |
+| AQL query language                      | Not implemented                                                                                                             |
 
 ## Schedules
 
@@ -59,16 +59,16 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Rules
 
-| Gap                                                                                    | Notes                                                                                                                   |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| ~~Additional conditions (account, amount, date, cleared)~~                             | ✅ account/amount/date/cleared fields + number/date ops (gt, gte, lt, lte, isapprox, isbetween) in UI and import runner |
-| Additional actions (set-split-amount, link-schedule, prepend/append-notes, delete-txn) | Only set category/payee/notes actions                                                                                   |
-| Rule test UI                                                                           | Not implemented                                                                                                         |
-| Formula actions (balance-of queries)                                                   | Not implemented                                                                                                         |
-| Handlebars template helpers in actions                                                 | Not implemented                                                                                                         |
-| ~~Enable/disable toggle~~                                                              | ✅ ON/OFF toggle per rule, `active` column added to schema                                                              |
-| Payee-specific rules (learn_categories)                                                | Not implemented                                                                                                         |
-| Tombstone (soft-delete)                                                                | Rules are hard-deleted; no tombstone                                                                                    |
+| Gap                                                              | Notes                                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| ~~Additional conditions (account, amount, date, cleared)~~       | ✅ account/amount/date/cleared fields + number/date ops (gt, gte, lt, lte, isapprox, isbetween) in UI and import runner |
+| ~~Additional actions (prepend-notes, append-notes, delete-txn)~~ | ✅ Added prepend-notes, append-notes, delete-transaction. set-split-amount and link-schedule not yet implemented        |
+| Rule test UI                                                     | Not implemented                                                                                                         |
+| Formula actions (balance-of queries)                             | Not implemented                                                                                                         |
+| Handlebars template helpers in actions                           | Not implemented                                                                                                         |
+| ~~Enable/disable toggle~~                                        | ✅ ON/OFF toggle per rule, `active` column added to schema                                                              |
+| Payee-specific rules (learn_categories)                          | Not implemented                                                                                                         |
+| Tombstone (soft-delete)                                          | Rules are hard-deleted; no tombstone                                                                                    |
 
 ## Payees
 

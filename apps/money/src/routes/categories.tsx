@@ -18,6 +18,13 @@ interface Category {
   groupName: string | null;
   isIncome: boolean;
   sortOrder: number;
+  goalDef: string | null;
+}
+
+interface GoalConfig {
+  type: "monthly" | "byDate";
+  amount: number;
+  targetDate?: string;
 }
 
 export default function CategoriesPage() {
@@ -33,6 +40,12 @@ export default function CategoriesPage() {
   // Add category form
   const [activeGroupId, setActiveGroupId] = createSignal<string | null>(null);
   const [newCatName, setNewCatName] = createSignal("");
+
+  // Goal editing
+  const [editingGoalCatId, setEditingGoalCatId] = createSignal<string | null>(null);
+  const [goalType, setGoalType] = createSignal<"monthly" | "byDate">("monthly");
+  const [goalAmount, setGoalAmount] = createSignal("");
+  const [goalTargetDate, setGoalTargetDate] = createSignal("");
 
   createEffect(() => {
     void loadData();
@@ -53,6 +66,7 @@ export default function CategoriesPage() {
           groupName: c.group_name ?? null,
           isIncome: Boolean(c.is_income),
           sortOrder: c.sort_order ?? 0,
+          goalDef: c.goal_def ?? null,
         }));
         setCategories(cats);
       }
@@ -92,6 +106,70 @@ export default function CategoriesPage() {
     if (!confirm("Delete this category?")) return;
     dispatch("delete_category", { id: catId });
     setCategories((prev) => prev.filter((c) => c.id !== catId));
+  }
+
+  function startEditGoal(cat: Category) {
+    const goal = parseGoal(cat.goalDef);
+    setGoalType(goal?.type ?? "monthly");
+    setGoalAmount(goal ? String(goal.amount / 100) : "");
+    setGoalTargetDate(goal?.targetDate ?? "");
+    setEditingGoalCatId(cat.id);
+  }
+
+  function cancelEditGoal() {
+    setEditingGoalCatId(null);
+    setGoalAmount("");
+    setGoalTargetDate("");
+  }
+
+  function saveGoal(catId: string) {
+    const amount = Math.round(parseFloat(goalAmount() || "0") * 100);
+    if (amount <= 0) {
+      dispatch("update_category", { id: catId, fields: { goalDef: null } });
+    } else {
+      const goal: GoalConfig = { type: goalType(), amount };
+      if (goalType() === "byDate" && goalTargetDate()) {
+        goal.targetDate = goalTargetDate();
+      }
+      dispatch("update_category", { id: catId, fields: { goalDef: JSON.stringify(goal) } });
+    }
+    setCategories((prev) =>
+      prev.map((c) =>
+        c.id === catId
+          ? {
+              ...c,
+              goalDef:
+                amount > 0
+                  ? JSON.stringify(
+                      goalType() === "byDate"
+                        ? { type: goalType(), amount, targetDate: goalTargetDate() || undefined }
+                        : { type: goalType(), amount },
+                    )
+                  : null,
+            }
+          : c,
+      ),
+    );
+    cancelEditGoal();
+  }
+
+  function parseGoal(goalDef: string | null): GoalConfig | null {
+    if (!goalDef) return null;
+    try {
+      return JSON.parse(goalDef) as GoalConfig;
+    } catch {
+      return null;
+    }
+  }
+
+  function formatGoal(goalDef: string | null): string {
+    const goal = parseGoal(goalDef);
+    if (!goal) return "";
+    const amt = `$${(goal.amount / 100).toFixed(2)}`;
+    if (goal.type === "byDate" && goal.targetDate) {
+      return `Save ${amt} by ${goal.targetDate}`;
+    }
+    return `Set ${amt} monthly`;
   }
 
   function formatCents(cents: number): string {
@@ -223,15 +301,71 @@ export default function CategoriesPage() {
                   <div class="category-list">
                     <For each={cats}>
                       {(cat) => (
-                        <div class="payee-row">
-                          <span class="payee-name">{cat.name}</span>
-                          <button
-                            class="btn btn-icon btn-ghost btn-xs"
-                            onClick={() => handleDeleteCategory(cat.id)}
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                        <>
+                          <div class="payee-row">
+                            <div
+                              style={{ display: "flex", "flex-direction": "column", gap: "2px" }}
+                            >
+                              <span class="payee-name">{cat.name}</span>
+                              <Show when={cat.goalDef}>
+                                <span class="goal-badge">{formatGoal(cat.goalDef)}</span>
+                              </Show>
+                            </div>
+                            <div style={{ display: "flex", gap: "4px" }}>
+                              <button
+                                class="btn btn-ghost btn-xs"
+                                onClick={() => startEditGoal(cat)}
+                                title="Set goal"
+                              >
+                                🎯
+                              </button>
+                              <button
+                                class="btn btn-icon btn-ghost btn-xs"
+                                onClick={() => handleDeleteCategory(cat.id)}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                          <Show when={editingGoalCatId() === cat.id}>
+                            <div class="goal-editor">
+                              <div class="form-row">
+                                <select
+                                  value={goalType()}
+                                  onChange={(e) =>
+                                    setGoalType(e.currentTarget.value as "monthly" | "byDate")
+                                  }
+                                >
+                                  <option value="monthly">Monthly amount</option>
+                                  <option value="byDate">Save up by date</option>
+                                </select>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="Amount"
+                                  value={goalAmount()}
+                                  onInput={(e) => setGoalAmount(e.currentTarget.value)}
+                                />
+                                <Show when={goalType() === "byDate"}>
+                                  <input
+                                    type="date"
+                                    value={goalTargetDate()}
+                                    onInput={(e) => setGoalTargetDate(e.currentTarget.value)}
+                                  />
+                                </Show>
+                                <button
+                                  class="btn btn-primary btn-sm"
+                                  onClick={() => saveGoal(cat.id)}
+                                >
+                                  Save
+                                </button>
+                                <button class="btn btn-ghost btn-sm" onClick={cancelEditGoal}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </Show>
+                        </>
                       )}
                     </For>
                   </div>
