@@ -66,6 +66,7 @@ export const transactions = sqliteTable(
     notes: text("notes"),
     date: text("date").notNull(), // ISO date YYYY-MM-DD
     cleared: integer("cleared", { mode: "boolean" }).notNull().default(true),
+    reconciled: integer("reconciled", { mode: "boolean" }).notNull().default(false),
     importedDescription: text("imported_description"),
     startingBalanceFlag: integer("starting_balance_flag", { mode: "boolean" })
       .notNull()

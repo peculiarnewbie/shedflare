@@ -75,6 +75,7 @@ interface TransactionInput {
   notes?: string | null;
   date: string;
   cleared?: boolean;
+  reconciled?: boolean;
   importedDescription?: string | null;
   startingBalanceFlag?: boolean;
   sortOrder?: number | null;
@@ -95,6 +96,7 @@ export function createTransaction(input: TransactionInput & { id?: string }) {
     notes: input.notes ?? null,
     date: input.date,
     cleared: input.cleared ?? true,
+    reconciled: input.reconciled ?? false,
     importedDescription: input.importedDescription ?? null,
     startingBalanceFlag: input.startingBalanceFlag ?? false,
     sortOrder: input.sortOrder ?? null,

@@ -59,6 +59,7 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
       notes: Schema.optional(Schema.String),
       date: Schema.optional(Schema.String),
       cleared: Schema.optional(Schema.Boolean),
+      reconciled: Schema.optional(Schema.Boolean),
       importedDescription: Schema.optional(Schema.String),
       sortOrder: Schema.optional(Schema.Number),
     }),

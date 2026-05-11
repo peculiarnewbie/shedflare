@@ -642,7 +642,7 @@ button {
 
 .tx-table-header {
   display: grid;
-  grid-template-columns: 32px 100px 1fr 1fr 120px 120px 40px;
+  grid-template-columns: 56px 100px 1fr 1fr 120px 120px 40px;
   padding: 10px 16px;
   background: var(--bg-hover);
   font-size: 0.8rem;
@@ -653,7 +653,7 @@ button {
 
 .tx-row {
   display: grid;
-  grid-template-columns: 32px 100px 1fr 1fr 120px 120px 40px;
+  grid-template-columns: 56px 100px 1fr 1fr 120px 120px 40px;
   padding: 8px 16px;
   border-top: 1px solid var(--border-light);
   gap: 8px;
@@ -667,9 +667,40 @@ button {
 .tx-row.uncleared {
   opacity: 0.7;
 }
+.tx-row.reconciled {
+  opacity: 0.55;
+  background: var(--bg);
+}
+.tx-row.reconciled:hover {
+  opacity: 0.65;
+}
+.tx-row-child .tx-col-payee {
+  padding-left: 16px;
+}
+.tx-row-child .tx-col-category {
+  padding-left: 16px;
+}
+.tx-row-parent {
+  border-bottom: none;
+}
+.tx-amount-parent {
+  font-style: italic;
+}
+.tx-split-label {
+  font-style: italic;
+  color: var(--text-muted);
+}
 
-.tx-col-c {
-  text-align: center;
+.tx-col-cr {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.btn-reconciled {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .tx-col-amount {
@@ -713,6 +744,38 @@ button {
 .tx-inline-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* Split transaction inline form */
+.tx-split-form {
+  background: var(--bg);
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px 12px 72px;
+}
+
+.tx-split-children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tx-split-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tx-split-child-num {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 20px;
+}
+
+.tx-split-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 /* ============================================================

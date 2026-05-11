@@ -28,9 +28,9 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 | Gap                                  | Notes                                                                   |
 | ------------------------------------ | ----------------------------------------------------------------------- |
-| Split transaction UI                 | Server-side `split_transaction` handler exists, no UI button or form    |
+| ~~Split transaction UI~~             | ✅ Inline split form with child inputs, dispatches `split_transaction`  |
 | Reconciliation workflow              | `last_reconciled` field on accounts exists, no reconcile wizard or UI   |
-| Reconciled flag on transactions      | Only `cleared` exists; `reconciled` column missing                      |
+| ~~Reconciled flag on transactions~~  | ✅ `reconciled` column + lock-icon toggle button in transaction table   |
 | Tag assignment per transaction       | `transaction_tags` join table exists, no UI to assign tags in txn table |
 | Undo/redo                            | Not implemented                                                         |
 | Notes entity                         | Generic notes key-value store not implemented                           |

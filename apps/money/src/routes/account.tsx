@@ -13,6 +13,10 @@ interface TransactionRow {
   categoryName: string | null;
   notes: string | null;
   cleared: boolean;
+  reconciled: boolean;
+  isParent?: boolean;
+  isChild?: boolean;
+  parentId?: string | null;
 }
 
 interface CategoryRow {
@@ -22,6 +26,13 @@ interface CategoryRow {
 }
 
 type TxField = "date" | "payee" | "amount" | "category" | "notes";
+
+interface SplitChild {
+  tempId: string;
+  categoryId: string;
+  amount: string;
+  notes: string;
+}
 
 export default function AccountPage() {
   const params = useParams<{ id: string }>();
@@ -43,6 +54,61 @@ export default function AccountPage() {
   const [txAmount, setTxAmount] = createSignal("");
   const [txCategory, setTxCategory] = createSignal("");
   const [txNotes, setTxNotes] = createSignal("");
+
+  const [splitParentId, setSplitParentId] = createSignal<string | null>(null);
+  const [splitChildren, setSplitChildren] = createSignal<SplitChild[]>([]);
+
+  function initSplit(parent: TransactionRow) {
+    setSplitParentId(parent.id);
+    setSplitChildren([{ tempId: crypto.randomUUID(), categoryId: "", amount: "", notes: "" }]);
+  }
+
+  function addSplitChild() {
+    setSplitChildren((prev) => [
+      ...prev,
+      { tempId: crypto.randomUUID(), categoryId: "", amount: "", notes: "" },
+    ]);
+  }
+
+  function updateSplitChild(tempId: string, field: keyof SplitChild, value: string) {
+    setSplitChildren((prev) =>
+      prev.map((c) => (c.tempId === tempId ? { ...c, [field]: value } : c)),
+    );
+  }
+
+  function cancelSplit() {
+    setSplitParentId(null);
+    setSplitChildren([]);
+  }
+
+  function saveSplit() {
+    const parentId = splitParentId();
+    if (!parentId) return;
+
+    const parent = transactions().find((t) => t.id === parentId);
+    if (!parent) return;
+
+    const children = splitChildren()
+      .map((c) => {
+        const cents = fmt().parseInput(c.amount);
+        if (cents === 0) return null;
+        return {
+          accountId: accountId,
+          date: parent.date,
+          amount: cents,
+          categoryId: c.categoryId || null,
+          notes: c.notes || undefined,
+          payee: parent.payee || undefined,
+        };
+      })
+      .filter(Boolean);
+
+    if (children.length === 0) return;
+
+    dispatch("split_transaction", { parentId, children });
+
+    cancelSplit();
+  }
 
   const payeeNames = createMemo(() => {
     const names = new Set<string>();
@@ -140,6 +206,7 @@ export default function AccountPage() {
         categoryName: categories().find((c) => c.id === txCategory())?.name ?? null,
         notes: txNotes() || null,
         cleared: true,
+        reconciled: false,
       },
       ...prev,
     ]);
@@ -231,6 +298,15 @@ export default function AccountPage() {
       fields: { cleared: next },
     });
     setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, cleared: next } : t)));
+  }
+
+  function toggleReconciled(tx: TransactionRow) {
+    const next = !tx.reconciled;
+    dispatch("update_transaction", {
+      id: tx.id,
+      fields: { reconciled: next },
+    });
+    setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, reconciled: next } : t)));
   }
 
   function formatCents(cents: number): string {
@@ -369,7 +445,7 @@ export default function AccountPage() {
         >
           <div class="transaction-table">
             <div class="tx-table-header">
-              <span class="tx-col-c">C</span>
+              <span class="tx-col-cr">C/R</span>
               <span class="tx-col-date">Date</span>
               <span class="tx-col-payee">Payee</span>
               <span class="tx-col-category">Category</span>
@@ -381,133 +457,237 @@ export default function AccountPage() {
               {(tx) => {
                 const isEditing = (field: TxField) =>
                   editingId() === tx.id && editingField() === field;
+                const isSplitting = splitParentId() === tx.id;
 
                 return (
-                  <div class="tx-row" classList={{ uncleared: !tx.cleared }}>
-                    <span class="tx-col-c">
-                      <button
-                        class="btn btn-icon btn-xs"
-                        classList={{ "btn-ghost": !tx.cleared, "btn-primary": tx.cleared }}
-                        style={{ padding: "2px 6px", "font-size": "0.65rem" }}
-                        onClick={() => toggleCleared(tx)}
-                        title={tx.cleared ? "Cleared" : "Uncleared"}
-                      >
-                        C
-                      </button>
-                    </span>
-
-                    <span class="tx-col-date">
-                      {isEditing("date") ? (
-                        <input
-                          type="date"
-                          class="tx-inline-input"
-                          value={tx.date}
-                          onBlur={(e) => saveEdit(tx, "date", e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter")
-                              saveEdit(tx, "date", (e.target as HTMLInputElement).value);
-                            if (e.key === "Escape") cancelEdit();
-                          }}
-                          autofocus
-                        />
-                      ) : (
-                        <span onClick={() => startEdit(tx.id, "date")}>{tx.date}</span>
-                      )}
-                    </span>
-
-                    <span class="tx-col-payee">
-                      {isEditing("payee") ? (
-                        <input
-                          type="text"
-                          list="payee-list"
-                          class="tx-inline-input"
-                          value={tx.payee ?? ""}
-                          onBlur={(e) => saveEdit(tx, "payee", e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter")
-                              saveEdit(tx, "payee", (e.target as HTMLInputElement).value);
-                            if (e.key === "Escape") cancelEdit();
-                          }}
-                          autofocus
-                        />
-                      ) : (
-                        <span onClick={() => startEdit(tx.id, "payee")}>{tx.payee ?? "—"}</span>
-                      )}
-                    </span>
-
-                    <span class="tx-col-category">
-                      {isEditing("category") ? (
-                        <select
-                          class="tx-inline-select"
-                          value={tx.categoryId ?? ""}
-                          onBlur={(e) => saveEdit(tx, "category", e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter")
-                              saveEdit(
-                                tx,
-                                "category",
-                                (e.currentTarget as HTMLSelectElement).value,
-                              );
-                            if (e.key === "Escape") cancelEdit();
-                          }}
-                          autofocus
-                        >
-                          <option value="">Uncategorized</option>
-                          <For each={categories()}>
-                            {(cat) => (
-                              <option value={cat.id}>
-                                {cat.groupName ? `${cat.groupName}: ` : ""}
-                                {cat.name}
-                              </option>
-                            )}
-                          </For>
-                        </select>
-                      ) : (
-                        <span onClick={() => startEdit(tx.id, "category")}>
-                          {tx.categoryName ?? "Uncategorized"}
-                        </span>
-                      )}
-                    </span>
-
-                    <span
-                      class="tx-col-amount"
+                  <>
+                    <div
+                      class="tx-row"
                       classList={{
-                        positive: (tx.amount ?? 0) > 0,
-                        negative: (tx.amount ?? 0) < 0,
+                        uncleared: !tx.cleared,
+                        reconciled: tx.reconciled,
+                        "tx-row-parent": tx.isParent,
+                        "tx-row-child": tx.isChild,
                       }}
                     >
-                      {isEditing("amount") ? (
-                        <input
-                          type="number"
-                          step={fmt().code === "IDR" ? "1" : "0.01"}
-                          class="tx-inline-input"
-                          value={fmt().formatCentsInput(tx.amount ?? 0)}
-                          onBlur={(e) => saveEdit(tx, "amount", e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter")
-                              saveEdit(tx, "amount", (e.target as HTMLInputElement).value);
-                            if (e.key === "Escape") cancelEdit();
+                      <span class="tx-col-cr">
+                        <button
+                          class="btn btn-icon btn-xs"
+                          classList={{ "btn-ghost": !tx.cleared, "btn-primary": tx.cleared }}
+                          style={{ padding: "2px 6px", "font-size": "0.65rem" }}
+                          onClick={() => toggleCleared(tx)}
+                          title={tx.cleared ? "Cleared" : "Uncleared"}
+                        >
+                          C
+                        </button>
+                        <button
+                          class="btn btn-icon btn-xs"
+                          classList={{
+                            "btn-ghost": !tx.reconciled,
+                            "btn-reconciled": tx.reconciled,
                           }}
-                          autofocus
-                        />
-                      ) : (
-                        <span onClick={() => startEdit(tx.id, "amount")}>
-                          {formatCents(tx.amount ?? 0)}
-                        </span>
-                      )}
-                    </span>
+                          style={{ padding: "2px 6px", "font-size": "0.65rem" }}
+                          onClick={() => toggleReconciled(tx)}
+                          title={tx.reconciled ? "Reconciled" : "Not reconciled"}
+                        >
+                          🔒
+                        </button>
+                      </span>
 
-                    <span class="tx-col-balance">{formatCents(tx.balance)}</span>
+                      <span class="tx-col-date">
+                        {isEditing("date") ? (
+                          <input
+                            type="date"
+                            class="tx-inline-input"
+                            value={tx.date}
+                            onBlur={(e) => saveEdit(tx, "date", e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                saveEdit(tx, "date", (e.target as HTMLInputElement).value);
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            autofocus
+                          />
+                        ) : (
+                          <span onClick={() => startEdit(tx.id, "date")}>{tx.date}</span>
+                        )}
+                      </span>
 
-                    <span class="tx-col-actions">
-                      <button
-                        class="btn btn-icon btn-ghost btn-xs"
-                        onClick={() => handleDelete(tx.id)}
+                      <span class="tx-col-payee">
+                        {isEditing("payee") ? (
+                          <input
+                            type="text"
+                            list="payee-list"
+                            class="tx-inline-input"
+                            value={tx.payee ?? ""}
+                            onBlur={(e) => saveEdit(tx, "payee", e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                saveEdit(tx, "payee", (e.target as HTMLInputElement).value);
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            autofocus
+                          />
+                        ) : (
+                          <span onClick={() => startEdit(tx.id, "payee")}>
+                            {tx.isParent ? <em>Split</em> : (tx.payee ?? "—")}
+                          </span>
+                        )}
+                      </span>
+
+                      <span class="tx-col-category">
+                        {isEditing("category") ? (
+                          <select
+                            class="tx-inline-select"
+                            value={tx.categoryId ?? ""}
+                            onBlur={(e) => saveEdit(tx, "category", e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                saveEdit(
+                                  tx,
+                                  "category",
+                                  (e.currentTarget as HTMLSelectElement).value,
+                                );
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            autofocus
+                          >
+                            <option value="">Uncategorized</option>
+                            <For each={categories()}>
+                              {(cat) => (
+                                <option value={cat.id}>
+                                  {cat.groupName ? `${cat.groupName}: ` : ""}
+                                  {cat.name}
+                                </option>
+                              )}
+                            </For>
+                          </select>
+                        ) : (
+                          <span
+                            classList={{ "tx-split-label": tx.isParent }}
+                            onClick={() => startEdit(tx.id, "category")}
+                          >
+                            {tx.isParent ? "Split" : (tx.categoryName ?? "Uncategorized")}
+                          </span>
+                        )}
+                      </span>
+
+                      <span
+                        class="tx-col-amount"
+                        classList={{
+                          positive: (tx.amount ?? 0) > 0,
+                          negative: (tx.amount ?? 0) < 0,
+                          "tx-amount-parent": tx.isParent,
+                        }}
                       >
-                        🗑️
-                      </button>
-                    </span>
-                  </div>
+                        {isEditing("amount") ? (
+                          <input
+                            type="number"
+                            step={fmt().code === "IDR" ? "1" : "0.01"}
+                            class="tx-inline-input"
+                            value={fmt().formatCentsInput(tx.amount ?? 0)}
+                            onBlur={(e) => saveEdit(tx, "amount", e.currentTarget.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                saveEdit(tx, "amount", (e.target as HTMLInputElement).value);
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            autofocus
+                          />
+                        ) : (
+                          <span onClick={() => startEdit(tx.id, "amount")}>
+                            {formatCents(tx.amount ?? 0)}
+                          </span>
+                        )}
+                      </span>
+
+                      <span class="tx-col-balance">{formatCents(tx.balance)}</span>
+
+                      <span class="tx-col-actions">
+                        <button
+                          class="btn btn-icon btn-ghost btn-xs"
+                          onClick={() => initSplit(tx)}
+                          title="Split transaction"
+                          disabled={!!tx.isChild || !!tx.isParent}
+                        >
+                          ⇄
+                        </button>
+                        <button
+                          class="btn btn-icon btn-ghost btn-xs"
+                          onClick={() => handleDelete(tx.id)}
+                        >
+                          🗑️
+                        </button>
+                      </span>
+                    </div>
+
+                    <Show when={isSplitting}>
+                      <div class="tx-split-form">
+                        <div class="tx-split-children">
+                          <For each={splitChildren()}>
+                            {(child, idx) => (
+                              <div class="tx-split-child">
+                                <span class="tx-split-child-num">{idx() + 1}.</span>
+                                <select
+                                  class="tx-inline-select"
+                                  value={child.categoryId}
+                                  onChange={(e) =>
+                                    updateSplitChild(
+                                      child.tempId,
+                                      "categoryId",
+                                      e.currentTarget.value,
+                                    )
+                                  }
+                                >
+                                  <option value="">Category</option>
+                                  <For each={categories()}>
+                                    {(cat) => (
+                                      <option value={cat.id}>
+                                        {cat.groupName ? `${cat.groupName}: ` : ""}
+                                        {cat.name}
+                                      </option>
+                                    )}
+                                  </For>
+                                </select>
+                                <input
+                                  type="number"
+                                  step={fmt().code === "IDR" ? "1" : "0.01"}
+                                  class="tx-inline-input"
+                                  style={{ width: "120px" }}
+                                  placeholder="Amount"
+                                  value={child.amount}
+                                  onInput={(e) =>
+                                    updateSplitChild(child.tempId, "amount", e.currentTarget.value)
+                                  }
+                                />
+                                <input
+                                  type="text"
+                                  class="tx-inline-input"
+                                  style={{ flex: 1 }}
+                                  placeholder="Notes"
+                                  value={child.notes}
+                                  onInput={(e) =>
+                                    updateSplitChild(child.tempId, "notes", e.currentTarget.value)
+                                  }
+                                />
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                        <div class="tx-split-actions">
+                          <button class="btn btn-ghost btn-xs" onClick={addSplitChild}>
+                            + Add Child
+                          </button>
+                          <button class="btn btn-primary btn-xs" onClick={saveSplit}>
+                            Save Split
+                          </button>
+                          <button class="btn btn-ghost btn-xs" onClick={cancelSplit}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </Show>
+                  </>
                 );
               }}
             </For>

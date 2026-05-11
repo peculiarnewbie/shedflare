@@ -45,6 +45,7 @@ export function handleTransactionCommands(
           notes: valid.fields.notes !== undefined ? valid.fields.notes : existing.notes,
           date: valid.fields.date ?? existing.date,
           cleared: valid.fields.cleared ?? existing.cleared,
+          reconciled: valid.fields.reconciled ?? existing.reconciled,
           importedDescription:
             valid.fields.importedDescription !== undefined
               ? valid.fields.importedDescription

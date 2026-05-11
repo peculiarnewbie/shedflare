@@ -63,6 +63,7 @@ const CREATE_TABLES = [
     notes TEXT,
     date TEXT NOT NULL,
     cleared INTEGER DEFAULT 1,
+    reconciled INTEGER DEFAULT 0,
     imported_description TEXT,
     starting_balance_flag INTEGER DEFAULT 0,
     sort_order INTEGER,
