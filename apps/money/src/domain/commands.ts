@@ -26,6 +26,7 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     id: Schema.String,
     name: Schema.optional(Schema.String),
     offBudget: Schema.optional(Schema.Boolean),
+    lastReconciled: Schema.optional(Schema.NullOr(Schema.String)),
   }),
 
   delete_account: Schema.Struct({

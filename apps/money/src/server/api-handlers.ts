@@ -295,6 +295,7 @@ function mapAccountRow(row: Record<string, unknown>) {
     closed: Number(row.closed ?? 0) === 1,
     sortOrder: Number(row.sort_order ?? 0),
     balanceCurrent: Number(row.balance_current ?? 0),
+    lastReconciled: row.last_reconciled ? String(row.last_reconciled) : null,
   };
 }
 

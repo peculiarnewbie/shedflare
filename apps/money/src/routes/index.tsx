@@ -13,6 +13,8 @@ export default function Dashboard() {
   const [monthExpense, setMonthExpense] = createSignal(0);
   const [accountCount, setAccountCount] = createSignal(0);
   const [onBudgetAmount, setOnBudgetAmount] = createSignal(0);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
 
   // Load data on mount
   createEffect(() => {
@@ -21,8 +23,10 @@ export default function Dashboard() {
   });
 
   async function loadDashboardData() {
+    setLoading(true);
+    setError(null);
     try {
-      const [sessionRes, budgetRes] = await Promise.all([
+      const [_sessionRes, budgetRes] = await Promise.all([
         fetch("/api/session"),
         fetch("/api/budget/overview"),
       ]);
@@ -33,9 +37,13 @@ export default function Dashboard() {
         setMonthExpense(data.expense ?? 0);
         setAccountCount(data.accountCount ?? 0);
         setOnBudgetAmount(data.onBudget ?? 0);
+      } else {
+        setError(`Failed to load: ${budgetRes.status}`);
       }
-    } catch {
-      // Silently fail — will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not connect");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -44,55 +52,74 @@ export default function Dashboard() {
       <h1 class="page-title">Dashboard</h1>
       <p class="page-subtitle">Your financial overview</p>
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Net Worth</div>
-          <div class="stat-value positive">{fmt().formatCents(netWorth())}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">On Budget</div>
-          <div class="stat-value positive">{fmt().formatCents(onBudgetAmount())}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Accounts</div>
-          <div class="stat-value">{accountCount()}</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">This Month</h2>
-        <div class="stats-grid">
-          <div class="stat-card income">
-            <div class="stat-label">Income</div>
-            <div class="stat-value positive">{fmt().formatCents(monthIncome())}</div>
-          </div>
-          <div class="stat-card expense">
-            <div class="stat-label">Expenses</div>
-            <div class="stat-value negative">{fmt().formatCents(monthExpense())}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Balance</div>
-            <div
-              class="stat-value"
-              classList={{
-                positive: monthIncome() - monthExpense() >= 0,
-                negative: monthIncome() - monthExpense() < 0,
-              }}
-            >
-              {fmt().formatCents(monthIncome() - monthExpense())}
+      <Show when={!loading()} fallback={<div class="loading">Loading dashboard...</div>}>
+        <Show
+          when={!error()}
+          fallback={
+            <div class="empty-state">
+              <p>Could not load dashboard data.</p>
+              <p style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>{error()}</p>
+              <button
+                class="btn btn-primary btn-sm"
+                onClick={loadDashboardData}
+                style="margin-top:12px"
+              >
+                Retry
+              </button>
+            </div>
+          }
+        >
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Net Worth</div>
+              <div class="stat-value positive">{fmt().formatCents(netWorth())}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">On Budget</div>
+              <div class="stat-value positive">{fmt().formatCents(onBudgetAmount())}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Accounts</div>
+              <div class="stat-value">{accountCount()}</div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="quick-actions">
-        <button class="btn btn-primary" onClick={() => navigate("/accounts")}>
-          + Add Transaction
-        </button>
-        <button class="btn btn-secondary" onClick={() => navigate("/budget")}>
-          Go to Budget
-        </button>
-      </div>
+          <div class="section">
+            <h2 class="section-title">This Month</h2>
+            <div class="stats-grid">
+              <div class="stat-card income">
+                <div class="stat-label">Income</div>
+                <div class="stat-value positive">{fmt().formatCents(monthIncome())}</div>
+              </div>
+              <div class="stat-card expense">
+                <div class="stat-label">Expenses</div>
+                <div class="stat-value negative">{fmt().formatCents(monthExpense())}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Balance</div>
+                <div
+                  class="stat-value"
+                  classList={{
+                    positive: monthIncome() - monthExpense() >= 0,
+                    negative: monthIncome() - monthExpense() < 0,
+                  }}
+                >
+                  {fmt().formatCents(monthIncome() - monthExpense())}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="quick-actions">
+            <button class="btn btn-primary" onClick={() => navigate("/accounts")}>
+              + Add Transaction
+            </button>
+            <button class="btn btn-secondary" onClick={() => navigate("/budget")}>
+              Go to Budget
+            </button>
+          </div>
+        </Show>
+      </Show>
     </div>
   );
 }

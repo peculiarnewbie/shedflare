@@ -26,26 +26,26 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Transactions
 
-| Gap                                  | Notes                                                                  |
-| ------------------------------------ | ---------------------------------------------------------------------- |
-| ~~Split transaction UI~~             | ✅ Inline split form with child inputs, dispatches `split_transaction` |
-| Reconciliation workflow              | `last_reconciled` field on accounts exists, no reconcile wizard or UI  |
-| ~~Reconciled flag on transactions~~  | ✅ `reconciled` column + lock-icon toggle button in transaction table  |
-| ~~Tag assignment per transaction~~   | ✅ Tag picker in tx table rows, colored chips, add/remove via commands |
-| Undo/redo                            | Not implemented                                                        |
-| Notes entity                         | Generic notes key-value store not implemented                          |
-| Transaction filters (saved searches) | Not implemented                                                        |
-| Link schedules from transactions     | Not implemented                                                        |
-| Payee learn categories               | Not implemented                                                        |
+| Gap                                  | Notes                                                                                                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Split transaction UI~~             | ✅ Inline split form with child inputs, dispatches `split_transaction`                                                                                                                |
+| ~~Reconciliation workflow~~          | ✅ Reconcile button + modal on account page: enter statement balance, shows difference, marks cleared txns as reconciled, creates adjustment txn if needed, updates `last_reconciled` |
+| ~~Reconciled flag on transactions~~  | ✅ `reconciled` column + lock-icon toggle button in transaction table                                                                                                                 |
+| ~~Tag assignment per transaction~~   | ✅ Tag picker in tx table rows, colored chips, add/remove via commands                                                                                                                |
+| Undo/redo                            | Not implemented                                                                                                                                                                       |
+| Notes entity                         | Generic notes key-value store not implemented                                                                                                                                         |
+| Transaction filters (saved searches) | Not implemented                                                                                                                                                                       |
+| Link schedules from transactions     | Not implemented                                                                                                                                                                       |
+| Payee learn categories               | Not implemented                                                                                                                                                                       |
 
 ## Budget
 
-| Gap                                     | Notes                                                                                                                       |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| ~~Goal template UI editor~~             | ✅ Inline editor on categories page: select monthly/byDate, set amount/target date, saves to `goal_def` JSON              |
-| Notes-based DSL for goals               | Not implemented                                                                                                             |
-| Spreadsheet engine (reactive dep graph) | Shedflare uses SQL-computed values instead; no reactive cell graph                                                          |
-| AQL query language                      | Not implemented                                                                                                             |
+| Gap                                     | Notes                                                                                                        |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| ~~Goal template UI editor~~             | ✅ Inline editor on categories page: select monthly/byDate, set amount/target date, saves to `goal_def` JSON |
+| Notes-based DSL for goals               | Not implemented                                                                                              |
+| Spreadsheet engine (reactive dep graph) | Shedflare uses SQL-computed values instead; no reactive cell graph                                           |
+| AQL query language                      | Not implemented                                                                                              |
 
 ## Schedules
 

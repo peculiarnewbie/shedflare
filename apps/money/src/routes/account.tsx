@@ -52,6 +52,7 @@ export default function AccountPage() {
   const [loading, setLoading] = createSignal(true);
   const [showImport, setShowImport] = createSignal(false);
   const [showAddTx, setShowAddTx] = createSignal(false);
+  const [showReconcile, setShowReconcile] = createSignal(false);
   const accountId = params.id;
   const fmt = useCurrency();
 
@@ -63,6 +64,10 @@ export default function AccountPage() {
     Record<string, { id: string; name: string; color: string | null }[]>
   >({});
   const [showTagPicker, setShowTagPicker] = createSignal<string | null>(null);
+
+  const reconciliableTransactions = createMemo(() =>
+    transactions().filter((tx) => tx.cleared && !tx.reconciled && !tx.isChild),
+  );
 
   const [txDate, setTxDate] = createSignal(new Date().toISOString().slice(0, 10));
   const [txPayee, setTxPayee] = createSignal("");
@@ -379,6 +384,10 @@ export default function AccountPage() {
     return fmt().formatCents(cents);
   }
 
+  const runningBalance = createMemo(() =>
+    transactions().reduce((sum, tx) => sum + (tx.amount ?? 0), 0),
+  );
+
   const transactionsWithBalance = createMemo(() => {
     const txs = [...transactions()].sort(
       (a, b) => new Date(a.date).getTime() - new Date(a.date).getTime(),
@@ -406,6 +415,9 @@ export default function AccountPage() {
           <button class="btn btn-secondary btn-sm" onClick={() => setShowAddTx(!showAddTx())}>
             {showAddTx() ? "Cancel" : "+ Add Transaction"}
           </button>
+          <button class="btn btn-secondary btn-sm" onClick={() => setShowReconcile(true)}>
+            Reconcile
+          </button>
           <button class="btn btn-ghost btn-sm" onClick={handleCloseAccount}>
             Close Account
           </button>
@@ -415,11 +427,13 @@ export default function AccountPage() {
       <Show when={account()}>
         <div class="account-header">
           <div class="account-balance-large">
-            {formatCents(
-              transactions().reduce((sum, tx) => sum + tx.amount, 0) ||
-                (account().balanceCurrent ?? 0),
-            )}
+            {formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
           </div>
+          <Show when={account().lastReconciled}>
+            <div class="account-reconciled-info">
+              Last reconciled: {new Date(account().lastReconciled).toLocaleDateString()}
+            </div>
+          </Show>
         </div>
       </Show>
 
@@ -498,6 +512,23 @@ export default function AccountPage() {
 
       <Show when={showImport()}>
         <ImportModal accountId={params.id} onClose={() => setShowImport(false)} />
+      </Show>
+
+      <Show when={showReconcile()}>
+        <ReconcileModal
+          accountId={params.id}
+          runningBalance={runningBalance()}
+          transactions={reconciliableTransactions()}
+          onClose={() => {
+            setShowReconcile(false);
+            setStatementBalance("");
+          }}
+          onFinish={() => {
+            setShowReconcile(false);
+            setStatementBalance("");
+            void loadAccount();
+          }}
+        />
       </Show>
 
       <datalist id="payee-list">
@@ -918,6 +949,161 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
             {importing() ? "Importing..." : "Import"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReconcileModal(props: {
+  accountId: string;
+  runningBalance: number;
+  transactions: TransactionRow[];
+  onClose: () => void;
+  onFinish: () => void;
+}) {
+  const fmt = useCurrency();
+  const [statementBalance, setStatementBalance] = createSignal("");
+  const [processing, setProcessing] = createSignal(false);
+  const [done, setDone] = createSignal(false);
+
+  const diff = createMemo(() => {
+    const sb = fmt().parseInput(statementBalance());
+    return sb - props.runningBalance;
+  });
+
+  const isBalanced = () => diff() === 0;
+
+  async function handleFinish() {
+    setProcessing(true);
+
+    const now = new Date().toISOString();
+    const promises: Promise<unknown>[] = [];
+
+    for (const tx of props.transactions) {
+      promises.push(
+        dispatch("update_transaction", {
+          id: tx.id,
+          fields: { reconciled: true },
+        }).promise,
+      );
+    }
+
+    if (!isBalanced()) {
+      promises.push(
+        dispatch("create_transaction", {
+          row: {
+            accountId: props.accountId,
+            date: now.slice(0, 10),
+            amount: -diff(),
+            payee: "Reconciliation Adjustment",
+            notes: "Balance adjustment from reconciliation",
+            cleared: true,
+            reconciled: true,
+          },
+        }).promise,
+      );
+    }
+
+    promises.push(
+      dispatch("update_account", {
+        id: props.accountId,
+        lastReconciled: now,
+      }).promise,
+    );
+
+    await Promise.all(promises);
+    setProcessing(false);
+    setDone(true);
+  }
+
+  return (
+    <div class="modal-overlay" onClick={props.onClose}>
+      <div class="modal" onClick={(e) => e.stopPropagation()}>
+        <div class="modal-header">
+          <h2>Reconcile Account</h2>
+          <button class="modal-close" onClick={props.onClose}>
+            ✕
+          </button>
+        </div>
+
+        <Show
+          when={!done()}
+          fallback={
+            <div class="modal-body" style={{ "text-align": "center", padding: "24px" }}>
+              <p style={{ "font-size": "1.1rem", "margin-bottom": "16px" }}>
+                ✓ Reconciliation complete
+              </p>
+              <p style={{ color: "var(--text-secondary)" }}>
+                {props.transactions.length} transactions marked as reconciled.
+                {!isBalanced() ? " An adjustment transaction was created." : ""}
+              </p>
+              <div class="form-actions" style={{ "margin-top": "24px" }}>
+                <button class="btn btn-primary" onClick={props.onFinish}>
+                  Done
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <div class="modal-body">
+            <div class="reconcile-summary">
+              <div class="reconcile-row">
+                <span class="reconcile-label">Running balance:</span>
+                <span class="reconcile-value">{fmt().formatCents(props.runningBalance)}</span>
+              </div>
+              <div class="reconcile-row">
+                <span class="reconcile-label">Statement balance:</span>
+                <input
+                  type="number"
+                  step={fmt().code === "IDR" ? "1" : "0.01"}
+                  class="reconcile-input"
+                  placeholder="0"
+                  value={statementBalance()}
+                  onInput={(e) => setStatementBalance(e.currentTarget.value)}
+                  autofocus
+                />
+              </div>
+              <div
+                class="reconcile-row reconcile-diff"
+                classList={{
+                  "reconcile-balanced": isBalanced(),
+                  "reconcile-negative": diff() < 0,
+                  "reconcile-positive": diff() > 0,
+                }}
+              >
+                <span class="reconcile-label">Difference:</span>
+                <span class="reconcile-value">{fmt().formatCents(diff())}</span>
+              </div>
+            </div>
+
+            <Show when={(props.transactions.length ?? 0) === 0}>
+              <p style={{ color: "var(--text-muted)", "margin-top": "16px" }}>
+                No cleared transactions to reconcile.
+              </p>
+            </Show>
+
+            <Show when={!isBalanced() && statementBalance() !== ""}>
+              <div class="reconcile-adjustment-note">
+                {diff() > 0
+                  ? "An adjustment transaction will credit the account."
+                  : "An adjustment transaction will debit the account."}
+              </div>
+            </Show>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-ghost" onClick={props.onClose}>
+              Cancel
+            </button>
+            <button
+              class="btn btn-primary"
+              onClick={handleFinish}
+              disabled={processing() || statementBalance() === ""}
+            >
+              {processing() ? "Reconciling..." : "Finish Reconciliation"}
+            </button>
+          </div>
+        </Show>
       </div>
     </div>
   );

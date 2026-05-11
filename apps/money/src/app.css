@@ -572,6 +572,71 @@ button {
   padding: 4px;
 }
 
+.reconcile-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.reconcile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reconcile-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.reconcile-value {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.reconcile-input {
+  width: 160px;
+  text-align: right;
+  font-weight: 600;
+}
+
+.reconcile-diff {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 1.05rem;
+}
+
+.reconcile-balanced {
+  color: var(--positive, #22c55e);
+}
+
+.reconcile-positive {
+  color: var(--positive, #22c55e);
+}
+
+.reconcile-negative {
+  color: var(--negative, #ef4444);
+}
+
+.reconcile-adjustment-note {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.account-reconciled-info {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .quick-actions {
   display: flex;
   gap: 8px;

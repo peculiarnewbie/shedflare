@@ -37,6 +37,8 @@ export function handleAccountCommands(
           ...existing,
           name: valid.name ?? existing.name,
           offbudget: valid.offBudget ?? existing.offbudget,
+          lastReconciled:
+            valid.lastReconciled !== undefined ? valid.lastReconciled : existing.lastReconciled,
           updatedAt: new Date().toISOString(),
         };
         events.push(
