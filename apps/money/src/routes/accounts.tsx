@@ -4,6 +4,7 @@
 import { createSignal, createMemo, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { useCurrency } from "../lib/currency";
 
 interface AccountRow {
   id: string;
@@ -16,6 +17,7 @@ interface AccountRow {
 
 export default function AccountsPage() {
   const navigate = useNavigate();
+  const fmt = useCurrency();
   const [accounts, setAccounts] = createSignal<AccountRow[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showAddForm, setShowAddForm] = createSignal(false);
@@ -47,7 +49,7 @@ export default function AccountsPage() {
     if (!name) return;
 
     const balance = parseFloat(newBalance());
-    dispatch("create_account", {
+    const op = dispatch("create_account", {
       name,
       offBudget: newOffBudget(),
       balance: isNaN(balance) ? undefined : Math.round(balance * 100),
@@ -57,14 +59,20 @@ export default function AccountsPage() {
     setNewName("");
     setNewOffBudget(false);
     setNewBalance("");
-    // Reload
+    await op.promise;
+    await loadAccounts();
+  }
+
+  async function handleDeleteAccount(account: AccountRow) {
+    if (!confirm(`Delete ${account.name}? This will also delete its transactions.`)) return;
+    setAccounts((prev) => prev.filter((a) => a.id !== account.id));
+    await dispatch("delete_account", { id: account.id }).promise;
     await loadAccounts();
   }
 
   function formatBalance(balance: number | null): string {
     if (balance === null) return "—";
-    const abs = Math.abs(balance);
-    return `${balance < 0 ? "-" : ""}$${(abs / 100).toFixed(2)}`;
+    return fmt().formatCents(balance);
   }
 
   // Separate on-budget and off-budget accounts
@@ -137,18 +145,21 @@ export default function AccountsPage() {
           accounts={onBudgetAccounts()}
           navigate={navigate}
           formatBalance={formatBalance}
+          onDelete={handleDeleteAccount}
         />
         <RenderAccountGroup
           title="Off Budget"
           accounts={offBudgetAccounts()}
           navigate={navigate}
           formatBalance={formatBalance}
+          onDelete={handleDeleteAccount}
         />
         <RenderAccountGroup
           title="Closed"
           accounts={closedAccounts()}
           navigate={navigate}
           formatBalance={formatBalance}
+          onDelete={handleDeleteAccount}
         />
       </Show>
     </div>
@@ -160,6 +171,7 @@ function RenderAccountGroup(props: {
   accounts: AccountRow[];
   navigate: (path: string) => void;
   formatBalance: (b: number | null) => string;
+  onDelete: (account: AccountRow) => void;
 }) {
   return (
     <Show when={props.accounts.length > 0}>
@@ -173,6 +185,16 @@ function RenderAccountGroup(props: {
                   <div class="account-name">{account.name}</div>
                 </div>
                 <div class="account-balance">{props.formatBalance(account.balanceCurrent)}</div>
+                <button
+                  class="btn btn-icon btn-ghost btn-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onDelete(account);
+                  }}
+                  title="Delete account"
+                >
+                  ×
+                </button>
               </div>
             )}
           </For>

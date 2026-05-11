@@ -5,6 +5,8 @@ import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
 import { createPayee } from "../../domain/factories";
+import { decodeCommand } from "../../domain/commands";
+import { castId, type PayeeId } from "../../domain/types";
 
 export function handlePayeeCommands(
   opId: string,
@@ -16,18 +18,20 @@ export function handlePayeeCommands(
 
   switch (payload.commandType ?? "create_payee") {
     case "create_payee": {
-      const row = createPayee({ name: payload.name });
+      const valid = decodeCommand("create_payee", payload);
+      const row = createPayee({ name: valid.name });
       events.push(eventStore.insertEvent(opId, "payee_created", { row }) as SyncServerEvent);
       break;
     }
 
     case "update_payee": {
-      const existing = access.getPayee(payload.id);
+      const valid = decodeCommand("update_payee", payload);
+      const existing = access.getPayee(castId<PayeeId>(valid.id));
       if (existing) {
         const updated = {
           ...existing,
-          name: payload.name ?? existing.name,
-          favorite: payload.favorite ?? existing.favorite,
+          name: valid.name ?? existing.name,
+          favorite: valid.favorite ?? existing.favorite,
           updatedAt: new Date().toISOString(),
         };
         events.push(
@@ -38,13 +42,12 @@ export function handlePayeeCommands(
     }
 
     case "merge_payees": {
-      const target = access.getPayee(payload.targetId);
+      const valid = decodeCommand("merge_payees", payload);
+      const target = access.getPayee(castId<PayeeId>(valid.targetId));
       if (target) {
-        // Update all transactions referencing source payee names to target name
-        for (const sourceId of (payload.sourceIds as string[]) ?? []) {
-          const source = access.getPayee(sourceId);
+        for (const sourceId of valid.sourceIds) {
+          const source = access.getPayee(castId<PayeeId>(sourceId));
           if (source) {
-            // Update transactions that have this payee name
             access.exec(
               `UPDATE transactions SET payee = ? WHERE payee = ?`,
               target.name,
@@ -54,8 +57,8 @@ export function handlePayeeCommands(
         }
         events.push(
           eventStore.insertEvent(opId, "payees_merged", {
-            targetId: payload.targetId,
-            sourceIds: payload.sourceIds,
+            targetId: valid.targetId,
+            sourceIds: valid.sourceIds,
           }) as SyncServerEvent,
         );
       }

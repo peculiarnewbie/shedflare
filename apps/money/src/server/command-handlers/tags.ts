@@ -5,6 +5,7 @@ import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
 import { createTag } from "../../domain/factories";
+import { decodeCommand } from "../../domain/commands";
 
 export function handleTagCommands(
   opId: string,
@@ -16,7 +17,8 @@ export function handleTagCommands(
 
   switch (payload.commandType ?? "create_tag") {
     case "create_tag": {
-      const row = createTag({ name: payload.name, color: payload.color });
+      const valid = decodeCommand("create_tag", payload);
+      const row = createTag({ name: valid.name, color: valid.color });
       events.push(eventStore.insertEvent(opId, "tag_created", { row }) as SyncServerEvent);
       break;
     }

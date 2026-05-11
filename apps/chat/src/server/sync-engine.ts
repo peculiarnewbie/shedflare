@@ -15,7 +15,6 @@ import { getDefaultModelId, type AppEnv } from "#/runtime";
 import * as dbSchema from "#/db/schema";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { eq } from "drizzle-orm";
-import { decodeAppEnv } from "#/effect";
 import {
   json,
   parseJson,
@@ -140,7 +139,8 @@ export class SyncEngineDurableObject {
 
   constructor(ctx: DurableObjectState, env: AppEnv) {
     this.ctx = ctx;
-    this.env = decodeAppEnv(env);
+    const raw = env as unknown as Record<string, unknown>;
+    this.env = env;
     this.db = drizzle(ctx.storage, { schema: dbSchema, logger: false });
     this.access = new DataAccess(this.db, (query: string, ...params: any[]) =>
       ctx.storage.sql.exec(query, ...params),
@@ -149,6 +149,17 @@ export class SyncEngineDurableObject {
     this.handlerRegistry = buildHandlerRegistry();
 
     void this.ctx.blockConcurrencyWhile(async () => {
+      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"] as const) {
+        const binding = raw[key];
+        if (
+          binding &&
+          typeof binding === "object" &&
+          "get" in binding &&
+          typeof (binding as any).get === "function"
+        ) {
+          raw[key] = await (binding as { get(): Promise<string> }).get();
+        }
+      }
       initializeStorage(
         (query, ...params) => {
           ctx.storage.sql.exec(query, ...params);

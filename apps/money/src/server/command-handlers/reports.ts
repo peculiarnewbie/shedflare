@@ -5,6 +5,7 @@ import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
 import { createCustomReport, createDashboardWidget } from "../../domain/factories";
+import { decodeCommand } from "../../domain/commands";
 
 export function handleReportCommands(
   opId: string,
@@ -16,28 +17,30 @@ export function handleReportCommands(
 
   switch (payload.commandType ?? "create_report") {
     case "create_report": {
+      const valid = decodeCommand("create_report", payload);
       const row = createCustomReport({
-        name: payload.report?.name,
-        startDate: payload.report?.startDate,
-        endDate: payload.report?.endDate,
-        metadata: payload.report?.metadata,
-        conditions: payload.report?.conditions,
-        graphType: payload.report?.graphType,
-        mode: payload.report?.mode,
-        groupBy: payload.report?.groupBy,
-        interval: payload.report?.interval,
+        name: valid.report?.name,
+        startDate: valid.report?.startDate,
+        endDate: valid.report?.endDate,
+        metadata: valid.report?.metadata,
+        conditions: valid.report?.conditions,
+        graphType: valid.report?.graphType,
+        mode: valid.report?.mode,
+        groupBy: valid.report?.groupBy,
+        interval: valid.report?.interval,
       });
       events.push(eventStore.insertEvent(opId, "report_created", { row }) as SyncServerEvent);
       break;
     }
 
     case "update_report": {
+      const valid = decodeCommand("update_report", payload);
       const existing = access.queryOne<Record<string, unknown>>(
         `SELECT * FROM custom_reports WHERE id = ?`,
-        payload.id,
+        valid.id,
       );
       if (existing) {
-        const fields = payload.fields ?? {};
+        const fields = valid.fields;
         const now = new Date().toISOString();
         access.exec(
           `UPDATE custom_reports SET name = ?, start_date = ?, end_date = ?, mode = ?, group_by = ?,
@@ -51,11 +54,11 @@ export function handleReportCommands(
           fields.conditions ?? existing.conditions,
           fields.metadata !== undefined ? fields.metadata : existing.metadata,
           now,
-          payload.id,
+          valid.id,
         );
         const updated = access.queryOne<Record<string, unknown>>(
           `SELECT * FROM custom_reports WHERE id = ?`,
-          payload.id,
+          valid.id,
         );
         if (updated) {
           events.push(
@@ -74,16 +77,18 @@ export function handleReportCommands(
     }
 
     case "update_dashboard": {
-      const widgets = (payload.widgets ?? []).map((w: any, i: number) =>
-        createDashboardWidget({
+      const valid = decodeCommand("update_dashboard", payload);
+      const widgets = valid.widgets.map((w: any) => ({
+        ...createDashboardWidget({
           type: w.type,
-          x: w.x ?? (i % 2) * 4,
-          y: w.y ?? Math.floor(i / 2) * 2,
-          width: w.width ?? 6,
-          height: w.height ?? 2,
+          x: w.x,
+          y: w.y,
+          width: w.width,
+          height: w.height,
           meta: w.meta ?? null,
         }),
-      );
+        id: w.id,
+      }));
       events.push(
         eventStore.insertEvent(opId, "dashboard_updated", { widgets }) as SyncServerEvent,
       );

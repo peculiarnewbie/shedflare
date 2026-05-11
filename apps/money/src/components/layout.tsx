@@ -15,6 +15,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { path: "/", label: "Dashboard", icon: "📊" },
   { path: "/budget", label: "Budget", icon: "💰" },
+  { path: "/categories", label: "Categories", icon: "📁" },
   { path: "/accounts", label: "Accounts", icon: "🏦" },
   { path: "/reports", label: "Reports", icon: "📈" },
   { path: "/schedules", label: "Schedules", icon: "🔄" },
@@ -73,11 +74,28 @@ export default function Layout(props: RouteSectionProps) {
             <span class="sync-dot" />
             <span class="sync-text">{isConnected() ? "Synced" : "Offline"}</span>
           </div>
-          <form method="post" action="/api/auth/logout">
-            <button class="btn btn-ghost btn-sm" style="width:100%">
-              Sign out
-            </button>
-          </form>
+          <button
+            class="btn btn-ghost btn-sm"
+            style="width:100%"
+            onClick={async () => {
+              try {
+                await fetch("/api/auth/logout", {
+                  method: "POST",
+                  credentials: "same-origin",
+                });
+              } finally {
+                // Clear local sync state so the next login starts fresh
+                if (typeof localStorage !== "undefined") {
+                  localStorage.removeItem("money.clientId");
+                  localStorage.removeItem("money.lastServerSeq");
+                  localStorage.removeItem("money.pendingOps");
+                }
+                window.location.href = "/";
+              }
+            }}
+          >
+            Sign out
+          </button>
         </div>
       </aside>
 

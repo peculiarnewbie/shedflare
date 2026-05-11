@@ -25,20 +25,29 @@ export function handleApiRequest(
   // Accounts list
   if (pathname === "/api/accounts" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM accounts ORDER BY sort_order, name",
+      `SELECT a.id, a.name, a.offbudget, a.closed, a.sort_order,
+              COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance_current
+       FROM accounts a
+       LEFT JOIN transactions t ON t.account_id = a.id
+       GROUP BY a.id
+       ORDER BY a.sort_order, a.name`,
     );
-    return json({ accounts: rows });
+    return json({ accounts: rows.map(mapAccountRow) });
   }
 
   // Single account
   const accountMatch = pathname.match(/^\/api\/accounts\/([^/]+)$/);
   if (accountMatch && method === "GET") {
     const row = access.queryOne<Record<string, unknown>>(
-      "SELECT * FROM accounts WHERE id = ?",
+      `SELECT a.*, COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS computed_balance
+       FROM accounts a
+       LEFT JOIN transactions t ON t.account_id = a.id
+       WHERE a.id = ?
+       GROUP BY a.id`,
       accountMatch[1],
     );
     if (!row) return json({ error: "Not found" }, 404);
-    return json(row);
+    return json(mapAccountRow({ ...row, balance_current: row.computed_balance }));
   }
 
   // Account transactions
@@ -58,10 +67,24 @@ export function handleApiRequest(
   // Budget overview
   if (pathname === "/api/budget/overview" && method === "GET") {
     const netWorth = access.queryOne<{ total: number | null }>(
-      "SELECT COALESCE(SUM(balance_current), 0) as total FROM accounts WHERE closed = 0",
+      `SELECT COALESCE(SUM(balance), 0) AS total
+       FROM (
+         SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
+         FROM accounts a
+         LEFT JOIN transactions t ON t.account_id = a.id
+         WHERE a.closed = 0
+         GROUP BY a.id
+       )`,
     );
     const onBudget = access.queryOne<{ total: number | null }>(
-      "SELECT COALESCE(SUM(balance_current), 0) as total FROM accounts WHERE offbudget = 0 AND closed = 0",
+      `SELECT COALESCE(SUM(balance), 0) AS total
+       FROM (
+         SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
+         FROM accounts a
+         LEFT JOIN transactions t ON t.account_id = a.id
+         WHERE a.offbudget = 0 AND a.closed = 0
+         GROUP BY a.id
+       )`,
     );
     const accountCount = access.queryOne<{ count: number }>(
       "SELECT COUNT(*) as count FROM accounts WHERE closed = 0",
@@ -117,6 +140,13 @@ export function handleApiRequest(
     return json({ categories: rows });
   }
 
+  if (pathname === "/api/category-groups" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM category_groups ORDER BY sort_order, name",
+    );
+    return json({ groups: rows.map(mapCategoryGroupRow) });
+  }
+
   // Payees
   if (pathname === "/api/payees" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(
@@ -151,7 +181,11 @@ export function handleApiRequest(
     const row = access.queryOne<Record<string, unknown>>(
       "SELECT * FROM exchange_rates WHERE id = 'latest'",
     );
-    return json(row ?? { id: "latest", usdToIdr: 16000 });
+    return json(
+      row
+        ? { id: row.id, usdToIdr: row.usd_to_idr, updatedAt: row.updated_at }
+        : { id: "latest", usdToIdr: 16000 },
+    );
   }
 
   // Report: net worth over time
@@ -236,4 +270,24 @@ export function handleApiRequest(
   }
 
   return null;
+}
+
+function mapAccountRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    offbudget: Number(row.offbudget ?? 0) === 1,
+    closed: Number(row.closed ?? 0) === 1,
+    sortOrder: Number(row.sort_order ?? 0),
+    balanceCurrent: Number(row.balance_current ?? 0),
+  };
+}
+
+function mapCategoryGroupRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    isIncome: Number(row.is_income ?? 0) === 1,
+    sortOrder: Number(row.sort_order ?? 0),
+  };
 }

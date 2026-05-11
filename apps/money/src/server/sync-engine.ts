@@ -5,6 +5,7 @@
  * and broadcasts state changes to all connected clients.
  */
 import { SYNC_PROTOCOL_VERSION, createId, nowIso } from "../domain/types";
+import { startSpanWithStack, endSpanWithStack, traceAsync } from "./tracer";
 import type {
   SyncEventPayloadMap,
   SyncEventType,
@@ -31,6 +32,7 @@ import { handleRuleCommands } from "./command-handlers/rules";
 import { handleTagCommands } from "./command-handlers/tags";
 import { handleImportCommands } from "./command-handlers/import";
 import { handleReportCommands } from "./command-handlers/reports";
+import { handleSettingCommands } from "./command-handlers/settings";
 import { handleApiRequest } from "./api-handlers";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,7 @@ function buildHandlerRegistry(): Map<string, CommandHandlerFn> {
     // Accounts
     ["create_account", handleAccountCommands as CommandHandlerFn],
     ["update_account", handleAccountCommands as CommandHandlerFn],
+    ["delete_account", handleAccountCommands as CommandHandlerFn],
     ["close_account", handleAccountCommands as CommandHandlerFn],
     ["reopen_account", handleAccountCommands as CommandHandlerFn],
     ["reorder_accounts", handleAccountCommands as CommandHandlerFn],
@@ -107,6 +110,7 @@ function buildHandlerRegistry(): Map<string, CommandHandlerFn> {
     ["update_dashboard", handleReportCommands as CommandHandlerFn],
     // Exchange rates
     ["update_exchange_rate", handleAccountCommands as CommandHandlerFn],
+    ["update_setting", handleSettingCommands as CommandHandlerFn],
   ]);
 }
 
@@ -209,12 +213,14 @@ export class MoneyBudgetDO implements DurableObject {
   // -----------------------------------------------------------------
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    const spanId = startSpanWithStack("webSocketMessage");
     const text = typeof message === "string" ? message : new TextDecoder().decode(message);
     let envelope: SyncClientEnvelope;
     try {
       envelope = JSON.parse(text) as SyncClientEnvelope;
     } catch {
       syncLogError("ws_parse_error", text);
+      endSpanWithStack(spanId, { status: "parse_error" });
       return;
     }
 
@@ -224,19 +230,20 @@ export class MoneyBudgetDO implements DurableObject {
       switch (envelope.type) {
         case "hello":
           await this.handleHello(ws, envelope);
-          return;
+          break;
         case "ping":
           ws.send(json({ type: "pong", at: nowIso() } satisfies SyncServerEnvelope));
-          return;
+          break;
         case "command":
           await this.processCommand(envelope.opId, envelope.commandType, envelope.payload, true);
-          return;
+          break;
         default:
           syncLogError("ws_unknown_envelope", envelope);
       }
+      endSpanWithStack(spanId, { type: envelope.type });
     } catch (error) {
       syncLogError("ws_message_error", error);
-      // Send sync_reset on fatal errors to recover client state
+      endSpanWithStack(spanId, { error: error instanceof Error ? error.message : String(error) });
       ws.send(
         json({
           type: "sync_reset",
@@ -257,6 +264,10 @@ export class MoneyBudgetDO implements DurableObject {
   // -----------------------------------------------------------------
 
   private async handleHello(ws: WebSocket, hello: SyncClientHello) {
+    const spanId = startSpanWithStack("handleHello", {
+      clientId: hello.clientId,
+      lastServerSeq: hello.lastServerSeq,
+    });
     syncLog("hello", {
       clientId: hello.clientId,
       lastServerSeq: hello.lastServerSeq,
@@ -284,6 +295,7 @@ export class MoneyBudgetDO implements DurableObject {
           snapshot: this.access.getSnapshot(),
         } satisfies SyncServerEnvelope),
       );
+      endSpanWithStack(spanId, { status: "protocol_mismatch" });
       return;
     }
 
@@ -317,6 +329,7 @@ export class MoneyBudgetDO implements DurableObject {
       const ack = this.access.getCommandAck(opId);
       if (ack) ws.send(json(ack));
     }
+    endSpanWithStack(spanId, { status: "ok", needsFullSync });
   }
 
   // -----------------------------------------------------------------
@@ -329,71 +342,87 @@ export class MoneyBudgetDO implements DurableObject {
     payload: unknown,
     broadcast: boolean,
   ): Promise<{ ack: SyncServerAck | null; events: SyncServerEvent[] }> {
+    const spanId = startSpanWithStack("processCommand", { opId, commandType, broadcast });
     syncLog("process_command_start", { opId, commandType, broadcast });
 
-    // Deduplicate — if already processed, return existing ack
-    const existing = this.access.getCommandAck(opId);
-    if (existing) {
-      syncLog("process_command_duplicate", { opId, commandType });
-      return { ack: existing, events: [] };
-    }
-
-    const handler = this.handlerRegistry.get(commandType);
-    if (!handler) {
-      throw new Error(`Unknown command type: ${commandType}`);
-    }
-
-    const createdAt = nowIso();
-
-    // Process in a transaction
-    const result = this.db.transaction(() => {
-      const { events: resultEvents } = handler(opId, payload, this.access, this.eventStore);
-
-      const ackedSeq =
-        resultEvents.length > 0
-          ? resultEvents[resultEvents.length - 1]!.serverSeq
-          : this.access.getLastServerSeq();
-
-      const ack = {
-        type: "ack" as const,
-        opId,
-        serverSeq: ackedSeq,
-        acceptedAt: createdAt,
-        commandType,
-      } satisfies SyncServerAck;
-
-      // Persist ack
-      const ackJson = json(ack);
-      this.access.exec(
-        `INSERT OR REPLACE INTO commands (op_id, type, status, response_json, acked_seq, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        opId,
-        commandType,
-        "accepted",
-        ackJson,
-        ackedSeq,
-        createdAt,
-      );
-
-      return { ack, events: resultEvents };
-    });
-
-    syncLog("process_command_committed", {
-      opId,
-      commandType,
-      eventCount: result.events.length,
-      ackedSeq: result.ack.serverSeq,
-    });
-
-    // Broadcast events to all connected clients
-    if (broadcast) {
-      this.broadcast(result.ack);
-      for (const event of result.events) {
-        this.broadcast(event);
+    try {
+      const existing = this.access.getCommandAck(opId);
+      if (existing) {
+        syncLog("process_command_duplicate", { opId, commandType });
+        endSpanWithStack(spanId, { status: "duplicate" });
+        return { ack: existing, events: [] };
       }
-    }
 
-    return { ack: result.ack, events: result.events };
+      const handler = this.handlerRegistry.get(commandType);
+      if (!handler) {
+        throw new Error(`Unknown command type: ${commandType}`);
+      }
+
+      const createdAt = nowIso();
+
+      const result = this.db.transaction(() => {
+        const commandPayload =
+          payload && typeof payload === "object"
+            ? { ...(payload as Record<string, unknown>), commandType }
+            : payload;
+        const { events: resultEvents } = handler(
+          opId,
+          commandPayload,
+          this.access,
+          this.eventStore,
+        );
+
+        const ackedSeq =
+          resultEvents.length > 0
+            ? resultEvents[resultEvents.length - 1]!.serverSeq
+            : this.access.getLastServerSeq();
+
+        const ack = {
+          type: "ack" as const,
+          opId,
+          serverSeq: ackedSeq,
+          acceptedAt: createdAt,
+          commandType,
+        } satisfies SyncServerAck;
+
+        const ackJson = json(ack);
+        this.access.exec(
+          `INSERT OR REPLACE INTO commands (op_id, type, status, response_json, acked_seq, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          opId,
+          commandType,
+          "accepted",
+          ackJson,
+          ackedSeq,
+          createdAt,
+        );
+
+        return { ack, events: resultEvents };
+      });
+
+      syncLog("process_command_committed", {
+        opId,
+        commandType,
+        eventCount: result.events.length,
+        ackedSeq: result.ack.serverSeq,
+      });
+
+      if (broadcast) {
+        this.broadcast(result.ack);
+        for (const event of result.events) {
+          this.broadcast(event);
+        }
+      }
+
+      endSpanWithStack(spanId, {
+        eventCount: result.events.length,
+        ackedSeq: result.ack.serverSeq,
+      });
+      return { ack: result.ack, events: result.events };
+    } catch (error) {
+      endSpanWithStack(spanId, { error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
   }
 
   // -----------------------------------------------------------------

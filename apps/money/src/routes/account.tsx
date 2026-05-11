@@ -1,9 +1,8 @@
-/**
- * Account detail page — shows transactions for a single account with inline editing.
- */
-import { createSignal, createMemo, For, Show, createEffect } from "solid-js";
+import { createSignal, createMemo, createEffect, For, Show, onCleanup } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { transactionsCollection, categoriesCollection } from "../lib/collections";
+import { useCurrency } from "../lib/currency";
 
 interface TransactionRow {
   id: string;
@@ -16,19 +15,61 @@ interface TransactionRow {
   cleared: boolean;
 }
 
+interface CategoryRow {
+  id: string;
+  name: string;
+  groupName: string | null;
+}
+
+type TxField = "date" | "payee" | "amount" | "category" | "notes";
+
 export default function AccountPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [account, setAccount] = createSignal<any>(null);
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
+  const [categories, setCategories] = createSignal<CategoryRow[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showImport, setShowImport] = createSignal(false);
+  const [showAddTx, setShowAddTx] = createSignal(false);
   const accountId = params.id;
+  const fmt = useCurrency();
+
+  const [editingId, setEditingId] = createSignal<string | null>(null);
+  const [editingField, setEditingField] = createSignal<TxField | null>(null);
+
+  const [txDate, setTxDate] = createSignal(new Date().toISOString().slice(0, 10));
+  const [txPayee, setTxPayee] = createSignal("");
+  const [txAmount, setTxAmount] = createSignal("");
+  const [txCategory, setTxCategory] = createSignal("");
+  const [txNotes, setTxNotes] = createSignal("");
+
+  const payeeNames = createMemo(() => {
+    const names = new Set<string>();
+    for (const tx of transactions()) {
+      if (tx.payee) names.add(tx.payee);
+    }
+    return [...names].sort();
+  });
 
   createEffect(() => {
     if (accountId) {
       void loadAccount();
+      void loadCategories();
     }
+  });
+
+  createEffect(() => {
+    const unsub1 = transactionsCollection.subscribeChanges(() => {
+      void loadAccount();
+    });
+    const unsub2 = categoriesCollection.subscribeChanges(() => {
+      void loadCategories();
+    });
+    onCleanup(() => {
+      unsub1.unsubscribe();
+      unsub2.unsubscribe();
+    });
   });
 
   async function loadAccount() {
@@ -40,7 +81,9 @@ export default function AccountPage() {
       if (acctRes.ok) setAccount((await acctRes.json()) as any);
       if (txRes.ok) {
         const data = (await txRes.json()) as any;
-        setTransactions(data.transactions ?? []);
+        if (data.transactions && data.transactions.length > 0) {
+          setTransactions(data.transactions);
+        }
       }
     } catch {
       // Will work once sync is connected
@@ -49,15 +92,163 @@ export default function AccountPage() {
     }
   }
 
+  async function loadCategories() {
+    try {
+      const res = await fetch("/api/categories");
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        setCategories(data.categories ?? []);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   async function handleDelete(txId: string) {
+    if (!confirm("Delete this transaction?")) return;
     dispatch("delete_transaction", { id: txId });
     setTransactions((prev) => prev.filter((t) => t.id !== txId));
   }
 
-  function formatCents(cents: number): string {
-    const abs = Math.abs(cents);
-    return `${cents < 0 ? "-" : ""}$${(abs / 100).toFixed(2)}`;
+  function handleAddTransaction(e: Event) {
+    e.preventDefault();
+    const raw = txAmount();
+    const cents = fmt().parseInput(raw);
+    if (cents === 0) return;
+
+    const payload = {
+      row: {
+        accountId,
+        date: txDate(),
+        amount: cents,
+        payee: txPayee() || undefined,
+        notes: txNotes() || undefined,
+        categoryId: txCategory() || null,
+        cleared: true,
+      },
+    };
+
+    dispatch("create_transaction", payload);
+
+    setTransactions((prev) => [
+      {
+        id: `pending_${Date.now()}`,
+        date: txDate(),
+        amount: cents,
+        payee: txPayee() || null,
+        categoryId: txCategory() || null,
+        categoryName: categories().find((c) => c.id === txCategory())?.name ?? null,
+        notes: txNotes() || null,
+        cleared: true,
+      },
+      ...prev,
+    ]);
+
+    setTxDate(new Date().toISOString().slice(0, 10));
+    setTxPayee("");
+    setTxAmount("");
+    setTxCategory("");
+    setTxNotes("");
+    setShowAddTx(false);
   }
+
+  function handleCloseAccount() {
+    if (!confirm("Close this account? It will be hidden from most views.")) return;
+    dispatch("close_account", { id: accountId });
+    navigate("/accounts");
+  }
+
+  function startEdit(txId: string, field: TxField) {
+    setEditingId(txId);
+    setEditingField(field);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditingField(null);
+  }
+
+  function saveEdit(tx: TransactionRow, field: TxField, value: string) {
+    if (field === "amount") {
+      const cents = fmt().parseInput(value);
+      if (cents !== tx.amount) {
+        dispatch("update_transaction", {
+          id: tx.id,
+          fields: { amount: cents },
+        });
+        setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, amount: cents } : t)));
+      }
+    } else if (field === "date") {
+      if (value !== tx.date) {
+        dispatch("update_transaction", {
+          id: tx.id,
+          fields: { date: value },
+        });
+        setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, date: value } : t)));
+      }
+    } else if (field === "payee") {
+      if (value !== (tx.payee ?? "")) {
+        dispatch("update_transaction", {
+          id: tx.id,
+          fields: { payee: value || undefined },
+        });
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === tx.id ? { ...t, payee: value || null } : t)),
+        );
+      }
+    } else if (field === "notes") {
+      if (value !== (tx.notes ?? "")) {
+        dispatch("update_transaction", {
+          id: tx.id,
+          fields: { notes: value || undefined },
+        });
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === tx.id ? { ...t, notes: value || null } : t)),
+        );
+      }
+    } else if (field === "category") {
+      const catId = value || null;
+      if (catId !== tx.categoryId) {
+        dispatch("update_transaction", {
+          id: tx.id,
+          fields: { categoryId: catId },
+        });
+        const catName = categories().find((c) => c.id === catId)?.name ?? null;
+        setTransactions((prev) =>
+          prev.map((t) =>
+            t.id === tx.id ? { ...t, categoryId: catId, categoryName: catName } : t,
+          ),
+        );
+      }
+    }
+    cancelEdit();
+  }
+
+  function toggleCleared(tx: TransactionRow) {
+    const next = !tx.cleared;
+    dispatch("update_transaction", {
+      id: tx.id,
+      fields: { cleared: next },
+    });
+    setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, cleared: next } : t)));
+  }
+
+  function formatCents(cents: number): string {
+    return fmt().formatCents(cents);
+  }
+
+  const transactionsWithBalance = createMemo(() => {
+    const txs = [...transactions()].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(a.date).getTime(),
+    );
+    const result: Array<TransactionRow & { balance: number }> = [];
+    let balance = 0;
+    for (const tx of txs) {
+      balance += tx.amount;
+      result.push({ ...tx, balance });
+    }
+    return result.reverse();
+  });
 
   return (
     <div class="page">
@@ -70,12 +261,96 @@ export default function AccountPage() {
           <button class="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>
             Import CSV
           </button>
+          <button class="btn btn-secondary btn-sm" onClick={() => setShowAddTx(!showAddTx())}>
+            {showAddTx() ? "Cancel" : "+ Add Transaction"}
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick={handleCloseAccount}>
+            Close Account
+          </button>
         </div>
       </div>
 
       <Show when={account()}>
         <div class="account-header">
-          <div class="account-balance-large">{formatCents(account().balanceCurrent ?? 0)}</div>
+          <div class="account-balance-large">
+            {formatCents(
+              transactions().reduce((sum, tx) => sum + tx.amount, 0) ||
+                (account().balanceCurrent ?? 0),
+            )}
+          </div>
+        </div>
+      </Show>
+
+      <Show when={showAddTx()}>
+        <div class="section">
+          <form
+            onSubmit={handleAddTransaction}
+            class="settings-section"
+            style={{ display: "flex", "flex-direction": "column", gap: "12px" }}
+          >
+            <div class="form-row">
+              <div class="form-group" style={{ flex: "0 0 140px" }}>
+                <label>Date</label>
+                <input
+                  type="date"
+                  value={txDate()}
+                  onInput={(e) => setTxDate(e.currentTarget.value)}
+                  required
+                />
+              </div>
+              <div class="form-group" style={{ flex: "1" }}>
+                <label>Payee</label>
+                <input
+                  type="text"
+                  list="payee-list"
+                  placeholder="e.g. Grocery Store"
+                  value={txPayee()}
+                  onInput={(e) => setTxPayee(e.currentTarget.value)}
+                />
+              </div>
+              <div class="form-group" style={{ flex: "0 0 160px" }}>
+                <label>Amount</label>
+                <input
+                  type="number"
+                  step={fmt().code === "IDR" ? "1" : "0.01"}
+                  placeholder="0"
+                  value={txAmount()}
+                  onInput={(e) => setTxAmount(e.currentTarget.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style={{ flex: "1" }}>
+                <label>Category</label>
+                <select value={txCategory()} onChange={(e) => setTxCategory(e.currentTarget.value)}>
+                  <option value="">Uncategorized</option>
+                  <For each={categories()}>
+                    {(cat) => (
+                      <option value={cat.id}>
+                        {cat.groupName ? `${cat.groupName}: ` : ""}
+                        {cat.name}
+                      </option>
+                    )}
+                  </For>
+                </select>
+              </div>
+              <div class="form-group" style={{ flex: "1" }}>
+                <label>Notes</label>
+                <input
+                  type="text"
+                  placeholder="Optional notes"
+                  value={txNotes()}
+                  onInput={(e) => setTxNotes(e.currentTarget.value)}
+                />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">
+                Add Transaction
+              </button>
+            </div>
+          </form>
         </div>
       </Show>
 
@@ -83,44 +358,158 @@ export default function AccountPage() {
         <ImportModal accountId={params.id} onClose={() => setShowImport(false)} />
       </Show>
 
+      <datalist id="payee-list">
+        <For each={payeeNames()}>{(name) => <option value={name} />}</For>
+      </datalist>
+
       <Show when={!loading()} fallback={<div class="loading">Loading transactions...</div>}>
         <Show
-          when={transactions().length > 0}
-          fallback={<div class="empty-state">No transactions yet. Add one below.</div>}
+          when={transactionsWithBalance().length > 0}
+          fallback={<div class="empty-state">No transactions yet.</div>}
         >
           <div class="transaction-table">
             <div class="tx-table-header">
+              <span class="tx-col-c">C</span>
               <span class="tx-col-date">Date</span>
               <span class="tx-col-payee">Payee</span>
               <span class="tx-col-category">Category</span>
-              <span class="tx-col-amount">Amount</span>
+              <span class="tx-col-amount">Amount ({fmt().symbol})</span>
+              <span class="tx-col-balance">Balance</span>
               <span class="tx-col-actions" />
             </div>
-            <For each={transactions()}>
-              {(tx) => (
-                <div class="tx-row" classList={{ uncleared: !tx.cleared }}>
-                  <span class="tx-col-date">{tx.date}</span>
-                  <span class="tx-col-payee">{tx.payee ?? "—"}</span>
-                  <span class="tx-col-category">{tx.categoryName ?? "Uncategorized"}</span>
-                  <span
-                    class="tx-col-amount"
-                    classList={{
-                      positive: (tx.amount ?? 0) > 0,
-                      negative: (tx.amount ?? 0) < 0,
-                    }}
-                  >
-                    {formatCents(tx.amount ?? 0)}
-                  </span>
-                  <span class="tx-col-actions">
-                    <button
-                      class="btn btn-icon btn-ghost btn-xs"
-                      onClick={() => handleDelete(tx.id)}
+            <For each={transactionsWithBalance()}>
+              {(tx) => {
+                const isEditing = (field: TxField) =>
+                  editingId() === tx.id && editingField() === field;
+
+                return (
+                  <div class="tx-row" classList={{ uncleared: !tx.cleared }}>
+                    <span class="tx-col-c">
+                      <button
+                        class="btn btn-icon btn-xs"
+                        classList={{ "btn-ghost": !tx.cleared, "btn-primary": tx.cleared }}
+                        style={{ padding: "2px 6px", "font-size": "0.65rem" }}
+                        onClick={() => toggleCleared(tx)}
+                        title={tx.cleared ? "Cleared" : "Uncleared"}
+                      >
+                        C
+                      </button>
+                    </span>
+
+                    <span class="tx-col-date">
+                      {isEditing("date") ? (
+                        <input
+                          type="date"
+                          class="tx-inline-input"
+                          value={tx.date}
+                          onBlur={(e) => saveEdit(tx, "date", e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              saveEdit(tx, "date", (e.target as HTMLInputElement).value);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          autofocus
+                        />
+                      ) : (
+                        <span onClick={() => startEdit(tx.id, "date")}>{tx.date}</span>
+                      )}
+                    </span>
+
+                    <span class="tx-col-payee">
+                      {isEditing("payee") ? (
+                        <input
+                          type="text"
+                          list="payee-list"
+                          class="tx-inline-input"
+                          value={tx.payee ?? ""}
+                          onBlur={(e) => saveEdit(tx, "payee", e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              saveEdit(tx, "payee", (e.target as HTMLInputElement).value);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          autofocus
+                        />
+                      ) : (
+                        <span onClick={() => startEdit(tx.id, "payee")}>{tx.payee ?? "—"}</span>
+                      )}
+                    </span>
+
+                    <span class="tx-col-category">
+                      {isEditing("category") ? (
+                        <select
+                          class="tx-inline-select"
+                          value={tx.categoryId ?? ""}
+                          onBlur={(e) => saveEdit(tx, "category", e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              saveEdit(
+                                tx,
+                                "category",
+                                (e.currentTarget as HTMLSelectElement).value,
+                              );
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          autofocus
+                        >
+                          <option value="">Uncategorized</option>
+                          <For each={categories()}>
+                            {(cat) => (
+                              <option value={cat.id}>
+                                {cat.groupName ? `${cat.groupName}: ` : ""}
+                                {cat.name}
+                              </option>
+                            )}
+                          </For>
+                        </select>
+                      ) : (
+                        <span onClick={() => startEdit(tx.id, "category")}>
+                          {tx.categoryName ?? "Uncategorized"}
+                        </span>
+                      )}
+                    </span>
+
+                    <span
+                      class="tx-col-amount"
+                      classList={{
+                        positive: (tx.amount ?? 0) > 0,
+                        negative: (tx.amount ?? 0) < 0,
+                      }}
                     >
-                      🗑️
-                    </button>
-                  </span>
-                </div>
-              )}
+                      {isEditing("amount") ? (
+                        <input
+                          type="number"
+                          step={fmt().code === "IDR" ? "1" : "0.01"}
+                          class="tx-inline-input"
+                          value={fmt().formatCentsInput(tx.amount ?? 0)}
+                          onBlur={(e) => saveEdit(tx, "amount", e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              saveEdit(tx, "amount", (e.target as HTMLInputElement).value);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          autofocus
+                        />
+                      ) : (
+                        <span onClick={() => startEdit(tx.id, "amount")}>
+                          {formatCents(tx.amount ?? 0)}
+                        </span>
+                      )}
+                    </span>
+
+                    <span class="tx-col-balance">{formatCents(tx.balance)}</span>
+
+                    <span class="tx-col-actions">
+                      <button
+                        class="btn btn-icon btn-ghost btn-xs"
+                        onClick={() => handleDelete(tx.id)}
+                      >
+                        🗑️
+                      </button>
+                    </span>
+                  </div>
+                );
+              }}
             </For>
           </div>
         </Show>
@@ -140,10 +529,7 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
     setImporting(true);
 
     try {
-      // Read file
       const text = await f.text();
-
-      // Parse on server-side by sending raw text
       const res = await fetch("/api/sync/command", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -152,7 +538,7 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
           commandType: "import_transactions",
           payload: {
             accountId: props.accountId,
-            transactions: [{ date: new Date().toISOString().slice(0, 10), amount: 0 }], // Placeholder
+            transactions: [{ date: new Date().toISOString().slice(0, 10), amount: 0 }],
             isPreview: false,
           },
         }),
@@ -186,7 +572,7 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
           />
           <Show when={file()}>
             <p class="file-info">
-              {file()?.name} ({(file()?.size ?? 0 / 1024).toFixed(1)} KB)
+              {file()?.name} ({((file()?.size ?? 0) / 1024).toFixed(1)} KB)
             </p>
           </Show>
           <Show when={result()}>

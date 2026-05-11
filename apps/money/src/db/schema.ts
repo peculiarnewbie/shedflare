@@ -166,6 +166,7 @@ export const rules = sqliteTable("rules", {
   conditionsOp: text("conditions_op").notNull().default("and"),
   conditions: text("conditions").notNull(), // JSON array
   actions: text("actions").notNull(), // JSON array
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -247,6 +248,16 @@ export const exchangeRates = sqliteTable("exchange_rates", {
 });
 
 // ---------------------------------------------------------------------------
+// settings
+// ---------------------------------------------------------------------------
+export const settings = sqliteTable("settings", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // events (event store for sync protocol)
 // ---------------------------------------------------------------------------
 export const events = sqliteTable(
@@ -307,5 +318,6 @@ export type NewCustomReport = typeof customReports.$inferInsert;
 export type DashboardWidget = typeof dashboardWidgets.$inferSelect;
 export type NewDashboardWidget = typeof dashboardWidgets.$inferInsert;
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
+export type Setting = typeof settings.$inferSelect;
 export type SyncEvent = typeof events.$inferSelect;
 export type Command = typeof commands.$inferSelect;

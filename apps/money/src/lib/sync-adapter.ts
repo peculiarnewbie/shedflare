@@ -7,9 +7,24 @@ import type {
   SyncServerEvent,
   SyncEventPayloadMap,
   SyncEventType,
-  SyncSnapshot,
 } from "../domain/events";
-import type { SyncTables } from "../domain/types";
+import type { SyncTables, SyncSnapshot } from "../domain/types";
+import type {
+  Account,
+  Transaction,
+  Category,
+  CategoryGroup,
+  Payee,
+  Schedule,
+  Rule,
+  Tag,
+  Budget,
+  BudgetMonth,
+  CustomReport,
+  DashboardWidget,
+  ExchangeRate,
+  Setting,
+} from "../db/schema";
 import * as conn from "./ws-connection";
 import * as pendingOps from "./pending-ops";
 import {
@@ -26,6 +41,7 @@ import {
   customReportsCollection,
   dashboardWidgetsCollection,
   exchangeRatesCollection,
+  settingsCollection,
   getSyncWriter,
   resetCollections,
   TABLE_TO_COLLECTION,
@@ -117,6 +133,7 @@ function hasRow(collectionId: string, key: string): boolean {
     customReports: customReportsCollection,
     dashboardWidgets: dashboardWidgetsCollection,
     exchangeRates: exchangeRatesCollection,
+    settings: settingsCollection,
   };
   const collection = writers[collectionId] as any;
   return Boolean(collection?.get(key));
@@ -140,6 +157,8 @@ function eventTypeToCollection(eventType: string): string | null {
     case "account_updated":
       return "accounts";
     case "account_closed":
+      return "accounts";
+    case "account_deleted":
       return "accounts";
     case "transaction_created":
     case "transaction_updated":
@@ -176,6 +195,8 @@ function eventTypeToCollection(eventType: string): string | null {
       return "dashboardWidgets";
     case "exchange_rate_updated":
       return "exchangeRates";
+    case "settings_updated":
+      return "settings";
     default:
       return null;
   }
@@ -196,6 +217,11 @@ function applyEvent(eventType: string, payload: unknown) {
     case "account_closed": {
       const event = payload as SyncEventPayloadMap["account_closed"];
       syncUpsert("accounts", event.id, { id: event.id, closed: true, updatedAt: event.closedAt });
+      break;
+    }
+    case "account_deleted": {
+      const event = payload as SyncEventPayloadMap["account_deleted"];
+      syncDelete("accounts", event.id);
       break;
     }
     case "transaction_created":
@@ -315,6 +341,11 @@ function applyEvent(eventType: string, payload: unknown) {
       });
       break;
     }
+    case "settings_updated": {
+      const event = payload as SyncEventPayloadMap["settings_updated"];
+      syncUpsert("settings", event.row.id, event.row);
+      break;
+    }
     case "server_state_rebased": {
       const event = payload as SyncEventPayloadMap["server_state_rebased"];
       applySnapshot(event.snapshot.tables);
@@ -334,9 +365,9 @@ function applySnapshot(tables: SyncTables | undefined) {
     if (!writer) continue;
     writer.begin();
     writer.truncate();
-    const rows = tables[tableName];
+    const rows = (tables as Record<string, Record<string, unknown> | undefined>)[tableName];
     if (rows) {
-      for (const [_key, value] of Object.entries(rows)) {
+      for (const value of Object.values(rows)) {
         writer.write({ type: "insert", value: value as object });
       }
     }
@@ -447,6 +478,7 @@ function buildCachedSnapshotTables(): SyncTables {
     customReports: customReportsCollection,
     dashboardWidgets: dashboardWidgetsCollection,
     exchangeRates: exchangeRatesCollection,
+    settings: settingsCollection,
   };
 
   for (const [tableName, collection] of Object.entries(snapshot)) {
@@ -457,7 +489,7 @@ function buildCachedSnapshotTables(): SyncTables {
     for (const item of items) {
       rows[item.id] = item;
     }
-    tables[tableName] = rows;
+    (tables as Record<string, unknown>)[tableName] = rows;
   }
 
   return tables;

@@ -6,6 +6,7 @@ import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
 import { createTransaction } from "../../domain/factories";
+import { decodeCommand } from "../../domain/commands";
 import { computeMonthBudget } from "../budget-engine";
 import { toMonthInt } from "../../domain/types";
 
@@ -21,15 +22,9 @@ export function handleImportCommands(
     return { events };
   }
 
-  const accountId = payload.accountId;
-  const transactions: Array<{
-    date: string;
-    amount: number;
-    payee?: string;
-    notes?: string;
-    category?: string;
-    importedDescription?: string;
-  }> = payload.transactions ?? [];
+  const valid = decodeCommand("import_transactions", payload);
+  const accountId = valid.accountId;
+  const transactions = valid.transactions ?? [];
 
   if (!accountId || transactions.length === 0) {
     return { events };
@@ -60,30 +55,88 @@ export function handleImportCommands(
             const conditions = JSON.parse(String(rule.conditions ?? "[]")) as Array<any>;
             const actions = JSON.parse(String(rule.actions ?? "[]")) as Array<any>;
 
-            // Simple condition matching: if any condition matches payee or description
             const matches = conditions.some((cond: any) => {
               if (!cond || !cond.field) return false;
-              const fieldValue =
-                cond.field === "payee"
-                  ? payeeName
-                  : cond.field === "imported_description"
-                    ? txInput.importedDescription
-                    : "";
               const op = cond.op ?? "is";
-              const value = String(cond.value ?? "").toLowerCase();
-              const fv = String(fieldValue ?? "").toLowerCase();
+
+              const txDate = txInput.date ? new Date(txInput.date) : null;
+              const txCleared = (txInput as any).cleared ?? true;
+
+              const fieldResolvers: Record<string, () => any> = {
+                payee: () => payeeName,
+                imported_description: () => txInput.importedDescription,
+                notes: () => txInput.notes,
+                account: () => txInput.account ?? (txInput as any).accountName,
+                amount: () => txInput.amount,
+                date: () => txDate,
+                cleared: () => txCleared,
+              };
+
+              const fieldValue = fieldResolvers[cond.field]?.() ?? "";
 
               switch (op) {
-                case "is":
+                case "is": {
+                  if (cond.field === "cleared") {
+                    return fieldValue === cond.value;
+                  }
+                  const fv = String(fieldValue ?? "").toLowerCase();
+                  const value = String(cond.value ?? "").toLowerCase();
                   return fv === value;
-                case "contains":
-                  return fv.includes(value);
-                case "matches":
-                  return new RegExp(value).test(fv);
-                case "isnot":
+                }
+                case "isNot": {
+                  const fv = String(fieldValue ?? "").toLowerCase();
+                  const value = String(cond.value ?? "").toLowerCase();
                   return fv !== value;
-                case "oneOf":
-                  return ((cond.value as string[]) ?? []).includes(fv);
+                }
+                case "oneOf": {
+                  const fv = String(fieldValue ?? "").toLowerCase();
+                  return ((cond.value as string[]) ?? [])
+                    .map((v: string) => v.toLowerCase())
+                    .includes(fv);
+                }
+                case "contains": {
+                  const fv = String(fieldValue ?? "").toLowerCase();
+                  const value = String(cond.value ?? "").toLowerCase();
+                  return fv.includes(value);
+                }
+                case "doesNotContain": {
+                  const fv = String(fieldValue ?? "").toLowerCase();
+                  const value = String(cond.value ?? "").toLowerCase();
+                  return !fv.includes(value);
+                }
+                case "matches":
+                  return new RegExp(String(cond.value ?? "")).test(String(fieldValue ?? ""));
+                case "isapprox": {
+                  const fv = Number(fieldValue) || 0;
+                  const value = Number(cond.value) || 0;
+                  return Math.abs(fv - value) <= Math.max(Math.abs(value) * 0.1, 1);
+                }
+                case "isbetween": {
+                  const fv = Number(fieldValue) || 0;
+                  const min = Number(cond.value) || 0;
+                  const max = Number(cond.value2) || 0;
+                  return fv >= min && fv <= max;
+                }
+                case "gt": {
+                  const fv = Number(fieldValue) || 0;
+                  const value = Number(cond.value) || 0;
+                  return fv > value;
+                }
+                case "gte": {
+                  const fv = Number(fieldValue) || 0;
+                  const value = Number(cond.value) || 0;
+                  return fv >= value;
+                }
+                case "lt": {
+                  const fv = Number(fieldValue) || 0;
+                  const value = Number(cond.value) || 0;
+                  return fv < value;
+                }
+                case "lte": {
+                  const fv = Number(fieldValue) || 0;
+                  const value = Number(cond.value) || 0;
+                  return fv <= value;
+                }
                 default:
                   return false;
               }

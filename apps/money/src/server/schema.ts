@@ -136,6 +136,7 @@ const CREATE_TABLES = [
     conditions_op TEXT NOT NULL DEFAULT 'and',
     conditions TEXT NOT NULL,
     actions TEXT NOT NULL,
+    active INTEGER DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -202,6 +203,14 @@ const CREATE_TABLES = [
     updated_at TEXT NOT NULL
   )`,
 
+  // settings
+  `CREATE TABLE IF NOT EXISTS settings (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
   // events (event store)
   `CREATE TABLE IF NOT EXISTS events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,7 +244,10 @@ export function initializeStorage(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='events'",
   );
   if (existing) {
-    log("storage already initialized");
+    log("storage already initialized: ensuring schema");
+    for (const sql of CREATE_TABLES) {
+      exec(sql);
+    }
     return;
   }
 

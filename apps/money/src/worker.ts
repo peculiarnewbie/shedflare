@@ -35,6 +35,7 @@ function serializeCookie(
   value: string,
   opts: {
     maxAge?: number;
+    expires?: string;
     path?: string;
     secure?: boolean;
     httpOnly?: boolean;
@@ -43,6 +44,7 @@ function serializeCookie(
 ) {
   let cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
   if (opts.maxAge !== undefined) cookie += `; Max-Age=${opts.maxAge}`;
+  if (opts.expires !== undefined) cookie += `; Expires=${opts.expires}`;
   cookie += `; Path=${opts.path ?? "/"}`;
   if (opts.secure !== false) cookie += `; Secure`;
   if (opts.httpOnly !== false) cookie += `; HttpOnly`;
@@ -243,8 +245,15 @@ export default {
 
       if (pathname === "/api/auth/logout" && method === "POST") {
         const headers = new Headers({ Location: "/" });
-        headers.append("Set-Cookie", serializeCookie("auth_access_token", "", { maxAge: 0 }));
-        headers.append("Set-Cookie", serializeCookie("auth_refresh_token", "", { maxAge: 0 }));
+        const expired = "Thu, 01 Jan 1970 00:00:00 GMT";
+        headers.append(
+          "Set-Cookie",
+          serializeCookie("auth_access_token", "", { maxAge: 0, expires: expired }),
+        );
+        headers.append(
+          "Set-Cookie",
+          serializeCookie("auth_refresh_token", "", { maxAge: 0, expires: expired }),
+        );
         return new Response(null, { status: 302, headers });
       }
 

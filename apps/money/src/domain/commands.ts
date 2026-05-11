@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { type SyncCommandType } from "./types";
 import {
   NullableString,
   TransactionInput,
@@ -6,8 +7,7 @@ import {
   RuleInput,
   CustomReportInput,
   ParsedTransaction,
-  type SyncCommandType,
-} from "./types";
+} from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Each command is defined as an Effect/Schema struct.
@@ -26,6 +26,10 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     id: Schema.String,
     name: Schema.optional(Schema.String),
     offBudget: Schema.optional(Schema.Boolean),
+  }),
+
+  delete_account: Schema.Struct({
+    id: Schema.String,
   }),
 
   close_account: Schema.Struct({
@@ -253,73 +257,30 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
   update_exchange_rate: Schema.Struct({
     usdToIdr: Schema.Number,
   }),
+
+  update_setting: Schema.Struct({
+    key: Schema.String,
+    value: Schema.String,
+  }),
 };
 
 // ---------------------------------------------------------------------------
-// Typed command payload maps
+// Typed command payload maps (derived from Effect schemas — single source)
 // ---------------------------------------------------------------------------
-export interface CommandPayloadMap {
-  create_account: { name: string; offBudget?: boolean; balance?: number };
-  update_account: { id: string; name?: string; offBudget?: boolean };
-  close_account: { id: string; transferAccountId?: string | null };
-  reopen_account: { id: string };
-  reorder_accounts: { ids: string[] };
-  create_transaction: { row: import("./types").TransactionInput };
-  update_transaction: { id: string; fields: Partial<import("./types").TransactionInput> };
-  delete_transaction: { id: string };
-  split_transaction: { parentId: string; children: import("./types").TransactionInput[] };
-  import_transactions: {
-    accountId: string;
-    transactions: import("./types").ParsedTransaction[];
-    isPreview?: boolean;
-  };
-  set_budget_amount: { month: number; categoryId: string; amount: number };
-  set_budget_carryover: { month: number; categoryId: string; carryover: boolean };
-  set_buffer: { month: string; amount: number };
-  copy_previous_month: { month: string };
-  set_3month_avg: { month: string };
-  set_nmonth_avg: { month: string; months: number };
-  set_zero: { month: string };
-  apply_goal_templates: { month: string };
-  cover_overspending: { month: string; from: string; to: string; amount?: number };
-  transfer_budget: { month: string; from: string; to: string; amount: number };
-  hold_for_next_month: { month: string; amount: number };
-  create_category: { name: string; groupId: string; isIncome?: boolean };
-  update_category: { id: string; name?: string; hidden?: boolean; groupId?: string | null };
-  delete_category: { id: string; transferToId?: string | null };
-  create_category_group: { name: string; isIncome?: boolean };
-  update_category_group: { id: string; name?: string; hidden?: boolean };
-  reorder_categories: { ids: string[] };
-  create_payee: { name: string };
-  update_payee: { id: string; name?: string; favorite?: boolean };
-  merge_payees: { targetId: string; sourceIds: string[] };
-  create_schedule: { schedule: import("./types").ScheduleInput };
-  update_schedule: { id: string; fields: import("./types").ScheduleInput };
-  delete_schedule: { id: string };
-  skip_schedule_date: { id: string };
-  post_schedule_transaction: { scheduleId: string };
-  create_rule: { rule: import("./types").RuleInput };
-  update_rule: { id: string; fields: import("./types").RuleInput };
-  delete_rule: { id: string };
-  create_tag: { name: string; color?: string };
-  delete_tag: { id: string };
-  create_report: { report: import("./types").CustomReportInput };
-  update_report: { id: string; fields: import("./types").CustomReportInput };
-  delete_report: { id: string };
-  update_dashboard: {
-    widgets: Array<{
-      id: string;
-      type: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      meta?: string | null;
-    }>;
-  };
-  update_exchange_rate: { usdToIdr: number };
-}
+export type CommandPayloadMap = {
+  [K in keyof typeof CommandPayloadSchemas]: Schema.Schema.Type<(typeof CommandPayloadSchemas)[K]>;
+};
 
 export type SyncCommandPayloadMap = {
-  [K in SyncCommandType]: CommandPayloadMap[K];
+  [K in SyncCommandType & keyof CommandPayloadMap]: CommandPayloadMap[K];
 };
+
+/** Decode and validate a command payload at runtime. Throws on invalid input. */
+export function decodeCommand<K extends keyof typeof CommandPayloadSchemas>(
+  commandType: K,
+  input: unknown,
+): CommandPayloadMap[K] {
+  return Schema.decodeUnknownSync((CommandPayloadSchemas as any)[commandType])(
+    input,
+  ) as CommandPayloadMap[K];
+}

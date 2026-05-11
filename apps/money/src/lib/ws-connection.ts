@@ -108,43 +108,49 @@ function send(message: object) {
 
 function connect() {
   if (typeof window === "undefined") return;
-  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  log("connect", { clientId, lastServerSeq });
-  const ws = new WebSocket(`${protocol}//${location.host}/api/sync/ws`);
-  socket = ws;
+  try {
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    log("connect", { clientId, lastServerSeq });
+    const ws = new WebSocket(`${protocol}//${location.host}/api/sync/ws`);
+    socket = ws;
 
-  ws.addEventListener("open", () => {
-    reconnectAttempt = 0;
-    setIsConnected(true);
-    log("open", { pendingOps: pendingOps.unackedOpIds().length });
-    send({
-      type: "hello",
-      clientId,
-      protocolVersion: SYNC_PROTOCOL_VERSION,
-      lastServerSeq,
-      unackedOpIds: pendingOps.unackedOpIds(),
-    } satisfies SyncClientEnvelope);
-  });
+    ws.addEventListener("open", () => {
+      reconnectAttempt = 0;
+      setIsConnected(true);
+      log("open", { pendingOps: pendingOps.unackedOpIds().length });
+      send({
+        type: "hello",
+        clientId,
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        lastServerSeq,
+        unackedOpIds: pendingOps.unackedOpIds(),
+      } satisfies SyncClientEnvelope);
+    });
 
-  ws.addEventListener("message", ({ data }) => {
-    try {
-      const envelope = JSON.parse(String(data)) as SyncServerEnvelope;
-      enqueueEnvelope(envelope);
-    } catch {
-      // Ignore malformed messages
-    }
-  });
+    ws.addEventListener("message", ({ data }) => {
+      try {
+        const envelope = JSON.parse(String(data)) as SyncServerEnvelope;
+        enqueueEnvelope(envelope);
+      } catch {
+        // Ignore malformed messages
+      }
+    });
 
-  ws.addEventListener("close", () => {
-    log("close");
+    ws.addEventListener("close", () => {
+      log("close");
+      setIsConnected(false);
+      scheduleReconnect();
+    });
+
+    ws.addEventListener("error", () => {
+      log("error");
+      setIsConnected(false);
+    });
+  } catch (err) {
+    log("connect_error", { error: err instanceof Error ? err.message : String(err) });
     setIsConnected(false);
     scheduleReconnect();
-  });
-
-  ws.addEventListener("error", () => {
-    log("error");
-    setIsConnected(false);
-  });
+  }
 }
 
 function scheduleReconnect() {

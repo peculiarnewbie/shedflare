@@ -80,6 +80,7 @@ export const DATA_TABLES = [
   "custom_reports",
   "dashboard_widgets",
   "exchange_rates",
+  "settings",
 ] as const;
 
 export type DataTableName = (typeof DATA_TABLES)[number];

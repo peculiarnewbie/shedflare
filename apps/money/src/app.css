@@ -264,6 +264,9 @@ button {
    ============================================================ */
 
 @media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
   .sidebar {
     display: none;
   }
@@ -274,6 +277,7 @@ button {
   }
   .mobile-top-bar {
     display: flex;
+    flex-shrink: 0;
   }
   .bottom-tab-bar {
     display: flex;
@@ -615,6 +619,16 @@ button {
   text-align: center;
 }
 
+.page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-header {
+  margin-bottom: 16px;
+}
+
 /* ============================================================
    Transaction table
    ============================================================ */
@@ -628,7 +642,7 @@ button {
 
 .tx-table-header {
   display: grid;
-  grid-template-columns: 100px 1fr 1fr 120px 40px;
+  grid-template-columns: 32px 100px 1fr 1fr 120px 120px 40px;
   padding: 10px 16px;
   background: var(--bg-hover);
   font-size: 0.8rem;
@@ -639,8 +653,8 @@ button {
 
 .tx-row {
   display: grid;
-  grid-template-columns: 100px 1fr 1fr 120px 40px;
-  padding: 10px 16px;
+  grid-template-columns: 32px 100px 1fr 1fr 120px 120px 40px;
+  padding: 8px 16px;
   border-top: 1px solid var(--border-light);
   gap: 8px;
   align-items: center;
@@ -652,6 +666,10 @@ button {
 }
 .tx-row.uncleared {
   opacity: 0.7;
+}
+
+.tx-col-c {
+  text-align: center;
 }
 
 .tx-col-amount {
@@ -666,10 +684,35 @@ button {
   color: var(--negative);
 }
 
+.tx-col-balance {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
 .tx-col-actions {
   display: flex;
   gap: 4px;
   justify-content: flex-end;
+}
+
+/* Inline editing inputs inside transaction table */
+.tx-inline-input,
+.tx-inline-select {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.tx-inline-input:focus,
+.tx-inline-select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* ============================================================
@@ -889,6 +932,41 @@ button {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+.rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.rule-card--inactive {
+  opacity: 0.5;
+}
+
+.rule-toggle {
+  min-width: 48px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.rule-toggle.active {
+  background: var(--positive);
+  border-color: var(--positive);
+  color: #fff;
 }
 
 /* ============================================================

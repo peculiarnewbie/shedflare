@@ -2,6 +2,7 @@
  * Budget page — month grid showing categories × budgeted/spent/leftover.
  */
 import { createMemo, createSignal, For, Show, createEffect } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 
 interface CategoryBudgetRow {
@@ -24,6 +25,7 @@ interface GroupedBudget {
 }
 
 export default function BudgetPage() {
+  const navigate = useNavigate();
   const now = new Date();
   const [monthKey, setMonthKey] = createSignal(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
@@ -130,65 +132,78 @@ export default function BudgetPage() {
       </div>
 
       <Show when={!loading()} fallback={<div class="loading">Loading budget...</div>}>
-        <div class="budget-table">
-          <div class="budget-table-header">
-            <span class="col-category">Category</span>
-            <span class="col-budgeted">Budgeted</span>
-            <span class="col-spent">Spent</span>
-            <span class="col-leftover">Leftover</span>
-          </div>
+        <Show
+          when={grouped().length > 0}
+          fallback={
+            <div class="empty-state">
+              <p>No categories yet.</p>
+              <p>You need categories before you can budget.</p>
+              <button class="btn btn-primary" onClick={() => navigate("/categories")}>
+                Go to Categories
+              </button>
+            </div>
+          }
+        >
+          <div class="budget-table">
+            <div class="budget-table-header">
+              <span class="col-category">Category</span>
+              <span class="col-budgeted">Budgeted</span>
+              <span class="col-spent">Spent</span>
+              <span class="col-leftover">Leftover</span>
+            </div>
 
-          <For each={grouped()}>
-            {(group) => (
-              <div class="budget-group">
-                <div class="budget-group-title">{group.groupName}</div>
-                <For each={group.categories}>
-                  {(cat) => (
-                    <div class="budget-row">
-                      <span class="col-category">{cat.categoryName}</span>
-                      <span class="col-budgeted">
-                        <input
-                          type="number"
-                          value={cat.budgeted / 100}
-                          step="0.01"
-                          class="budget-input"
-                          onBlur={(e) => {
-                            const val = parseFloat(e.currentTarget.value);
-                            if (!isNaN(val)) setBudget(cat.categoryId, Math.round(val * 100));
+            <For each={grouped()}>
+              {(group) => (
+                <div class="budget-group">
+                  <div class="budget-group-title">{group.groupName}</div>
+                  <For each={group.categories}>
+                    {(cat) => (
+                      <div class="budget-row">
+                        <span class="col-category">{cat.categoryName}</span>
+                        <span class="col-budgeted">
+                          <input
+                            type="number"
+                            value={cat.budgeted / 100}
+                            step="0.01"
+                            class="budget-input"
+                            onBlur={(e) => {
+                              const val = parseFloat(e.currentTarget.value);
+                              if (!isNaN(val)) setBudget(cat.categoryId, Math.round(val * 100));
+                            }}
+                          />
+                        </span>
+                        <span class="col-spent">{formatCents(cat.spent)}</span>
+                        <span
+                          class="col-leftover"
+                          classList={{
+                            positive: cat.leftover >= 0,
+                            negative: cat.leftover < 0,
                           }}
-                        />
-                      </span>
-                      <span class="col-spent">{formatCents(cat.spent)}</span>
-                      <span
-                        class="col-leftover"
-                        classList={{
-                          positive: cat.leftover >= 0,
-                          negative: cat.leftover < 0,
-                        }}
-                      >
-                        {formatCents(cat.leftover)}
-                      </span>
-                    </div>
-                  )}
-                </For>
-                <div class="budget-row budget-group-total">
-                  <span class="col-category">
-                    <strong>Group Total</strong>
-                  </span>
-                  <span class="col-budgeted">
-                    <strong>{formatCents(group.groupBudgeted)}</strong>
-                  </span>
-                  <span class="col-spent">
-                    <strong>{formatCents(group.groupSpent)}</strong>
-                  </span>
-                  <span class="col-leftover">
-                    <strong>{formatCents(group.groupLeftover)}</strong>
-                  </span>
+                        >
+                          {formatCents(cat.leftover)}
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                  <div class="budget-row budget-group-total">
+                    <span class="col-category">
+                      <strong>Group Total</strong>
+                    </span>
+                    <span class="col-budgeted">
+                      <strong>{formatCents(group.groupBudgeted)}</strong>
+                    </span>
+                    <span class="col-spent">
+                      <strong>{formatCents(group.groupSpent)}</strong>
+                    </span>
+                    <span class="col-leftover">
+                      <strong>{formatCents(group.groupLeftover)}</strong>
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )}
-          </For>
-        </div>
+              )}
+            </For>
+          </div>
+        </Show>
       </Show>
     </div>
   );

@@ -6,8 +6,14 @@
  * and broadcast as events to clients.
  */
 import type { DataAccess } from "./data-access";
-import { monthBoundaries, prevMonthKey, fromMonthInt, toMonthInt } from "../domain/types";
-import type { MonthBudgetSummary, CategoryBudgetRow } from "../domain/types";
+import { monthBoundaries, prevMonthKey, fromMonthInt, toMonthInt, castId } from "../domain/types";
+import type {
+  MonthBudgetSummary,
+  CategoryBudgetRow,
+  CategoryId,
+  CategoryGroupId,
+} from "../domain/types";
+import { startSpanWithStack, endSpanWithStack } from "./tracer";
 
 export interface BudgetRecalculationResult {
   month: number;
@@ -32,6 +38,7 @@ export function computeMonthBudget(
   month: number,
   monthKey?: string,
 ): BudgetRecalculationResult | null {
+  const spanId = startSpanWithStack("computeMonthBudget", { month });
   const mk = monthKey ?? fromMonthInt(month);
   const boundaries = monthBoundaries(mk);
 
@@ -45,7 +52,10 @@ export function computeMonthBudget(
      ORDER BY cg.sort_order, c.sort_order`,
   );
 
-  if (cats.length === 0) return null;
+  if (cats.length === 0) {
+    endSpanWithStack(spanId, { reason: "no_categories" });
+    return null;
+  }
 
   // Get spending for this month per category
   const spending = access.getCategorySpending(month);
@@ -100,9 +110,9 @@ export function computeMonthBudget(
     totalBudgeted += budgeted;
 
     categoryRows.push({
-      categoryId,
+      categoryId: castId<CategoryId>(categoryId),
       categoryName: String(cat.name),
-      groupId: cat.group_id ? String(cat.group_id) : null,
+      groupId: cat.group_id ? castId<CategoryGroupId>(String(cat.group_id)) : null,
       groupName: cat.group_name ? String(cat.group_name) : null,
       budgeted,
       spent,
@@ -123,6 +133,7 @@ export function computeMonthBudget(
     spent: c.spent,
   }));
 
+  endSpanWithStack(spanId, { toBudget, totalBudgeted });
   return {
     month,
     toBudget,
@@ -309,7 +320,7 @@ export function computeAgeOfMoney(access: DataAccess): number | null {
     startDate,
     endDate,
   );
-  const totalSpending = Number(spendingRow?.total ?? 0);
+  const totalSpending = Math.abs(Number(spendingRow?.total ?? 0));
   const avgDaily = totalSpending / 90;
   if (avgDaily <= 0) return null;
 

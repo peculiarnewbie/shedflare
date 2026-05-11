@@ -9,6 +9,7 @@ import type {
   Tag,
   CustomReport,
   DashboardWidget,
+  Setting,
 } from "../db/schema";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,7 @@ export interface SyncEventPayloadMap {
   account_created: { row: Account };
   account_updated: { row: Account };
   account_closed: { id: string; closedAt: string };
+  account_deleted: { id: string };
   transaction_created: { row: Transaction };
   transaction_updated: { row: Transaction };
   transaction_deleted: { id: string };
@@ -50,6 +52,7 @@ export interface SyncEventPayloadMap {
   dashboard_updated: { widgets: DashboardWidget[] };
 
   exchange_rate_updated: { usdToIdr: number; updatedAt: string };
+  settings_updated: { row: Setting };
 
   // Computed value events (triggered by budget engine)
   budget_recalculated: { month: number; toBudget: number; buffered: number };
@@ -73,6 +76,7 @@ export const SYNC_EVENT_TYPES: readonly SyncEventType[] = [
   "account_created",
   "account_updated",
   "account_closed",
+  "account_deleted",
   "transaction_created",
   "transaction_updated",
   "transaction_deleted",
@@ -95,6 +99,7 @@ export const SYNC_EVENT_TYPES: readonly SyncEventType[] = [
   "report_updated",
   "dashboard_updated",
   "exchange_rate_updated",
+  "settings_updated",
   "budget_recalculated",
   "category_leftover_changed",
   "category_budget_set",
@@ -196,36 +201,34 @@ export interface PendingSyncOp {
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot
-// ---------------------------------------------------------------------------
-export interface SyncSnapshot {
-  serverSeq?: number;
-  tables: import("./types").SyncTables;
-}
-
-// ---------------------------------------------------------------------------
 // Decoder helpers
 // ---------------------------------------------------------------------------
+import type { SyncTables, SyncSnapshot } from "./types";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function decodeSyncSnapshot(value: unknown): import("./types").SyncSnapshot | null {
+function asRecordOfRecords(value: unknown): SyncTables | null {
   if (!isRecord(value)) return null;
-  const tables = decodeSyncTables(value.tables);
-  if (!tables) return null;
-  if (value.serverSeq !== undefined && typeof value.serverSeq !== "number") return null;
-  return { tables, serverSeq: value.serverSeq };
-}
-
-export function decodeSyncTables(value: unknown): import("./types").SyncTables | null {
-  if (!isRecord(value)) return null;
-  const tables: import("./types").SyncTables = {};
+  const tables: Record<string, Record<string, unknown>> = {};
   for (const [tableName, rows] of Object.entries(value)) {
     if (!isRecord(rows)) return null;
     tables[tableName] = rows as Record<string, unknown>;
   }
-  return tables;
+  return tables as SyncTables;
+}
+
+export function decodeSyncSnapshot(value: unknown): SyncSnapshot | null {
+  if (!isRecord(value)) return null;
+  const tables = asRecordOfRecords(value.tables);
+  if (!tables) return null;
+  if (value.serverSeq !== undefined && typeof value.serverSeq !== "number") return null;
+  return { tables, serverSeq: value.serverSeq as number | undefined };
+}
+
+export function decodeSyncTables(value: unknown): SyncTables | null {
+  return asRecordOfRecords(value);
 }
 
 export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | null {

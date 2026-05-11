@@ -1,7 +1,5 @@
-import * as Schema from "effect/Schema";
 import * as schema from "../db/schema";
 import { createId, nowIso } from "./types";
-import type { TransactionInput } from "./types";
 
 // ---------------------------------------------------------------------------
 // Factory functions produce validated row objects ready for DB insertion.
@@ -67,6 +65,23 @@ export function createCategoryGroup(input: {
     createdAt: now,
     updatedAt: now,
   } satisfies schema.CategoryGroup;
+}
+
+interface TransactionInput {
+  accountId: string;
+  categoryId?: string | null;
+  amount: number;
+  payee?: string | null;
+  notes?: string | null;
+  date: string;
+  cleared?: boolean;
+  importedDescription?: string | null;
+  startingBalanceFlag?: boolean;
+  sortOrder?: number | null;
+  isParent?: boolean;
+  isChild?: boolean;
+  parentId?: string | null;
+  transferId?: string | null;
 }
 
 export function createTransaction(input: TransactionInput & { id?: string }) {
@@ -143,6 +158,7 @@ export function createRule(input: {
   conditionsOp?: string;
   conditions: string;
   actions: string;
+  active?: boolean;
 }) {
   const now = nowIso();
   return {
@@ -151,6 +167,7 @@ export function createRule(input: {
     conditionsOp: input.conditionsOp ?? "and",
     conditions: input.conditions,
     actions: input.actions,
+    active: input.active ?? true,
     createdAt: now,
     updatedAt: now,
   } satisfies schema.Rule;

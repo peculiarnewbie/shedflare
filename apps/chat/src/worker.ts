@@ -23,6 +23,12 @@ type Env = Omit<AppEnv, "OPENCODE_GO_API_KEY" | "UPLOAD_TOKEN_SECRET"> & {
 
 const logger = createStructuredLogger("chat-worker");
 
+const withVersionHeader = (response: Response, buildInfo = BUILD_INFO) => {
+  const wrapped = new Response(response.body, response);
+  wrapped.headers.set("x-shedflare-version", buildInfo.version);
+  return wrapped;
+};
+
 function serializeCookie(
   name: string,
   value: string,
@@ -45,41 +51,32 @@ function serializeCookie(
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const raw = env as unknown as Record<string, unknown>;
-    const resolved: Record<string, unknown> = {};
-    for (const key of Object.keys(raw)) {
-      const val = raw[key];
-      if (
-        val &&
-        typeof val === "object" &&
-        "get" in val &&
-        typeof (val as any).get === "function"
-      ) {
-        resolved[key] = await (val as { get(): Promise<string> }).get();
-      } else {
-        resolved[key] = val;
-      }
-    }
-    setRuntimeEnv(resolved);
-
-    const withVersionHeader = (response: Response) => {
-      const wrapped = new Response(response.body, response);
-      wrapped.headers.set("x-shedflare-version", BUILD_INFO.version);
-      return wrapped;
-    };
-
-    const url = new URL(request.url);
-    const { pathname } = url;
-    const method = request.method;
-    const appHost = new URL(env.APP_PUBLIC_URL).hostname;
-    const localHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "0.0.0.0";
-
-    if (!localHost && url.hostname !== appHost) {
-      return withVersionHeader(new Response("Not found", { status: 404 }));
-    }
-
     try {
+      const resolved: Record<string, unknown> = { ...(env as any) };
+
+      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"] as const) {
+        const binding = resolved[key];
+        if (
+          binding &&
+          typeof binding === "object" &&
+          "get" in binding &&
+          typeof (binding as any).get === "function"
+        ) {
+          resolved[key] = await (binding as { get(): Promise<string> }).get();
+        }
+      }
+      setRuntimeEnv(resolved);
+
+      const url = new URL(request.url);
+      const { pathname } = url;
+      const method = request.method;
+      const appHost = new URL(env.APP_PUBLIC_URL).hostname;
+      const localHost =
+        url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "0.0.0.0";
+
+      if (!localHost && url.hostname !== appHost) {
+        return withVersionHeader(new Response("Not found", { status: 404 }));
+      }
       // API routing
       if (pathname.startsWith("/api/")) {
         if (pathname === "/api/auth/login" && method === "GET") {

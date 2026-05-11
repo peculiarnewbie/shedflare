@@ -6,6 +6,8 @@ import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
 import { createAccount } from "../../domain/factories";
+import { decodeCommand } from "../../domain/commands";
+import { castId, type AccountId } from "../../domain/types";
 
 export function handleAccountCommands(
   opId: string,
@@ -17,22 +19,24 @@ export function handleAccountCommands(
 
   switch (payload.commandType ?? "create_account") {
     case "create_account": {
+      const valid = decodeCommand("create_account", payload);
       const row = createAccount({
-        name: payload.name,
-        offBudget: payload.offBudget,
-        balance: payload.balance,
+        name: valid.name,
+        offBudget: valid.offBudget,
+        balance: valid.balance,
       });
       events.push(eventStore.insertEvent(opId, "account_created", { row }) as SyncServerEvent);
       break;
     }
 
     case "update_account": {
-      const existing = access.getAccount(payload.id);
+      const valid = decodeCommand("update_account", payload);
+      const existing = access.getAccount(castId<AccountId>(valid.id));
       if (existing) {
         const updated = {
           ...existing,
-          name: payload.name ?? existing.name,
-          offbudget: payload.offBudget ?? existing.offbudget,
+          name: valid.name ?? existing.name,
+          offbudget: valid.offBudget ?? existing.offbudget,
           updatedAt: new Date().toISOString(),
         };
         events.push(
@@ -42,8 +46,20 @@ export function handleAccountCommands(
       break;
     }
 
+    case "delete_account": {
+      const valid = decodeCommand("delete_account", payload);
+      const existing = access.getAccount(castId<AccountId>(valid.id));
+      if (existing) {
+        events.push(
+          eventStore.insertEvent(opId, "account_deleted", { id: valid.id }) as SyncServerEvent,
+        );
+      }
+      break;
+    }
+
     case "close_account": {
-      const existing = access.getAccount(payload.id);
+      const valid = decodeCommand("close_account", payload);
+      const existing = access.getAccount(castId<AccountId>(valid.id));
       if (existing && !existing.closed) {
         const updated = {
           ...existing,
@@ -56,7 +72,7 @@ export function handleAccountCommands(
         );
         events.push(
           eventStore.insertEvent(opId, "account_closed", {
-            id: payload.id,
+            id: valid.id,
             closedAt: new Date().toISOString(),
           }) as SyncServerEvent,
         );
@@ -65,7 +81,8 @@ export function handleAccountCommands(
     }
 
     case "reopen_account": {
-      const existing = access.getAccount(payload.id);
+      const valid = decodeCommand("reopen_account", payload);
+      const existing = access.getAccount(castId<AccountId>(valid.id));
       if (existing && existing.closed) {
         const updated = {
           ...existing,
@@ -80,8 +97,9 @@ export function handleAccountCommands(
     }
 
     case "reorder_accounts": {
-      for (let i = 0; i < payload.ids.length; i++) {
-        const existing = access.getAccount(payload.ids[i]);
+      const valid = decodeCommand("reorder_accounts", payload);
+      for (let i = 0; i < valid.ids.length; i++) {
+        const existing = access.getAccount(castId<AccountId>(valid.ids[i]));
         if (existing) {
           const updated = {
             ...existing,
@@ -97,10 +115,11 @@ export function handleAccountCommands(
     }
 
     case "update_exchange_rate": {
+      const valid = decodeCommand("update_exchange_rate", payload);
       const now = new Date().toISOString();
       events.push(
         eventStore.insertEvent(opId, "exchange_rate_updated", {
-          usdToIdr: payload.usdToIdr,
+          usdToIdr: valid.usdToIdr,
           updatedAt: now,
         }) as SyncServerEvent,
       );

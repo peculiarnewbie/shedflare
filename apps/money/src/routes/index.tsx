@@ -3,9 +3,11 @@
  */
 import { createMemo, createEffect, createSignal, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
+import { useCurrency } from "../lib/currency";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const fmt = useCurrency();
   const [netWorth, setNetWorth] = createSignal<number>(0);
   const [monthIncome, setMonthIncome] = createSignal(0);
   const [monthExpense, setMonthExpense] = createSignal(0);
@@ -45,15 +47,11 @@ export default function Dashboard() {
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">Net Worth</div>
-          <div class="stat-value positive">
-            ${(netWorth() / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </div>
+          <div class="stat-value positive">{fmt().formatCents(netWorth())}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">On Budget</div>
-          <div class="stat-value positive">
-            ${(onBudgetAmount() / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </div>
+          <div class="stat-value positive">{fmt().formatCents(onBudgetAmount())}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Accounts</div>
@@ -66,15 +64,11 @@ export default function Dashboard() {
         <div class="stats-grid">
           <div class="stat-card income">
             <div class="stat-label">Income</div>
-            <div class="stat-value positive">
-              ${(monthIncome() / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </div>
+            <div class="stat-value positive">{fmt().formatCents(monthIncome())}</div>
           </div>
           <div class="stat-card expense">
             <div class="stat-label">Expenses</div>
-            <div class="stat-value negative">
-              ${(monthExpense() / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </div>
+            <div class="stat-value negative">{fmt().formatCents(monthExpense())}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Balance</div>
@@ -85,10 +79,7 @@ export default function Dashboard() {
                 negative: monthIncome() - monthExpense() < 0,
               }}
             >
-              $
-              {((monthIncome() - monthExpense()) / 100).toLocaleString("en-US", {
-                minimumFractionDigits: 2,
-              })}
+              {fmt().formatCents(monthIncome() - monthExpense())}
             </div>
           </div>
         </div>

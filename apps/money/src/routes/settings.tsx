@@ -1,18 +1,40 @@
 /**
  * Settings page — currency, budget type, exchange rate, export.
  */
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, Show, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { settingsCollection } from "../lib/collections";
+
+type BudgetType = "envelope" | "tracking";
+type Currency = "USD" | "IDR";
 
 export default function SettingsPage() {
   const [exchangeRate, setExchangeRate] = createSignal(16000);
-  const [budgetType, setBudgetType] = createSignal<"envelope" | "tracking">("envelope");
-  const [currency, setCurrency] = createSignal("USD");
+  const [budgetType, setBudgetType] = createSignal<BudgetType>("envelope");
+  const [currency, setCurrency] = createSignal<Currency>("USD");
   const [loading, setLoading] = createSignal(true);
 
   createEffect(() => {
     void loadSettings();
   });
+
+  createEffect(() => {
+    syncPersistedSettings();
+    const unsub = settingsCollection.subscribeChanges(syncPersistedSettings);
+    onCleanup(() => unsub.unsubscribe());
+  });
+
+  function syncPersistedSettings() {
+    const budgetTypeSetting = settingsCollection.state.get("budget_type")?.value;
+    if (budgetTypeSetting === "envelope" || budgetTypeSetting === "tracking") {
+      setBudgetType(budgetTypeSetting);
+    }
+
+    const currencySetting = settingsCollection.state.get("display_currency")?.value;
+    if (currencySetting === "USD" || currencySetting === "IDR") {
+      setCurrency(currencySetting);
+    }
+  }
 
   async function loadSettings() {
     try {
@@ -31,6 +53,16 @@ export default function SettingsPage() {
 
   function handleRateUpdate() {
     dispatch("update_exchange_rate", { usdToIdr: Math.round(exchangeRate()) });
+  }
+
+  function updateBudgetType(value: BudgetType) {
+    setBudgetType(value);
+    dispatch("update_setting", { key: "budget_type", value });
+  }
+
+  function updateCurrency(value: Currency) {
+    setCurrency(value);
+    dispatch("update_setting", { key: "display_currency", value });
   }
 
   function handleExport() {
@@ -77,7 +109,7 @@ export default function SettingsPage() {
                 "btn-primary": budgetType() === "envelope",
                 "btn-secondary": budgetType() !== "envelope",
               }}
-              onClick={() => setBudgetType("envelope")}
+              onClick={() => updateBudgetType("envelope")}
             >
               Envelope Budget
             </button>
@@ -87,7 +119,7 @@ export default function SettingsPage() {
                 "btn-primary": budgetType() === "tracking",
                 "btn-secondary": budgetType() !== "tracking",
               }}
-              onClick={() => setBudgetType("tracking")}
+              onClick={() => updateBudgetType("tracking")}
             >
               Tracking Budget
             </button>
@@ -100,7 +132,7 @@ export default function SettingsPage() {
           <p class="settings-description">Choose your primary display currency.</p>
           <select
             value={currency()}
-            onChange={(e) => setCurrency(e.currentTarget.value)}
+            onChange={(e) => updateCurrency(e.currentTarget.value as Currency)}
             style="max-width:200px"
           >
             <option value="USD">USD ($)</option>

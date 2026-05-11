@@ -1,5 +1,3 @@
-import * as Schema from "effect/Schema";
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -8,6 +6,7 @@ export const SYNC_PROTOCOL_VERSION = "money-v1";
 export const SYNC_COMMAND_TYPES = [
   "create_account",
   "update_account",
+  "delete_account",
   "close_account",
   "reopen_account",
   "reorder_accounts",
@@ -51,6 +50,7 @@ export const SYNC_COMMAND_TYPES = [
   "delete_report",
   "update_dashboard",
   "update_exchange_rate",
+  "update_setting",
 ] as const;
 
 export type SyncCommandType = (typeof SYNC_COMMAND_TYPES)[number];
@@ -80,6 +80,11 @@ export type OpId = string & { readonly __brand: "OpId" };
 // ---------------------------------------------------------------------------
 export function createId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+}
+
+/** Cast a known-valid string to a branded ID type. Use at trust boundaries (after validation). */
+export function castId<T extends string>(id: string): T {
+  return id as T;
 }
 
 export function nowIso(): string {
@@ -130,9 +135,9 @@ export function prevMonthKey(monthKey: string): string {
 // Envelope budget computed values
 // ---------------------------------------------------------------------------
 export interface CategoryBudgetRow {
-  categoryId: string;
+  categoryId: CategoryId;
   categoryName: string;
-  groupId: string | null;
+  groupId: CategoryGroupId | null;
   groupName: string | null;
   budgeted: number;
   spent: number;
@@ -153,9 +158,43 @@ export interface MonthBudgetSummary {
 }
 
 // ---------------------------------------------------------------------------
-// SyncTables — generic record-of-records for snapshots
+// SyncTables — per-table typed records for snapshots
 // ---------------------------------------------------------------------------
-export type SyncTables = Record<string, Record<string, unknown>>;
+import type {
+  Account,
+  Transaction,
+  Category,
+  CategoryGroup,
+  Payee,
+  Schedule,
+  Rule,
+  Tag,
+  TransactionTag,
+  Budget,
+  BudgetMonth,
+  CustomReport,
+  DashboardWidget,
+  ExchangeRate,
+  Setting,
+} from "../db/schema";
+
+export type SyncTables = {
+  accounts?: Record<string, Account>;
+  transactions?: Record<string, Transaction>;
+  categories?: Record<string, Category>;
+  category_groups?: Record<string, CategoryGroup>;
+  payees?: Record<string, Payee>;
+  schedules?: Record<string, Schedule>;
+  rules?: Record<string, Rule>;
+  tags?: Record<string, Tag>;
+  transaction_tags?: Record<string, TransactionTag>;
+  budgets?: Record<string, Budget>;
+  budget_months?: Record<string, BudgetMonth>;
+  custom_reports?: Record<string, CustomReport>;
+  dashboard_widgets?: Record<string, DashboardWidget>;
+  exchange_rates?: Record<string, ExchangeRate>;
+  settings?: Record<string, Setting>;
+};
 
 // ---------------------------------------------------------------------------
 // SyncSnapshot
@@ -164,117 +203,3 @@ export interface SyncSnapshot {
   serverSeq?: number;
   tables: SyncTables;
 }
-
-// ---------------------------------------------------------------------------
-// Schema helpers for Effect/Schema validation
-// ---------------------------------------------------------------------------
-export const NullableString = Schema.NullOr(Schema.String);
-export const NullableNumber = Schema.NullOr(Schema.Number);
-// Simple branded string types (avoid Schema.filter which may not exist in this version)
-export type IsoDateString = string;
-export type IsoTimestamp = string;
-
-// ---------------------------------------------------------------------------
-// Transaction input (used by commands)
-// ---------------------------------------------------------------------------
-export const TransactionInput = Schema.Struct({
-  accountId: Schema.String,
-  categoryId: Schema.optional(NullableString),
-  amount: Schema.Number,
-  payee: Schema.optional(Schema.String),
-  notes: Schema.optional(Schema.String),
-  date: Schema.String,
-  cleared: Schema.optional(Schema.Boolean),
-  importedDescription: Schema.optional(Schema.String),
-  startingBalanceFlag: Schema.optional(Schema.Boolean),
-  sortOrder: Schema.optional(NullableNumber),
-  isParent: Schema.optional(Schema.Boolean),
-  isChild: Schema.optional(Schema.Boolean),
-  parentId: Schema.optional(NullableString),
-  transferId: Schema.optional(NullableString),
-});
-export type TransactionInput = Schema.Schema.Type<typeof TransactionInput>;
-
-// ---------------------------------------------------------------------------
-// Schedule input (used by commands)
-// ---------------------------------------------------------------------------
-export const ScheduleInput = Schema.Struct({
-  name: Schema.optional(Schema.String),
-  accountId: Schema.optional(NullableString),
-  payeeId: Schema.optional(NullableString),
-  categoryId: Schema.optional(NullableString),
-  amount: Schema.optional(NullableNumber),
-  startDate: Schema.optional(Schema.String),
-  recurrenceRules: Schema.String,
-  active: Schema.optional(Schema.Boolean),
-  completed: Schema.optional(Schema.Boolean),
-  postsTransaction: Schema.optional(Schema.Boolean),
-  customUpcomingLength: Schema.optional(NullableNumber),
-  nextDate: Schema.optional(NullableString),
-});
-export type ScheduleInput = Schema.Schema.Type<typeof ScheduleInput>;
-
-// ---------------------------------------------------------------------------
-// Rule input (used by commands)
-// ---------------------------------------------------------------------------
-export const RuleInput = Schema.Struct({
-  stage: Schema.optional(Schema.String),
-  conditionsOp: Schema.optional(Schema.String),
-  conditions: Schema.String,
-  actions: Schema.String,
-});
-export type RuleInput = Schema.Schema.Type<typeof RuleInput>;
-
-// ---------------------------------------------------------------------------
-// Custom report input (used by commands)
-// ---------------------------------------------------------------------------
-export const CustomReportInput = Schema.Struct({
-  name: Schema.optional(Schema.String),
-  startDate: Schema.optional(NullableString),
-  endDate: Schema.optional(NullableString),
-  dateStatic: Schema.optional(Schema.Boolean),
-  dateRange: Schema.optional(NullableString),
-  mode: Schema.optional(NullableString),
-  groupBy: Schema.optional(NullableString),
-  sortBy: Schema.optional(Schema.String),
-  interval: Schema.optional(NullableString),
-  balanceType: Schema.optional(NullableString),
-  showEmpty: Schema.optional(Schema.Boolean),
-  showOffbudget: Schema.optional(Schema.Boolean),
-  showHidden: Schema.optional(Schema.Boolean),
-  showUncategorized: Schema.optional(Schema.Boolean),
-  trimIntervals: Schema.optional(Schema.Boolean),
-  includeCurrent: Schema.optional(Schema.Boolean),
-  graphType: Schema.optional(NullableString),
-  conditions: Schema.optional(Schema.String),
-  conditionsOp: Schema.optional(Schema.String),
-  metadata: Schema.optional(NullableString),
-});
-export type CustomReportInput = Schema.Schema.Type<typeof CustomReportInput>;
-
-// ---------------------------------------------------------------------------
-// Dashboard widget input
-// ---------------------------------------------------------------------------
-export const DashboardWidgetInput = Schema.Struct({
-  id: Schema.String,
-  type: Schema.String,
-  x: Schema.Number,
-  y: Schema.Number,
-  width: Schema.Number,
-  height: Schema.Number,
-  meta: Schema.optional(NullableString),
-});
-export type DashboardWidgetInput = Schema.Schema.Type<typeof DashboardWidgetInput>;
-
-// ---------------------------------------------------------------------------
-// Parsed transaction (from import)
-// ---------------------------------------------------------------------------
-export const ParsedTransaction = Schema.Struct({
-  date: Schema.String,
-  amount: Schema.Number,
-  payee: Schema.optional(Schema.String),
-  notes: Schema.optional(Schema.String),
-  category: Schema.optional(Schema.String),
-  importedDescription: Schema.optional(Schema.String),
-});
-export type ParsedTransaction = Schema.Schema.Type<typeof ParsedTransaction>;

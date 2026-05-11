@@ -1,8 +1,18 @@
 import * as schema from "../db/schema";
 import { eq } from "drizzle-orm";
 import { type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
-import { json, sqlToBool, parseJson } from "./sync-utils";
-import { nowIso, type SyncTables, type SyncSnapshot } from "../domain/types";
+import { json, parseJson, type DataTableName } from "./sync-utils";
+import {
+  nowIso,
+  type SyncTables,
+  type SyncSnapshot,
+  type AccountId,
+  type TransactionId,
+  type CategoryId,
+  type CategoryGroupId,
+  type PayeeId,
+  type ScheduleId,
+} from "../domain/types";
 
 // ---------------------------------------------------------------------------
 // DataAccess — bundles Drizzle + raw SQL for the sync engine
@@ -76,34 +86,34 @@ export class DataAccess {
   // CRUD helpers
   // -----------------------------------------------------------------------
 
-  getAccount(id: string) {
+  getAccount(id: AccountId) {
     return this.db.select().from(schema.accounts).where(eq(schema.accounts.id, id)).get() ?? null;
   }
 
-  getTransaction(id: string) {
+  getTransaction(id: TransactionId) {
     return (
       this.db.select().from(schema.transactions).where(eq(schema.transactions.id, id)).get() ?? null
     );
   }
 
-  getCategory(id: string) {
+  getCategory(id: CategoryId) {
     return (
       this.db.select().from(schema.categories).where(eq(schema.categories.id, id)).get() ?? null
     );
   }
 
-  getCategoryGroup(id: string) {
+  getCategoryGroup(id: CategoryGroupId) {
     return (
       this.db.select().from(schema.categoryGroups).where(eq(schema.categoryGroups.id, id)).get() ??
       null
     );
   }
 
-  getPayee(id: string) {
+  getPayee(id: PayeeId) {
     return this.db.select().from(schema.payees).where(eq(schema.payees.id, id)).get() ?? null;
   }
 
-  getSchedule(id: string) {
+  getSchedule(id: ScheduleId) {
     return this.db.select().from(schema.schedules).where(eq(schema.schedules.id, id)).get() ?? null;
   }
 
@@ -131,9 +141,9 @@ export class DataAccess {
   // Snapshot — full table dump for sync_reset
   // -----------------------------------------------------------------------
 
-  readTable(tableName: string) {
-    const rows = this.queryAll<Record<string, unknown>>(`SELECT * FROM ${tableName}`);
-    const result: Record<string, unknown> = {};
+  readTable<T extends Record<string, unknown>>(tableName: DataTableName): Record<string, T> {
+    const rows = this.queryAll<T>(`SELECT * FROM ${tableName}`);
+    const result: Record<string, T> = {};
     for (const row of rows) {
       const id = String(row.id ?? "");
       result[id] = row;
@@ -145,21 +155,22 @@ export class DataAccess {
     return {
       serverSeq: this.getLastServerSeq(),
       tables: {
-        accounts: this.readTable("accounts") as Record<string, unknown>,
-        categories: this.readTable("categories") as Record<string, unknown>,
-        category_groups: this.readTable("category_groups") as Record<string, unknown>,
-        transactions: this.readTable("transactions") as Record<string, unknown>,
-        budgets: this.readTable("budgets") as Record<string, unknown>,
-        budget_months: this.readTable("budget_months") as Record<string, unknown>,
-        payees: this.readTable("payees") as Record<string, unknown>,
-        schedules: this.readTable("schedules") as Record<string, unknown>,
-        rules: this.readTable("rules") as Record<string, unknown>,
-        tags: this.readTable("tags") as Record<string, unknown>,
-        transaction_tags: this.readTable("transaction_tags") as Record<string, unknown>,
-        custom_reports: this.readTable("custom_reports") as Record<string, unknown>,
-        dashboard_widgets: this.readTable("dashboard_widgets") as Record<string, unknown>,
-        exchange_rates: this.readTable("exchange_rates") as Record<string, unknown>,
-      } as SyncTables,
+        accounts: this.readTable<schema.Account>("accounts"),
+        categories: this.readTable<schema.Category>("categories"),
+        category_groups: this.readTable<schema.CategoryGroup>("category_groups"),
+        transactions: this.readTable<schema.Transaction>("transactions"),
+        budgets: this.readTable<schema.Budget>("budgets"),
+        budget_months: this.readTable<schema.BudgetMonth>("budget_months"),
+        payees: this.readTable<schema.Payee>("payees"),
+        schedules: this.readTable<schema.Schedule>("schedules"),
+        rules: this.readTable<schema.Rule>("rules"),
+        tags: this.readTable<schema.Tag>("tags"),
+        transaction_tags: this.readTable<schema.TransactionTag>("transaction_tags"),
+        custom_reports: this.readTable<schema.CustomReport>("custom_reports"),
+        dashboard_widgets: this.readTable<schema.DashboardWidget>("dashboard_widgets"),
+        exchange_rates: this.readTable<schema.ExchangeRate>("exchange_rates"),
+        settings: this.readTable<schema.Setting>("settings"),
+      },
     };
   }
 
