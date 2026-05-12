@@ -11,7 +11,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Gap                                 | Notes                                                                                |
 | ----------------------------------- | ------------------------------------------------------------------------------------ |
 | Custom report builder UI            | Backend table + CRUD commands exist, no frontend UI                                  |
-| Dashboard widget grid               | `dashboard_widgets` table + `update_dashboard` command exist, dash page ignores them |
+| ~~Dashboard widget grid~~               | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 6 widget types, auto-seeds defaults, supports add/remove |
 | Crossover/FI-RE projection card     | Not implemented                                                                      |
 | Calendar heatmap card               | Not implemented                                                                      |
 | Sankey flow diagram card            | Not implemented                                                                      |
@@ -63,7 +63,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | ~~Additional conditions (account, amount, date, cleared)~~       | ✅ account/amount/date/cleared fields + number/date ops (gt, gte, lt, lte, isapprox, isbetween) in UI and import runner |
 | ~~Additional actions (prepend-notes, append-notes, delete-txn)~~ | ✅ Added prepend-notes, append-notes, delete-transaction. set-split-amount and link-schedule not yet implemented        |
-| ~~Rule test UI~~                                                 | ✅ "Test" button + modal shows which existing transactions match a rule's conditions                                     |
+| ~~Rule test UI~~                                                 | ✅ "Test" button + modal shows which existing transactions match a rule's conditions                                    |
 | Formula actions (balance-of queries)                             | Not implemented                                                                                                         |
 | Handlebars template helpers in actions                           | Not implemented                                                                                                         |
 | ~~Enable/disable toggle~~                                        | ✅ ON/OFF toggle per rule, `active` column added to schema                                                              |
@@ -72,19 +72,19 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Categories
 
-| Gap                                         | Notes                                                                                       |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| ~~Category group rename/edit in UI~~        | ✅ Inline rename on click, toggle hidden (eye icon), toggle isIncome                        |
-| ~~Category group delete with transfer~~     | ✅ Confirm dialog with option to transfer categories to another group or delete them inside |
-| ~~Category delete with transfer~~           | ✅ Confirm dialog with option to transfer transactions/budgets to another category          |
-| ~~Category hide/unhide toggle~~             | ✅ Eye toggle button on each category row, visual opacity dim for hidden                    |
-| ~~Category group hide/unhide toggle~~       | ✅ Eye toggle button on each group header, hidden groups list at bottom                     |
-| ~~Category income/expense visual distinction~~ | ✅ Green left border on income groups, green/purple dot indicator, `section-income` class |
-| Drag-and-drop reorder                       | `reorder_categories` handler exists, no drag interaction in UI                              |
-| ~~Goal progress tracking~~                  | ✅ Progress bar + label in categories page: funded/partial/under status with amounts         |
-| Additional goal types (refill, periodic, %) | Only monthly and byDate supported                                                           |
-| Note-based templates                        | Not implemented                                                                             |
-| Template priority system                    | Not implemented                                                                             |
+| Gap                                            | Notes                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| ~~Category group rename/edit in UI~~           | ✅ Inline rename on click, toggle hidden (eye icon), toggle isIncome                        |
+| ~~Category group delete with transfer~~        | ✅ Confirm dialog with option to transfer categories to another group or delete them inside |
+| ~~Category delete with transfer~~              | ✅ Confirm dialog with option to transfer transactions/budgets to another category          |
+| ~~Category hide/unhide toggle~~                | ✅ Eye toggle button on each category row, visual opacity dim for hidden                    |
+| ~~Category group hide/unhide toggle~~          | ✅ Eye toggle button on each group header, hidden groups list at bottom                     |
+| ~~Category income/expense visual distinction~~ | ✅ Green left border on income groups, green/purple dot indicator, `section-income` class   |
+| Drag-and-drop reorder                          | `reorder_categories` handler exists, no drag interaction in UI                              |
+| ~~Goal progress tracking~~                     | ✅ Progress bar + label in categories page: funded/partial/under status with amounts        |
+| Additional goal types (refill, periodic, %)    | Only monthly and byDate supported                                                           |
+| Note-based templates                           | Not implemented                                                                             |
+| Template priority system                       | Not implemented                                                                             |
 
 ## Payees
 
@@ -122,12 +122,12 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## UI / Polish
 
-| Gap                                       | Notes                                                          |
-| ----------------------------------------- | -------------------------------------------------------------- |
-| Keyboard shortcuts (Cmd+K command bar)    | Not implemented                                                |
-| Loading states on pages                   | Some pages lack proper loading/error states                    |
-| Input validation errors displayed to user | Effect/Schema errors may cause unhandled rejections            |
-| Offline indicator in header               | Sync indicator shows connection status but no offline UX       |
-| Goal templates category editor            | `goal_def` JSON stored but no inline editor on categories page |
-| ~~Schedule edit page~~                        | ✅ `/schedules/:id` route with detail view and inline editing form                                                        |
-| Report color scheme per report            | Not implemented                                                |
+| Gap                                       | Notes                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| Keyboard shortcuts (Cmd+K command bar)    | Not implemented                                                    |
+| Loading states on pages                   | Some pages lack proper loading/error states                        |
+| Input validation errors displayed to user | Effect/Schema errors may cause unhandled rejections                |
+| Offline indicator in header               | Sync indicator shows connection status but no offline UX           |
+| Goal templates category editor            | `goal_def` JSON stored but no inline editor on categories page     |
+| ~~Schedule edit page~~                    | ✅ `/schedules/:id` route with detail view and inline editing form |
+| Report color scheme per report            | Not implemented                                                    |

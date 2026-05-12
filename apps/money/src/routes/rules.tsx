@@ -184,7 +184,11 @@ function matchCondition(cond: any, tx: any): boolean {
   }
 }
 
-function ruleMatchesTransaction(conditionsJson: string, conditionsOp: string | undefined, tx: any): boolean {
+function ruleMatchesTransaction(
+  conditionsJson: string,
+  conditionsOp: string | undefined,
+  tx: any,
+): boolean {
   try {
     const conditions = JSON.parse(conditionsJson) as Array<any>;
     if (conditions.length === 0) return false;
@@ -240,16 +244,23 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
   try {
     const parsed = JSON.parse(conditionsStr) as Array<any>;
     conditionsLabel = parsed
-      .map((c: any) => `${c.field} ${c.op} ${Array.isArray(c.value) ? c.value.join(", ") : c.value}${c.value2 != null ? `-${c.value2}` : ""}`)
+      .map(
+        (c: any) =>
+          `${c.field} ${c.op} ${Array.isArray(c.value) ? c.value.join(", ") : c.value}${c.value2 != null ? `-${c.value2}` : ""}`,
+      )
       .join(", ");
-  } catch { /* use raw string */ }
+  } catch {
+    /* use raw string */
+  }
 
   return (
     <div class="modal-overlay" onClick={props.onClose}>
       <div class="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>Test Rule</h2>
-          <button class="modal-close" onClick={props.onClose}>✕</button>
+          <button class="modal-close" onClick={props.onClose}>
+            ✕
+          </button>
         </div>
         <div class="modal-body">
           <div class="rule-test-info">
@@ -260,23 +271,36 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
           </div>
 
           <Show when={loading()}>
-            <div class="loading" style={{ "margin-top": "1rem" }}>Loading transactions...</div>
+            <div class="loading" style={{ "margin-top": "1rem" }}>
+              Loading transactions...
+            </div>
           </Show>
 
           <Show when={error()}>
-            <div class="error-message" style={{ "margin-top": "1rem" }}>{error()}</div>
+            <div class="error-message" style={{ "margin-top": "1rem" }}>
+              {error()}
+            </div>
           </Show>
 
           <Show when={!loading() && !error()}>
             <div class="rule-test-count" style={{ "margin-top": "1rem" }}>
-              <strong>{transactions().length}</strong> transaction{transactions().length !== 1 ? "s" : ""} match{transactions().length === 1 ? "es" : ""} this rule
+              <strong>{transactions().length}</strong> transaction
+              {transactions().length !== 1 ? "s" : ""} match
+              {transactions().length === 1 ? "es" : ""} this rule
             </div>
 
             <Show
               when={transactions().length > 0}
-              fallback={<p style={{ "margin-top": "1rem", color: "var(--text-muted)" }}>No transactions match this rule.</p>}
+              fallback={
+                <p style={{ "margin-top": "1rem", color: "var(--text-muted)" }}>
+                  No transactions match this rule.
+                </p>
+              }
             >
-              <div class="table-wrapper" style={{ "margin-top": "0.75rem", "max-height": "400px", overflow: "auto" }}>
+              <div
+                class="table-wrapper"
+                style={{ "margin-top": "0.75rem", "max-height": "400px", overflow: "auto" }}
+              >
                 <table class="tx-table">
                   <thead>
                     <tr>
@@ -306,7 +330,9 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
           </Show>
         </div>
         <div class="form-actions">
-          <button class="btn btn-primary" onClick={props.onClose}>Close</button>
+          <button class="btn btn-primary" onClick={props.onClose}>
+            Close
+          </button>
         </div>
       </div>
     </div>

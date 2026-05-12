@@ -644,6 +644,145 @@ button {
 }
 
 /* ============================================================
+   Dashboard widget grid
+   ============================================================ */
+
+.dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.dashboard-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.widget-grid {
+  width: 100%;
+}
+
+.widget-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.widget-card:hover {
+  border-color: var(--accent);
+}
+
+.widget-close {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+  z-index: 2;
+}
+
+.widget-card:hover .widget-close {
+  opacity: 1;
+}
+
+.widget-close:hover {
+  color: var(--negative);
+  background: var(--bg-hover);
+}
+
+.widget-summary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: 4px 0;
+}
+
+.widget-summary-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.widget-summary-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.widget-summary-value.positive {
+  color: var(--positive);
+}
+
+.widget-summary-value.negative {
+  color: var(--negative);
+}
+
+.widget-chart {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.widget-chart-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.widget-chart svg {
+  flex: 1;
+  width: 100% !important;
+  height: auto !important;
+}
+
+/* Add widget modal */
+
+.add-widget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.add-widget-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  text-align: center;
+}
+
+.add-widget-option:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* ============================================================
    Account list
    ============================================================ */
 

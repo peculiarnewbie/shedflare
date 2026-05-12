@@ -1,56 +1,572 @@
 /**
- * Dashboard — overview with net worth, cash flow, budget health.
+ * Dashboard — dynamic widget grid with configurable cards and charts.
+ * Reads widget layout from dashboard_widgets table, renders by widget type.
  */
-import { createMemo, createEffect, createSignal, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { useCurrency } from "../lib/currency";
+import { dispatch } from "../lib/pending-ops";
+import { createId } from "../domain/types";
+import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
+import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type WidgetType =
+  | "summary-card"
+  | "net-worth-card"
+  | "cash-flow-card"
+  | "spending-card"
+  | "budget-analysis-card"
+  | "age-of-money-card";
+
+interface WidgetDef {
+  id: string;
+  type: WidgetType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  meta: string | null;
+}
+
+const GRID_COLS = 12;
+const ROW_HEIGHT = 100;
+
+const ALL_WIDGET_TYPES: { type: WidgetType; label: string }[] = [
+  { type: "summary-card", label: "Summary Card" },
+  { type: "net-worth-card", label: "Net Worth Chart" },
+  { type: "cash-flow-card", label: "Cash Flow Chart" },
+  { type: "spending-card", label: "Spending Chart" },
+  { type: "budget-analysis-card", label: "Budget Analysis" },
+  { type: "age-of-money-card", label: "Age of Money" },
+];
+
+// ---------------------------------------------------------------------------
+// Default widget layout (seeded on first visit)
+// ---------------------------------------------------------------------------
+
+function buildDefaultWidgets(): WidgetDef[] {
+  return [
+    {
+      id: createId("wgt"),
+      type: "summary-card",
+      x: 0,
+      y: 0,
+      width: 4,
+      height: 1,
+      meta: JSON.stringify({ label: "Net Worth", source: "netWorth" }),
+    },
+    {
+      id: createId("wgt"),
+      type: "summary-card",
+      x: 4,
+      y: 0,
+      width: 4,
+      height: 1,
+      meta: JSON.stringify({ label: "On Budget", source: "onBudget" }),
+    },
+    {
+      id: createId("wgt"),
+      type: "summary-card",
+      x: 8,
+      y: 0,
+      width: 4,
+      height: 1,
+      meta: JSON.stringify({ label: "Accounts", source: "accountCount" }),
+    },
+    {
+      id: createId("wgt"),
+      type: "summary-card",
+      x: 0,
+      y: 1,
+      width: 4,
+      height: 1,
+      meta: JSON.stringify({ label: "Income This Month", source: "income" }),
+    },
+    {
+      id: createId("wgt"),
+      type: "summary-card",
+      x: 4,
+      y: 1,
+      width: 4,
+      height: 1,
+      meta: JSON.stringify({ label: "Expenses This Month", source: "expense" }),
+    },
+    {
+      id: createId("wgt"),
+      type: "summary-card",
+      x: 8,
+      y: 1,
+      width: 4,
+      height: 1,
+      meta: JSON.stringify({ label: "Net This Month", source: "net" }),
+    },
+    {
+      id: createId("wgt"),
+      type: "net-worth-card",
+      x: 0,
+      y: 2,
+      width: 6,
+      height: 3,
+      meta: null,
+    },
+    {
+      id: createId("wgt"),
+      type: "cash-flow-card",
+      x: 6,
+      y: 2,
+      width: 6,
+      height: 3,
+      meta: null,
+    },
+    {
+      id: createId("wgt"),
+      type: "spending-card",
+      x: 0,
+      y: 5,
+      width: 4,
+      height: 3,
+      meta: null,
+    },
+    {
+      id: createId("wgt"),
+      type: "budget-analysis-card",
+      x: 4,
+      y: 5,
+      width: 4,
+      height: 3,
+      meta: null,
+    },
+    {
+      id: createId("wgt"),
+      type: "age-of-money-card",
+      x: 8,
+      y: 5,
+      width: 4,
+      height: 3,
+      meta: null,
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Widget data fetchers
+// ---------------------------------------------------------------------------
+
+async function fetchOverview(): Promise<Record<string, number>> {
+  const res = await fetch("/api/budget/overview");
+  if (!res.ok) return {};
+  return (await res.json()) as Record<string, number>;
+}
+
+async function fetchNetWorthData(): Promise<TimeSeriesPoint[]> {
+  const res = await fetch("/api/reports/net-worth");
+  if (!res.ok) return [];
+  const data = (await res.json()) as any;
+  return (data.points ?? []) as TimeSeriesPoint[];
+}
+
+async function fetchCashFlowData(): Promise<BarGroup[]> {
+  const res = await fetch("/api/reports/cash-flow");
+  if (!res.ok) return [];
+  const data = (await res.json()) as any;
+  return (data.months ?? []).map((m: any) => ({
+    category: m.month,
+    values: [
+      { label: "Income", value: m.income ?? 0, color: "var(--positive)" },
+      { label: "Expenses", value: m.expense ?? 0, color: "var(--negative)" },
+    ],
+  }));
+}
+
+async function fetchSpendingData(): Promise<PieSlice[]> {
+  const res = await fetch("/api/reports/spending");
+  if (!res.ok) return [];
+  const data = (await res.json()) as any;
+  return (data.categories ?? []) as PieSlice[];
+}
+
+async function fetchBudgetData(): Promise<BudgetPair[]> {
+  const res = await fetch("/api/reports/budget-analysis");
+  if (!res.ok) return [];
+  const data = (await res.json()) as any;
+  return (data.categories ?? []) as BudgetPair[];
+}
+
+async function fetchAgeOfMoney(): Promise<number | null> {
+  const res = await fetch("/api/reports/age-of-money");
+  if (!res.ok) return null;
+  const data = (await res.json()) as any;
+  return (data.days as number) ?? null;
+}
+
+const formatMonth = (dateStr: string) => {
+  if (!dateStr || dateStr.length < 7) return dateStr;
+  const [y, m] = dateStr.split("-");
+  const d = new Date(Number(y), Number(m) - 1);
+  return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+};
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const fmt = useCurrency();
-  const [netWorth, setNetWorth] = createSignal<number>(0);
-  const [monthIncome, setMonthIncome] = createSignal(0);
-  const [monthExpense, setMonthExpense] = createSignal(0);
-  const [accountCount, setAccountCount] = createSignal(0);
-  const [onBudgetAmount, setOnBudgetAmount] = createSignal(0);
+
+  // Widget definitions from server
+  const [widgets, setWidgets] = createSignal<WidgetDef[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [seeding, setSeeding] = createSignal(false);
 
-  // Load data on mount
-  createEffect(() => {
-    // Fetch from server until sync is wired up
-    void loadDashboardData();
-  });
+  // Aggregate overview data
+  const [overview, setOverview] = createSignal<Record<string, number>>({});
 
-  async function loadDashboardData() {
+  // Chart data per widget type (lazy-loaded)
+  const [netWorthData, setNetWorthData] = createSignal<TimeSeriesPoint[]>([]);
+  const [cashFlowData, setCashFlowData] = createSignal<BarGroup[]>([]);
+  const [spendingData, setSpendingData] = createSignal<PieSlice[]>([]);
+  const [budgetData, setBudgetData] = createSignal<BudgetPair[]>([]);
+  const [ageOfMoneyData, setAgeOfMoneyData] = createSignal<number | null>(null);
+
+  // Add widget modal
+  const [showAddModal, setShowAddModal] = createSignal(false);
+
+  // -----------------------------------------------------------------------
+  // Load widgets and overview on mount
+  // -----------------------------------------------------------------------
+
+  async function loadWidgets() {
+    try {
+      const res = await fetch("/api/dashboard/widgets");
+      if (!res.ok) return [];
+      const data = (await res.json()) as any;
+      return (data.widgets ?? []) as WidgetDef[];
+    } catch {
+      return [];
+    }
+  }
+
+  async function loadAll() {
     setLoading(true);
     setError(null);
     try {
-      const [_sessionRes, budgetRes] = await Promise.all([
-        fetch("/api/session"),
-        fetch("/api/budget/overview"),
-      ]);
-      if (budgetRes.ok) {
-        const data = (await budgetRes.json()) as any;
-        setNetWorth(data.netWorth ?? 0);
-        setMonthIncome(data.income ?? 0);
-        setMonthExpense(data.expense ?? 0);
-        setAccountCount(data.accountCount ?? 0);
-        setOnBudgetAmount(data.onBudget ?? 0);
+      const [overviewData, loadedWidgets] = await Promise.all([fetchOverview(), loadWidgets()]);
+      setOverview(overviewData);
+
+      if (loadedWidgets.length > 0) {
+        setWidgets(loadedWidgets);
       } else {
-        setError(`Failed to load: ${budgetRes.status}`);
+        // Auto-seed default widgets on first visit
+        setSeeding(true);
+        const defaults = buildDefaultWidgets();
+        dispatch("update_dashboard", {
+          widgets: defaults.map((w) => ({
+            id: w.id,
+            type: w.type,
+            x: w.x,
+            y: w.y,
+            width: w.width,
+            height: w.height,
+            meta: w.meta,
+          })),
+        });
+        setWidgets(defaults);
+        setSeeding(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not connect");
+      setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
       setLoading(false);
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Data hydrator — fetches chart data based on visible widgets
+  // -----------------------------------------------------------------------
+
+  createEffect(() => {
+    const visibleWidgets = widgets();
+    const hasType = (t: WidgetType) => visibleWidgets.some((w) => w.type === t);
+
+    if (hasType("net-worth-card")) {
+      void fetchNetWorthData().then(setNetWorthData);
+    }
+    if (hasType("cash-flow-card")) {
+      void fetchCashFlowData().then(setCashFlowData);
+    }
+    if (hasType("spending-card")) {
+      void fetchSpendingData().then(setSpendingData);
+    }
+    if (hasType("budget-analysis-card")) {
+      void fetchBudgetData().then(setBudgetData);
+    }
+    if (hasType("age-of-money-card")) {
+      void fetchAgeOfMoney().then(setAgeOfMoneyData);
+    }
+  });
+
+  const loaded = () => widgets().length > 0;
+
+  // -----------------------------------------------------------------------
+  // Widget add/remove
+  // -----------------------------------------------------------------------
+
+  function addWidget(type: WidgetType) {
+    // Find next available position at the bottom
+    const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
+    const colWidth = type.startsWith("summary-") ? 4 : type === "age-of-money-card" ? 4 : 6;
+
+    // Check current row occupancy at maxY
+    const rowOccupied = Array.from({ length: GRID_COLS }, () => false);
+    for (const w of widgets()) {
+      if (w.y + w.height > maxY && w.y < maxY + 1) {
+        for (let c = w.x; c < w.x + w.width && c < GRID_COLS; c++) {
+          rowOccupied[c] = true;
+        }
+      }
+    }
+    // Find first gap in last row
+    let x = 0;
+    for (let c = 0; c <= GRID_COLS - colWidth; c++) {
+      if (!rowOccupied.slice(c, c + colWidth).some(Boolean)) {
+        x = c;
+        break;
+      }
+    }
+
+    const newWidget: WidgetDef = {
+      id: createId("wgt"),
+      type,
+      x,
+      y: maxY,
+      width: colWidth,
+      height: type.startsWith("summary-") ? 1 : 3,
+      meta:
+        type === "summary-card"
+          ? JSON.stringify({ label: "New Summary", source: "netWorth" })
+          : null,
+    };
+    const next = [...widgets(), newWidget];
+    setWidgets(next);
+    dispatch("update_dashboard", {
+      widgets: next.map((w) => ({
+        id: w.id,
+        type: w.type,
+        x: w.x,
+        y: w.y,
+        width: w.width,
+        height: w.height,
+        meta: w.meta,
+      })),
+    });
+    setShowAddModal(false);
+  }
+
+  function removeWidget(id: string) {
+    const next = widgets().filter((w) => w.id !== id);
+    setWidgets(next);
+    dispatch("update_dashboard", {
+      widgets: next.map((w) => ({
+        id: w.id,
+        type: w.type,
+        x: w.x,
+        y: w.y,
+        width: w.width,
+        height: w.height,
+        meta: w.meta,
+      })),
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Widget renderers
+  // -----------------------------------------------------------------------
+
+  function renderWidgetContent(def: WidgetDef) {
+    const meta = def.meta ? (tryParseJson(def.meta) as Record<string, unknown> | null) : null;
+
+    switch (def.type) {
+      case "summary-card": {
+        const source = (meta?.source as string) ?? "netWorth";
+        const label = (meta?.label as string) ?? source;
+        let value = 0;
+        switch (source) {
+          case "netWorth":
+            value = overview().netWorth ?? 0;
+            break;
+          case "onBudget":
+            value = overview().onBudget ?? 0;
+            break;
+          case "accountCount":
+            value = overview().accountCount ?? 0;
+            break;
+          case "income":
+            value = overview().income ?? 0;
+            break;
+          case "expense":
+            value = overview().expense ?? 0;
+            break;
+          case "net": {
+            const inc = overview().income ?? 0;
+            const exp = overview().expense ?? 0;
+            value = inc - exp;
+            break;
+          }
+        }
+        const isCurrency = source !== "accountCount";
+        return (
+          <div class="widget-summary">
+            <div class="widget-summary-label">{label}</div>
+            <div
+              class="widget-summary-value"
+              classList={{
+                positive: isCurrency && value >= 0,
+                negative: isCurrency && value < 0,
+              }}
+            >
+              {isCurrency ? fmt().formatCents(value) : String(Math.round(value))}
+            </div>
+          </div>
+        );
+      }
+
+      case "net-worth-card": {
+        const data = netWorthData();
+        return (
+          <div class="widget-chart">
+            <div class="widget-chart-title">Net Worth Over Time</div>
+            <AreaChart data={data} dimensions={{ width: 480, height: 220, marginBottom: 32 }} />
+          </div>
+        );
+      }
+
+      case "cash-flow-card": {
+        const data = cashFlowData();
+        return (
+          <div class="widget-chart">
+            <div class="widget-chart-title">Cash Flow</div>
+            <BarChart
+              groups={data}
+              stacked={false}
+              dimensions={{ width: 480, height: 220, marginBottom: 32 }}
+              formatX={formatMonth}
+            />
+          </div>
+        );
+      }
+
+      case "spending-card": {
+        const data = spendingData();
+        return (
+          <div class="widget-chart">
+            <div class="widget-chart-title">Spending by Category</div>
+            <DonutChart slices={data} dimensions={{ width: 320, height: 220 }} />
+          </div>
+        );
+      }
+
+      case "budget-analysis-card": {
+        const data = budgetData();
+        return (
+          <div class="widget-chart">
+            <div class="widget-chart-title">Budget vs Actuals</div>
+            <BudgetBar data={data} maxCategories={10} />
+          </div>
+        );
+      }
+
+      case "age-of-money-card": {
+        const days = ageOfMoneyData();
+        return (
+          <div class="widget-chart" style={{ "text-align": "center" }}>
+            <div class="widget-chart-title">Age of Money</div>
+            <div style={{ padding: "16px" }}>
+              <Show
+                when={days !== null}
+                fallback={
+                  <span style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>
+                    Not enough data
+                  </span>
+                }
+              >
+                <span
+                  style={{
+                    "font-size": "2.5rem",
+                    "font-weight": 700,
+                    color: "var(--text)",
+                  }}
+                >
+                  {days}
+                </span>
+                <span
+                  style={{
+                    "font-size": "0.9rem",
+                    color: "var(--text-secondary)",
+                    "margin-left": "6px",
+                  }}
+                >
+                  days
+                </span>
+              </Show>
+            </div>
+          </div>
+        );
+      }
+    }
+  }
+
+  function tryParseJson(s: string): unknown {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------------
+
+  const gridStyle = createMemo(() => {
+    const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
+    return {
+      display: "grid",
+      "grid-template-columns": `repeat(${GRID_COLS}, 1fr)`,
+      "grid-auto-rows": `${ROW_HEIGHT}px`,
+      gap: "12px",
+      "min-height": `${(maxY + 1) * ROW_HEIGHT}px`,
+    };
+  });
+
+  function widgetStyle(w: WidgetDef) {
+    return {
+      "grid-column": `${w.x + 1} / span ${w.width}`,
+      "grid-row": `${w.y + 1} / span ${w.height}`,
+    };
+  }
+
   return (
     <div class="page">
-      <h1 class="page-title">Dashboard</h1>
-      <p class="page-subtitle">Your financial overview</p>
+      <div class="dashboard-header">
+        <div>
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-subtitle">Your financial overview</p>
+        </div>
+        <div class="dashboard-header-actions">
+          <button class="btn btn-secondary btn-sm" onClick={() => setShowAddModal(true)}>
+            + Add Widget
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick={loadAll} title="Refresh">
+            &#x21bb;
+          </button>
+        </div>
+      </div>
 
       <Show when={!loading()} fallback={<div class="loading">Loading dashboard...</div>}>
         <Show
@@ -59,66 +575,82 @@ export default function Dashboard() {
             <div class="empty-state">
               <p>Could not load dashboard data.</p>
               <p style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>{error()}</p>
-              <button
-                class="btn btn-primary btn-sm"
-                onClick={loadDashboardData}
-                style="margin-top:12px"
-              >
+              <button class="btn btn-primary btn-sm" onClick={loadAll} style="margin-top:12px">
                 Retry
               </button>
             </div>
           }
         >
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-label">Net Worth</div>
-              <div class="stat-value positive">{fmt().formatCents(netWorth())}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">On Budget</div>
-              <div class="stat-value positive">{fmt().formatCents(onBudgetAmount())}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Accounts</div>
-              <div class="stat-value">{accountCount()}</div>
-            </div>
-          </div>
+          <Show
+            when={loaded() || seeding()}
+            fallback={
+              <div class="empty-state">
+                <p>No dashboard widgets configured.</p>
+                <button class="btn btn-primary btn-sm" onClick={() => addWidget("summary-card")}>
+                  Add your first widget
+                </button>
+              </div>
+            }
+          >
+            <Show when={seeding()} fallback={null}>
+              <div class="loading" style="margin-bottom:12px">
+                Setting up your dashboard...
+              </div>
+            </Show>
 
-          <div class="section">
-            <h2 class="section-title">This Month</h2>
-            <div class="stats-grid">
-              <div class="stat-card income">
-                <div class="stat-label">Income</div>
-                <div class="stat-value positive">{fmt().formatCents(monthIncome())}</div>
-              </div>
-              <div class="stat-card expense">
-                <div class="stat-label">Expenses</div>
-                <div class="stat-value negative">{fmt().formatCents(monthExpense())}</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Balance</div>
-                <div
-                  class="stat-value"
-                  classList={{
-                    positive: monthIncome() - monthExpense() >= 0,
-                    negative: monthIncome() - monthExpense() < 0,
-                  }}
-                >
-                  {fmt().formatCents(monthIncome() - monthExpense())}
-                </div>
-              </div>
+            <div class="widget-grid" style={gridStyle()}>
+              <For each={widgets()}>
+                {(def) => (
+                  <div class="widget-card" style={widgetStyle(def)}>
+                    <button
+                      class="widget-close"
+                      onClick={() => removeWidget(def.id)}
+                      title="Remove widget"
+                    >
+                      &times;
+                    </button>
+                    {renderWidgetContent(def)}
+                  </div>
+                )}
+              </For>
             </div>
-          </div>
 
-          <div class="quick-actions">
-            <button class="btn btn-primary" onClick={() => navigate("/accounts")}>
-              + Add Transaction
-            </button>
-            <button class="btn btn-secondary" onClick={() => navigate("/budget")}>
-              Go to Budget
-            </button>
-          </div>
+            {/* Quick actions below grid */}
+            <div class="quick-actions" style="margin-top:16px">
+              <button class="btn btn-primary" onClick={() => navigate("/accounts")}>
+                + Add Transaction
+              </button>
+              <button class="btn btn-secondary" onClick={() => navigate("/budget")}>
+                Go to Budget
+              </button>
+            </div>
+          </Show>
         </Show>
+      </Show>
+
+      {/* Add Widget Modal */}
+      <Show when={showAddModal()}>
+        <div class="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+              <h2>Add Widget</h2>
+              <button class="modal-close" onClick={() => setShowAddModal(false)}>
+                &times;
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="add-widget-grid">
+                <For each={ALL_WIDGET_TYPES}>
+                  {(wt) => (
+                    <button class="add-widget-option" onClick={() => addWidget(wt.type)}>
+                      <strong>{wt.label}</strong>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+          </div>
+        </div>
       </Show>
     </div>
   );

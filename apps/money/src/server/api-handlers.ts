@@ -290,6 +290,14 @@ export function handleApiRequest(
     return json({ days });
   }
 
+  // Dashboard widgets
+  if (pathname === "/api/dashboard/widgets" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM dashboard_widgets ORDER BY y, x",
+    );
+    return json({ widgets: rows.map(mapDashboardWidgetRow) });
+  }
+
   // CSV export
   if (pathname === "/api/export/csv" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(
@@ -334,6 +342,18 @@ function mapAccountRow(row: Record<string, unknown>) {
     sortOrder: Number(row.sort_order ?? 0),
     balanceCurrent: Number(row.balance_current ?? 0),
     lastReconciled: row.last_reconciled ? String(row.last_reconciled) : null,
+  };
+}
+
+function mapDashboardWidgetRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    type: String(row.type),
+    x: Number(row.x),
+    y: Number(row.y),
+    width: Number(row.width),
+    height: Number(row.height),
+    meta: row.meta ? String(row.meta) : null,
   };
 }
 

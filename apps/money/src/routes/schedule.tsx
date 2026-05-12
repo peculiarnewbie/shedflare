@@ -147,10 +147,7 @@ export default function ScheduleDetailPage() {
       </div>
 
       <Show when={!loading()} fallback={<div class="loading">Loading schedule...</div>}>
-        <Show
-          when={schedule()}
-          fallback={<div class="empty-state">Schedule not found.</div>}
-        >
+        <Show when={schedule()} fallback={<div class="empty-state">Schedule not found.</div>}>
           <div class="schedule-detail-page">
             <Show
               when={editing()}
@@ -163,9 +160,7 @@ export default function ScheduleDetailPage() {
                   <div class="schedule-detail-field">
                     <label>Amount</label>
                     <div class="value">
-                      {schedule()?.amount != null
-                        ? fmt().formatCents(schedule()?.amount)
-                        : "—"}
+                      {schedule()?.amount != null ? fmt().formatCents(schedule()?.amount) : "—"}
                     </div>
                   </div>
                   <div class="schedule-detail-field">
@@ -195,7 +190,11 @@ export default function ScheduleDetailPage() {
                   <div class="schedule-detail-field">
                     <label>Status</label>
                     <div class="value">
-                      {schedule()?.completed ? "Completed" : schedule()?.active === false ? "Inactive" : "Active"}
+                      {schedule()?.completed
+                        ? "Completed"
+                        : schedule()?.active === false
+                          ? "Inactive"
+                          : "Active"}
                     </div>
                   </div>
 
@@ -290,10 +289,7 @@ export default function ScheduleDetailPage() {
                 </Show>
                 <div class="form-group">
                   <label>End condition</label>
-                  <select
-                    value={endMode()}
-                    onChange={(e) => setEndMode(e.currentTarget.value)}
-                  >
+                  <select value={endMode()} onChange={(e) => setEndMode(e.currentTarget.value)}>
                     <option value="never">Never ends</option>
                     <option value="after_n_occurrences">After N occurrences</option>
                     <option value="on_date">On specific date</option>
