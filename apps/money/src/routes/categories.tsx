@@ -1,4 +1,4 @@
-import { createSignal, For, Show, createEffect } from "solid-js";
+import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 
 interface CategoryGroup {
@@ -26,6 +26,14 @@ interface GoalConfig {
   targetDate?: string;
 }
 
+interface GoalProgress {
+  categoryId: string;
+  goalType: "monthly" | "byDate";
+  goalAmount: number;
+  currentAmount: number;
+  targetDate: string | null;
+}
+
 export default function CategoriesPage() {
   const [groups, setGroups] = createSignal<CategoryGroup[]>([]);
   const [categories, setCategories] = createSignal<Category[]>([]);
@@ -45,6 +53,15 @@ export default function CategoriesPage() {
   const [goalType, setGoalType] = createSignal<"monthly" | "byDate">("monthly");
   const [goalAmount, setGoalAmount] = createSignal("");
   const [goalTargetDate, setGoalTargetDate] = createSignal("");
+  const [goalProgress, setGoalProgress] = createSignal<GoalProgress[]>([]);
+
+  const goalProgressMap = createMemo(() => {
+    const map = new Map<string, GoalProgress>();
+    for (const p of goalProgress()) {
+      map.set(p.categoryId, p);
+    }
+    return map;
+  });
 
   // Group rename
   const [renamingGroupId, setRenamingGroupId] = createSignal<string | null>(null);
@@ -64,9 +81,10 @@ export default function CategoriesPage() {
 
   async function loadData() {
     try {
-      const [categoriesRes, groupsRes] = await Promise.all([
+      const [categoriesRes, groupsRes, goalProgressRes] = await Promise.all([
         fetch("/api/categories"),
         fetch("/api/category-groups"),
+        fetch("/api/categories/goal-progress"),
       ]);
       if (categoriesRes.ok) {
         const data = (await categoriesRes.json()) as any;
@@ -94,6 +112,11 @@ export default function CategoriesPage() {
             hidden: Boolean(g.hidden),
           })),
         );
+      }
+
+      if (goalProgressRes.ok) {
+        const data = (await goalProgressRes.json()) as any;
+        setGoalProgress(data.progress ?? []);
       }
     } catch {
       // ignore
@@ -350,7 +373,7 @@ export default function CategoriesPage() {
             {([groupId, cats]) => {
               const group = groups().find((g) => g.id === groupId);
               return (
-                <div class="section">
+                <div class={`section${group?.isIncome ? " section-income" : ""}`}>
                   <div
                     class="budget-group-title"
                     style={{ display: "flex", "flex-direction": "column", gap: "4px" }}
@@ -372,6 +395,9 @@ export default function CategoriesPage() {
                               onClick={() => group && startRenameGroup(group)}
                               title="Rename group"
                             >
+                              <span
+                                class={`group-type-indicator ${group?.isIncome ? "group-type-income" : "group-type-expense"}`}
+                              />
                               {group?.name ?? "Uncategorized"}
                               {group?.isIncome ? (
                                 <span class="goal-badge" style={{ "margin-left": "8px" }}>
@@ -505,6 +531,41 @@ export default function CategoriesPage() {
                               </div>
                               <Show when={cat.goalDef}>
                                 <span class="goal-badge">{formatGoal(cat.goalDef)}</span>
+                                <Show when={goalProgressMap().get(cat.id)}>
+                                  {(progress) => {
+                                    const p = progress();
+                                    const pct =
+                                      p.goalAmount > 0
+                                        ? Math.min(
+                                            Math.round(
+                                              (Math.abs(p.currentAmount) / p.goalAmount) * 100,
+                                            ),
+                                            100,
+                                          )
+                                        : 0;
+                                    const status =
+                                      pct >= 100 ? "funded" : pct >= 50 ? "partial" : "under";
+                                    return (
+                                      <div class="goal-progress">
+                                        <div class="goal-progress-bar">
+                                          <div
+                                            class={`goal-progress-fill goal-progress-${status}`}
+                                            style={{ width: `${pct}%` }}
+                                          />
+                                        </div>
+                                        <span class={`goal-progress-label goal-progress-${status}`}>
+                                          {p.goalType === "monthly"
+                                            ? `${(Math.abs(p.currentAmount) / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`
+                                            : `${(p.currentAmount / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`}
+                                          <Show when={p.goalType === "byDate" && p.targetDate}>
+                                            {" "}
+                                            by {p.targetDate}
+                                          </Show>
+                                        </span>
+                                      </div>
+                                    );
+                                  }}
+                                </Show>
                               </Show>
                             </div>
                             <div style={{ display: "flex", gap: "4px" }}>

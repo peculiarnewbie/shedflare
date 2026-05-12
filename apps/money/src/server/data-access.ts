@@ -212,4 +212,84 @@ export class DataAccess {
     );
     return Number(row?.total ?? 0);
   }
+
+  getCategoryGoalProgress(month: number): Array<{
+    categoryId: string;
+    goalType: "monthly" | "byDate";
+    goalAmount: number;
+    currentAmount: number;
+    targetDate: string | null;
+  }> {
+    const now = new Date();
+    const currentMonth = now.getFullYear() * 100 + (now.getMonth() + 1);
+
+    const catRows = this.queryAll<{
+      id: string;
+      goal_def: string | null;
+    }>(
+      `SELECT id, goal_def FROM categories WHERE goal_def IS NOT NULL AND goal_def != '' AND hidden = 0`,
+    );
+
+    if (catRows.length === 0) return [];
+
+    const monthToUse = month > 0 ? month : currentMonth;
+
+    const budgetRows = this.queryAll<{ category_id: string; amount: number }>(
+      `SELECT category_id, amount FROM budgets WHERE month = ?`,
+      monthToUse,
+    );
+    const budgetMap = new Map(budgetRows.map((r) => [String(r.category_id), Number(r.amount)]));
+
+    const spendRows = this.queryAll<{ category_id: string; total: number }>(
+      `SELECT category_id, COALESCE(SUM(amount), 0) AS total
+       FROM transactions
+       WHERE category_id IS NOT NULL AND is_child = 0
+       GROUP BY category_id`,
+    );
+    const spendMap = new Map(spendRows.map((r) => [String(r.category_id), Number(r.total)]));
+
+    const results: Array<{
+      categoryId: string;
+      goalType: "monthly" | "byDate";
+      goalAmount: number;
+      currentAmount: number;
+      targetDate: string | null;
+    }> = [];
+
+    for (const row of catRows) {
+      try {
+        const goal = JSON.parse(row.goal_def ?? "null") as {
+          type: "monthly" | "byDate";
+          amount: number;
+          targetDate?: string;
+        } | null;
+        if (!goal || goal.amount <= 0) continue;
+
+        const catId = String(row.id);
+        if (goal.type === "monthly") {
+          const budgeted = budgetMap.get(catId) ?? 0;
+          results.push({
+            categoryId: catId,
+            goalType: "monthly",
+            goalAmount: goal.amount,
+            currentAmount: budgeted,
+            targetDate: null,
+          });
+        } else if (goal.type === "byDate") {
+          const totalSpent = Math.abs(spendMap.get(catId) ?? 0);
+          results.push({
+            categoryId: catId,
+            goalType: "byDate",
+            goalAmount: goal.amount,
+            currentAmount: totalSpent,
+            targetDate: goal.targetDate ?? null,
+          });
+        }
+      } catch {
+        // skip malformed goal_def
+      }
+    }
+
+    return results;
+  }
 }

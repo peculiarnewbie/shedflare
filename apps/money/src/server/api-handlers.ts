@@ -147,6 +147,14 @@ export function handleApiRequest(
     return json({ groups: rows.map(mapCategoryGroupRow) });
   }
 
+  // Goal progress
+  if (pathname === "/api/categories/goal-progress" && method === "GET") {
+    const now = new Date();
+    const month = now.getFullYear() * 100 + (now.getMonth() + 1);
+    const progress = access.getCategoryGoalProgress(month);
+    return json({ progress });
+  }
+
   // Payees
   if (pathname === "/api/payees" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(
