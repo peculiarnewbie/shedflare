@@ -10,10 +10,10 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 | Gap                                 | Notes                                                                                                                   |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Custom report builder UI            | Backend table + CRUD commands exist, no frontend UI                                                                     |
+| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type    |
 | ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove |
 | ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)    |
-| Crossover/FI-RE projection card     | Not implemented                                                                                                         |
+| ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats |
 | ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                 |
 | Sankey flow diagram card            | Not implemented                                                                                                         |
 | Markdown card                       | Not implemented                                                                                                         |
