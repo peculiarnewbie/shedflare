@@ -70,6 +70,22 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Payee-specific rules (learn_categories)                          | Not implemented                                                                                                         |
 | Tombstone (soft-delete)                                          | Rules are hard-deleted; no tombstone                                                                                    |
 
+## Categories
+
+| Gap                                         | Notes                                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| ~~Category group rename/edit in UI~~        | ✅ Inline rename on click, toggle hidden (eye icon), toggle isIncome                        |
+| ~~Category group delete with transfer~~     | ✅ Confirm dialog with option to transfer categories to another group or delete them inside |
+| ~~Category delete with transfer~~           | ✅ Confirm dialog with option to transfer transactions/budgets to another category          |
+| ~~Category hide/unhide toggle~~             | ✅ Eye toggle button on each category row, visual opacity dim for hidden                    |
+| ~~Category group hide/unhide toggle~~       | ✅ Eye toggle button on each group header, hidden groups list at bottom                     |
+| Category income/expense visual distinction  | Basic badge on group header; no coloring or separate income section                         |
+| Drag-and-drop reorder                       | `reorder_categories` handler exists, no drag interaction in UI                              |
+| Goal progress tracking                      | No UI showing saved-so-far vs goal target                                                   |
+| Additional goal types (refill, periodic, %) | Only monthly and byDate supported                                                           |
+| Note-based templates                        | Not implemented                                                                             |
+| Template priority system                    | Not implemented                                                                             |
+
 ## Payees
 
 | Gap                                          | Notes                                                                         |

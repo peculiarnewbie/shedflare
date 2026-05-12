@@ -70,6 +70,7 @@ function buildHandlerRegistry(): Map<string, CommandHandlerFn> {
     ["delete_category", handleCategoryCommands as CommandHandlerFn],
     ["create_category_group", handleCategoryCommands as CommandHandlerFn],
     ["update_category_group", handleCategoryCommands as CommandHandlerFn],
+    ["delete_category_group", handleCategoryCommands as CommandHandlerFn],
     ["reorder_categories", handleCategoryCommands as CommandHandlerFn],
     // Budget
     ["set_budget_amount", handleBudgetCommands as CommandHandlerFn],

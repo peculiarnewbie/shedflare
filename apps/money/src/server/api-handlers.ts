@@ -305,5 +305,6 @@ function mapCategoryGroupRow(row: Record<string, unknown>) {
     name: String(row.name),
     isIncome: Number(row.is_income ?? 0) === 1,
     sortOrder: Number(row.sort_order ?? 0),
+    hidden: Number(row.hidden ?? 0) === 1,
   };
 }

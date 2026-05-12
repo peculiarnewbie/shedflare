@@ -74,6 +74,10 @@ export class Projection {
         this.execCategoryGroupUpsert(row);
         break;
       }
+      case "category_group_deleted": {
+        access.exec(`DELETE FROM category_groups WHERE id = ?`, payload.id);
+        break;
+      }
       case "payee_created":
       case "payee_updated": {
         const row = payload.row as Payee;

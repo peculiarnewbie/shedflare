@@ -172,6 +172,7 @@ function eventTypeToCollection(eventType: string): string | null {
       return "categories";
     case "category_group_created":
     case "category_group_updated":
+    case "category_group_deleted":
       return "categoryGroups";
     case "category_budget_set":
       return "budgets";
@@ -250,6 +251,11 @@ function applyEvent(eventType: string, payload: unknown) {
     case "category_group_updated": {
       const event = payload as SyncEventPayloadMap["category_group_created"];
       syncUpsert("categoryGroups", event.row.id, event.row);
+      break;
+    }
+    case "category_group_deleted": {
+      const event = payload as SyncEventPayloadMap["category_group_deleted"];
+      syncDelete("categoryGroups", event.id);
       break;
     }
     case "payee_created":

@@ -162,10 +162,16 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     isIncome: Schema.optional(Schema.Boolean),
   }),
 
+  delete_category_group: Schema.Struct({
+    id: Schema.String,
+    transferToGroupId: Schema.optional(NullableString),
+  }),
+
   update_category_group: Schema.Struct({
     id: Schema.String,
     name: Schema.optional(Schema.String),
     hidden: Schema.optional(Schema.Boolean),
+    isIncome: Schema.optional(Schema.Boolean),
   }),
 
   reorder_categories: Schema.Struct({

@@ -32,6 +32,7 @@ export interface SyncEventPayloadMap {
   category_updated: { row: Category };
   category_group_created: { row: CategoryGroup };
   category_group_updated: { row: CategoryGroup };
+  category_group_deleted: { id: string };
 
   payee_created: { row: Payee };
   payee_updated: { row: Payee };
@@ -87,6 +88,7 @@ export const SYNC_EVENT_TYPES: readonly SyncEventType[] = [
   "category_updated",
   "category_group_created",
   "category_group_updated",
+  "category_group_deleted",
   "payee_created",
   "payee_updated",
   "payees_merged",

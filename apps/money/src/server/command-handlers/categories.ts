@@ -63,10 +63,23 @@ export function handleCategoryCommands(
       const valid = decodeCommand("delete_category", payload);
       const existing = access.getCategory(castId<CategoryId>(valid.id));
       if (existing) {
+        const updated = {
+          ...existing,
+          hidden: true,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (valid.transferToId) {
+          access.exec(
+            `UPDATE transactions SET category_id = ? WHERE category_id = ?`,
+            valid.transferToId,
+            existing.id,
+          );
+          access.exec(`UPDATE budgets SET amount = 0 WHERE category_id = ?`, existing.id);
+        }
+
         events.push(
-          eventStore.insertEvent(opId, "category_updated", {
-            row: { ...existing, hidden: true, updatedAt: new Date().toISOString() },
-          }) as SyncServerEvent,
+          eventStore.insertEvent(opId, "category_updated", { row: updated }) as SyncServerEvent,
         );
       }
       break;
@@ -92,11 +105,71 @@ export function handleCategoryCommands(
           ...existing,
           name: valid.name ?? existing.name,
           hidden: valid.hidden ?? existing.hidden,
+          isIncome: valid.isIncome !== undefined ? valid.isIncome : existing.isIncome,
           updatedAt: new Date().toISOString(),
         };
         events.push(
           eventStore.insertEvent(opId, "category_group_updated", {
             row: updated,
+          }) as SyncServerEvent,
+        );
+
+        if (valid.isIncome !== undefined && valid.isIncome !== existing.isIncome) {
+          const month = new Date().getFullYear() * 100 + (new Date().getMonth() + 1);
+          events.push(
+            eventStore.insertEvent(opId, "budget_recalculated", {
+              month,
+              toBudget: 0,
+              buffered: 0,
+            }) as SyncServerEvent,
+          );
+        }
+      }
+      break;
+    }
+
+    case "delete_category_group": {
+      const valid = decodeCommand("delete_category_group", payload);
+      const existing = access.getCategoryGroup(castId<CategoryGroupId>(valid.id));
+      if (existing) {
+        const groupCats = access.queryAll<{ id: string }>(
+          `SELECT id FROM categories WHERE group_id = ?`,
+          existing.id,
+        );
+
+        if (valid.transferToGroupId) {
+          for (const cat of groupCats) {
+            const catRow = access.getCategory(castId<CategoryId>(cat.id));
+            if (catRow) {
+              const updated = {
+                ...catRow,
+                groupId: valid.transferToGroupId,
+                updatedAt: new Date().toISOString(),
+              };
+              events.push(
+                eventStore.insertEvent(opId, "category_updated", {
+                  row: updated,
+                }) as SyncServerEvent,
+              );
+            }
+          }
+        } else {
+          for (const cat of groupCats) {
+            const catRow = access.getCategory(castId<CategoryId>(cat.id));
+            if (catRow) {
+              const updated = { ...catRow, hidden: true, updatedAt: new Date().toISOString() };
+              events.push(
+                eventStore.insertEvent(opId, "category_updated", {
+                  row: updated,
+                }) as SyncServerEvent,
+              );
+            }
+          }
+        }
+
+        events.push(
+          eventStore.insertEvent(opId, "category_group_deleted", {
+            id: existing.id,
           }) as SyncServerEvent,
         );
       }
