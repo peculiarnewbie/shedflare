@@ -14,7 +14,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove |
 | ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)    |
 | Crossover/FI-RE projection card     | Not implemented                                                                                                         |
-| Calendar heatmap card               | Not implemented                                                                                                         |
+| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                 |
 | Sankey flow diagram card            | Not implemented                                                                                                         |
 | Markdown card                       | Not implemented                                                                                                         |
 | Formula card                        | Not implemented                                                                                                         |
@@ -123,12 +123,12 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## UI / Polish
 
-| Gap                                       | Notes                                                              |
-| ----------------------------------------- | ------------------------------------------------------------------ |
-| Keyboard shortcuts (Cmd+K command bar)    | Not implemented                                                    |
-| Loading states on pages                   | Some pages lack proper loading/error states                        |
-| Input validation errors displayed to user | Effect/Schema errors may cause unhandled rejections                |
-| Offline indicator in header               | Sync indicator shows connection status but no offline UX           |
-| Goal templates category editor            | `goal_def` JSON stored but no inline editor on categories page     |
-| ~~Schedule edit page~~                    | ✅ `/schedules/:id` route with detail view and inline editing form |
-| Report color scheme per report            | Not implemented                                                    |
+| Gap                                       | Notes                                                                                                     |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Keyboard shortcuts (Cmd+K command bar)    | Not implemented                                                                                           |
+| Loading states on pages                   | Some pages lack proper loading/error states                                                               |
+| Input validation errors displayed to user | Effect/Schema errors may cause unhandled rejections                                                       |
+| ~~Offline indicator in header~~           | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header |
+| Goal templates category editor            | `goal_def` JSON stored but no inline editor on categories page                                            |
+| ~~Schedule edit page~~                    | ✅ `/schedules/:id` route with detail view and inline editing form                                        |
+| Report color scheme per report            | Not implemented                                                                                           |

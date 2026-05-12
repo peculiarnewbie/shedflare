@@ -88,12 +88,16 @@ function flush() {
 // ---------------------------------------------------------------------------
 
 let socket: WebSocket | undefined;
-let reconnectAttempt = 0;
+let reconnectCount = 0;
 let reconnectTimer: number | undefined;
 let started = false;
 
 const [isConnected, setIsConnected] = createSignal(false);
 export { isConnected };
+
+const [reconnectAttempt, setReconnectAttempt] = createSignal(0);
+const [reconnectDelay, setReconnectDelay] = createSignal(0);
+export { reconnectAttempt, reconnectDelay };
 
 function log(message: string, details?: Record<string, unknown>) {
   const entry = JSON.stringify({ scope: "money-ws", event: message, ...details });
@@ -115,7 +119,9 @@ function connect() {
     socket = ws;
 
     ws.addEventListener("open", () => {
-      reconnectAttempt = 0;
+      reconnectCount = 0;
+      setReconnectAttempt(0);
+      setReconnectDelay(0);
       setIsConnected(true);
       log("open", { pendingOps: pendingOps.unackedOpIds().length });
       send({
@@ -156,7 +162,10 @@ function connect() {
 function scheduleReconnect() {
   if (typeof window === "undefined") return;
   if (reconnectTimer) window.clearTimeout(reconnectTimer);
-  const delay = Math.min(10_000, 500 * 2 ** reconnectAttempt++);
+  reconnectCount++;
+  setReconnectAttempt(reconnectCount);
+  const delay = Math.min(10_000, 500 * 2 ** reconnectCount);
+  setReconnectDelay(delay);
   reconnectTimer = window.setTimeout(() => {
     connect();
   }, delay);

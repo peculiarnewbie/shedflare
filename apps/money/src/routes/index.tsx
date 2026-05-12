@@ -21,7 +21,8 @@ type WidgetType =
   | "spending-card"
   | "budget-analysis-card"
   | "age-of-money-card"
-  | "markdown-card";
+  | "markdown-card"
+  | "calendar-heatmap-card";
 
 interface WidgetDef {
   id: string;
@@ -44,6 +45,7 @@ const ALL_WIDGET_TYPES: { type: WidgetType; label: string }[] = [
   { type: "budget-analysis-card", label: "Budget Analysis" },
   { type: "age-of-money-card", label: "Age of Money" },
   { type: "markdown-card", label: "Markdown Note" },
+  { type: "calendar-heatmap-card", label: "Calendar Heatmap" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -151,6 +153,15 @@ function buildDefaultWidgets(): WidgetDef[] {
       height: 3,
       meta: null,
     },
+    {
+      id: createId("wgt"),
+      type: "calendar-heatmap-card",
+      x: 0,
+      y: 8,
+      width: 6,
+      height: 4,
+      meta: null,
+    },
   ];
 }
 
@@ -205,6 +216,15 @@ async function fetchAgeOfMoney(): Promise<number | null> {
   return (data.days as number) ?? null;
 }
 
+async function fetchCalendarHeatmap(): Promise<{
+  monthKey: string;
+  days: Record<string, number>;
+}> {
+  const res = await fetch("/api/reports/calendar-heatmap");
+  if (!res.ok) return { monthKey: "", days: {} };
+  return (await res.json()) as any;
+}
+
 const formatMonth = (dateStr: string) => {
   if (!dateStr || dateStr.length < 7) return dateStr;
   const [y, m] = dateStr.split("-");
@@ -235,6 +255,10 @@ export default function Dashboard() {
   const [spendingData, setSpendingData] = createSignal<PieSlice[]>([]);
   const [budgetData, setBudgetData] = createSignal<BudgetPair[]>([]);
   const [ageOfMoneyData, setAgeOfMoneyData] = createSignal<number | null>(null);
+  const [calendarHeatmapData, setCalendarHeatmapData] = createSignal<{
+    monthKey: string;
+    days: Record<string, number>;
+  }>({ monthKey: "", days: {} });
 
   // Add widget modal
   const [showAddModal, setShowAddModal] = createSignal(false);
@@ -315,6 +339,9 @@ export default function Dashboard() {
     if (hasType("age-of-money-card")) {
       void fetchAgeOfMoney().then(setAgeOfMoneyData);
     }
+    if (hasType("calendar-heatmap-card")) {
+      void fetchCalendarHeatmap().then(setCalendarHeatmapData);
+    }
   });
 
   const loaded = () => widgets().length > 0;
@@ -328,7 +355,7 @@ export default function Dashboard() {
     const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
     const colWidth = type.startsWith("summary-")
       ? 4
-      : type === "age-of-money-card" || type === "markdown-card"
+      : type === "age-of-money-card" || type === "markdown-card" || type === "calendar-heatmap-card"
         ? 4
         : 6;
 
@@ -356,7 +383,13 @@ export default function Dashboard() {
       x,
       y: maxY,
       width: colWidth,
-      height: type.startsWith("summary-") ? 1 : type === "markdown-card" ? 2 : 3,
+      height: type.startsWith("summary-")
+        ? 1
+        : type === "markdown-card"
+          ? 2
+          : type === "calendar-heatmap-card"
+            ? 4
+            : 3,
       meta:
         type === "summary-card"
           ? JSON.stringify({ label: "New Summary", source: "netWorth" })
@@ -571,6 +604,72 @@ export default function Dashboard() {
                 }
               />
             </Show>
+          </div>
+        );
+      }
+
+      case "calendar-heatmap-card": {
+        const { monthKey, days } = calendarHeatmapData();
+        if (!monthKey) {
+          return (
+            <div class="widget-chart" style={{ "text-align": "center", "padding-top": "16px" }}>
+              <span style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>No data</span>
+            </div>
+          );
+        }
+        const [year, mon] = monthKey.split("-").map(Number);
+        const daysInMonth = new Date(year, mon, 0).getDate();
+        const firstDay = new Date(year, mon - 1, 1).getDay();
+        const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+        const maxAbs = Math.max(1, ...Object.values(days).map((v) => Math.abs(v)));
+        const intensity = (day: number) => {
+          const date = `${monthKey}-${String(day).padStart(2, "0")}`;
+          const val = days[date] ?? 0;
+          const absVal = Math.abs(val);
+          const pct = absVal / maxAbs;
+          const isExpense = val < 0;
+          const hue = isExpense ? 0 : 145;
+          const lightness = 30 + Math.round(pct * 35);
+          return {
+            background: `hsl(${hue}, 60%, ${lightness}%)`,
+            amount: val,
+          };
+        };
+
+        const cells: { day: number; style: ReturnType<typeof intensity> }[] = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+          cells.push({ day: d, style: intensity(d) });
+        }
+
+        const padStart = Array.from({ length: firstDay }, (_, i) => (
+          <div class="heatmap-cell heatmap-cell-empty" />
+        ));
+
+        return (
+          <div class="widget-chart">
+            <div class="widget-chart-title">
+              Spending &mdash;{" "}
+              {new Date(year, mon - 1).toLocaleDateString("en-US", {
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            <div class="heatmap-grid">
+              {dayLabels.map((l) => (
+                <div class="heatmap-day-label">{l}</div>
+              ))}
+              {padStart}
+              {cells.map((c) => (
+                <div
+                  class="heatmap-cell"
+                  style={{ background: c.style.background }}
+                  title={`${c.day}: ${fmt().formatCents(c.style.amount)}`}
+                >
+                  <span class="heatmap-cell-day">{c.day}</span>
+                </div>
+              ))}
+            </div>
           </div>
         );
       }

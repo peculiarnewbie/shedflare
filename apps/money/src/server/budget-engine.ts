@@ -298,6 +298,30 @@ export function computeSpendingByCategory(
  * Compute age of money (how many days your money lasts).
  * Simplified: (current cash / average daily spending) * 30
  */
+/**
+ * Compute daily spending for calendar heatmap — returns per-day expense/income
+ * for the given month so the dashboard can render a calendar grid with color
+ * intensity based on spending volume.
+ */
+export function computeDailySpending(access: DataAccess, monthKey: string): Record<string, number> {
+  const boundaries = monthBoundaries(monthKey);
+  const rows = access.queryAll<{ date: string; total: number }>(
+    `SELECT t.date, COALESCE(SUM(t.amount), 0) AS total
+     FROM transactions t
+     WHERE t.date >= ? AND t.date < ?
+       AND t.is_child = 0
+     GROUP BY t.date
+     ORDER BY t.date`,
+    boundaries.start,
+    boundaries.end,
+  );
+  const result: Record<string, number> = {};
+  for (const r of rows) {
+    result[String(r.date)] = Number(r.total);
+  }
+  return result;
+}
+
 export function computeAgeOfMoney(access: DataAccess): number | null {
   // Get total current balance of on-budget accounts
   const balanceRow = access.queryOne<{ total: number | null }>(

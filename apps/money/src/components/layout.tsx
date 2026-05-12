@@ -1,6 +1,6 @@
 import { createSignal, Show, For } from "solid-js";
 import { A, useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
-import { isConnected } from "../lib/ws-connection";
+import { isConnected, reconnectAttempt, reconnectDelay } from "../lib/ws-connection";
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -70,9 +70,20 @@ export default function Layout(props: RouteSectionProps) {
           </For>
         </nav>
         <div class="sidebar-footer">
-          <div class="sync-indicator" classList={{ connected: isConnected() }}>
-            <span class="sync-dot" />
-            <span class="sync-text">{isConnected() ? "Synced" : "Offline"}</span>
+          <div
+            class="sync-indicator"
+            classList={{
+              connected: isConnected(),
+              reconnecting: !isConnected() && reconnectAttempt() > 0,
+            }}
+          >
+            <span
+              class="sync-dot"
+              classList={{ reconnecting: !isConnected() && reconnectAttempt() > 0 }}
+            />
+            <span class="sync-text">
+              {isConnected() ? "Synced" : reconnectAttempt() > 0 ? `Reconnecting...` : "Offline"}
+            </span>
           </div>
           <button
             class="btn btn-ghost btn-sm"
@@ -107,8 +118,17 @@ export default function Layout(props: RouteSectionProps) {
           </svg>
         </button>
         <span class="mobile-title">Shedflare Money</span>
-        <div class="sync-indicator" classList={{ connected: isConnected() }}>
-          <span class="sync-dot" />
+        <div
+          class="sync-indicator"
+          classList={{
+            connected: isConnected(),
+            reconnecting: !isConnected() && reconnectAttempt() > 0,
+          }}
+        >
+          <span
+            class="sync-dot"
+            classList={{ reconnecting: !isConnected() && reconnectAttempt() > 0 }}
+          />
         </div>
       </header>
 
@@ -136,7 +156,22 @@ export default function Layout(props: RouteSectionProps) {
       </Show>
 
       {/* Main content */}
-      <main class="main-content">{props.children as any}</main>
+      <main class="main-content">
+        <Show when={!isConnected()}>
+          <div
+            class="offline-banner"
+            classList={{
+              reconnecting: reconnectAttempt() > 0,
+              offline: reconnectAttempt() === 0,
+            }}
+          >
+            {reconnectAttempt() > 0
+              ? `Reconnecting... (attempt ${reconnectAttempt()}, ${(reconnectDelay() / 1000).toFixed(0)}s)`
+              : "Connection lost. Retrying..."}
+          </div>
+        </Show>
+        {props.children as any}
+      </main>
 
       {/* Mobile bottom tab bar */}
       <nav class="bottom-tab-bar">

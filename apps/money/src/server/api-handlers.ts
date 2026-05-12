@@ -8,6 +8,7 @@ import {
   computeNetWorthHistory,
   computeCashFlow,
   computeSpendingByCategory,
+  computeDailySpending,
   computeAgeOfMoney,
 } from "./budget-engine";
 
@@ -288,6 +289,14 @@ export function handleApiRequest(
   if (pathname === "/api/reports/age-of-money" && method === "GET") {
     const days = computeAgeOfMoney(access);
     return json({ days });
+  }
+
+  // Report: calendar heatmap
+  if (pathname === "/api/reports/calendar-heatmap" && method === "GET") {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const days = computeDailySpending(access, monthKey);
+    return json({ monthKey, days });
   }
 
   // Dashboard widgets

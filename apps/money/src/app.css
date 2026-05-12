@@ -1700,6 +1700,96 @@ button {
   border-radius: var(--radius-sm);
 }
 
+/* ─── Calendar Heatmap Widget ───────────────────────────────────────── */
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  flex: 1;
+  align-content: start;
+}
+
+.heatmap-day-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2px 0;
+  text-transform: uppercase;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.heatmap-cell-empty {
+  background: transparent;
+}
+
+.heatmap-cell-day {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* ─── Offline Banner ─────────────────────────────────────────────────── */
+
+.offline-banner {
+  background: var(--warning);
+  color: #000;
+  text-align: center;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.offline-banner.reconnecting {
+  background: var(--warning);
+}
+
+.offline-banner.offline {
+  background: var(--negative);
+  color: white;
+}
+
+.sync-indicator .sync-dot.reconnecting {
+  background: var(--warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
 /* ─── Schedule Detail Page ───────────────────────────────────────────── */
 
 .schedule-detail-page {
