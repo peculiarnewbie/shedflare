@@ -20,7 +20,8 @@ type WidgetType =
   | "cash-flow-card"
   | "spending-card"
   | "budget-analysis-card"
-  | "age-of-money-card";
+  | "age-of-money-card"
+  | "markdown-card";
 
 interface WidgetDef {
   id: string;
@@ -42,6 +43,7 @@ const ALL_WIDGET_TYPES: { type: WidgetType; label: string }[] = [
   { type: "spending-card", label: "Spending Chart" },
   { type: "budget-analysis-card", label: "Budget Analysis" },
   { type: "age-of-money-card", label: "Age of Money" },
+  { type: "markdown-card", label: "Markdown Note" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -237,6 +239,10 @@ export default function Dashboard() {
   // Add widget modal
   const [showAddModal, setShowAddModal] = createSignal(false);
 
+  // Markdown card editing
+  const [markdownEditId, setMarkdownEditId] = createSignal<string | null>(null);
+  const [markdownDraft, setMarkdownDraft] = createSignal("");
+
   // -----------------------------------------------------------------------
   // Load widgets and overview on mount
   // -----------------------------------------------------------------------
@@ -320,7 +326,11 @@ export default function Dashboard() {
   function addWidget(type: WidgetType) {
     // Find next available position at the bottom
     const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
-    const colWidth = type.startsWith("summary-") ? 4 : type === "age-of-money-card" ? 4 : 6;
+    const colWidth = type.startsWith("summary-")
+      ? 4
+      : type === "age-of-money-card" || type === "markdown-card"
+        ? 4
+        : 6;
 
     // Check current row occupancy at maxY
     const rowOccupied = Array.from({ length: GRID_COLS }, () => false);
@@ -346,11 +356,13 @@ export default function Dashboard() {
       x,
       y: maxY,
       width: colWidth,
-      height: type.startsWith("summary-") ? 1 : 3,
+      height: type.startsWith("summary-") ? 1 : type === "markdown-card" ? 2 : 3,
       meta:
         type === "summary-card"
           ? JSON.stringify({ label: "New Summary", source: "netWorth" })
-          : null,
+          : type === "markdown-card"
+            ? JSON.stringify({ content: "Write your notes here..." })
+            : null,
     };
     const next = [...widgets(), newWidget];
     setWidgets(next);
@@ -518,6 +530,50 @@ export default function Dashboard() {
           </div>
         );
       }
+
+      case "markdown-card": {
+        const isEditing = markdownEditId() === def.id;
+        const content =
+          meta != null && typeof meta === "object" && "content" in meta
+            ? (meta.content as string)
+            : "";
+        return (
+          <div class="widget-markdown">
+            <Show
+              when={!isEditing}
+              fallback={
+                <div class="widget-markdown-edit">
+                  <textarea
+                    value={markdownDraft()}
+                    onInput={(e) => setMarkdownDraft(e.currentTarget.value)}
+                    autofocus
+                    placeholder="Write markdown here..."
+                    rows={6}
+                  />
+                  <div class="widget-markdown-edit-actions">
+                    <button class="btn btn-primary btn-xs" onClick={() => saveMarkdown(def.id)}>
+                      Save
+                    </button>
+                    <button class="btn btn-ghost btn-xs" onClick={cancelEditMarkdown}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              }
+            >
+              <div
+                class="widget-markdown-content"
+                onClick={() => startEditMarkdown(def)}
+                innerHTML={
+                  content
+                    ? renderMarkdown(content)
+                    : "<span class='markdown-placeholder'>Click to add notes...</span>"
+                }
+              />
+            </Show>
+          </div>
+        );
+      }
     }
   }
 
@@ -527,6 +583,53 @@ export default function Dashboard() {
     } catch {
       return null;
     }
+  }
+
+  function renderMarkdown(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+      .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/^- (.+)$/gm, "<li>$1</li>")
+      .replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match}</ul>`)
+      .replace(/\n/g, "<br>");
+  }
+
+  function startEditMarkdown(def: WidgetDef) {
+    const meta = def.meta ? (tryParseJson(def.meta) as Record<string, unknown> | null) : null;
+    setMarkdownDraft((meta?.content as string) ?? "");
+    setMarkdownEditId(def.id);
+  }
+
+  function saveMarkdown(id: string) {
+    const content = markdownDraft();
+    const next = widgets().map((w) =>
+      w.id === id ? { ...w, meta: JSON.stringify({ content }) } : w,
+    );
+    setWidgets(next);
+    dispatch("update_dashboard", {
+      widgets: next.map((w) => ({
+        id: w.id,
+        type: w.type,
+        x: w.x,
+        y: w.y,
+        width: w.width,
+        height: w.height,
+        meta: w.meta,
+      })),
+    });
+    setMarkdownEditId(null);
+    setMarkdownDraft("");
+  }
+
+  function cancelEditMarkdown() {
+    setMarkdownEditId(null);
+    setMarkdownDraft("");
   }
 
   // -----------------------------------------------------------------------

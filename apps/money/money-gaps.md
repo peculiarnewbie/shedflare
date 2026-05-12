@@ -8,21 +8,22 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Reports & Dashboards
 
-| Gap                                 | Notes                                                                                |
-| ----------------------------------- | ------------------------------------------------------------------------------------ |
-| Custom report builder UI            | Backend table + CRUD commands exist, no frontend UI                                  |
-| ~~Dashboard widget grid~~               | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 6 widget types, auto-seeds defaults, supports add/remove |
-| Crossover/FI-RE projection card     | Not implemented                                                                      |
-| Calendar heatmap card               | Not implemented                                                                      |
-| Sankey flow diagram card            | Not implemented                                                                      |
-| Markdown card                       | Not implemented                                                                      |
-| Formula card                        | Not implemented                                                                      |
-| Summary card                        | Not implemented                                                                      |
-| Multiple dashboard pages            | Not implemented                                                                      |
-| Dashboard import/export (JSON)      | Not implemented                                                                      |
-| Report color scheme config          | Not implemented                                                                      |
-| Report cond_format / locale options | Not implemented                                                                      |
-| Report table mode coloring          | Not implemented                                                                      |
+| Gap                                 | Notes                                                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Custom report builder UI            | Backend table + CRUD commands exist, no frontend UI                                                                     |
+| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove |
+| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)    |
+| Crossover/FI-RE projection card     | Not implemented                                                                                                         |
+| Calendar heatmap card               | Not implemented                                                                                                         |
+| Sankey flow diagram card            | Not implemented                                                                                                         |
+| Markdown card                       | Not implemented                                                                                                         |
+| Formula card                        | Not implemented                                                                                                         |
+| Summary card                        | Not implemented                                                                                                         |
+| Multiple dashboard pages            | Not implemented                                                                                                         |
+| Dashboard import/export (JSON)      | Not implemented                                                                                                         |
+| Report color scheme config          | Not implemented                                                                                                         |
+| Report cond_format / locale options | Not implemented                                                                                                         |
+| Report table mode coloring          | Not implemented                                                                                                         |
 
 ## Transactions
 
@@ -72,19 +73,19 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Categories
 
-| Gap                                            | Notes                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| ~~Category group rename/edit in UI~~           | ✅ Inline rename on click, toggle hidden (eye icon), toggle isIncome                        |
-| ~~Category group delete with transfer~~        | ✅ Confirm dialog with option to transfer categories to another group or delete them inside |
-| ~~Category delete with transfer~~              | ✅ Confirm dialog with option to transfer transactions/budgets to another category          |
-| ~~Category hide/unhide toggle~~                | ✅ Eye toggle button on each category row, visual opacity dim for hidden                    |
-| ~~Category group hide/unhide toggle~~          | ✅ Eye toggle button on each group header, hidden groups list at bottom                     |
-| ~~Category income/expense visual distinction~~ | ✅ Green left border on income groups, green/purple dot indicator, `section-income` class   |
-| Drag-and-drop reorder                          | `reorder_categories` handler exists, no drag interaction in UI                              |
-| ~~Goal progress tracking~~                     | ✅ Progress bar + label in categories page: funded/partial/under status with amounts        |
-| Additional goal types (refill, periodic, %)    | Only monthly and byDate supported                                                           |
-| Note-based templates                           | Not implemented                                                                             |
-| Template priority system                       | Not implemented                                                                             |
+| Gap                                            | Notes                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| ~~Category group rename/edit in UI~~           | ✅ Inline rename on click, toggle hidden (eye icon), toggle isIncome                                                     |
+| ~~Category group delete with transfer~~        | ✅ Confirm dialog with option to transfer categories to another group or delete them inside                              |
+| ~~Category delete with transfer~~              | ✅ Confirm dialog with option to transfer transactions/budgets to another category                                       |
+| ~~Category hide/unhide toggle~~                | ✅ Eye toggle button on each category row, visual opacity dim for hidden                                                 |
+| ~~Category group hide/unhide toggle~~          | ✅ Eye toggle button on each group header, hidden groups list at bottom                                                  |
+| ~~Category income/expense visual distinction~~ | ✅ Green left border on income groups, green/purple dot indicator, `section-income` class                                |
+| ~~Drag-and-drop reorder~~                      | ✅ HTML5 drag-and-drop in categories page, drag handles on each category row, uses existing `reorder_categories` handler |
+| ~~Goal progress tracking~~                     | ✅ Progress bar + label in categories page: funded/partial/under status with amounts                                     |
+| Additional goal types (refill, periodic, %)    | Only monthly and byDate supported                                                                                        |
+| Note-based templates                           | Not implemented                                                                                                          |
+| Template priority system                       | Not implemented                                                                                                          |
 
 ## Payees
 

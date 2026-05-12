@@ -1111,9 +1111,9 @@ Actual Budget is **MIT licensed**. All ported code retains the MIT license. We m
 
 ### Session: 2026-05-13 — Dashboard Widget Grid
 
-| Task | Status | Details |
-| ---- | ------ | ------- |
-| Dashboard widget grid | ✅ | Dynamic grid reads from `dashboard_widgets` table, renders 6 widget types (summary-card, net-worth-card, cash-flow-card, spending-card, budget-analysis-card, age-of-money-card). Auto-seeds default layout on first visit. Add/remove widgets via modal. Persisted via `update_dashboard` command. |
+| Task                  | Status | Details                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard widget grid | ✅     | Dynamic grid reads from `dashboard_widgets` table, renders 6 widget types (summary-card, net-worth-card, cash-flow-card, spending-card, budget-analysis-card, age-of-money-card). Auto-seeds default layout on first visit. Add/remove widgets via modal. Persisted via `update_dashboard` command. |
 
 ### Session: 2026-05-13 — Rule Test UI + Schedule Detail Page
 

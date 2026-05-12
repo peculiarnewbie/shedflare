@@ -75,6 +75,10 @@ export default function CategoriesPage() {
   const [deletingCatId, setDeletingCatId] = createSignal<string | null>(null);
   const [catTransferTargetId, setCatTransferTargetId] = createSignal<string>("");
 
+  // Drag-and-drop reorder
+  const [dragSourceId, setDragSourceId] = createSignal<string | null>(null);
+  const [dragTargetId, setDragTargetId] = createSignal<string | null>(null);
+
   createEffect(() => {
     void loadData();
   });
@@ -515,151 +519,250 @@ export default function CategoriesPage() {
 
                   <div class="category-list">
                     <For each={cats}>
-                      {(cat) => (
-                        <>
-                          <div class="payee-row" style={{ opacity: cat.hidden ? 0.5 : 1 }}>
+                      {(cat, _idx) => {
+                        const isDragging = () => dragSourceId() === cat.id;
+                        const isDragTarget = () => dragTargetId() === cat.id;
+
+                        function handleDragStart(e: DragEvent) {
+                          setDragSourceId(cat.id);
+                          setDragTargetId(null);
+                          if (e.dataTransfer) {
+                            e.dataTransfer.effectAllowed = "move";
+                            e.dataTransfer.setData("text/plain", cat.id);
+                          }
+                        }
+
+                        function handleDragOver(e: DragEvent) {
+                          if (dragSourceId() && dragSourceId() !== cat.id) {
+                            e.preventDefault();
+                            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+                            setDragTargetId(cat.id);
+                          }
+                        }
+
+                        function handleDragLeave() {
+                          if (dragTargetId() === cat.id) {
+                            setDragTargetId(null);
+                          }
+                        }
+
+                        function handleDrop(e: DragEvent) {
+                          e.preventDefault();
+                          const sourceId = dragSourceId();
+                          const targetId = dragTargetId();
+                          if (!sourceId || !targetId || sourceId === targetId) {
+                            setDragSourceId(null);
+                            setDragTargetId(null);
+                            return;
+                          }
+
+                          const currentCats = categories();
+                          const groupId = cat.groupId;
+                          const groupCats = currentCats
+                            .filter((c) => c.groupId === groupId)
+                            .sort((a, b) => a.sortOrder - b.sortOrder);
+
+                          const sourceIdx = groupCats.findIndex((c) => c.id === sourceId);
+                          const targetIdx = groupCats.findIndex((c) => c.id === targetId);
+                          if (sourceIdx === -1 || targetIdx === -1) {
+                            setDragSourceId(null);
+                            setDragTargetId(null);
+                            return;
+                          }
+
+                          const reordered = [...groupCats];
+                          const [moved] = reordered.splice(sourceIdx, 1);
+                          reordered.splice(targetIdx, 0, moved);
+
+                          dispatch("reorder_categories", { ids: reordered.map((c) => c.id) });
+                          setCategories((prev) => {
+                            const updated = prev.filter((c) => c.groupId !== groupId);
+                            const withNewOrder = reordered.map((c, i) => ({
+                              ...c,
+                              sortOrder: i,
+                            }));
+                            return [...updated, ...withNewOrder].sort(
+                              (a, b) => a.sortOrder - b.sortOrder,
+                            );
+                          });
+
+                          setDragSourceId(null);
+                          setDragTargetId(null);
+                        }
+
+                        function handleDragEnd() {
+                          setDragSourceId(null);
+                          setDragTargetId(null);
+                        }
+
+                        return (
+                          <>
                             <div
-                              style={{ display: "flex", "flex-direction": "column", gap: "2px" }}
+                              class="payee-row"
+                              classList={{
+                                dragging: isDragging(),
+                                "drag-over": isDragTarget(),
+                              }}
+                              style={{ opacity: cat.hidden ? 0.5 : 1 }}
+                              draggable={true}
+                              onDragStart={handleDragStart}
+                              onDragOver={handleDragOver}
+                              onDragLeave={handleDragLeave}
+                              onDrop={handleDrop}
+                              onDragEnd={handleDragEnd}
                             >
-                              <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-                                <span class="payee-name">{cat.name}</span>
-                                <Show when={cat.hidden}>
-                                  <span class="goal-badge" style={{ "font-size": "11px" }}>
-                                    Hidden
-                                  </span>
-                                </Show>
-                              </div>
-                              <Show when={cat.goalDef}>
-                                <span class="goal-badge">{formatGoal(cat.goalDef)}</span>
-                                <Show when={goalProgressMap().get(cat.id)}>
-                                  {(progress) => {
-                                    const p = progress();
-                                    const pct =
-                                      p.goalAmount > 0
-                                        ? Math.min(
-                                            Math.round(
-                                              (Math.abs(p.currentAmount) / p.goalAmount) * 100,
-                                            ),
-                                            100,
-                                          )
-                                        : 0;
-                                    const status =
-                                      pct >= 100 ? "funded" : pct >= 50 ? "partial" : "under";
-                                    return (
-                                      <div class="goal-progress">
-                                        <div class="goal-progress-bar">
-                                          <div
-                                            class={`goal-progress-fill goal-progress-${status}`}
-                                            style={{ width: `${pct}%` }}
-                                          />
+                              <span class="drag-handle" title="Drag to reorder">
+                                ⠿
+                              </span>
+                              <div
+                                style={{ display: "flex", "flex-direction": "column", gap: "2px" }}
+                              >
+                                <div
+                                  style={{ display: "flex", "align-items": "center", gap: "6px" }}
+                                >
+                                  <span class="payee-name">{cat.name}</span>
+                                  <Show when={cat.hidden}>
+                                    <span class="goal-badge" style={{ "font-size": "11px" }}>
+                                      Hidden
+                                    </span>
+                                  </Show>
+                                </div>
+                                <Show when={cat.goalDef}>
+                                  <span class="goal-badge">{formatGoal(cat.goalDef)}</span>
+                                  <Show when={goalProgressMap().get(cat.id)}>
+                                    {(progress) => {
+                                      const p = progress();
+                                      const pct =
+                                        p.goalAmount > 0
+                                          ? Math.min(
+                                              Math.round(
+                                                (Math.abs(p.currentAmount) / p.goalAmount) * 100,
+                                              ),
+                                              100,
+                                            )
+                                          : 0;
+                                      const status =
+                                        pct >= 100 ? "funded" : pct >= 50 ? "partial" : "under";
+                                      return (
+                                        <div class="goal-progress">
+                                          <div class="goal-progress-bar">
+                                            <div
+                                              class={`goal-progress-fill goal-progress-${status}`}
+                                              style={{ width: `${pct}%` }}
+                                            />
+                                          </div>
+                                          <span
+                                            class={`goal-progress-label goal-progress-${status}`}
+                                          >
+                                            {p.goalType === "monthly"
+                                              ? `${(Math.abs(p.currentAmount) / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`
+                                              : `${(p.currentAmount / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`}
+                                            <Show when={p.goalType === "byDate" && p.targetDate}>
+                                              {" "}
+                                              by {p.targetDate}
+                                            </Show>
+                                          </span>
                                         </div>
-                                        <span class={`goal-progress-label goal-progress-${status}`}>
-                                          {p.goalType === "monthly"
-                                            ? `${(Math.abs(p.currentAmount) / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`
-                                            : `${(p.currentAmount / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`}
-                                          <Show when={p.goalType === "byDate" && p.targetDate}>
-                                            {" "}
-                                            by {p.targetDate}
-                                          </Show>
-                                        </span>
-                                      </div>
-                                    );
-                                  }}
+                                      );
+                                    }}
+                                  </Show>
                                 </Show>
-                              </Show>
-                            </div>
-                            <div style={{ display: "flex", gap: "4px" }}>
-                              <button
-                                class="btn btn-ghost btn-xs"
-                                onClick={() => handleToggleCategoryHidden(cat)}
-                                title={cat.hidden ? "Unhide" : "Hide"}
-                              >
-                                {cat.hidden ? "👁️" : "👁️‍🗨️"}
-                              </button>
-                              <button
-                                class="btn btn-ghost btn-xs"
-                                onClick={() => startEditGoal(cat)}
-                                title="Set goal"
-                              >
-                                🎯
-                              </button>
-                              <button
-                                class="btn btn-icon btn-ghost btn-xs"
-                                onClick={() => confirmDeleteCategory(cat.id)}
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                          <Show when={deletingCatId() === cat.id}>
-                            <div class="goal-editor">
-                              <div class="form-row">
-                                <select
-                                  value={catTransferTargetId()}
-                                  onChange={(e) => setCatTransferTargetId(e.currentTarget.value)}
+                              </div>
+                              <div style={{ display: "flex", gap: "4px" }}>
+                                <button
+                                  class="btn btn-ghost btn-xs"
+                                  onClick={() => handleToggleCategoryHidden(cat)}
+                                  title={cat.hidden ? "Unhide" : "Hide"}
                                 >
-                                  <option value="">Delete permanently</option>
-                                  <For
-                                    each={categories().filter((c) => c.id !== cat.id && !c.hidden)}
+                                  {cat.hidden ? "👁️" : "👁️‍🗨️"}
+                                </button>
+                                <button
+                                  class="btn btn-ghost btn-xs"
+                                  onClick={() => startEditGoal(cat)}
+                                  title="Set goal"
+                                >
+                                  🎯
+                                </button>
+                                <button
+                                  class="btn btn-icon btn-ghost btn-xs"
+                                  onClick={() => confirmDeleteCategory(cat.id)}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                            <Show when={deletingCatId() === cat.id}>
+                              <div class="goal-editor">
+                                <div class="form-row">
+                                  <select
+                                    value={catTransferTargetId()}
+                                    onChange={(e) => setCatTransferTargetId(e.currentTarget.value)}
                                   >
-                                    {(c) => <option value={c.id}>Transfer to {c.name}</option>}
-                                  </For>
-                                </select>
-                                <button
-                                  class="btn btn-primary btn-sm"
-                                  onClick={handleDeleteCategory}
-                                >
-                                  Confirm Delete
-                                </button>
-                                <button
-                                  class="btn btn-ghost btn-sm"
-                                  onClick={() => setDeletingCatId(null)}
-                                >
-                                  Cancel
-                                </button>
+                                    <option value="">Delete permanently</option>
+                                    <For
+                                      each={categories().filter(
+                                        (c) => c.id !== cat.id && !c.hidden,
+                                      )}
+                                    >
+                                      {(c) => <option value={c.id}>Transfer to {c.name}</option>}
+                                    </For>
+                                  </select>
+                                  <button
+                                    class="btn btn-primary btn-sm"
+                                    onClick={handleDeleteCategory}
+                                  >
+                                    Confirm Delete
+                                  </button>
+                                  <button
+                                    class="btn btn-ghost btn-sm"
+                                    onClick={() => setDeletingCatId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          </Show>
-                          <Show when={editingGoalCatId() === cat.id}>
-                            <div class="goal-editor">
-                              <div class="form-row">
-                                <select
-                                  value={goalType()}
-                                  onChange={(e) =>
-                                    setGoalType(e.currentTarget.value as "monthly" | "byDate")
-                                  }
-                                >
-                                  <option value="monthly">Monthly amount</option>
-                                  <option value="byDate">Save up by date</option>
-                                </select>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="Amount"
-                                  value={goalAmount()}
-                                  onInput={(e) => setGoalAmount(e.currentTarget.value)}
-                                />
-                                <Show when={goalType() === "byDate"}>
+                            </Show>
+                            <Show when={editingGoalCatId() === cat.id}>
+                              <div class="goal-editor">
+                                <div class="form-row">
+                                  <select
+                                    value={goalType()}
+                                    onChange={(e) =>
+                                      setGoalType(e.currentTarget.value as "monthly" | "byDate")
+                                    }
+                                  >
+                                    <option value="monthly">Monthly amount</option>
+                                    <option value="byDate">Save up by date</option>
+                                  </select>
                                   <input
-                                    type="date"
-                                    value={goalTargetDate()}
-                                    onInput={(e) => setGoalTargetDate(e.currentTarget.value)}
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Amount"
+                                    value={goalAmount()}
+                                    onInput={(e) => setGoalAmount(e.currentTarget.value)}
                                   />
-                                </Show>
-                                <button
-                                  class="btn btn-primary btn-sm"
-                                  onClick={() => saveGoal(cat.id)}
-                                >
-                                  Save
-                                </button>
-                                <button class="btn btn-ghost btn-sm" onClick={cancelEditGoal}>
-                                  Cancel
-                                </button>
+                                  <Show when={goalType() === "byDate"}>
+                                    <input
+                                      type="date"
+                                      value={goalTargetDate()}
+                                      onInput={(e) => setGoalTargetDate(e.currentTarget.value)}
+                                    />
+                                  </Show>
+                                  <button
+                                    class="btn btn-primary btn-sm"
+                                    onClick={() => saveGoal(cat.id)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button class="btn btn-ghost btn-sm" onClick={cancelEditGoal}>
+                                    Cancel
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          </Show>
-                        </>
-                      )}
+                            </Show>
+                          </>
+                        );
+                      }}
                     </For>
                   </div>
                 </div>
