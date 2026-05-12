@@ -10,6 +10,7 @@ import {
   computeSpendingByCategory,
   computeDailySpending,
   computeAgeOfMoney,
+  computeCrossoverProjection,
 } from "./budget-engine";
 
 export function handleApiRequest(
@@ -291,12 +292,26 @@ export function handleApiRequest(
     return json({ days });
   }
 
+  // Report: FI-RE crossover projection
+  if (pathname === "/api/reports/crossover" && method === "GET") {
+    const result = computeCrossoverProjection(access);
+    return json(result ?? { error: "Not enough data" }, result ? 200 : 400);
+  }
+
   // Report: calendar heatmap
   if (pathname === "/api/reports/calendar-heatmap" && method === "GET") {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const days = computeDailySpending(access, monthKey);
     return json({ monthKey, days });
+  }
+
+  // Custom reports list
+  if (pathname === "/api/reports/custom" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM custom_reports ORDER BY created_at DESC",
+    );
+    return json({ reports: rows });
   }
 
   // Dashboard widgets

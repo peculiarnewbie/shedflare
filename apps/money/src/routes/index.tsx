@@ -22,7 +22,8 @@ type WidgetType =
   | "budget-analysis-card"
   | "age-of-money-card"
   | "markdown-card"
-  | "calendar-heatmap-card";
+  | "calendar-heatmap-card"
+  | "crossover-card";
 
 interface WidgetDef {
   id: string;
@@ -46,6 +47,7 @@ const ALL_WIDGET_TYPES: { type: WidgetType; label: string }[] = [
   { type: "age-of-money-card", label: "Age of Money" },
   { type: "markdown-card", label: "Markdown Note" },
   { type: "calendar-heatmap-card", label: "Calendar Heatmap" },
+  { type: "crossover-card", label: "FI-RE Crossover" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -162,6 +164,15 @@ function buildDefaultWidgets(): WidgetDef[] {
       height: 4,
       meta: null,
     },
+    {
+      id: createId("wgt"),
+      type: "crossover-card",
+      x: 6,
+      y: 8,
+      width: 6,
+      height: 4,
+      meta: null,
+    },
   ];
 }
 
@@ -216,6 +227,28 @@ async function fetchAgeOfMoney(): Promise<number | null> {
   return (data.days as number) ?? null;
 }
 
+interface CrossoverData {
+  currentBalance: number;
+  targetNestEgg: number;
+  medianExpense: number;
+  savingsRate: number;
+  yearsToRetire: number | null;
+  yearsToRetireFormatted: string;
+  dataPoints: Array<{
+    month: string;
+    balance: number;
+    investmentIncome: number;
+    expenses: number;
+    isProjection: boolean;
+  }>;
+}
+
+async function fetchCrossoverData(): Promise<CrossoverData | null> {
+  const res = await fetch("/api/reports/crossover");
+  if (!res.ok) return null;
+  return (await res.json()) as CrossoverData;
+}
+
 async function fetchCalendarHeatmap(): Promise<{
   monthKey: string;
   days: Record<string, number>;
@@ -259,6 +292,7 @@ export default function Dashboard() {
     monthKey: string;
     days: Record<string, number>;
   }>({ monthKey: "", days: {} });
+  const [crossoverData, setCrossoverData] = createSignal<CrossoverData | null>(null);
 
   // Add widget modal
   const [showAddModal, setShowAddModal] = createSignal(false);
@@ -342,6 +376,9 @@ export default function Dashboard() {
     if (hasType("calendar-heatmap-card")) {
       void fetchCalendarHeatmap().then(setCalendarHeatmapData);
     }
+    if (hasType("crossover-card")) {
+      void fetchCrossoverData().then(setCrossoverData);
+    }
   });
 
   const loaded = () => widgets().length > 0;
@@ -355,8 +392,8 @@ export default function Dashboard() {
     const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
     const colWidth = type.startsWith("summary-")
       ? 4
-      : type === "age-of-money-card" || type === "markdown-card" || type === "calendar-heatmap-card"
-        ? 4
+      : type === "age-of-money-card" || type === "markdown-card" || type === "calendar-heatmap-card" || type === "crossover-card"
+        ? 6
         : 6;
 
     // Check current row occupancy at maxY
@@ -387,7 +424,7 @@ export default function Dashboard() {
         ? 1
         : type === "markdown-card"
           ? 2
-          : type === "calendar-heatmap-card"
+          : type === "calendar-heatmap-card" || type === "crossover-card"
             ? 4
             : 3,
       meta:
@@ -604,6 +641,71 @@ export default function Dashboard() {
                 }
               />
             </Show>
+          </div>
+        );
+      }
+
+      case "crossover-card": {
+        const data = crossoverData();
+        if (!data) {
+          return (
+            <div class="widget-chart" style={{ "text-align": "center", "padding-top": "16px" }}>
+              <span style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>
+                Not enough data
+              </span>
+            </div>
+          );
+        }
+        const svgWidth = 500;
+        const svgHeight = 200;
+        const margin = { top: 20, right: 20, bottom: 30, left: 60 };
+        const plotW = svgWidth - margin.left - margin.right;
+        const plotH = svgHeight - margin.top - margin.bottom;
+
+        const allValues = data.dataPoints.flatMap((d) => [d.investmentIncome, d.expenses]);
+        const yMin = 0;
+        const yMax = Math.max(...allValues) * 1.1 || 1;
+        const xScale = (i: number) => margin.left + (i / Math.max(data.dataPoints.length - 1, 1)) * plotW;
+        const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+        const incLine = data.dataPoints.map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.investmentIncome)}`).join(" ");
+        const expLine = data.dataPoints.map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.expenses)}`).join(" ");
+
+        const fmt = (cents: number) => {
+          const abs = Math.abs(cents);
+          const sign = cents < 0 ? "-" : "";
+          if (abs >= 100000) return `${sign}$${(abs / 100 / 1000).toFixed(1)}K`;
+          return `${sign}$${(abs / 100).toFixed(0)}`;
+        };
+
+        return (
+          <div class="widget-chart">
+            <div class="widget-chart-title">FI-RE Crossover Projection</div>
+            <div class="crossover-summary">
+              <div class="crossover-stat">
+                <span class="crossover-stat-label">Nest Egg</span>
+                <span class="crossover-stat-value">{fmt(data.currentBalance)}</span>
+              </div>
+              <div class="crossover-stat">
+                <span class="crossover-stat-label">{data.yearsToRetire !== null ? "To FI" : "Target"}</span>
+                <span class="crossover-stat-value highlight">
+                  {data.yearsToRetire !== null ? data.yearsToRetireFormatted : fmt(data.targetNestEgg)}
+                </span>
+              </div>
+              <div class="crossover-stat">
+                <span class="crossover-stat-label">Monthly</span>
+                <span class="crossover-stat-value">{fmt(data.medianExpense)}</span>
+              </div>
+              <div class="crossover-stat">
+                <span class="crossover-stat-label">Savings</span>
+                <span class="crossover-stat-value">{(data.savingsRate * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+            <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+              <line x1={margin.left} y1={yScale(0)} x2={margin.left + plotW} y2={yScale(0)} stroke="var(--border)" />
+              <path d={incLine} fill="none" stroke="var(--positive)" stroke-width="2" />
+              <path d={expLine} fill="none" stroke="var(--negative)" stroke-width="2" stroke-dasharray="4 3" />
+            </svg>
           </div>
         );
       }

@@ -322,6 +322,139 @@ export function computeDailySpending(access: DataAccess, monthKey: string): Reco
   return result;
 }
 
+export interface CrossoverDataPoint {
+  month: string;
+  balance: number;
+  investmentIncome: number;
+  expenses: number;
+  isProjection: boolean;
+}
+
+export interface CrossoverResult {
+  currentBalance: number;
+  targetNestEgg: number;
+  medianExpense: number;
+  savingsRate: number;
+  yearsToRetire: number | null;
+  yearsToRetireFormatted: string;
+  dataPoints: CrossoverDataPoint[];
+}
+
+/**
+ * Compute FI-RE crossover projection.
+ * Uses historical monthly expenses and income to project forward
+ * and estimate years to financial independence (4% rule).
+ */
+export function computeCrossoverProjection(
+  access: DataAccess,
+): CrossoverResult | null {
+  const now = new Date();
+  const monthsBack = 12;
+  const startDate = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+  // Get monthly income/expense for last 12 months
+  const monthlyData: Array<{ month: string; income: number; expense: number }> = [];
+  for (let i = monthsBack; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const boundaries = monthBoundaries(mk);
+    const income = access.getIncomeTotal(boundaries.start, boundaries.end);
+    const expenseRow = access.queryOne<{ total: number | null }>(
+      `SELECT COALESCE(SUM(t.amount), 0) AS total
+       FROM transactions t
+       JOIN categories c ON t.category_id = c.id
+       WHERE t.date >= ? AND t.date < ? AND c.is_income = 0 AND t.is_child = 0`,
+      boundaries.start,
+      boundaries.end,
+    );
+    const expense = Math.abs(Number(expenseRow?.total ?? 0));
+    monthlyData.push({ month: mk, income: Math.abs(income), expense });
+  }
+
+  if (monthlyData.length < 3) return null;
+
+  // Average monthly expense (using median for robustness)
+  const expenses = monthlyData.map((m) => m.expense).sort((a, b) => a - b);
+  const medianExpense = expenses.length % 2 === 0
+    ? (expenses[expenses.length / 2 - 1] + expenses[expenses.length / 2]) / 2
+    : expenses[Math.floor(expenses.length / 2)];
+
+  // Average monthly savings rate
+  const totalIncome = monthlyData.reduce((s, m) => s + m.income, 0);
+  const totalExpense = monthlyData.reduce((s, m) => s + m.expense, 0);
+  const avgMonthlySavings = (totalIncome - totalExpense) / monthlyData.length;
+  const savingsRate = totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0;
+
+  // Current on-budget balance
+  const balanceRow = access.queryOne<{ total: number | null }>(
+    `SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE offbudget = 0 AND closed = 0`,
+  );
+  const currentBalance = Number(balanceRow?.total ?? 0);
+
+  // 4% rule: target nest egg = annual expenses / 0.04
+  const annualExpense = medianExpense * 12;
+  const targetNestEgg = annualExpense / 0.04;
+
+  // Project forward
+  const monthlyReturn = 0.05 / 12;
+  const projectionMonths = 600;
+  let projectedBalance = currentBalance;
+  const dataPoints: CrossoverDataPoint[] = [];
+
+  // Historical data
+  for (const m of monthlyData) {
+    dataPoints.push({
+      month: m.month,
+      balance: projectedBalance,
+      investmentIncome: Math.round(projectedBalance * (0.04 / 12)),
+      expenses: m.expense,
+      isProjection: false,
+    });
+    projectedBalance += m.income - m.expense;
+  }
+
+  // Projection data
+  let crossoverMonth: number | null = null;
+  for (let i = 1; i <= projectionMonths; i++) {
+    projectedBalance += avgMonthlySavings;
+    projectedBalance *= 1 + monthlyReturn;
+
+    const monthlyIncome = Math.round(projectedBalance * (0.04 / 12));
+
+    const cursor = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const monthLabel = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+
+    dataPoints.push({
+      month: monthLabel,
+      balance: Math.round(projectedBalance),
+      investmentIncome: monthlyIncome,
+      expenses: Math.round(medianExpense),
+      isProjection: true,
+    });
+
+    if (monthlyIncome >= medianExpense && crossoverMonth === null) {
+      crossoverMonth = i;
+      break;
+    }
+  }
+
+  const yearsToRetire = crossoverMonth !== null ? crossoverMonth / 12 : null;
+  const yearsToRetireFormatted = yearsToRetire !== null
+    ? `${Math.floor(yearsToRetire)}y ${Math.round((yearsToRetire % 1) * 12)}m`
+    : "50y+";
+
+  return {
+    currentBalance,
+    targetNestEgg,
+    medianExpense,
+    savingsRate,
+    yearsToRetire,
+    yearsToRetireFormatted,
+    dataPoints,
+  };
+}
+
 export function computeAgeOfMoney(access: DataAccess): number | null {
   // Get total current balance of on-budget accounts
   const balanceRow = access.queryOne<{ total: number | null }>(
