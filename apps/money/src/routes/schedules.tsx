@@ -2,9 +2,11 @@
  * Schedules page — recurring transaction templates.
  */
 import { createSignal, For, Show, createEffect } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 
 export default function SchedulesPage() {
+  const navigate = useNavigate();
   const [schedules, setSchedules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showForm, setShowForm] = createSignal(false);
@@ -122,7 +124,13 @@ export default function SchedulesPage() {
               {(schedule) => (
                 <div class="schedule-card">
                   <div class="schedule-info">
-                    <div class="schedule-name">{schedule.name ?? "Unnamed"}</div>
+                    <div
+                      class="schedule-name"
+                      onClick={() => navigate(`/schedules/${schedule.id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {schedule.name ?? "Unnamed"}
+                    </div>
                     <div class="schedule-meta">
                       {schedule.recurrenceRules && formatRecurrenceLabel(schedule.recurrenceRules)}
                       {schedule.nextDate && ` · Next: ${schedule.nextDate}`}

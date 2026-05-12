@@ -63,7 +63,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | ~~Additional conditions (account, amount, date, cleared)~~       | ✅ account/amount/date/cleared fields + number/date ops (gt, gte, lt, lte, isapprox, isbetween) in UI and import runner |
 | ~~Additional actions (prepend-notes, append-notes, delete-txn)~~ | ✅ Added prepend-notes, append-notes, delete-transaction. set-split-amount and link-schedule not yet implemented        |
-| Rule test UI                                                     | Not implemented                                                                                                         |
+| ~~Rule test UI~~                                                 | ✅ "Test" button + modal shows which existing transactions match a rule's conditions                                     |
 | Formula actions (balance-of queries)                             | Not implemented                                                                                                         |
 | Handlebars template helpers in actions                           | Not implemented                                                                                                         |
 | ~~Enable/disable toggle~~                                        | ✅ ON/OFF toggle per rule, `active` column added to schema                                                              |
@@ -129,5 +129,5 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Input validation errors displayed to user | Effect/Schema errors may cause unhandled rejections            |
 | Offline indicator in header               | Sync indicator shows connection status but no offline UX       |
 | Goal templates category editor            | `goal_def` JSON stored but no inline editor on categories page |
-| Schedule edit page                        | No `/schedules/:id` route                                      |
+| ~~Schedule edit page~~                        | ✅ `/schedules/:id` route with detail view and inline editing form                                                        |
 | Report color scheme per report            | Not implemented                                                |

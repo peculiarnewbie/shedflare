@@ -1415,3 +1415,61 @@ button {
   border-left: 3px solid var(--positive);
   padding-left: 12px;
 }
+
+/* ─── Rule Test Modal ────────────────────────────────────────────────── */
+
+.modal--wide {
+  max-width: 800px;
+  width: 90vw;
+}
+
+.rule-test-info {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.rule-test-count {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  padding: 0.5rem 0;
+}
+
+.error-message {
+  color: var(--negative);
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Schedule Detail Page ───────────────────────────────────────────── */
+
+.schedule-detail-page {
+  max-width: 600px;
+}
+
+.schedule-detail-field {
+  margin-bottom: 1rem;
+}
+
+.schedule-detail-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.schedule-detail-field .value {
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.schedule-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}

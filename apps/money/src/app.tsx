@@ -12,6 +12,7 @@ import AccountsPage from "./routes/accounts";
 import AccountPage from "./routes/account";
 import ReportsPage from "./routes/reports";
 import SchedulesPage from "./routes/schedules";
+import ScheduleDetailPage from "./routes/schedule";
 import PayeesPage from "./routes/payees";
 import RulesPage from "./routes/rules";
 import TagsPage from "./routes/tags";
@@ -118,6 +119,7 @@ export default function App() {
           <Route path="/accounts/:id" component={AccountPage} />
           <Route path="/reports" component={ReportsPage} />
           <Route path="/schedules" component={SchedulesPage} />
+          <Route path="/schedules/:id" component={ScheduleDetailPage} />
           <Route path="/payees" component={PayeesPage} />
           <Route path="/categories" component={CategoriesPage} />
           <Route path="/rules" component={RulesPage} />

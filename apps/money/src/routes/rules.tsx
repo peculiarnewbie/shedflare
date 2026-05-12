@@ -3,11 +3,13 @@
  */
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { useCurrency } from "../lib/currency";
 
 export default function RulesPage() {
   const [rules, setRules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showForm, setShowForm] = createSignal(false);
+  const [testingRule, setTestingRule] = createSignal<any | null>(null);
 
   createEffect(() => {
     void loadRules();
@@ -51,6 +53,10 @@ export default function RulesPage() {
         <RuleForm onClose={() => setShowForm(false)} />
       </Show>
 
+      <Show when={testingRule()}>
+        <RuleTestModal rule={testingRule()!} onClose={() => setTestingRule(null)} />
+      </Show>
+
       <Show when={!loading()} fallback={<div class="loading">Loading rules...</div>}>
         <Show
           when={rules().length > 0}
@@ -73,6 +79,13 @@ export default function RulesPage() {
                   </div>
                   <div class="rule-actions">
                     <button
+                      class="btn btn-sm btn-ghost"
+                      onClick={() => setTestingRule(rule)}
+                      title="Test rule against existing transactions"
+                    >
+                      Test
+                    </button>
+                    <button
                       class="btn btn-sm rule-toggle"
                       classList={{ active: rule.active !== false }}
                       onClick={() => handleToggleActive(rule)}
@@ -93,6 +106,209 @@ export default function RulesPage() {
           </div>
         </Show>
       </Show>
+    </div>
+  );
+}
+
+// ─── Condition matching logic (mirrors server-side import.ts) ────────────
+
+function matchCondition(cond: any, tx: any): boolean {
+  if (!cond || !cond.field) return false;
+  const op = cond.op ?? "is";
+
+  const fieldResolvers: Record<string, () => any> = {
+    payee: () => tx.payee,
+    imported_description: () => tx.imported_description ?? tx.importedDescription,
+    notes: () => tx.notes,
+    account: () => tx.account_name ?? tx.accountName ?? tx.account,
+    amount: () => tx.amount,
+    date: () => (tx.date ? new Date(tx.date) : null),
+    cleared: () => tx.cleared ?? true,
+  };
+
+  const fieldValue = fieldResolvers[cond.field]?.() ?? "";
+
+  switch (op) {
+    case "is": {
+      if (cond.field === "cleared") return fieldValue === cond.value;
+      const fv = String(fieldValue ?? "").toLowerCase();
+      const value = String(cond.value ?? "").toLowerCase();
+      return fv === value;
+    }
+    case "isNot": {
+      const fv = String(fieldValue ?? "").toLowerCase();
+      const value = String(cond.value ?? "").toLowerCase();
+      return fv !== value;
+    }
+    case "oneOf": {
+      const fv = String(fieldValue ?? "").toLowerCase();
+      return ((cond.value as string[]) ?? []).map((v: string) => v.toLowerCase()).includes(fv);
+    }
+    case "contains": {
+      const fv = String(fieldValue ?? "").toLowerCase();
+      const value = String(cond.value ?? "").toLowerCase();
+      return fv.includes(value);
+    }
+    case "doesNotContain": {
+      const fv = String(fieldValue ?? "").toLowerCase();
+      const value = String(cond.value ?? "").toLowerCase();
+      return !fv.includes(value);
+    }
+    case "matches":
+      return new RegExp(String(cond.value ?? "")).test(String(fieldValue ?? ""));
+    case "isapprox": {
+      const fv = Number(fieldValue) || 0;
+      const value = Number(cond.value) || 0;
+      return Math.abs(fv - value) <= Math.max(Math.abs(value) * 0.1, 1);
+    }
+    case "isbetween": {
+      const fv = Number(fieldValue) || 0;
+      const min = Number(cond.value) || 0;
+      const max = Number(cond.value2) || 0;
+      return fv >= min && fv <= max;
+    }
+    case "gt": {
+      return (Number(fieldValue) || 0) > (Number(cond.value) || 0);
+    }
+    case "gte": {
+      return (Number(fieldValue) || 0) >= (Number(cond.value) || 0);
+    }
+    case "lt": {
+      return (Number(fieldValue) || 0) < (Number(cond.value) || 0);
+    }
+    case "lte": {
+      return (Number(fieldValue) || 0) <= (Number(cond.value) || 0);
+    }
+    default:
+      return false;
+  }
+}
+
+function ruleMatchesTransaction(conditionsJson: string, conditionsOp: string | undefined, tx: any): boolean {
+  try {
+    const conditions = JSON.parse(conditionsJson) as Array<any>;
+    if (conditions.length === 0) return false;
+    if (conditionsOp === "or") {
+      return conditions.some((cond) => matchCondition(cond, tx));
+    }
+    return conditions.every((cond) => matchCondition(cond, tx));
+  } catch {
+    return false;
+  }
+}
+
+// ─── Rule Test Modal ──────────────────────────────────────────────────────
+
+function RuleTestModal(props: { rule: any; onClose: () => void }) {
+  const fmt = useCurrency();
+  const [transactions, setTransactions] = createSignal<any[]>([]);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    void loadTransactions();
+  });
+
+  async function loadTransactions() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/transactions");
+      if (!res.ok) {
+        setError(`Failed to load transactions (${res.status})`);
+        return;
+      }
+      const data = (await res.json()) as any;
+      const allTx = data.transactions ?? [];
+
+      const conditionsOp = props.rule.conditions_op ?? props.rule.conditionsOp ?? "and";
+      const conditionsStr = props.rule.conditions ?? "[]";
+
+      const matched = allTx.filter((tx: any) =>
+        ruleMatchesTransaction(conditionsStr, conditionsOp, tx),
+      );
+      setTransactions(matched);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load transactions");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const conditionsStr = props.rule.conditions ?? "[]";
+  let conditionsLabel = conditionsStr.slice(0, 120);
+  try {
+    const parsed = JSON.parse(conditionsStr) as Array<any>;
+    conditionsLabel = parsed
+      .map((c: any) => `${c.field} ${c.op} ${Array.isArray(c.value) ? c.value.join(", ") : c.value}${c.value2 != null ? `-${c.value2}` : ""}`)
+      .join(", ");
+  } catch { /* use raw string */ }
+
+  return (
+    <div class="modal-overlay" onClick={props.onClose}>
+      <div class="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+        <div class="modal-header">
+          <h2>Test Rule</h2>
+          <button class="modal-close" onClick={props.onClose}>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="rule-test-info">
+            <strong>Conditions:</strong> {conditionsLabel}
+          </div>
+          <div class="rule-test-info" style={{ "margin-top": "0.5rem" }}>
+            <strong>Actions:</strong> {summarizeActions(props.rule.actions)}
+          </div>
+
+          <Show when={loading()}>
+            <div class="loading" style={{ "margin-top": "1rem" }}>Loading transactions...</div>
+          </Show>
+
+          <Show when={error()}>
+            <div class="error-message" style={{ "margin-top": "1rem" }}>{error()}</div>
+          </Show>
+
+          <Show when={!loading() && !error()}>
+            <div class="rule-test-count" style={{ "margin-top": "1rem" }}>
+              <strong>{transactions().length}</strong> transaction{transactions().length !== 1 ? "s" : ""} match{transactions().length === 1 ? "es" : ""} this rule
+            </div>
+
+            <Show
+              when={transactions().length > 0}
+              fallback={<p style={{ "margin-top": "1rem", color: "var(--text-muted)" }}>No transactions match this rule.</p>}
+            >
+              <div class="table-wrapper" style={{ "margin-top": "0.75rem", "max-height": "400px", overflow: "auto" }}>
+                <table class="tx-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Payee</th>
+                      <th>Amount</th>
+                      <th>Category</th>
+                      <th>Account</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={transactions()}>
+                      {(tx) => (
+                        <tr>
+                          <td class="tx-col-date">{tx.date?.slice(0, 10)}</td>
+                          <td>{tx.payee ?? ""}</td>
+                          <td class="tx-col-amount">{fmt().formatCents(tx.amount ?? 0)}</td>
+                          <td>{tx.category_name ?? ""}</td>
+                          <td>{tx.account_name ?? ""}</td>
+                        </tr>
+                      )}
+                    </For>
+                  </tbody>
+                </table>
+              </div>
+            </Show>
+          </Show>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onClick={props.onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -170,6 +170,36 @@ export function handleApiRequest(
     return json({ schedules: rows });
   }
 
+  // Single schedule by ID
+  const scheduleMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
+  if (scheduleMatch && method === "GET") {
+    const row = access.queryOne<Record<string, unknown>>(
+      `SELECT s.*, a.name as account_name, p.name as payee_name,
+              c.name as category_name, cg.name as group_name
+       FROM schedules s
+       LEFT JOIN accounts a ON s.account_id = a.id
+       LEFT JOIN payees p ON s.payee_id = p.id
+       LEFT JOIN categories c ON s.category_id = c.id
+       LEFT JOIN category_groups cg ON c.group_id = cg.id
+       WHERE s.id = ?`,
+      scheduleMatch[1],
+    );
+    if (!row) return json({ error: "Not found" }, 404);
+    return json({ schedule: row });
+  }
+
+  // All transactions (across all accounts, for rule testing and general use)
+  if (pathname === "/api/transactions" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT t.*, c.name as category_name, a.name as account_name
+       FROM transactions t
+       LEFT JOIN categories c ON t.category_id = c.id
+       LEFT JOIN accounts a ON t.account_id = a.id
+       ORDER BY t.date DESC, t.created_at DESC`,
+    );
+    return json({ transactions: rows });
+  }
+
   // Rules
   if (pathname === "/api/rules" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(

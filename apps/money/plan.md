@@ -1107,6 +1107,18 @@ Actual Budget is **MIT licensed**. All ported code retains the MIT license. We m
 
 ---
 
+## Completed Tasks
+
+### Session: 2026-05-13 — Rule Test UI + Schedule Detail Page
+
+| Task | Status | Details |
+| ---- | ------ | ------- |
+| `/api/transactions` endpoint | ✅ | Returns all transactions across accounts with category/account names |
+| Rule Test UI | ✅ | "Test" button on rule cards opens modal that loads all transactions and runs rule conditions against them, showing matching results in a table |
+| Schedule detail page (`/schedules/:id`) | ✅ | Dedicated route with read-only detail view, inline edit form, Post/Skip/Delete actions |
+
+---
+
 ## Quick Start (for implementer)
 
 ```bash
