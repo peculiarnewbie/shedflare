@@ -525,11 +525,9 @@ export default function AccountPage() {
           transactions={reconciliableTransactions()}
           onClose={() => {
             setShowReconcile(false);
-            setStatementBalance("");
           }}
           onFinish={() => {
             setShowReconcile(false);
-            setStatementBalance("");
             void loadAccount();
           }}
         />
@@ -977,6 +975,16 @@ function ReconcileModal(props: {
   const [processing, setProcessing] = createSignal(false);
   const [done, setDone] = createSignal(false);
 
+  const handleClose = () => {
+    setStatementBalance("");
+    props.onClose();
+  };
+
+  const handleDone = () => {
+    setStatementBalance("");
+    props.onFinish();
+  };
+
   const diff = createMemo(() => {
     const sb = fmt().parseInput(statementBalance());
     return sb - props.runningBalance;
@@ -1028,11 +1036,11 @@ function ReconcileModal(props: {
   }
 
   return (
-    <div class="modal-overlay" onClick={props.onClose}>
+    <div class="modal-overlay" onClick={handleClose}>
       <div class="modal" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>Reconcile Account</h2>
-          <button class="modal-close" onClick={props.onClose}>
+          <button class="modal-close" onClick={handleClose}>
             ✕
           </button>
         </div>
@@ -1049,7 +1057,7 @@ function ReconcileModal(props: {
                 {!isBalanced() ? " An adjustment transaction was created." : ""}
               </p>
               <div class="form-actions" style={{ "margin-top": "24px" }}>
-                <button class="btn btn-primary" onClick={props.onFinish}>
+                <button class="btn btn-primary" onClick={handleDone}>
                   Done
                 </button>
               </div>
@@ -1103,7 +1111,7 @@ function ReconcileModal(props: {
           </div>
 
           <div class="form-actions">
-            <button class="btn btn-ghost" onClick={props.onClose}>
+            <button class="btn btn-ghost" onClick={handleClose}>
               Cancel
             </button>
             <button

@@ -164,7 +164,7 @@ export class SyncEngineDurableObject {
         (query, ...params) => {
           ctx.storage.sql.exec(query, ...params);
         },
-        <T extends Record<string, unknown>>(query: string, ...params: any[]) => {
+        <T extends Record<string, unknown>>(query: string, ...params: any[]): T | null => {
           const rows = ctx.storage.sql.exec(query, ...params).toArray() as T[];
           return rows[0] ?? null;
         },

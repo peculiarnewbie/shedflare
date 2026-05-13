@@ -202,13 +202,12 @@ async function fetchNotifications(sapisid: string, sid: string): Promise<SyncNot
     const renderer = n as Record<string, unknown>;
     const id =
       (renderer.notificationId as string | undefined) ??
-      (renderer.navigationEndpoint?.urlEndpoint?.url as string);
+      ((renderer.navigationEndpoint as Record<string, unknown>)?.urlEndpoint as Record<string, unknown>)?.url as string;
     if (!id) continue;
 
     const title = getText(renderer, "title", "shortTitle");
     const channelName = getText(renderer, "channelName", "senderName");
-    const videoId = (renderer.navigationEndpoint as Record<string, unknown>)?.watchEndpoint
-      ?.videoId as string | undefined;
+    const videoId = ((renderer.navigationEndpoint as Record<string, unknown>)?.watchEndpoint as Record<string, unknown>)?.videoId as string | undefined;
     const thumbnailUrl = getThumbnail(renderer);
     const timestamp = (renderer.sentTimeText as Record<string, unknown>)?.simpleText as
       | string

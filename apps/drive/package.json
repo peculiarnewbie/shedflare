@@ -8,6 +8,7 @@
     "build": "vp build",
     "preview": "vp preview",
     "check": "vp check",
+    "typecheck": "tsc --noEmit",
     "deploy": "vp exec alchemy deploy alchemy.run.ts",
     "destroy": "vp exec alchemy destroy alchemy.run.ts",
     "db:migrate": "wrangler d1 migrations apply shedflare-drive --remote",

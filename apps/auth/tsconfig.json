@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types", "node"]
   },
-  "include": ["src", "worker-configuration.d.ts", "alchemy.run.ts", "alchemy.test.ts"]
+  "include": ["src", "worker-configuration.d.ts", "alchemy.run.ts"]
 }

@@ -2,9 +2,7 @@
   "version": "7",
   "dialect": "sqlite",
   "id": "f3270c3c-82bd-4e49-bb8d-39c473f55372",
-  "prevIds": [
-    "00000000-0000-0000-0000-000000000000"
-  ],
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
       "name": "file_tags",
@@ -139,12 +137,14 @@
       "table": "tags"
     },
     {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "normalized_name",
+      "columns": [
+        {
+          "type": "text",
+          "notNull": true,
+          "autoincrement": false,
+          "default": null,
+          "generated": null,
+          "name": "normalized_name",
           "isExpression": false
         }
       ],
@@ -156,9 +156,7 @@
       "table": "tags"
     },
     {
-      "columns": [
-        "object_key"
-      ],
+      "columns": ["object_key"],
       "nameExplicit": false,
       "name": "files_object_key_unique",
       "entityType": "uniques",

@@ -1,0 +1,16 @@
+{
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "style": "warn",
+    "perf": "warn"
+  },
+  "plugins": ["typescript", "unicorn", "import", "promise"],
+  "rules": {
+    "no-console": "off",
+    "typescript/no-unused-vars": ["error", { "args": "after-used", "argsIgnorePattern": "^_" }],
+    "unicorn/no-null": "off",
+    "unicorn/filename-case": "off",
+    "import/no-cycle": "warn"
+  }
+}

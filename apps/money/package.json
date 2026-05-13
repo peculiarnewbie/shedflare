@@ -12,6 +12,7 @@
     "preview": "vp preview",
     "test": "vp test",
     "check": "vp check",
+    "typecheck": "tsc --noEmit",
     "deploy": "node ./scripts/deploy.mjs",
     "db:generate": "drizzle-kit generate",
     "prepare": "vp config"

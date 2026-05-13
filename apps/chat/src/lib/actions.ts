@@ -212,7 +212,7 @@ export function forkThreadAction(input: {
   let lastNewMessageId: string | null = null;
 
   for (const original of messagesToCopy) {
-    const newMessage = {
+    const newMessage: Message = {
       ...createMessage({
         threadId: newThread.id,
         parentMessageId: lastNewMessageId,

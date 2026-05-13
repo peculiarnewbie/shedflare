@@ -30,6 +30,7 @@
     "cli:init": "pnpm --filter shedflare exec shedflare init --yes --mock-resources",
     "cli:doctor": "pnpm --filter shedflare exec shedflare doctor",
     "cli:check": "pnpm --filter shedflare exec shedflare configure --check",
+    "typecheck": "pnpm -r typecheck",
     "check": "pnpm -r check && pnpm cli:check",
     "test": "pnpm -r test"
   },

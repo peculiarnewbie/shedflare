@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "deploy": "vp exec alchemy deploy alchemy.run.ts",
     "destroy": "vp exec alchemy destroy alchemy.run.ts"
   },
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260415.1",
     "typescript": "catalog:",
+    "vite-plus": "catalog:",
     "wrangler": "catalog:"
   },
   "engines": {
