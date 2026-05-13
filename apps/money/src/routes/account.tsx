@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { transactionsCollection, categoriesCollection } from "../lib/collections";
 import { useCurrency } from "../lib/currency";
+import { usePrivacyMode } from "../lib/privacy";
+import { useDateFormat } from "../lib/date-format";
 
 interface TransactionRow {
   id: string;
@@ -55,6 +57,8 @@ export default function AccountPage() {
   const [showReconcile, setShowReconcile] = createSignal(false);
   const accountId = params.id;
   const fmt = useCurrency();
+  const privacyBlur = usePrivacyMode();
+  const df = useDateFormat();
 
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [editingField, setEditingField] = createSignal<TxField | null>(null);
@@ -426,12 +430,12 @@ export default function AccountPage() {
 
       <Show when={account()}>
         <div class="account-header">
-          <div class="account-balance-large">
+          <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
             {formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
           </div>
           <Show when={account().lastReconciled}>
             <div class="account-reconciled-info">
-              Last reconciled: {new Date(account().lastReconciled).toLocaleDateString()}
+              Last reconciled: {df().formatDate(account().lastReconciled)}
             </div>
           </Show>
         </div>
@@ -607,7 +611,9 @@ export default function AccountPage() {
                             autofocus
                           />
                         ) : (
-                          <span onClick={() => startEdit(tx.id, "date")}>{tx.date}</span>
+                          <span onClick={() => startEdit(tx.id, "date")}>
+                            {df().formatDate(tx.date)}
+                          </span>
                         )}
                       </span>
 
@@ -770,13 +776,18 @@ export default function AccountPage() {
                             autofocus
                           />
                         ) : (
-                          <span onClick={() => startEdit(tx.id, "amount")}>
+                          <span
+                            class={privacyBlur().blurClass()}
+                            onClick={() => startEdit(tx.id, "amount")}
+                          >
                             {formatCents(tx.amount ?? 0)}
                           </span>
                         )}
                       </span>
 
-                      <span class="tx-col-balance">{formatCents(tx.balance)}</span>
+                      <span class={`tx-col-balance ${privacyBlur().blurClass()}`}>
+                        {formatCents(tx.balance)}
+                      </span>
 
                       <span class="tx-col-actions">
                         <button

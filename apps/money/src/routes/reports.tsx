@@ -4,7 +4,13 @@ import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts"
 import { dispatch } from "../lib/pending-ops";
 import { createId } from "../domain/types";
 
-type ReportId = "net-worth" | "cash-flow" | "spending" | "budget-analysis" | "age-of-money" | "custom";
+type ReportId =
+  | "net-worth"
+  | "cash-flow"
+  | "spending"
+  | "budget-analysis"
+  | "age-of-money"
+  | "custom";
 
 interface CustomReport {
   id: string;
@@ -228,8 +234,7 @@ export default function ReportsPage() {
           const data = (await res.json()) as any;
           setCustomReportData((prev) => ({ ...prev, [reportId]: data.transactions ?? [] }));
         }
-      } catch {
-      }
+      } catch {}
     })();
   }
 
@@ -271,61 +276,77 @@ export default function ReportsPage() {
       </div>
 
       <div class="report-content">
-        <Show when={activeReport() !== "custom"} fallback={
-          <Show when={!loading()} fallback={<div class="loading">Loading custom reports...</div>}>
-            <div class="page-header" style={{ "margin-bottom": "12px" }}>
-              <p class="page-subtitle">Create and manage your own custom reports</p>
-              <button class="btn btn-primary btn-sm" onClick={openCreateModal}>
-                + New Report
-              </button>
-            </div>
-
-            <Show when={customReports().length > 0} fallback={
-              <div class="empty-state">
-                <p>No custom reports yet.</p>
+        <Show
+          when={activeReport() !== "custom"}
+          fallback={
+            <Show when={!loading()} fallback={<div class="loading">Loading custom reports...</div>}>
+              <div class="page-header" style={{ "margin-bottom": "12px" }}>
+                <p class="page-subtitle">Create and manage your own custom reports</p>
                 <button class="btn btn-primary btn-sm" onClick={openCreateModal}>
-                  Create your first report
+                  + New Report
                 </button>
               </div>
-            }>
-              <div class="custom-report-list">
-                <For each={customReports()}>
-                  {(report) => (
-                    <div class="custom-report-card">
-                      <div class="custom-report-header">
-                        <div>
-                          <strong>{report.name ?? "Untitled Report"}</strong>
-                          <span class="custom-report-meta">
-                            {report.graph_type ?? "area"} &middot; {report.start_date ?? "any"} to {report.end_date ?? "any"}
-                          </span>
+
+              <Show
+                when={customReports().length > 0}
+                fallback={
+                  <div class="empty-state">
+                    <p>No custom reports yet.</p>
+                    <button class="btn btn-primary btn-sm" onClick={openCreateModal}>
+                      Create your first report
+                    </button>
+                  </div>
+                }
+              >
+                <div class="custom-report-list">
+                  <For each={customReports()}>
+                    {(report) => (
+                      <div class="custom-report-card">
+                        <div class="custom-report-header">
+                          <div>
+                            <strong>{report.name ?? "Untitled Report"}</strong>
+                            <span class="custom-report-meta">
+                              {report.graph_type ?? "area"} &middot; {report.start_date ?? "any"} to{" "}
+                              {report.end_date ?? "any"}
+                            </span>
+                          </div>
+                          <div class="custom-report-actions">
+                            <button
+                              class="btn btn-ghost btn-xs"
+                              onClick={() => openEditModal(report)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              class="btn btn-ghost btn-xs"
+                              onClick={() => {
+                                if (confirm("Delete this report?")) handleDeleteReport(report.id);
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                        <div class="custom-report-actions">
-                          <button class="btn btn-ghost btn-xs" onClick={() => openEditModal(report)}>
-                            Edit
-                          </button>
-                          <button class="btn btn-ghost btn-xs" onClick={() => {
-                            if (confirm("Delete this report?")) handleDeleteReport(report.id);
-                          }}>
-                            Delete
-                          </button>
-                        </div>
+                        <div class="custom-report-body">{renderCustomReport(report)}</div>
                       </div>
-                      <div class="custom-report-body">
-                        {renderCustomReport(report)}
-                      </div>
-                    </div>
-                  )}
-                </For>
-              </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </Show>
-          </Show>
-        }>
+          }
+        >
           <Show when={!loading()} fallback={<div class="loading">Loading report data...</div>}>
             <Show when={activeReport() === "net-worth"}>
               <div class="report-card">
                 <h2 class="report-title">Net Worth Over Time</h2>
-                <p class="report-description">Your total assets minus liabilities, tracked monthly.</p>
-                <AreaChart data={netWorthData()} dimensions={{ width: 700, height: 300, marginBottom: 40 }} />
+                <p class="report-description">
+                  Your total assets minus liabilities, tracked monthly.
+                </p>
+                <AreaChart
+                  data={netWorthData()}
+                  dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+                />
               </div>
             </Show>
 
@@ -333,7 +354,12 @@ export default function ReportsPage() {
               <div class="report-card">
                 <h2 class="report-title">Cash Flow</h2>
                 <p class="report-description">Income versus expenses by month.</p>
-                <BarChart groups={cashFlowData()} stacked={false} dimensions={{ width: 700, height: 300, marginBottom: 40 }} formatX={formatMonth} />
+                <BarChart
+                  groups={cashFlowData()}
+                  stacked={false}
+                  dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+                  formatX={formatMonth}
+                />
               </div>
             </Show>
 
@@ -356,13 +382,31 @@ export default function ReportsPage() {
             <Show when={activeReport() === "age-of-money"}>
               <div class="report-card" style={{ "text-align": "center" }}>
                 <h2 class="report-title">Age of Money</h2>
-                <p class="report-description">How many days your current cash would last based on average daily spending.</p>
+                <p class="report-description">
+                  How many days your current cash would last based on average daily spending.
+                </p>
                 <div class="age-display" style={{ padding: "32px" }}>
-                  <Show when={ageOfMoney() !== null} fallback={
-                    <span style={{ color: "var(--text-muted)" }}>Not enough data to calculate</span>
-                  }>
-                    <span class="age-number" style={{ "font-size": "3rem", "font-weight": 700 }}>{ageOfMoney()}</span>
-                    <span class="age-unit" style={{ "font-size": "1rem", color: "var(--text-secondary)", "margin-left": "8px" }}>days</span>
+                  <Show
+                    when={ageOfMoney() !== null}
+                    fallback={
+                      <span style={{ color: "var(--text-muted)" }}>
+                        Not enough data to calculate
+                      </span>
+                    }
+                  >
+                    <span class="age-number" style={{ "font-size": "3rem", "font-weight": 700 }}>
+                      {ageOfMoney()}
+                    </span>
+                    <span
+                      class="age-unit"
+                      style={{
+                        "font-size": "1rem",
+                        color: "var(--text-secondary)",
+                        "margin-left": "8px",
+                      }}
+                    >
+                      days
+                    </span>
                   </Show>
                 </div>
               </div>
@@ -376,19 +420,29 @@ export default function ReportsPage() {
           <div class="modal" onClick={(e) => e.stopPropagation()}>
             <div class="modal-header">
               <h2>{editingReport() ? "Edit Report" : "New Custom Report"}</h2>
-              <button class="modal-close" onClick={() => setShowCreateModal(false)}>&times;</button>
+              <button class="modal-close" onClick={() => setShowCreateModal(false)}>
+                &times;
+              </button>
             </div>
             <div class="modal-body">
               <div class="form-row">
                 <div class="form-group" style={{ flex: "1" }}>
                   <label>Report Name</label>
-                  <input type="text" placeholder="My Custom Report" value={formName()} onInput={(e) => setFormName(e.currentTarget.value)} />
+                  <input
+                    type="text"
+                    placeholder="My Custom Report"
+                    value={formName()}
+                    onInput={(e) => setFormName(e.currentTarget.value)}
+                  />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group" style={{ flex: "1" }}>
                   <label>Graph Type</label>
-                  <select value={formGraphType()} onChange={(e) => setFormGraphType(e.currentTarget.value)}>
+                  <select
+                    value={formGraphType()}
+                    onChange={(e) => setFormGraphType(e.currentTarget.value)}
+                  >
                     <For each={GRAPH_TYPES}>
                       {(gt) => <option value={gt.value}>{gt.label}</option>}
                     </For>
@@ -398,16 +452,30 @@ export default function ReportsPage() {
               <div class="form-row">
                 <div class="form-group" style={{ flex: "1" }}>
                   <label>Start Date</label>
-                  <input type="date" value={formStartDate()} onInput={(e) => setFormStartDate(e.currentTarget.value)} />
+                  <input
+                    type="date"
+                    value={formStartDate()}
+                    onInput={(e) => setFormStartDate(e.currentTarget.value)}
+                  />
                 </div>
                 <div class="form-group" style={{ flex: "1" }}>
                   <label>End Date</label>
-                  <input type="date" value={formEndDate()} onInput={(e) => setFormEndDate(e.currentTarget.value)} />
+                  <input
+                    type="date"
+                    value={formEndDate()}
+                    onInput={(e) => setFormEndDate(e.currentTarget.value)}
+                  />
                 </div>
               </div>
               <div class="form-actions">
-                <button class="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
-                <button class="btn btn-primary" onClick={handleSaveReport} disabled={!formName().trim()}>
+                <button class="btn btn-ghost" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  class="btn btn-primary"
+                  onClick={handleSaveReport}
+                  disabled={!formName().trim()}
+                >
                   {editingReport() ? "Update" : "Create"}
                 </button>
               </div>

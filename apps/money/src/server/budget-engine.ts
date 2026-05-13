@@ -345,9 +345,7 @@ export interface CrossoverResult {
  * Uses historical monthly expenses and income to project forward
  * and estimate years to financial independence (4% rule).
  */
-export function computeCrossoverProjection(
-  access: DataAccess,
-): CrossoverResult | null {
+export function computeCrossoverProjection(access: DataAccess): CrossoverResult | null {
   const now = new Date();
   const monthsBack = 12;
   const startDate = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
@@ -376,9 +374,10 @@ export function computeCrossoverProjection(
 
   // Average monthly expense (using median for robustness)
   const expenses = monthlyData.map((m) => m.expense).sort((a, b) => a - b);
-  const medianExpense = expenses.length % 2 === 0
-    ? (expenses[expenses.length / 2 - 1] + expenses[expenses.length / 2]) / 2
-    : expenses[Math.floor(expenses.length / 2)];
+  const medianExpense =
+    expenses.length % 2 === 0
+      ? (expenses[expenses.length / 2 - 1] + expenses[expenses.length / 2]) / 2
+      : expenses[Math.floor(expenses.length / 2)];
 
   // Average monthly savings rate
   const totalIncome = monthlyData.reduce((s, m) => s + m.income, 0);
@@ -440,9 +439,10 @@ export function computeCrossoverProjection(
   }
 
   const yearsToRetire = crossoverMonth !== null ? crossoverMonth / 12 : null;
-  const yearsToRetireFormatted = yearsToRetire !== null
-    ? `${Math.floor(yearsToRetire)}y ${Math.round((yearsToRetire % 1) * 12)}m`
-    : "50y+";
+  const yearsToRetireFormatted =
+    yearsToRetire !== null
+      ? `${Math.floor(yearsToRetire)}y ${Math.round((yearsToRetire % 1) * 12)}m`
+      : "50y+";
 
   return {
     currentBalance,

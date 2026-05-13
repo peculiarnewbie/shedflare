@@ -5,11 +5,15 @@ import { createSignal, For, Show, createEffect } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
+import { usePrivacyMode } from "../lib/privacy";
+import { useDateFormat } from "../lib/date-format";
 
 export default function ScheduleDetailPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const fmt = useCurrency();
+  const privacyBlur = usePrivacyMode();
+  const df = useDateFormat();
   const [schedule, setSchedule] = createSignal<any>(null);
   const [loading, setLoading] = createSignal(true);
   const [editing, setEditing] = createSignal(false);
@@ -84,7 +88,7 @@ export default function ScheduleDetailPage() {
       return `After ${cfg.endOccurrences} occurrences`;
     }
     if (cfg.endMode === "on_date" && cfg.endDate) {
-      return `Until ${cfg.endDate}`;
+      return `Until ${df().formatDate(cfg.endDate)}`;
     }
     return "Never ends";
   }
@@ -159,7 +163,7 @@ export default function ScheduleDetailPage() {
                   </div>
                   <div class="schedule-detail-field">
                     <label>Amount</label>
-                    <div class="value">
+                    <div class={`value ${privacyBlur().blurIf(schedule()?.amount != null)}`}>
                       {schedule()?.amount != null ? fmt().formatCents(schedule()?.amount) : "—"}
                     </div>
                   </div>
@@ -185,7 +189,13 @@ export default function ScheduleDetailPage() {
                   </div>
                   <div class="schedule-detail-field">
                     <label>Next Date</label>
-                    <div class="value">{schedule()?.nextDate ?? schedule()?.next_date ?? "—"}</div>
+                    <div class="value">
+                      {schedule()?.nextDate
+                        ? df().formatDate(schedule().nextDate)
+                        : schedule()?.next_date
+                          ? df().formatDate(schedule().next_date)
+                          : "—"}
+                    </div>
                   </div>
                   <div class="schedule-detail-field">
                     <label>Status</label>

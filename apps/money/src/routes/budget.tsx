@@ -4,6 +4,8 @@
 import { createMemo, createSignal, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { usePrivacyMode } from "../lib/privacy";
+import { useDateFormat } from "../lib/date-format";
 
 interface CategoryBudgetRow {
   categoryId: string;
@@ -26,6 +28,8 @@ interface GroupedBudget {
 
 export default function BudgetPage() {
   const navigate = useNavigate();
+  const privacyBlur = usePrivacyMode();
+  const df = useDateFormat();
   const now = new Date();
   const [monthKey, setMonthKey] = createSignal(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
@@ -112,7 +116,7 @@ export default function BudgetPage() {
           <button class="btn btn-icon btn-ghost" onClick={prevMonth}>
             ◀
           </button>
-          <span class="month-label">{monthKey()}</span>
+          <span class="month-label">{df().formatMonth(monthKey())}</span>
           <button class="btn btn-icon btn-ghost" onClick={nextMonth}>
             ▶
           </button>
@@ -123,7 +127,7 @@ export default function BudgetPage() {
         <div class="summary-item">
           <span class="summary-label">To Budget</span>
           <span
-            class="summary-value"
+            class={`summary-value ${privacyBlur().blurClass()}`}
             classList={{ positive: toBudget() >= 0, negative: toBudget() < 0 }}
           >
             {formatCents(toBudget())}
@@ -172,9 +176,11 @@ export default function BudgetPage() {
                             }}
                           />
                         </span>
-                        <span class="col-spent">{formatCents(cat.spent)}</span>
+                        <span class={`col-spent ${privacyBlur().blurClass()}`}>
+                          {formatCents(cat.spent)}
+                        </span>
                         <span
-                          class="col-leftover"
+                          class={`col-leftover ${privacyBlur().blurClass()}`}
                           classList={{
                             positive: cat.leftover >= 0,
                             negative: cat.leftover < 0,
@@ -189,13 +195,13 @@ export default function BudgetPage() {
                     <span class="col-category">
                       <strong>Group Total</strong>
                     </span>
-                    <span class="col-budgeted">
+                    <span class={`col-budgeted ${privacyBlur().blurClass()}`}>
                       <strong>{formatCents(group.groupBudgeted)}</strong>
                     </span>
-                    <span class="col-spent">
+                    <span class={`col-spent ${privacyBlur().blurClass()}`}>
                       <strong>{formatCents(group.groupSpent)}</strong>
                     </span>
-                    <span class="col-leftover">
+                    <span class={`col-leftover ${privacyBlur().blurClass()}`}>
                       <strong>{formatCents(group.groupLeftover)}</strong>
                     </span>
                   </div>

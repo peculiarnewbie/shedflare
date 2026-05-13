@@ -1,18 +1,26 @@
 /**
- * Settings page — currency, budget type, exchange rate, export.
+ * Settings page — currency, budget type, exchange rate, export, privacy, display.
  */
 import { createSignal, createEffect, Show, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { settingsCollection } from "../lib/collections";
+import { usePrivacyMode } from "../lib/privacy";
+import { useDateFormat } from "../lib/date-format";
 
 type BudgetType = "envelope" | "tracking";
 type Currency = "USD" | "IDR";
+type DateFormat = "iso" | "us" | "eu";
 
 export default function SettingsPage() {
   const [exchangeRate, setExchangeRate] = createSignal(16000);
   const [budgetType, setBudgetType] = createSignal<BudgetType>("envelope");
   const [currency, setCurrency] = createSignal<Currency>("USD");
   const [loading, setLoading] = createSignal(true);
+  const privacy = usePrivacyMode();
+  const dateFmt = useDateFormat();
+
+  const [dateFormat, setDateFormat] = createSignal<DateFormat>("iso");
+  const [hideClosed, setHideClosed] = createSignal(false);
 
   createEffect(() => {
     void loadSettings();
@@ -34,11 +42,24 @@ export default function SettingsPage() {
     if (currencySetting === "USD" || currencySetting === "IDR") {
       setCurrency(currencySetting);
     }
+
+    const privacySetting = settingsCollection.state.get("privacy_mode")?.value;
+    if (privacySetting === "true" || privacySetting === "false") {
+      // privacy signal reacts to settings collection directly
+    }
+
+    const df = settingsCollection.state.get("date_format")?.value;
+    if (df === "us" || df === "eu" || df === "iso") {
+      setDateFormat(df);
+    }
+
+    const hc = settingsCollection.state.get("hide_closed_accounts")?.value;
+    if (hc === "true") setHideClosed(true);
+    else setHideClosed(false);
   }
 
   async function loadSettings() {
     try {
-      // Load current settings
       const ratesRes = await fetch("/api/rates");
       if (ratesRes.ok) {
         const data = (await ratesRes.json()) as any;
@@ -65,8 +86,22 @@ export default function SettingsPage() {
     dispatch("update_setting", { key: "display_currency", value });
   }
 
+  function updateDateFormat(value: DateFormat) {
+    setDateFormat(value);
+    dispatch("update_setting", { key: "date_format", value });
+  }
+
+  function togglePrivacy() {
+    dispatch("update_setting", { key: "privacy_mode", value: String(!privacy().enabled) });
+  }
+
+  function toggleHideClosed() {
+    const next = !hideClosed();
+    setHideClosed(next);
+    dispatch("update_setting", { key: "hide_closed_accounts", value: String(next) });
+  }
+
   function handleExport() {
-    // Simple CSV export of all transactions
     window.location.href = "/api/export/csv";
   }
 
@@ -76,6 +111,25 @@ export default function SettingsPage() {
       <p class="page-subtitle">Configure your budget preferences</p>
 
       <Show when={!loading()} fallback={<div class="loading">Loading...</div>}>
+        {/* Privacy Mode */}
+        <div class="settings-section">
+          <h2>Privacy Mode</h2>
+          <p class="settings-description">
+            Blur all monetary amounts to keep them hidden from onlookers.
+          </p>
+          <div class="privacy-toggle">
+            <input
+              type="checkbox"
+              id="privacy-toggle"
+              checked={privacy().enabled}
+              onChange={togglePrivacy}
+            />
+            <label for="privacy-toggle">
+              {privacy().enabled ? "Amounts are hidden" : "Amounts are visible"}
+            </label>
+          </div>
+        </div>
+
         {/* Exchange Rate */}
         <div class="settings-section">
           <h2>Exchange Rate</h2>
@@ -138,6 +192,36 @@ export default function SettingsPage() {
             <option value="USD">USD ($)</option>
             <option value="IDR">IDR (Rp)</option>
           </select>
+        </div>
+
+        {/* Date Format */}
+        <div class="settings-section">
+          <h2>Date Format</h2>
+          <p class="settings-description">Choose how dates are displayed throughout the app.</p>
+          <select
+            value={dateFormat()}
+            onChange={(e) => updateDateFormat(e.currentTarget.value as DateFormat)}
+            style="max-width:200px"
+          >
+            <option value="iso">ISO (2026-05-13)</option>
+            <option value="us">US (05/13/2026)</option>
+            <option value="eu">EU (13/05/2026)</option>
+          </select>
+        </div>
+
+        {/* Account Display */}
+        <div class="settings-section">
+          <h2>Account Display</h2>
+          <p class="settings-description">Control which accounts appear in the account list.</p>
+          <div class="form-check">
+            <input
+              type="checkbox"
+              id="hide-closed"
+              checked={hideClosed()}
+              onChange={toggleHideClosed}
+            />
+            <label for="hide-closed">Hide closed accounts</label>
+          </div>
         </div>
 
         {/* Export */}

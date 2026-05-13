@@ -1,5 +1,6 @@
 import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { usePrivacyMode } from "../lib/privacy";
 
 interface CategoryGroup {
   id: string;
@@ -35,6 +36,7 @@ interface GoalProgress {
 }
 
 export default function CategoriesPage() {
+  const privacyBlur = usePrivacyMode();
   const [groups, setGroups] = createSignal<CategoryGroup[]>([]);
   const [categories, setCategories] = createSignal<Category[]>([]);
   const [loading, setLoading] = createSignal(true);
@@ -652,7 +654,7 @@ export default function CategoriesPage() {
                                             />
                                           </div>
                                           <span
-                                            class={`goal-progress-label goal-progress-${status}`}
+                                            class={`goal-progress-label goal-progress-${status} ${privacyBlur().blurClass()}`}
                                           >
                                             {p.goalType === "monthly"
                                               ? `${(Math.abs(p.currentAmount) / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`

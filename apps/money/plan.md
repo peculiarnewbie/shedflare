@@ -1125,6 +1125,16 @@ Actual Budget is **MIT licensed**. All ported code retains the MIT license. We m
 
 ---
 
+### Session: 2026-05-13 — Settings Display Options
+
+| Task                        | Status | Details                                                                                                                                                                                                       |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Privacy mode (hide amounts) | ✅     | Toggle in settings blurs all monetary amounts via CSS filter. Applied to: account balances, transaction table, budget grid, dashboard widgets, goal progress, schedule amounts. Hook in `src/lib/privacy.ts`. |
+| Date format selection       | ✅     | Settings dropdown for ISO (2026-05-13), US (05/13/2026), EU (13/05/2026). Applied to: transaction table dates, schedule dates, reconciliation dates, end conditions. Hook in `src/lib/date-format.ts`.        |
+| Hide closed accounts toggle | ✅     | Settings checkbox filters closed accounts from main accounts list (with notification when hidden). Reads/writes `hide_closed_accounts` setting.                                                               |
+
+---
+
 ## Quick Start (for implementer)
 
 ```bash

@@ -1708,6 +1708,65 @@ button {
   padding-left: 12px;
 }
 
+/* ============================================================
+   Privacy mode
+   ============================================================ */
+
+.privacy-blur {
+  filter: blur(8px);
+  user-select: none;
+  cursor: default;
+  transition: filter 0.15s;
+}
+
+.privacy-blur:hover {
+  filter: blur(5px);
+}
+
+.privacy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.privacy-toggle input[type="checkbox"] {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+
+.privacy-toggle input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition:
+    transform 0.2s,
+    background 0.2s;
+}
+
+.privacy-toggle input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.privacy-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(20px);
+  background: white;
+}
+
 /* ─── Rule Test Modal ────────────────────────────────────────────────── */
 
 .modal--wide {

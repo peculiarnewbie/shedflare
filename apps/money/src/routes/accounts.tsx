@@ -1,10 +1,12 @@
 /**
  * Accounts page — list of all accounts with balances.
  */
-import { createSignal, createMemo, For, Show, createEffect } from "solid-js";
+import { createSignal, createMemo, For, Show, createEffect, onCleanup } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
+import { usePrivacyMode } from "../lib/privacy";
+import { settingsCollection } from "../lib/collections";
 
 interface AccountRow {
   id: string;
@@ -18,12 +20,24 @@ interface AccountRow {
 export default function AccountsPage() {
   const navigate = useNavigate();
   const fmt = useCurrency();
+  const privacyBlur = usePrivacyMode();
   const [accounts, setAccounts] = createSignal<AccountRow[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showAddForm, setShowAddForm] = createSignal(false);
   const [newName, setNewName] = createSignal("");
   const [newOffBudget, setNewOffBudget] = createSignal(false);
   const [newBalance, setNewBalance] = createSignal("");
+  const [hideClosed, setHideClosed] = createSignal(false);
+
+  createEffect(() => {
+    function sync() {
+      const hc = settingsCollection.state.get("hide_closed_accounts")?.value;
+      setHideClosed(hc === "true");
+    }
+    sync();
+    const unsub = settingsCollection.subscribeChanges(sync);
+    onCleanup(() => unsub.unsubscribe());
+  });
 
   createEffect(() => {
     void loadAccounts();
@@ -78,7 +92,10 @@ export default function AccountsPage() {
   // Separate on-budget and off-budget accounts
   const onBudgetAccounts = createMemo(() => accounts().filter((a) => !a.offbudget && !a.closed));
   const offBudgetAccounts = createMemo(() => accounts().filter((a) => a.offbudget && !a.closed));
-  const closedAccounts = createMemo(() => accounts().filter((a) => a.closed));
+  const closedAccounts = createMemo(() => {
+    const all = accounts().filter((a) => a.closed);
+    return hideClosed() ? [] : all;
+  });
 
   return (
     <div class="page">
@@ -88,6 +105,15 @@ export default function AccountsPage() {
           + Add Account
         </button>
       </div>
+
+      <Show when={hideClosed() && closedAccounts().length > 0}>
+        <div class="section" style={{ "margin-bottom": "8px" }}>
+          <p style={{ "font-size": "0.8rem", color: "var(--text-muted)" }}>
+            {closedAccounts().length} closed account{closedAccounts().length !== 1 ? "s" : ""}{" "}
+            hidden (configure in Settings)
+          </p>
+        </div>
+      </Show>
 
       <Show when={showAddForm()}>
         <div class="modal-overlay" onClick={() => setShowAddForm(false)}>
@@ -146,6 +172,7 @@ export default function AccountsPage() {
           navigate={navigate}
           formatBalance={formatBalance}
           onDelete={handleDeleteAccount}
+          blurClass={privacyBlur().blurClass()}
         />
         <RenderAccountGroup
           title="Off Budget"
@@ -153,6 +180,7 @@ export default function AccountsPage() {
           navigate={navigate}
           formatBalance={formatBalance}
           onDelete={handleDeleteAccount}
+          blurClass={privacyBlur().blurClass()}
         />
         <RenderAccountGroup
           title="Closed"
@@ -160,6 +188,7 @@ export default function AccountsPage() {
           navigate={navigate}
           formatBalance={formatBalance}
           onDelete={handleDeleteAccount}
+          blurClass={privacyBlur().blurClass()}
         />
       </Show>
     </div>
@@ -172,6 +201,7 @@ function RenderAccountGroup(props: {
   navigate: (path: string) => void;
   formatBalance: (b: number | null) => string;
   onDelete: (account: AccountRow) => void;
+  blurClass?: string;
 }) {
   return (
     <Show when={props.accounts.length > 0}>
@@ -184,7 +214,9 @@ function RenderAccountGroup(props: {
                 <div class="account-info">
                   <div class="account-name">{account.name}</div>
                 </div>
-                <div class="account-balance">{props.formatBalance(account.balanceCurrent)}</div>
+                <div class={`account-balance ${props.blurClass ?? ""}`}>
+                  {props.formatBalance(account.balanceCurrent)}
+                </div>
                 <button
                   class="btn btn-icon btn-ghost btn-xs"
                   onClick={(e) => {

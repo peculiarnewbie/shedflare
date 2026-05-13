@@ -4,9 +4,11 @@
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { useDateFormat } from "../lib/date-format";
 
 export default function SchedulesPage() {
   const navigate = useNavigate();
+  const df = useDateFormat();
   const [schedules, setSchedules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showForm, setShowForm] = createSignal(false);
@@ -86,13 +88,16 @@ export default function SchedulesPage() {
     return label;
   }
 
-  function formatEndCondition(rules: string): string {
+  function formatEndConditionFormatted(rules: string, fmtDate: (d: string) => string): string {
     const cfg = parseRecurrenceConfig(rules);
-    if (cfg.endMode === "after_n_occurrences" && cfg.endOccurrences) {
+    if (
+      (cfg.endMode === "after_n" || cfg.endMode === "after_n_occurrences") &&
+      cfg.endOccurrences
+    ) {
       return ` · Ends after ${cfg.endOccurrences} occurrences`;
     }
     if (cfg.endMode === "on_date" && cfg.endDate) {
-      return ` · Ends ${cfg.endDate}`;
+      return ` · Ends ${fmtDate(cfg.endDate)}`;
     }
     return "";
   }
@@ -133,9 +138,12 @@ export default function SchedulesPage() {
                     </div>
                     <div class="schedule-meta">
                       {schedule.recurrenceRules && formatRecurrenceLabel(schedule.recurrenceRules)}
-                      {schedule.nextDate && ` · Next: ${schedule.nextDate}`}
+                      {schedule.nextDate && ` · Next: ${df().formatDate(schedule.nextDate)}`}
                       {schedule.completed && ` · Completed`}
-                      {schedule.recurrenceRules && formatEndCondition(schedule.recurrenceRules)}
+                      {schedule.recurrenceRules &&
+                        formatEndConditionFormatted(schedule.recurrenceRules, (d) =>
+                          df().formatDate(d),
+                        )}
                     </div>
                   </div>
                   <div class="schedule-actions">

@@ -8,22 +8,22 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Reports & Dashboards
 
-| Gap                                 | Notes                                                                                                                   |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type    |
-| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove |
-| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)    |
+| Gap                                 | Notes                                                                                                                        |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type          |
+| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove      |
+| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)         |
 | ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats |
-| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                 |
-| Sankey flow diagram card            | Not implemented                                                                                                         |
-| Markdown card                       | Not implemented                                                                                                         |
-| Formula card                        | Not implemented                                                                                                         |
-| Summary card                        | Not implemented                                                                                                         |
-| Multiple dashboard pages            | Not implemented                                                                                                         |
-| Dashboard import/export (JSON)      | Not implemented                                                                                                         |
-| Report color scheme config          | Not implemented                                                                                                         |
-| Report cond_format / locale options | Not implemented                                                                                                         |
-| Report table mode coloring          | Not implemented                                                                                                         |
+| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                      |
+| Sankey flow diagram card            | Not implemented                                                                                                              |
+| Markdown card                       | Not implemented                                                                                                              |
+| Formula card                        | Not implemented                                                                                                              |
+| Summary card                        | Not implemented                                                                                                              |
+| Multiple dashboard pages            | Not implemented                                                                                                              |
+| Dashboard import/export (JSON)      | Not implemented                                                                                                              |
+| Report color scheme config          | Not implemented                                                                                                              |
+| Report cond_format / locale options | Not implemented                                                                                                              |
+| Report table mode coloring          | Not implemented                                                                                                              |
 
 ## Transactions
 
@@ -97,20 +97,20 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Settings & Configuration
 
-| Gap                                                                           | Notes                      |
-| ----------------------------------------------------------------------------- | -------------------------- |
-| Currency formatting (46+ currencies)                                          | Only USD and IDR supported |
-| Number format locale                                                          | Not implemented            |
-| Date format selection                                                         | Not implemented            |
-| First day of week                                                             | Not implemented            |
-| Privacy mode (hide amounts)                                                   | Not implemented            |
-| Light / Midnight themes                                                       | Dark theme only            |
-| Custom themes & CSS override                                                  | Not implemented            |
-| Language / i18n                                                               | Not implemented            |
-| Backups list / restore                                                        | Not implemented            |
-| Encryption enable/disable                                                     | Not implemented            |
-| Experimental feature flags                                                    | Not implemented            |
-| Account display options (hide closed, show balances, hide cleared/reconciled) | Not implemented            |
+| Gap                                                                               | Notes                                                                            |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Currency formatting (46+ currencies)                                              | Only USD and IDR supported                                                       |
+| Number format locale                                                              | Not implemented                                                                  |
+| ~~Date format selection~~                                                         | ✅ ISO/US/EU selectable in settings, applied to all date displays                |
+| First day of week                                                                 | Not implemented                                                                  |
+| ~~Privacy mode (hide amounts)~~                                                   | ✅ Toggle in settings blurs all amounts via CSS filter; applied across all pages |
+| Light / Midnight themes                                                           | Dark theme only                                                                  |
+| Custom themes & CSS override                                                      | Not implemented                                                                  |
+| Language / i18n                                                                   | Not implemented                                                                  |
+| Backups list / restore                                                            | Not implemented                                                                  |
+| Encryption enable/disable                                                         | Not implemented                                                                  |
+| Experimental feature flags                                                        | Not implemented                                                                  |
+| ~~Account display options (hide closed, show balances, hide cleared/reconciled)~~ | ✅ Hide closed accounts toggle in settings filters the accounts list             |
 
 ## Infrastructure
 

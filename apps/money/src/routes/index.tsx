@@ -5,6 +5,7 @@
 import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { useCurrency } from "../lib/currency";
+import { usePrivacyMode } from "../lib/privacy";
 import { dispatch } from "../lib/pending-ops";
 import { createId } from "../domain/types";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
@@ -272,6 +273,7 @@ const formatMonth = (dateStr: string) => {
 export default function Dashboard() {
   const navigate = useNavigate();
   const fmt = useCurrency();
+  const privacyBlur = usePrivacyMode();
 
   // Widget definitions from server
   const [widgets, setWidgets] = createSignal<WidgetDef[]>([]);
@@ -392,7 +394,10 @@ export default function Dashboard() {
     const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
     const colWidth = type.startsWith("summary-")
       ? 4
-      : type === "age-of-money-card" || type === "markdown-card" || type === "calendar-heatmap-card" || type === "crossover-card"
+      : type === "age-of-money-card" ||
+          type === "markdown-card" ||
+          type === "calendar-heatmap-card" ||
+          type === "crossover-card"
         ? 6
         : 6;
 
@@ -506,7 +511,7 @@ export default function Dashboard() {
           <div class="widget-summary">
             <div class="widget-summary-label">{label}</div>
             <div
-              class="widget-summary-value"
+              class={`widget-summary-value ${privacyBlur().blurIf(isCurrency)}`}
               classList={{
                 positive: isCurrency && value >= 0,
                 negative: isCurrency && value < 0,
@@ -665,11 +670,16 @@ export default function Dashboard() {
         const allValues = data.dataPoints.flatMap((d) => [d.investmentIncome, d.expenses]);
         const yMin = 0;
         const yMax = Math.max(...allValues) * 1.1 || 1;
-        const xScale = (i: number) => margin.left + (i / Math.max(data.dataPoints.length - 1, 1)) * plotW;
+        const xScale = (i: number) =>
+          margin.left + (i / Math.max(data.dataPoints.length - 1, 1)) * plotW;
         const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
-        const incLine = data.dataPoints.map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.investmentIncome)}`).join(" ");
-        const expLine = data.dataPoints.map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.expenses)}`).join(" ");
+        const incLine = data.dataPoints
+          .map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.investmentIncome)}`)
+          .join(" ");
+        const expLine = data.dataPoints
+          .map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.expenses)}`)
+          .join(" ");
 
         const fmt = (cents: number) => {
           const abs = Math.abs(cents);
@@ -684,17 +694,25 @@ export default function Dashboard() {
             <div class="crossover-summary">
               <div class="crossover-stat">
                 <span class="crossover-stat-label">Nest Egg</span>
-                <span class="crossover-stat-value">{fmt(data.currentBalance)}</span>
+                <span class={`crossover-stat-value ${privacyBlur().blurClass()}`}>
+                  {fmt(data.currentBalance)}
+                </span>
               </div>
               <div class="crossover-stat">
-                <span class="crossover-stat-label">{data.yearsToRetire !== null ? "To FI" : "Target"}</span>
-                <span class="crossover-stat-value highlight">
-                  {data.yearsToRetire !== null ? data.yearsToRetireFormatted : fmt(data.targetNestEgg)}
+                <span class="crossover-stat-label">
+                  {data.yearsToRetire !== null ? "To FI" : "Target"}
+                </span>
+                <span class={`crossover-stat-value highlight ${privacyBlur().blurClass()}`}>
+                  {data.yearsToRetire !== null
+                    ? data.yearsToRetireFormatted
+                    : fmt(data.targetNestEgg)}
                 </span>
               </div>
               <div class="crossover-stat">
                 <span class="crossover-stat-label">Monthly</span>
-                <span class="crossover-stat-value">{fmt(data.medianExpense)}</span>
+                <span class={`crossover-stat-value ${privacyBlur().blurClass()}`}>
+                  {fmt(data.medianExpense)}
+                </span>
               </div>
               <div class="crossover-stat">
                 <span class="crossover-stat-label">Savings</span>
@@ -702,9 +720,21 @@ export default function Dashboard() {
               </div>
             </div>
             <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
-              <line x1={margin.left} y1={yScale(0)} x2={margin.left + plotW} y2={yScale(0)} stroke="var(--border)" />
+              <line
+                x1={margin.left}
+                y1={yScale(0)}
+                x2={margin.left + plotW}
+                y2={yScale(0)}
+                stroke="var(--border)"
+              />
               <path d={incLine} fill="none" stroke="var(--positive)" stroke-width="2" />
-              <path d={expLine} fill="none" stroke="var(--negative)" stroke-width="2" stroke-dasharray="4 3" />
+              <path
+                d={expLine}
+                fill="none"
+                stroke="var(--negative)"
+                stroke-width="2"
+                stroke-dasharray="4 3"
+              />
             </svg>
           </div>
         );
