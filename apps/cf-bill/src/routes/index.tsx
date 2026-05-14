@@ -61,10 +61,20 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {products.length === 0 && !error() && (
+      {!data() && !error() && (
         <div class="empty-state">
           <div class="empty-state-title">Loading usage data...</div>
           <div class="empty-state-desc">Fetching from Cloudflare GraphQL Analytics API.</div>
+        </div>
+      )}
+
+      {data() && products.length === 0 && !error() && (
+        <div class="empty-state">
+          <div class="empty-state-title">No usage data</div>
+          <div class="empty-state-desc">
+            No products reported usage for this period. Check your Cloudflare API token and
+            account/zone IDs.
+          </div>
         </div>
       )}
 

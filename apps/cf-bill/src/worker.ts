@@ -96,6 +96,20 @@ async function handleUsage(
         : Promise.resolve(null),
     ]);
 
+  if (
+    !workersResult &&
+    !d1Result &&
+    !kvOpsResult &&
+    !kvStorageResult &&
+    !doResult &&
+    !r2Result &&
+    !httpResult
+  ) {
+    throw new Error(
+      "Failed to fetch usage data from Cloudflare API. Check your API token and account/zone IDs.",
+    );
+  }
+
   const products: ProductUsage[] = [];
 
   const workersData = workersResult as any;
