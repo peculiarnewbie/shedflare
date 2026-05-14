@@ -1,0 +1,40 @@
+{
+  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "id": "cf-bill",
+  "name": "Shedflare CF Bill",
+  "description": "Cloudflare usage vs plan limits dashboard",
+  "dependsOn": ["auth"],
+  "defaultSubdomain": "cf-bill",
+  "vars": {
+    "APP_PUBLIC_URL": {
+      "from": "appUrl",
+      "description": "Public URL of this app",
+    },
+    "AUTH_ISSUER_URL": {
+      "from": "appUrl",
+      "app": "auth",
+      "description": "Auth issuer URL",
+    },
+    "AUTH_CLIENT_ID": {
+      "from": "appId",
+      "description": "OAuth client ID for this app",
+    },
+    "OWNER_EMAIL": {
+      "from": "ownerEmail",
+      "description": "Deployment owner email",
+    },
+    "CLOUDFLARE_ACCOUNT_ID": {
+      "from": "user",
+      "description": "Cloudflare account ID (from dashboard URL)",
+    },
+    "CLOUDFLARE_ZONE_ID": {
+      "from": "user",
+      "description": "Cloudflare zone ID for HTTP analytics (optional)",
+    },
+    "CF_API_TOKEN": {
+      "from": "user",
+      "description": "API token with Account Analytics: Read permission",
+    },
+  },
+  "resources": [],
+}

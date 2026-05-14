@@ -29,7 +29,7 @@ function loadEnvFiles(root: string) {
 
 loadEnvFiles(process.cwd());
 
-export type AppId = "auth" | "chat" | "drive" | "money" | "youtube";
+export type AppId = "auth" | "cf-bill" | "chat" | "drive" | "money" | "youtube";
 
 export interface ShedflareAlchemyConfig {
   domain: string;

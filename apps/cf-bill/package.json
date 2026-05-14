@@ -1,0 +1,27 @@
+{
+  "name": "@shedflare/cf-bill",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "typecheck": "tsc --noEmit",
+    "deploy": "vp exec alchemy deploy alchemy.run.ts",
+    "destroy": "vp exec alchemy destroy alchemy.run.ts",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@shedflare/auth-client": "workspace:*",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.4",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.0.0",
+    "@cloudflare/workers-types": "^4.20250401.0",
+    "vite-plugin-solid": "^2.11.6",
+    "vite-plus": "catalog:",
+    "wrangler": "^4.14.1"
+  }
+}
