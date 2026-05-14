@@ -15,9 +15,10 @@ export { SyncEngineDurableObject } from "./server/sync-engine";
 
 type SecretsStoreBinding = { get(): Promise<string> };
 
-type Env = Omit<AppEnv, "OPENCODE_GO_API_KEY" | "UPLOAD_TOKEN_SECRET"> & {
+type Env = Omit<AppEnv, "OPENCODE_GO_API_KEY" | "UPLOAD_TOKEN_SECRET" | "EXA_API_KEY"> & {
   OPENCODE_GO_API_KEY: SecretsStoreBinding;
   UPLOAD_TOKEN_SECRET: SecretsStoreBinding;
+  EXA_API_KEY?: SecretsStoreBinding;
   ASSETS: { fetch(request: Request): Promise<Response> };
 };
 
@@ -54,7 +55,7 @@ export default {
     try {
       const resolved: Record<string, unknown> = { ...(env as any) };
 
-      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"] as const) {
+      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET", "EXA_API_KEY"] as const) {
         const binding = resolved[key];
         if (
           binding &&

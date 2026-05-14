@@ -38,6 +38,10 @@
       "description": "Random secret for signing upload URLs",
       "required": true,
     },
+    "EXA_API_KEY": {
+      "description": "API key for Exa search engine (optional, falls back to free MCP endpoint)",
+      "required": false,
+    },
   },
   "resources": [
     {

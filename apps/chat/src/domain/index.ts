@@ -128,8 +128,8 @@ export const ThreadRow = Schema.Struct({
   updatedAt: Schema.String,
   lastMessageAt: Schema.String,
   archivedAt: NullableString,
-  forkedFromThreadId: NullableString,
-  forkedFromMessageId: NullableString,
+  forkedFromThreadId: Schema.optional(NullableString),
+  forkedFromMessageId: Schema.optional(NullableString),
   ...OptionalOptimisticRowFields,
 });
 

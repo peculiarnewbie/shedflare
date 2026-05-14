@@ -117,6 +117,20 @@ function writeSecretsCache(root: string, appId: AppId, name: string, value: stri
   writeFileSync(path, JSON.stringify(cache, null, 2));
 }
 
+export function optionalSecretVar(
+  appId: AppId,
+  name: string,
+): Redacted.Redacted<string> | undefined {
+  const envKey = `SHEDFLARE_${appId.toUpperCase()}_${name}`;
+  const fromEnv = process.env[envKey];
+  if (fromEnv) {
+    writeSecretsCache(process.cwd(), appId, name, fromEnv);
+    return Redacted.make(fromEnv);
+  }
+  const cache = readSecretsCache(process.cwd());
+  return cache[appId]?.[name] ? Redacted.make(cache[appId][name]) : undefined;
+}
+
 export function requireSecretVar(appId: AppId, name: string): Redacted.Redacted<string> {
   const envKey = `SHEDFLARE_${appId.toUpperCase()}_${name}`;
   const fromEnv = process.env[envKey];

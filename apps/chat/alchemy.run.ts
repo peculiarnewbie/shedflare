@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import {
   appConfig,
   loadShedflareConfig,
+  optionalSecretVar,
   physicalName,
   requireSecretVar,
   requireVar,
@@ -47,6 +48,14 @@ export const ChatStack = Alchemy.Stack(
       store: secrets,
       value: requireSecretVar("chat", "UPLOAD_TOKEN_SECRET"),
     });
+
+    const _exaApiKey = optionalSecretVar("chat", "EXA_API_KEY");
+    if (_exaApiKey) {
+      yield* Cloudflare.Secret("EXA_API_KEY", {
+        store: secrets,
+        value: _exaApiKey,
+      });
+    }
 
     const worker = yield* Cloudflare.Worker("ChatWorker", {
       name: physicalName(stage, "chat"),

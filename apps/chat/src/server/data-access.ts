@@ -63,7 +63,7 @@ export function normalizeAccountSettings(row: AccountSettings, opId: string) {
   });
 }
 
-export function normalizeThread(row: Thread, opId: string) {
+export function normalizeThread(row: Partial<Thread>, opId: string) {
   return decodeThreadRow({
     ...row,
     headMessageId: row.headMessageId ?? null,

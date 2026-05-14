@@ -34,6 +34,7 @@
       "CLOUDFLARE_ZONE_ID": "",
     },
     "chat": {
+      "EXA_API_KEY": "",
       "DEFAULT_MODEL_ID": "auto",
     },
     "drive": {},

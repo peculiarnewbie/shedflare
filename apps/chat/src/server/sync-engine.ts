@@ -96,7 +96,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
     const raw = env as unknown as Record<string, unknown>;
     void ctx.blockConcurrencyWhile(async () => {
-      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET"] as const) {
+      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET", "EXA_API_KEY"] as const) {
         const binding = raw[key];
         if (
           binding &&
