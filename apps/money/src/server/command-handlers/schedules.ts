@@ -44,7 +44,7 @@ function checkEndCondition(config: any, advanceCount: number): boolean {
 function advanceNextDate(
   currentNextDate: string,
   config: any,
-  advanceCount: number,
+  _advanceCount: number,
 ): string | null {
   const d = new Date(currentNextDate);
   const freq = config.type ?? "monthly";

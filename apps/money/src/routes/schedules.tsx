@@ -12,7 +12,7 @@ export default function SchedulesPage() {
   const [schedules, setSchedules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showForm, setShowForm] = createSignal(false);
-  const [editingSchedule, setEditingSchedule] = createSignal<any | null>(null);
+  const [editingSchedule, setEditingSchedule] = createSignal<any>(null);
 
   createEffect(() => {
     void loadSchedules();
@@ -172,7 +172,7 @@ export default function SchedulesPage() {
 
 function ScheduleForm(props: {
   onClose: () => void;
-  schedule?: any | null;
+  schedule?: any;
   onSaved?: (saved: any) => void;
 }) {
   const isEdit = () => !!props.schedule;

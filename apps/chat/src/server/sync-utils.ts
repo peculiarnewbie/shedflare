@@ -1,13 +1,7 @@
-import { isSyncCommandType, type SyncCommandPayloadMap, type SyncCommandType } from "#/domain";
+import { type SyncCommandPayloadMap, type SyncCommandType } from "#/domain";
 import { createStructuredLogger } from "#/effect";
 
-export function json<T>(value: T) {
-  return JSON.stringify(value);
-}
-
-export function parseJson<T>(value: unknown): T {
-  return JSON.parse(String(value)) as T;
-}
+export { json, parseJson, isWebSocketRequest, nowIso } from "@shedflare/sync-protocol";
 
 export async function parseJsonRequest(request: Request) {
   try {
@@ -50,10 +44,6 @@ export function sqlToBool(value: unknown) {
   return Boolean(Number(value));
 }
 
-export function isWebSocketRequest(request: Request) {
-  return request.headers.get("upgrade")?.toLowerCase() === "websocket";
-}
-
 export function syncLog(message: string, details?: Record<string, unknown>) {
   syncLogger.log(message, details);
 }
@@ -75,5 +65,34 @@ export function sanitizeGeneratedTitle(value: string) {
 export function looksLikeMissingRealtimeAccess(text: string) {
   return /don'?t have access to real[- ]?time|can'?t tell you the (exact )?current time|don'?t have access to the current date|don'?t have access to current information/i.test(
     text,
+  );
+}
+
+function isSyncCommandType(value: unknown): value is SyncCommandType {
+  return (
+    typeof value === "string" &&
+    [
+      "bootstrap_session",
+      "update_account_settings",
+      "create_workspace",
+      "update_workspace",
+      "archive_workspace",
+      "create_thread",
+      "update_thread",
+      "archive_thread",
+      "create_user_message",
+      "retry_message",
+      "edit_user_message",
+      "start_assistant_turn",
+      "cancel_assistant_turn",
+      "register_attachment",
+      "complete_attachment",
+      "update_attachment",
+      "delete_attachment",
+      "delete_thread",
+      "fork_thread",
+      "set_search_mode",
+      "reset_storage",
+    ].includes(value)
   );
 }

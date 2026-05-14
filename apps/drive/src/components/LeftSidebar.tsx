@@ -1,4 +1,3 @@
-import { For, Show } from "solid-js";
 import { useDrive } from "../context";
 import UploadPanel from "./UploadPanel";
 import SearchPanel from "./SearchPanel";

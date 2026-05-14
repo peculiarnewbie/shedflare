@@ -39,10 +39,6 @@ export function handleImportCommands(
     `SELECT * FROM rules WHERE stage = 'pre' ORDER BY created_at`,
   );
 
-  // Load all payees for matching
-  const allPayees = access.queryAll<{ id: string; name: string }>(`SELECT id, name FROM payees`);
-  const payeeByName = new Map(allPayees.map((p) => [p.name.toLowerCase(), p.id]));
-
   txLoop: for (const txInput of transactions) {
     try {
       let categoryId: string | null = null;
@@ -52,8 +48,8 @@ export function handleImportCommands(
       if (rules.length > 0) {
         for (const rule of rules) {
           try {
-            const conditions = JSON.parse(String(rule.conditions ?? "[]")) as Array<any>;
-            const actions = JSON.parse(String(rule.actions ?? "[]")) as Array<any>;
+            const conditions = JSON.parse((rule.conditions as string) ?? "[]") as Array<any>;
+            const actions = JSON.parse((rule.actions as string) ?? "[]") as Array<any>;
 
             const matches = conditions.some((cond: any) => {
               if (!cond || !cond.field) return false;

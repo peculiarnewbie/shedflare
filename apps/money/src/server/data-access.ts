@@ -1,10 +1,9 @@
 import * as schema from "../db/schema";
 import { eq } from "drizzle-orm";
 import { type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
-import { json, parseJson, type DataTableName } from "./sync-utils";
+import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
+import { type DataTableName } from "./sync-utils";
 import {
-  nowIso,
-  type SyncTables,
   type SyncSnapshot,
   type AccountId,
   type TransactionId,
@@ -20,66 +19,36 @@ import {
 
 export class DataAccess {
   constructor(
+    public readonly syncAccess: SyncDataAccess,
     public readonly db: DrizzleSqliteDODatabase<typeof schema>,
-    private readonly sqlExec: (query: string, ...params: any[]) => { toArray(): any[] },
   ) {}
 
   exec(query: string, ...params: any[]) {
-    return this.sqlExec(query, ...params);
+    return this.syncAccess.exec(query, ...params);
   }
 
   queryOne<T extends Record<string, unknown>>(query: string, ...params: any[]) {
-    const rows = this.exec(query, ...params).toArray() as T[];
-    return rows[0] ?? null;
+    return this.syncAccess.queryOne<T>(query, ...params);
   }
 
   queryAll<T extends Record<string, unknown>>(query: string, ...params: any[]) {
-    return this.exec(query, ...params).toArray() as T[];
+    return this.syncAccess.queryAll<T>(query, ...params);
   }
 
-  // -----------------------------------------------------------------------
-  // Event/command tracking
-  // -----------------------------------------------------------------------
-
   getLastServerSeq(): number {
-    const row = this.queryOne<{ seq: number }>("SELECT coalesce(max(seq), 0) as seq FROM events");
-    return Number(row?.seq ?? 0);
+    return this.syncAccess.getLastServerSeq();
   }
 
   getOldestEventSeq(): number {
-    const row = this.queryOne<{ min_seq: number | null }>("SELECT MIN(seq) as min_seq FROM events");
-    return row?.min_seq ?? 0;
+    return this.syncAccess.getOldestEventSeq();
   }
 
   getEventsAfter(afterSeq: number) {
-    return this.queryAll<{
-      seq: number;
-      event_id: string;
-      op_id: string | null;
-      type: string;
-      payload_json: string;
-    }>(
-      "SELECT seq, event_id, op_id, type, payload_json FROM events WHERE seq > ? ORDER BY seq ASC",
-      afterSeq,
-    ).map((row) => ({
-      type: "event",
-      serverSeq: Number(row.seq),
-      eventId: String(row.event_id),
-      eventType: row.type,
-      payload: parseJson(row.payload_json),
-      causedByOpId: row.op_id,
-    }));
+    return this.syncAccess.getEventsAfter(afterSeq);
   }
 
   getCommandAck(opId: string) {
-    const row = this.db
-      .select({ responseJson: schema.commands.responseJson })
-      .from(schema.commands)
-      .where(eq(schema.commands.opId, opId))
-      .get();
-    return row?.responseJson
-      ? parseJson<import("../domain/events").SyncServerAck>(row.responseJson)
-      : null;
+    return this.syncAccess.getCommandAck(opId);
   }
 
   // -----------------------------------------------------------------------
@@ -145,7 +114,7 @@ export class DataAccess {
     const rows = this.queryAll<T>(`SELECT * FROM ${tableName}`);
     const result: Record<string, T> = {};
     for (const row of rows) {
-      const id = String(row.id ?? "");
+      const id = row.id as string;
       result[id] = row;
     }
     return result;
@@ -223,10 +192,7 @@ export class DataAccess {
     const now = new Date();
     const currentMonth = now.getFullYear() * 100 + (now.getMonth() + 1);
 
-    const catRows = this.queryAll<{
-      id: string;
-      goal_def: string | null;
-    }>(
+    const catRows = this.queryAll<{ id: string; goal_def: string | null }>(
       `SELECT id, goal_def FROM categories WHERE goal_def IS NOT NULL AND goal_def != '' AND hidden = 0`,
     );
 

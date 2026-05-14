@@ -2,29 +2,8 @@
  * Sync adapter — processes server event envelopes and applies them to TanStack DB collections.
  * Also manages snapshot hydration and offline cache.
  */
-import type {
-  SyncServerEnvelope,
-  SyncServerEvent,
-  SyncEventPayloadMap,
-  SyncEventType,
-} from "../domain/events";
-import type { SyncTables, SyncSnapshot } from "../domain/types";
-import type {
-  Account,
-  Transaction,
-  Category,
-  CategoryGroup,
-  Payee,
-  Schedule,
-  Rule,
-  Tag,
-  Budget,
-  BudgetMonth,
-  CustomReport,
-  DashboardWidget,
-  ExchangeRate,
-  Setting,
-} from "../db/schema";
+import type { SyncServerEnvelope, SyncEventPayloadMap } from "../domain/events";
+import type { SyncTables } from "../domain/types";
 import * as conn from "./ws-connection";
 import * as pendingOps from "./pending-ops";
 import {
@@ -44,9 +23,7 @@ import {
   exchangeRatesCollection,
   settingsCollection,
   getSyncWriter,
-  resetCollections,
   TABLE_TO_COLLECTION,
-  type SyncWriter,
 } from "./collections";
 import { readCachedSnapshot, writeCachedSnapshot } from "./offline-cache";
 
@@ -147,65 +124,6 @@ function syncUpsert(collectionId: string, key: string, value: object) {
 
 function syncDelete(collectionId: string, key: string) {
   pushBatchOp(collectionId, { type: "delete", key });
-}
-
-// ---------------------------------------------------------------------------
-// Collection ID mapping (event type → collection id)
-// ---------------------------------------------------------------------------
-
-function eventTypeToCollection(eventType: string): string | null {
-  switch (eventType) {
-    case "account_created":
-    case "account_updated":
-      return "accounts";
-    case "account_closed":
-      return "accounts";
-    case "account_deleted":
-      return "accounts";
-    case "transaction_created":
-    case "transaction_updated":
-      return "transactions";
-    case "transaction_deleted":
-      return "transactions";
-    case "category_created":
-    case "category_updated":
-      return "categories";
-    case "category_group_created":
-    case "category_group_updated":
-    case "category_group_deleted":
-      return "categoryGroups";
-    case "category_budget_set":
-      return "budgets";
-    case "payee_created":
-    case "payee_updated":
-      return "payees";
-    case "schedule_created":
-    case "schedule_updated":
-      return "schedules";
-    case "schedule_deleted":
-      return "schedules";
-    case "rule_created":
-    case "rule_updated":
-      return "rules";
-    case "tag_created":
-      return "tags";
-    case "tag_deleted":
-      return "tags";
-    case "transaction_tag_added":
-    case "transaction_tag_removed":
-      return "transactionTags";
-    case "report_created":
-    case "report_updated":
-      return "customReports";
-    case "dashboard_updated":
-      return "dashboardWidgets";
-    case "exchange_rate_updated":
-      return "exchangeRates";
-    case "settings_updated":
-      return "settings";
-    default:
-      return null;
-  }
 }
 
 // ---------------------------------------------------------------------------

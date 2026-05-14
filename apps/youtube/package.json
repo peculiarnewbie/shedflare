@@ -13,11 +13,10 @@
     "prepare": "vp config"
   },
   "dependencies": {
-    "@openauthjs/openauth": "^0.4.3",
+    "@shedflare/auth-client": "workspace:*",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
     "drizzle-orm": "catalog:",
-    "jose": "catalog:",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {

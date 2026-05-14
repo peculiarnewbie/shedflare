@@ -4,7 +4,7 @@
  */
 import { createSignal } from "solid-js";
 import { SYNC_PROTOCOL_VERSION, createId } from "../domain/types";
-import type { SyncServerEnvelope, SyncClientEnvelope, SyncClientCommand } from "../domain/events";
+import type { SyncServerEnvelope, SyncClientEnvelope } from "../domain/events";
 import * as pendingOps from "./pending-ops";
 
 // ---------------------------------------------------------------------------

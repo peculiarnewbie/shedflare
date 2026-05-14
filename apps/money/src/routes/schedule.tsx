@@ -1,7 +1,7 @@
 /**
  * Schedule detail/edit page — /schedules/:id
  */
-import { createSignal, For, Show, createEffect } from "solid-js";
+import { createSignal, Show, createEffect } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
@@ -17,7 +17,7 @@ export default function ScheduleDetailPage() {
   const [schedule, setSchedule] = createSignal<any>(null);
   const [loading, setLoading] = createSignal(true);
   const [editing, setEditing] = createSignal(false);
-  const removing = createSignal(false);
+  const _removing = createSignal(false);
 
   const [name, setName] = createSignal("");
   const [amount, setAmount] = createSignal("");

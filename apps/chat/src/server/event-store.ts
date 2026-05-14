@@ -1,7 +1,5 @@
 import {
   TABLES,
-  createId,
-  nowIso,
   type AccountSettings,
   type Attachment,
   type ExtractRun,
@@ -17,49 +15,35 @@ import {
   type TraceSpan,
   type Workspace,
 } from "#/domain";
-import * as dbSchema from "#/db/schema";
-import { json, boolToSql } from "./sync-utils";
+import { DataAccess as SyncDataAccess, SyncEventStore } from "@shedflare/sync-protocol";
+import { boolToSql } from "./sync-utils";
 import { DATA_TABLES } from "./schema";
 import { type DataAccess } from "./data-access";
 
 export class EventStore {
-  constructor(private readonly access: DataAccess) {}
+  private readonly syncEventStore: SyncEventStore;
+
+  constructor(private readonly access: DataAccess) {
+    const syncAccess: SyncDataAccess = access.syncAccess;
+    this.syncEventStore = new SyncEventStore(syncAccess, (eventType, payload) => {
+      this.applyEventToMaterializedState({ eventType: eventType as SyncEventType, payload });
+    });
+  }
 
   insertEvent<T extends SyncEventType>(
     opId: string | null,
     eventType: T,
     payload: SyncEventPayloadMap[T],
   ): SyncServerEvent<T> {
-    const eventId = createId("evt");
-    const createdAt = nowIso();
-    const row = this.access.db
-      .insert(dbSchema.events)
-      .values({
-        eventId,
-        opId,
-        type: eventType,
-        payloadJson: json(payload),
-        createdAt,
-      })
-      .returning({ seq: dbSchema.events.seq })
-      .get();
-    const serverSeq = Number(row?.seq ?? 0);
-    this.applyEventToMaterializedState({ eventType, payload } as any);
-    return {
-      type: "event",
-      serverSeq,
-      eventId,
-      eventType,
-      payload,
-      causedByOpId: opId,
-    } as SyncServerEvent<T>;
+    const event = this.syncEventStore.insertEvent(opId, eventType, payload);
+    return event as SyncServerEvent<T>;
   }
 
   async appendServerEvent<T extends SyncEventType>(
     opId: string | null,
     eventType: T,
     payload: SyncEventPayloadMap[T],
-  ) {
+  ): Promise<SyncServerEvent<T>> {
     return this.access.db.transaction(() => this.insertEvent(opId, eventType, payload));
   }
 

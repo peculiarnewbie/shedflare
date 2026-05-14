@@ -40,13 +40,12 @@ const MOBILE_BOTTOM_NAV: NavItem[] = [
 export default function Layout(props: RouteSectionProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = createSignal(false);
   const [showMobileMenu, setShowMobileMenu] = createSignal(false);
 
   const isActive = (path: string) => location.pathname === path;
 
   // Current month for header
-  const [currentMonth, setCurrentMonth] = createSignal(() => {
+  const [_currentMonth, _setCurrentMonth] = createSignal(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });

@@ -394,7 +394,7 @@ export default function AccountPage() {
 
   const transactionsWithBalance = createMemo(() => {
     const txs = [...transactions()].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(a.date).getTime(),
+      (a, _b) => new Date(a.date).getTime() - new Date(a.date).getTime(),
     );
     const result: Array<TransactionRow & { balance: number }> = [];
     let balance = 0;
@@ -893,7 +893,6 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
     setImporting(true);
 
     try {
-      const text = await f.text();
       const res = await fetch("/api/sync/command", {
         method: "POST",
         headers: { "content-type": "application/json" },

@@ -10,7 +10,6 @@ import {
   type PieSlice,
   type ChartDimensions,
   defaultDimensions,
-  CHART_COLORS,
   formatChartTooltip,
   categoryColor,
 } from "./types";

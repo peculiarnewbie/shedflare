@@ -19,7 +19,7 @@ import type {
 import type { SyncSnapshot } from "../domain/types";
 import type { DataAccess } from "./data-access";
 import { boolToSql, DATA_TABLES } from "./sync-utils";
-import { createId, nowIso } from "../domain/types";
+import { nowIso } from "../domain/types";
 
 export class Projection {
   constructor(private readonly access: DataAccess) {}

@@ -8,6 +8,7 @@ import {
   nowIso,
   type CreateUserMessagePayload,
   type Message,
+  type SyncEventType,
   type SyncServerEnvelope,
   type Thread,
   type TraceRun,
@@ -480,8 +481,8 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
 
       const consumerDeps: StreamConsumerDeps = {
         appendServerEvent: (opId, eventType, eventPayload) =>
-          ctx.eventStore.appendServerEvent(opId, eventType as any, eventPayload as any),
-        broadcast: (envelope) => ctx.broadcast(envelope as any),
+          ctx.eventStore.appendServerEvent(opId, eventType as SyncEventType, eventPayload as any),
+        broadcast: (envelope) => ctx.broadcast(envelope),
         appendMessagePart,
         rawAppendMessagePart,
         setCommitPendingText: (fn) => {

@@ -172,7 +172,8 @@ export default function BudgetPage() {
                             class="budget-input"
                             onBlur={(e) => {
                               const val = parseFloat(e.currentTarget.value);
-                              if (!isNaN(val)) setBudget(cat.categoryId, Math.round(val * 100));
+                              if (!isNaN(val))
+                                void setBudget(cat.categoryId, Math.round(val * 100));
                             }}
                           />
                         </span>

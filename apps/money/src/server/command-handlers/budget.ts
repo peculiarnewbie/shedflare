@@ -5,10 +5,10 @@
 import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
-import { createBudget, createBudgetMonth } from "../../domain/factories";
+import { createBudget } from "../../domain/factories";
 import { decodeCommand } from "../../domain/commands";
 import { computeMonthBudget } from "../budget-engine";
-import { toMonthInt, prevMonthKey, fromMonthInt, castId } from "../../domain/types";
+import { toMonthInt, prevMonthKey } from "../../domain/types";
 
 export function handleBudgetCommands(
   opId: string,
@@ -202,7 +202,7 @@ export function handleBudgetCommands(
 
       for (const cat of cats) {
         const categoryId = String(cat.id);
-        const goalDef = cat.goal_def ? String(cat.goal_def) : null;
+        const goalDef = cat.goal_def ? (cat.goal_def as string) : null;
         if (!goalDef) continue;
 
         try {

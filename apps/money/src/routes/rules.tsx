@@ -9,7 +9,7 @@ export default function RulesPage() {
   const [rules, setRules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [showForm, setShowForm] = createSignal(false);
-  const [testingRule, setTestingRule] = createSignal<any | null>(null);
+  const [testingRule, setTestingRule] = createSignal<any>(null);
 
   createEffect(() => {
     void loadRules();

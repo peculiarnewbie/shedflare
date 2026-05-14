@@ -62,7 +62,7 @@ export default function FileCard(props: { file: DriveFile }) {
             onInput={(e) => ctx.setRenameValue(e.currentTarget.value)}
             onBlur={() => ctx.submitRename(file)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") ctx.submitRename(file);
+              if (e.key === "Enter") void ctx.submitRename(file);
               if (e.key === "Escape") ctx.setEditingId("");
             }}
             autofocus

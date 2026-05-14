@@ -1,27 +1,12 @@
-/**
- * MoneyBudgetDO — Durable Object for the budget app.
- *
- * Handles WebSocket connections, processes commands, stores events,
- * and broadcasts state changes to all connected clients.
- */
-import { SYNC_PROTOCOL_VERSION, createId, nowIso } from "../domain/types";
-import { startSpanWithStack, endSpanWithStack, traceAsync } from "./tracer";
-import type {
-  SyncEventPayloadMap,
-  SyncEventType,
-  SyncServerEnvelope,
-  SyncServerAck,
-  SyncServerEvent,
-  SyncClientEnvelope,
-  SyncClientHello,
-} from "../domain/events";
+import { SYNC_PROTOCOL_VERSION } from "../domain/types";
+import { startSpanWithStack, endSpanWithStack } from "./tracer";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import * as dbSchema from "../db/schema";
-import { json, parseJson, isWebSocketRequest, syncLog, syncLogError } from "./sync-utils";
+import { SyncEngineDO, HandlerRegistry, type HandlerContext } from "@shedflare/sync-protocol";
+import { syncLog, syncLogError } from "./sync-utils";
 import { initializeStorage } from "./schema";
 import { DataAccess } from "./data-access";
 import { EventStore } from "./event-store";
-import { computeMonthBudget } from "./budget-engine";
 import { handleAccountCommands } from "./command-handlers/accounts";
 import { handleTransactionCommands } from "./command-handlers/transactions";
 import { handleCategoryCommands } from "./command-handlers/categories";
@@ -35,117 +20,34 @@ import { handleReportCommands } from "./command-handlers/reports";
 import { handleSettingCommands } from "./command-handlers/settings";
 import { handleApiRequest } from "./api-handlers";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+type Env = {
+  UPLOADS: R2Bucket;
+};
 
-type CommandHandlerFn = (
+type MoneyHandlerFn = (
   opId: string,
   payload: any,
   access: DataAccess,
   eventStore: EventStore,
-) => { events: SyncServerEvent[]; followUp?: () => Promise<void> };
-
-// ---------------------------------------------------------------------------
-// Command handler registry
-// ---------------------------------------------------------------------------
-
-function buildHandlerRegistry(): Map<string, CommandHandlerFn> {
-  return new Map<string, CommandHandlerFn>([
-    // Accounts
-    ["create_account", handleAccountCommands as CommandHandlerFn],
-    ["update_account", handleAccountCommands as CommandHandlerFn],
-    ["delete_account", handleAccountCommands as CommandHandlerFn],
-    ["close_account", handleAccountCommands as CommandHandlerFn],
-    ["reopen_account", handleAccountCommands as CommandHandlerFn],
-    ["reorder_accounts", handleAccountCommands as CommandHandlerFn],
-    // Transactions
-    ["create_transaction", handleTransactionCommands as CommandHandlerFn],
-    ["update_transaction", handleTransactionCommands as CommandHandlerFn],
-    ["delete_transaction", handleTransactionCommands as CommandHandlerFn],
-    ["split_transaction", handleTransactionCommands as CommandHandlerFn],
-    // Categories
-    ["create_category", handleCategoryCommands as CommandHandlerFn],
-    ["update_category", handleCategoryCommands as CommandHandlerFn],
-    ["delete_category", handleCategoryCommands as CommandHandlerFn],
-    ["create_category_group", handleCategoryCommands as CommandHandlerFn],
-    ["update_category_group", handleCategoryCommands as CommandHandlerFn],
-    ["delete_category_group", handleCategoryCommands as CommandHandlerFn],
-    ["reorder_categories", handleCategoryCommands as CommandHandlerFn],
-    // Budget
-    ["set_budget_amount", handleBudgetCommands as CommandHandlerFn],
-    ["set_budget_carryover", handleBudgetCommands as CommandHandlerFn],
-    ["set_buffer", handleBudgetCommands as CommandHandlerFn],
-    ["copy_previous_month", handleBudgetCommands as CommandHandlerFn],
-    ["set_3month_avg", handleBudgetCommands as CommandHandlerFn],
-    ["set_nmonth_avg", handleBudgetCommands as CommandHandlerFn],
-    ["set_zero", handleBudgetCommands as CommandHandlerFn],
-    ["apply_goal_templates", handleBudgetCommands as CommandHandlerFn],
-    ["cover_overspending", handleBudgetCommands as CommandHandlerFn],
-    ["transfer_budget", handleBudgetCommands as CommandHandlerFn],
-    ["hold_for_next_month", handleBudgetCommands as CommandHandlerFn],
-    // Payees
-    ["create_payee", handlePayeeCommands as CommandHandlerFn],
-    ["update_payee", handlePayeeCommands as CommandHandlerFn],
-    ["merge_payees", handlePayeeCommands as CommandHandlerFn],
-    // Schedules
-    ["create_schedule", handleScheduleCommands as CommandHandlerFn],
-    ["update_schedule", handleScheduleCommands as CommandHandlerFn],
-    ["delete_schedule", handleScheduleCommands as CommandHandlerFn],
-    ["skip_schedule_date", handleScheduleCommands as CommandHandlerFn],
-    ["post_schedule_transaction", handleScheduleCommands as CommandHandlerFn],
-    // Rules
-    ["create_rule", handleRuleCommands as CommandHandlerFn],
-    ["update_rule", handleRuleCommands as CommandHandlerFn],
-    ["delete_rule", handleRuleCommands as CommandHandlerFn],
-    // Tags
-    ["create_tag", handleTagCommands as CommandHandlerFn],
-    ["delete_tag", handleTagCommands as CommandHandlerFn],
-    ["add_transaction_tag", handleTagCommands as CommandHandlerFn],
-    ["remove_transaction_tag", handleTagCommands as CommandHandlerFn],
-    // Import
-    ["import_transactions", handleImportCommands as CommandHandlerFn],
-    // Reports
-    ["create_report", handleReportCommands as CommandHandlerFn],
-    ["update_report", handleReportCommands as CommandHandlerFn],
-    ["delete_report", handleReportCommands as CommandHandlerFn],
-    // Dashboard
-    ["update_dashboard", handleReportCommands as CommandHandlerFn],
-    // Exchange rates
-    ["update_exchange_rate", handleAccountCommands as CommandHandlerFn],
-    ["update_setting", handleSettingCommands as CommandHandlerFn],
-  ]);
-}
+) => { events: any[] };
 
 // ---------------------------------------------------------------------------
 // MoneyBudgetDO
 // ---------------------------------------------------------------------------
 
-// Make env type for our DO
-type Env = {
-  UPLOADS: R2Bucket;
-};
-
-export class MoneyBudgetDO implements DurableObject {
-  private readonly ctx: DurableObjectState;
-  private readonly env: Env;
+export class MoneyBudgetDO extends SyncEngineDO<Env> {
   private readonly db: DrizzleSqliteDODatabase<typeof dbSchema>;
-  private readonly access: DataAccess;
+  private readonly moneyAccess: DataAccess;
   private readonly eventStore: EventStore;
-  private readonly handlerRegistry: Map<string, CommandHandlerFn>;
 
   constructor(ctx: DurableObjectState, env: Env) {
-    this.ctx = ctx;
-    this.env = env;
+    super(ctx, env);
     this.db = drizzle(ctx.storage, { schema: dbSchema, logger: false });
-    this.access = new DataAccess(this.db, (query: string, ...params: any[]) =>
-      ctx.storage.sql.exec(query, ...params),
-    );
-    this.eventStore = new EventStore(this.access);
-    this.handlerRegistry = buildHandlerRegistry();
+    this.moneyAccess = new DataAccess(this.access, this.db);
+    this.eventStore = new EventStore(this.moneyAccess);
+    this.registerHandlers(this.handlerRegistry);
 
-    // Initialize schema on first boot
-    void this.ctx.blockConcurrencyWhile(async () => {
+    void ctx.blockConcurrencyWhile(async () => {
       initializeStorage(
         (query: string, ...params: any[]) => {
           ctx.storage.sql.exec(query, ...params);
@@ -162,65 +64,125 @@ export class MoneyBudgetDO implements DurableObject {
     });
   }
 
-  // -----------------------------------------------------------------
-  // Fetch handler — WebSocket upgrade or HTTP commands
-  // -----------------------------------------------------------------
+  get protocolVersion(): string {
+    return SYNC_PROTOCOL_VERSION;
+  }
+
+  registerHandlers(registry: HandlerRegistry<HandlerContext<Env>>): void {
+    const adapt = (handler: MoneyHandlerFn) => {
+      return (opId: string, payload: any, _ctx: HandlerContext<Env>) => {
+        const commandPayload =
+          payload && typeof payload === "object"
+            ? {
+                ...(payload as Record<string, unknown>),
+                commandType: payload.commandType ?? payload.type,
+              }
+            : payload;
+        return handler(opId, commandPayload, this.moneyAccess, this.eventStore);
+      };
+    };
+
+    const entries: [string, MoneyHandlerFn][] = [
+      ["create_account", handleAccountCommands],
+      ["update_account", handleAccountCommands],
+      ["delete_account", handleAccountCommands],
+      ["close_account", handleAccountCommands],
+      ["reopen_account", handleAccountCommands],
+      ["reorder_accounts", handleAccountCommands],
+      ["create_transaction", handleTransactionCommands],
+      ["update_transaction", handleTransactionCommands],
+      ["delete_transaction", handleTransactionCommands],
+      ["split_transaction", handleTransactionCommands],
+      ["create_category", handleCategoryCommands],
+      ["update_category", handleCategoryCommands],
+      ["delete_category", handleCategoryCommands],
+      ["create_category_group", handleCategoryCommands],
+      ["update_category_group", handleCategoryCommands],
+      ["delete_category_group", handleCategoryCommands],
+      ["reorder_categories", handleCategoryCommands],
+      ["set_budget_amount", handleBudgetCommands],
+      ["set_budget_carryover", handleBudgetCommands],
+      ["set_buffer", handleBudgetCommands],
+      ["copy_previous_month", handleBudgetCommands],
+      ["set_3month_avg", handleBudgetCommands],
+      ["set_nmonth_avg", handleBudgetCommands],
+      ["set_zero", handleBudgetCommands],
+      ["apply_goal_templates", handleBudgetCommands],
+      ["cover_overspending", handleBudgetCommands],
+      ["transfer_budget", handleBudgetCommands],
+      ["hold_for_next_month", handleBudgetCommands],
+      ["create_payee", handlePayeeCommands],
+      ["update_payee", handlePayeeCommands],
+      ["merge_payees", handlePayeeCommands],
+      ["create_schedule", handleScheduleCommands],
+      ["update_schedule", handleScheduleCommands],
+      ["delete_schedule", handleScheduleCommands],
+      ["skip_schedule_date", handleScheduleCommands],
+      ["post_schedule_transaction", handleScheduleCommands],
+      ["create_rule", handleRuleCommands],
+      ["update_rule", handleRuleCommands],
+      ["delete_rule", handleRuleCommands],
+      ["create_tag", handleTagCommands],
+      ["delete_tag", handleTagCommands],
+      ["add_transaction_tag", handleTagCommands],
+      ["remove_transaction_tag", handleTagCommands],
+      ["import_transactions", handleImportCommands],
+      ["create_report", handleReportCommands],
+      ["update_report", handleReportCommands],
+      ["delete_report", handleReportCommands],
+      ["update_dashboard", handleReportCommands],
+      ["update_exchange_rate", handleAccountCommands],
+      ["update_setting", handleSettingCommands],
+    ];
+
+    for (const [type, handler] of entries) {
+      registry.set(type, adapt(handler));
+    }
+  }
+
+  getSnapshot() {
+    return this.moneyAccess.getSnapshot();
+  }
+
+  protected executeTransaction<T>(fn: () => T): T {
+    return (this.db as any).transaction(fn);
+  }
+
+  // ─── Fetch ──────────────────────────────────────────────────────
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     syncLog("fetch", { path: url.pathname, method: request.method });
 
-    // WebSocket upgrade
+    // WebSocket upgrade — supports both /ws and /api/sync/ws
     if (url.pathname === "/ws" || url.pathname === "/api/sync/ws") {
-      if (!isWebSocketRequest(request)) {
-        return new Response("Upgrade required", { status: 426 });
-      }
-      const pair = new WebSocketPair();
-      const [client, server] = Object.values(pair);
-      this.ctx.acceptWebSocket(server);
-      return new Response(null, { status: 101, webSocket: client });
+      return super.fetch(new Request(new URL("/ws", url.origin).toString(), request));
     }
 
-    // Internal command endpoint (for import file processing)
-    if (url.pathname === "/internal/command" && request.method === "POST") {
-      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-      if (!body || typeof body.opId !== "string" || typeof body.commandType !== "string") {
-        return new Response("Invalid command body", { status: 400 });
-      }
-      const result = await this.processCommand(
-        body.opId as string,
-        body.commandType as string,
-        body.payload,
-        true,
-      );
-      return Response.json({ ok: true, ack: result.ack });
-    }
-
-    // Snapshot endpoint (for debugging/admin)
-    if (url.pathname === "/internal/snapshot") {
-      return Response.json(this.access.getSnapshot());
-    }
-
-    // REST API handlers (for initial data loading before sync connects)
-    const apiPath = url.pathname.startsWith("/api/") ? url.pathname : null;
-    if (apiPath) {
-      const apiResponse = handleApiRequest(apiPath, request.method, this.access);
-      if (apiResponse) return apiResponse;
-    }
-
-    return new Response("Not found", { status: 404 });
+    // Everything else goes through base class routing
+    return super.fetch(request);
   }
 
-  // -----------------------------------------------------------------
-  // WebSocket message handling
-  // -----------------------------------------------------------------
+  // ─── API routes ─────────────────────────────────────────────────
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+  protected handleApiRequest(request: Request): Promise<Response> | Response {
+    const url = new URL(request.url);
+    const apiPath = url.pathname.startsWith("/api/") ? url.pathname : null;
+    if (apiPath) {
+      const apiResponse = handleApiRequest(apiPath, request.method, this.moneyAccess);
+      if (apiResponse) return apiResponse;
+    }
+    return super.handleApiRequest(request);
+  }
+
+  // ─── WebSocket ──────────────────────────────────────────────────
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const spanId = startSpanWithStack("webSocketMessage");
     const text = typeof message === "string" ? message : new TextDecoder().decode(message);
-    let envelope: SyncClientEnvelope;
+    let envelope: any;
     try {
-      envelope = JSON.parse(text) as SyncClientEnvelope;
+      envelope = JSON.parse(text);
     } catch {
       syncLogError("ws_parse_error", text);
       endSpanWithStack(spanId, { status: "parse_error" });
@@ -229,32 +191,11 @@ export class MoneyBudgetDO implements DurableObject {
 
     try {
       syncLog("ws_message", { type: envelope.type });
-
-      switch (envelope.type) {
-        case "hello":
-          await this.handleHello(ws, envelope);
-          break;
-        case "ping":
-          ws.send(json({ type: "pong", at: nowIso() } satisfies SyncServerEnvelope));
-          break;
-        case "command":
-          await this.processCommand(envelope.opId, envelope.commandType, envelope.payload, true);
-          break;
-        default:
-          syncLogError("ws_unknown_envelope", envelope);
-      }
+      await super.webSocketMessage(ws, text);
       endSpanWithStack(spanId, { type: envelope.type });
     } catch (error) {
       syncLogError("ws_message_error", error);
       endSpanWithStack(spanId, { error: error instanceof Error ? error.message : String(error) });
-      ws.send(
-        json({
-          type: "sync_reset",
-          reason: error instanceof Error ? error.message : "Unknown error",
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          snapshot: this.access.getSnapshot(),
-        } satisfies SyncServerEnvelope),
-      );
     }
   }
 
@@ -262,11 +203,9 @@ export class MoneyBudgetDO implements DurableObject {
     syncLog("ws_close");
   }
 
-  // -----------------------------------------------------------------
-  // Hello handshake
-  // -----------------------------------------------------------------
+  // ─── Hello ──────────────────────────────────────────────────────
 
-  private async handleHello(ws: WebSocket, hello: SyncClientHello) {
+  protected async handleHello(ws: WebSocket, hello: any): Promise<void> {
     const spanId = startSpanWithStack("handleHello", {
       clientId: hello.clientId,
       lastServerSeq: hello.lastServerSeq,
@@ -274,173 +213,9 @@ export class MoneyBudgetDO implements DurableObject {
     syncLog("hello", {
       clientId: hello.clientId,
       lastServerSeq: hello.lastServerSeq,
-      unackedOpIds: hello.unackedOpIds.length,
+      unackedOpIds: hello.unackedOpIds?.length,
     });
-
-    const lastServerSeq = this.access.getLastServerSeq();
-    ws.send(
-      json({
-        type: "hello_ack",
-        protocolVersion: SYNC_PROTOCOL_VERSION,
-        serverTime: nowIso(),
-        lastServerSeq,
-      } satisfies SyncServerEnvelope),
-    );
-
-    // Protocol mismatch → full reset
-    if (hello.protocolVersion !== SYNC_PROTOCOL_VERSION) {
-      syncLog("sync_reset", { reason: "protocol_mismatch" });
-      ws.send(
-        json({
-          type: "sync_reset",
-          reason: "protocol_mismatch",
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          snapshot: this.access.getSnapshot(),
-        } satisfies SyncServerEnvelope),
-      );
-      endSpanWithStack(spanId, { status: "protocol_mismatch" });
-      return;
-    }
-
-    // Stale cursor or first sync → full snapshot
-    const oldestSeq = this.access.getOldestEventSeq();
-    const needsFullSync =
-      hello.lastServerSeq <= 0 || (oldestSeq > 0 && hello.lastServerSeq < oldestSeq);
-
-    if (needsFullSync) {
-      const reason = hello.lastServerSeq <= 0 ? "initial_sync" : "cursor_stale";
-      syncLog("sync_reset", { reason, clientSeq: hello.lastServerSeq, oldestSeq });
-      ws.send(
-        json({
-          type: "sync_reset",
-          reason,
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          snapshot: this.access.getSnapshot(),
-        } satisfies SyncServerEnvelope),
-      );
-    } else {
-      // Replay events since last known seq
-      const events = this.access.getEventsAfter(hello.lastServerSeq);
-      for (const event of events) {
-        ws.send(json(event));
-      }
-      syncLog("replayed_events", { count: events.length, after: hello.lastServerSeq });
-    }
-
-    // Re-process unacked ops
-    for (const opId of hello.unackedOpIds) {
-      const ack = this.access.getCommandAck(opId);
-      if (ack) ws.send(json(ack));
-    }
-    endSpanWithStack(spanId, { status: "ok", needsFullSync });
-  }
-
-  // -----------------------------------------------------------------
-  // Command processing
-  // -----------------------------------------------------------------
-
-  private async processCommand(
-    opId: string,
-    commandType: string,
-    payload: unknown,
-    broadcast: boolean,
-  ): Promise<{ ack: SyncServerAck | null; events: SyncServerEvent[] }> {
-    const spanId = startSpanWithStack("processCommand", { opId, commandType, broadcast });
-    syncLog("process_command_start", { opId, commandType, broadcast });
-
-    try {
-      const existing = this.access.getCommandAck(opId);
-      if (existing) {
-        syncLog("process_command_duplicate", { opId, commandType });
-        endSpanWithStack(spanId, { status: "duplicate" });
-        return { ack: existing, events: [] };
-      }
-
-      const handler = this.handlerRegistry.get(commandType);
-      if (!handler) {
-        throw new Error(`Unknown command type: ${commandType}`);
-      }
-
-      const createdAt = nowIso();
-
-      const result = this.db.transaction(() => {
-        const commandPayload =
-          payload && typeof payload === "object"
-            ? { ...(payload as Record<string, unknown>), commandType }
-            : payload;
-        const { events: resultEvents } = handler(
-          opId,
-          commandPayload,
-          this.access,
-          this.eventStore,
-        );
-
-        const ackedSeq =
-          resultEvents.length > 0
-            ? resultEvents[resultEvents.length - 1]!.serverSeq
-            : this.access.getLastServerSeq();
-
-        const ack = {
-          type: "ack" as const,
-          opId,
-          serverSeq: ackedSeq,
-          acceptedAt: createdAt,
-          commandType,
-        } satisfies SyncServerAck;
-
-        const ackJson = json(ack);
-        this.access.exec(
-          `INSERT OR REPLACE INTO commands (op_id, type, status, response_json, acked_seq, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          opId,
-          commandType,
-          "accepted",
-          ackJson,
-          ackedSeq,
-          createdAt,
-        );
-
-        return { ack, events: resultEvents };
-      });
-
-      syncLog("process_command_committed", {
-        opId,
-        commandType,
-        eventCount: result.events.length,
-        ackedSeq: result.ack.serverSeq,
-      });
-
-      if (broadcast) {
-        this.broadcast(result.ack);
-        for (const event of result.events) {
-          this.broadcast(event);
-        }
-      }
-
-      endSpanWithStack(spanId, {
-        eventCount: result.events.length,
-        ackedSeq: result.ack.serverSeq,
-      });
-      return { ack: result.ack, events: result.events };
-    } catch (error) {
-      endSpanWithStack(spanId, { error: error instanceof Error ? error.message : String(error) });
-      throw error;
-    }
-  }
-
-  // -----------------------------------------------------------------
-  // Broadcast to all connected WebSocket clients
-  // -----------------------------------------------------------------
-
-  private broadcast(envelope: SyncServerEnvelope) {
-    const message = json(envelope);
-    const sockets = this.ctx.getWebSockets();
-    for (const socket of sockets) {
-      try {
-        socket.send(message);
-      } catch {
-        // Socket may have closed; ignore
-      }
-    }
+    await super.handleHello(ws, hello);
+    endSpanWithStack(spanId, { status: "ok" });
   }
 }

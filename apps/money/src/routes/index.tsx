@@ -774,7 +774,7 @@ export default function Dashboard() {
           cells.push({ day: d, style: intensity(d) });
         }
 
-        const padStart = Array.from({ length: firstDay }, (_, i) => (
+        const padStart = Array.from({ length: firstDay }, (_, _i) => (
           <div class="heatmap-cell heatmap-cell-empty" />
         ));
 

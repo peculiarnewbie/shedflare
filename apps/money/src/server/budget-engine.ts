@@ -7,12 +7,7 @@
  */
 import type { DataAccess } from "./data-access";
 import { monthBoundaries, prevMonthKey, fromMonthInt, toMonthInt, castId } from "../domain/types";
-import type {
-  MonthBudgetSummary,
-  CategoryBudgetRow,
-  CategoryId,
-  CategoryGroupId,
-} from "../domain/types";
+import type { CategoryBudgetRow, CategoryId, CategoryGroupId } from "../domain/types";
 import { startSpanWithStack, endSpanWithStack } from "./tracer";
 
 export interface BudgetRecalculationResult {
@@ -40,7 +35,7 @@ export function computeMonthBudget(
 ): BudgetRecalculationResult | null {
   const spanId = startSpanWithStack("computeMonthBudget", { month });
   const mk = monthKey ?? fromMonthInt(month);
-  const boundaries = monthBoundaries(mk);
+  const _boundaries = monthBoundaries(mk);
 
   // Get all non-hidden categories with their groups
   const cats = access.queryAll<Record<string, unknown>>(
@@ -112,8 +107,8 @@ export function computeMonthBudget(
     categoryRows.push({
       categoryId: castId<CategoryId>(categoryId),
       categoryName: String(cat.name),
-      groupId: cat.group_id ? castId<CategoryGroupId>(String(cat.group_id)) : null,
-      groupName: cat.group_name ? String(cat.group_name) : null,
+      groupId: cat.group_id ? castId<CategoryGroupId>(cat.group_id as string) : null,
+      groupName: cat.group_name ? (cat.group_name as string) : null,
       budgeted,
       spent,
       leftover,
@@ -157,7 +152,7 @@ function getMonthLeftovers(
   monthKey: string,
 ): Map<string, LeftoverInfo> {
   const result = new Map<string, LeftoverInfo>();
-  const boundaries = monthBoundaries(monthKey);
+  monthBoundaries(monthKey);
 
   // Get all categories
   const cats = access.queryAll<{ id: string }>(`SELECT id FROM categories WHERE hidden = 0`);
@@ -176,7 +171,6 @@ function getMonthLeftovers(
     const categoryId = String(cat.id);
     const budget = budgetRows.find((b) => String(b.category_id) === categoryId);
     const budgeted = budget ? Number(budget.amount) : 0;
-    const carryover = budget ? Boolean(budget.carryover) : false;
     const spent = spendingMap.get(categoryId) ?? 0;
 
     // For computing prev leftovers, we don't cascade carryover (that would be infinite recursion)
@@ -196,7 +190,7 @@ export function computeNetWorth(access: DataAccess): number {
   const rows = access.queryAll<{ balance_current: number | null }>(
     `SELECT balance_current FROM accounts WHERE closed = 0`,
   );
-  return rows.reduce((sum, r) => sum + (Number(r.balance_current) ?? 0), 0);
+  return rows.reduce((sum, r) => sum + Number(r.balance_current ?? 0), 0);
 }
 
 /**
@@ -290,7 +284,7 @@ export function computeSpendingByCategory(
     categoryId: String(r.id),
     categoryName: String(r.name),
     amount: Number(r.total),
-    groupName: r.group_name ? String(r.group_name) : null,
+    groupName: r.group_name ? (r.group_name as string) : null,
   }));
 }
 
@@ -348,8 +342,6 @@ export interface CrossoverResult {
 export function computeCrossoverProjection(access: DataAccess): CrossoverResult | null {
   const now = new Date();
   const monthsBack = 12;
-  const startDate = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
   // Get monthly income/expense for last 12 months
   const monthlyData: Array<{ month: string; income: number; expense: number }> = [];

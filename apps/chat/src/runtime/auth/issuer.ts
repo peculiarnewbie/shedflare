@@ -1,43 +1,13 @@
-import { issuer } from "@openauthjs/openauth";
-import { GoogleOidcProvider } from "@openauthjs/openauth/provider/google";
-import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
-import { subjects } from "./subjects.js";
-import type { AppEnv } from "#/effect";
-import { normalizeEmail } from "../index.js";
+export { subjects } from "@shedflare/auth-client/issuer";
 
-type GoogleOidcClaims = {
-  email?: string;
-  email_verified?: boolean;
-};
+import { createAuthIssuer as createSharedIssuer } from "@shedflare/auth-client/issuer";
+import type { AppEnv } from "#/effect";
 
 export function createAuthIssuer(env: AppEnv) {
-  return issuer({
-    providers: {
-      google: GoogleOidcProvider({
-        clientID: env.GOOGLE_CLIENT_ID ?? "",
-        scopes: ["email", "profile"],
-      }),
-    },
-    subjects,
-    storage: CloudflareStorage({ namespace: env.OPENAUTH_STORAGE as any }),
-    ttl: {
-      access: 60 * 60 * 24 * 365,
-      refresh: 60 * 60 * 24 * 365,
-      reuse: 60 * 60 * 24,
-      retention: 60 * 60 * 24 * 7,
-    },
-    success: async (ctx, value) => {
-      if (value.provider === "google") {
-        const claims = value.id as GoogleOidcClaims;
-        if (!claims.email || claims.email_verified === false) {
-          return new Response("No email from Google", { status: 400 });
-        }
-        if (normalizeEmail(claims.email) !== normalizeEmail(env.OWNER_EMAIL)) {
-          return Response.redirect(`${env.APP_PUBLIC_URL}/forbidden`, 302);
-        }
-        return ctx.subject("user", { email: claims.email });
-      }
-      return new Response("Invalid provider", { status: 400 });
-    },
+  return createSharedIssuer({
+    GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? "",
+    OPENAUTH_STORAGE: env.OPENAUTH_STORAGE,
+    OWNER_EMAIL: env.OWNER_EMAIL,
+    APP_PUBLIC_URL: env.APP_PUBLIC_URL,
   });
 }

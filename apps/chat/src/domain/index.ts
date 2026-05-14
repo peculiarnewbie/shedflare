@@ -128,6 +128,8 @@ export const ThreadRow = Schema.Struct({
   updatedAt: Schema.String,
   lastMessageAt: Schema.String,
   archivedAt: NullableString,
+  forkedFromThreadId: NullableString,
+  forkedFromMessageId: NullableString,
   ...OptionalOptimisticRowFields,
 });
 
@@ -353,6 +355,11 @@ export type SyncSnapshot = {
   tables: SyncTables;
 };
 
+export const SyncSnapshotSchema = Schema.Struct({
+  serverSeq: Schema.optional(Schema.Number),
+  tables: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Any)),
+}) as Schema.Schema<SyncSnapshot>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -440,159 +447,212 @@ export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | n
   }
 }
 
-export type BootstrapSessionPayload = {
-  defaultModelId: string;
-};
+// ---------------------------------------------------------------------------
+// Command payload schemas (Effect Schema — single source of truth)
+// ---------------------------------------------------------------------------
 
-export type UpdateAccountSettingsPayload = {
-  settings: AccountSettings;
-};
+export const BootstrapSessionPayloadSchema = Schema.Struct({
+  defaultModelId: Schema.String,
+});
+export type BootstrapSessionPayload = Schema.Schema.Type<typeof BootstrapSessionPayloadSchema>;
 
-export type CreateWorkspacePayload = {
-  workspace: Workspace;
-  initialThread: Thread;
-};
+export const UpdateAccountSettingsPayloadSchema = Schema.Struct({
+  settings: AccountSettingsRow,
+});
+export type UpdateAccountSettingsPayload = Schema.Schema.Type<
+  typeof UpdateAccountSettingsPayloadSchema
+>;
 
-export type UpdateWorkspacePayload = {
-  workspace: Workspace;
-};
+export const CreateWorkspacePayloadSchema = Schema.Struct({
+  workspace: WorkspaceRow,
+  initialThread: ThreadRow,
+});
+export type CreateWorkspacePayload = Schema.Schema.Type<typeof CreateWorkspacePayloadSchema>;
 
-export type ArchiveWorkspacePayload = {
-  id: string;
-  archivedAt: string;
-};
+export const UpdateWorkspacePayloadSchema = Schema.Struct({
+  workspace: WorkspaceRow,
+});
+export type UpdateWorkspacePayload = Schema.Schema.Type<typeof UpdateWorkspacePayloadSchema>;
 
-export type CreateThreadPayload = {
-  thread: Thread;
-};
+export const ArchiveWorkspacePayloadSchema = Schema.Struct({
+  id: Schema.String,
+  archivedAt: Schema.String,
+});
+export type ArchiveWorkspacePayload = Schema.Schema.Type<typeof ArchiveWorkspacePayloadSchema>;
 
-export type UpdateThreadPayload = {
-  thread: Thread;
-};
+export const CreateThreadPayloadSchema = Schema.Struct({
+  thread: ThreadRow,
+});
+export type CreateThreadPayload = Schema.Schema.Type<typeof CreateThreadPayloadSchema>;
 
-export type ArchiveThreadPayload = {
-  id: string;
-  archivedAt: string;
-};
+export const UpdateThreadPayloadSchema = Schema.Struct({
+  thread: ThreadRow,
+});
+export type UpdateThreadPayload = Schema.Schema.Type<typeof UpdateThreadPayloadSchema>;
 
-export type CreateUserMessagePayload = {
-  threadId: string;
-  userMessage: Message;
-  assistantMessage: Message;
-  thread: Thread;
-  promptText: string;
-  modelId: string;
-  modelInterleavedField?: string | null;
-  reasoningLevel: ReasoningLevel;
-  search: boolean;
-  searchLimit?: number;
-  preferFreeSearch?: boolean;
-  attachmentIds: string[];
-};
+export const ArchiveThreadPayloadSchema = Schema.Struct({
+  id: Schema.String,
+  archivedAt: Schema.String,
+});
+export type ArchiveThreadPayload = Schema.Schema.Type<typeof ArchiveThreadPayloadSchema>;
 
-export type RetryMessagePayload = {
-  threadId: string;
-  userMessage: Message;
-  assistantMessage: Message;
-  thread: Thread;
-  modelId: string;
-  modelInterleavedField?: string | null;
-  reasoningLevel: ReasoningLevel;
-  search: boolean;
-  searchLimit?: number;
-  preferFreeSearch?: boolean;
-};
+export const CreateUserMessagePayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  userMessage: MessageRow,
+  assistantMessage: MessageRow,
+  thread: ThreadRow,
+  promptText: Schema.String,
+  modelId: Schema.String,
+  modelInterleavedField: Schema.optional(Schema.NullOr(Schema.String)),
+  reasoningLevel: ReasoningLevel,
+  search: Schema.Boolean,
+  searchLimit: Schema.optional(Schema.Number),
+  preferFreeSearch: Schema.optional(Schema.Boolean),
+  attachmentIds: Schema.Array(Schema.String),
+});
+export type CreateUserMessagePayload = Schema.Schema.Type<typeof CreateUserMessagePayloadSchema>;
 
-export type EditUserMessagePayload = {
-  threadId: string;
-  sourceMessageId: string;
-  userMessage: Message;
-  assistantMessage: Message;
-  thread: Thread;
-  promptText: string;
-  modelId: string;
-  modelInterleavedField?: string | null;
-  reasoningLevel: ReasoningLevel;
-  search: boolean;
-  searchLimit?: number;
-  preferFreeSearch?: boolean;
-  attachments: Attachment[];
-};
+export const RetryMessagePayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  userMessage: MessageRow,
+  assistantMessage: MessageRow,
+  thread: ThreadRow,
+  modelId: Schema.String,
+  modelInterleavedField: Schema.optional(Schema.NullOr(Schema.String)),
+  reasoningLevel: ReasoningLevel,
+  search: Schema.Boolean,
+  searchLimit: Schema.optional(Schema.Number),
+  preferFreeSearch: Schema.optional(Schema.Boolean),
+});
+export type RetryMessagePayload = Schema.Schema.Type<typeof RetryMessagePayloadSchema>;
 
-export type StartAssistantTurnPayload = {
-  threadId: string;
-  assistantMessage: Message;
-  modelId: string;
-  modelInterleavedField?: string | null;
-  reasoningLevel: ReasoningLevel;
-  search: boolean;
-  searchLimit?: number;
-};
+export const EditUserMessagePayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  sourceMessageId: Schema.String,
+  userMessage: MessageRow,
+  assistantMessage: MessageRow,
+  thread: ThreadRow,
+  promptText: Schema.String,
+  modelId: Schema.String,
+  modelInterleavedField: Schema.optional(Schema.NullOr(Schema.String)),
+  reasoningLevel: ReasoningLevel,
+  search: Schema.Boolean,
+  searchLimit: Schema.optional(Schema.Number),
+  preferFreeSearch: Schema.optional(Schema.Boolean),
+  attachments: Schema.Array(AttachmentRow),
+});
+export type EditUserMessagePayload = Schema.Schema.Type<typeof EditUserMessagePayloadSchema>;
 
-export type CancelAssistantTurnPayload = {
-  messageId: string;
-};
+export const StartAssistantTurnPayloadSchema = Schema.Struct({
+  threadId: Schema.String,
+  assistantMessage: MessageRow,
+  modelId: Schema.String,
+  modelInterleavedField: Schema.optional(Schema.NullOr(Schema.String)),
+  reasoningLevel: ReasoningLevel,
+  search: Schema.Boolean,
+  searchLimit: Schema.optional(Schema.Number),
+});
+export type StartAssistantTurnPayload = Schema.Schema.Type<typeof StartAssistantTurnPayloadSchema>;
 
-export type RegisterAttachmentPayload = {
-  attachment: Attachment;
-};
+export const CancelAssistantTurnPayloadSchema = Schema.Struct({
+  messageId: Schema.String,
+});
+export type CancelAssistantTurnPayload = Schema.Schema.Type<
+  typeof CancelAssistantTurnPayloadSchema
+>;
 
-export type CompleteAttachmentPayload = {
-  attachment: Attachment;
-};
+export const RegisterAttachmentPayloadSchema = Schema.Struct({
+  attachment: AttachmentRow,
+});
+export type RegisterAttachmentPayload = Schema.Schema.Type<typeof RegisterAttachmentPayloadSchema>;
 
-export type UpdateAttachmentPayload = {
-  attachment: Attachment;
-};
+export const CompleteAttachmentPayloadSchema = Schema.Struct({
+  attachment: AttachmentRow,
+});
+export type CompleteAttachmentPayload = Schema.Schema.Type<typeof CompleteAttachmentPayloadSchema>;
 
-export type DeleteAttachmentPayload = {
-  id: string;
-};
+export const UpdateAttachmentPayloadSchema = Schema.Struct({
+  attachment: AttachmentRow,
+});
+export type UpdateAttachmentPayload = Schema.Schema.Type<typeof UpdateAttachmentPayloadSchema>;
 
-export type SetSearchModePayload = {
-  workspaceId: string;
-  defaultSearchMode: boolean;
-};
+export const DeleteAttachmentPayloadSchema = Schema.Struct({
+  id: Schema.String,
+});
+export type DeleteAttachmentPayload = Schema.Schema.Type<typeof DeleteAttachmentPayloadSchema>;
 
-export type ForkThreadPayload = {
-  sourceThreadId: string;
-  sourceMessageId: string;
-  newThread: Thread;
-  copiedMessages: Message[];
-  copiedAttachments: Attachment[];
-};
+export const SetSearchModePayloadSchema = Schema.Struct({
+  workspaceId: Schema.String,
+  defaultSearchMode: Schema.Boolean,
+});
+export type SetSearchModePayload = Schema.Schema.Type<typeof SetSearchModePayloadSchema>;
 
-export type DeleteThreadPayload = {
-  id: string;
-};
+export const ForkThreadPayloadSchema = Schema.Struct({
+  sourceThreadId: Schema.String,
+  sourceMessageId: Schema.String,
+  newThread: ThreadRow,
+  copiedMessages: Schema.Array(MessageRow),
+  copiedAttachments: Schema.Array(AttachmentRow),
+});
+export type ForkThreadPayload = Schema.Schema.Type<typeof ForkThreadPayloadSchema>;
 
-export type ResetStoragePayload = Record<string, never>;
+export const DeleteThreadPayloadSchema = Schema.Struct({
+  id: Schema.String,
+});
+export type DeleteThreadPayload = Schema.Schema.Type<typeof DeleteThreadPayloadSchema>;
+
+export const ResetStoragePayloadSchema = Schema.Struct({});
+export type ResetStoragePayload = Schema.Schema.Type<typeof ResetStoragePayloadSchema>;
+
+export const CommandPayloadSchemas = {
+  bootstrap_session: BootstrapSessionPayloadSchema,
+  update_account_settings: UpdateAccountSettingsPayloadSchema,
+  create_workspace: CreateWorkspacePayloadSchema,
+  update_workspace: UpdateWorkspacePayloadSchema,
+  archive_workspace: ArchiveWorkspacePayloadSchema,
+  create_thread: CreateThreadPayloadSchema,
+  update_thread: UpdateThreadPayloadSchema,
+  archive_thread: ArchiveThreadPayloadSchema,
+  create_user_message: CreateUserMessagePayloadSchema,
+  retry_message: RetryMessagePayloadSchema,
+  edit_user_message: EditUserMessagePayloadSchema,
+  start_assistant_turn: StartAssistantTurnPayloadSchema,
+  cancel_assistant_turn: CancelAssistantTurnPayloadSchema,
+  register_attachment: RegisterAttachmentPayloadSchema,
+  complete_attachment: CompleteAttachmentPayloadSchema,
+  update_attachment: UpdateAttachmentPayloadSchema,
+  delete_attachment: DeleteAttachmentPayloadSchema,
+  set_search_mode: SetSearchModePayloadSchema,
+  delete_thread: DeleteThreadPayloadSchema,
+  fork_thread: ForkThreadPayloadSchema,
+  reset_storage: ResetStoragePayloadSchema,
+} as const;
 
 export type SyncCommandPayloadMap = {
-  bootstrap_session: BootstrapSessionPayload;
-  update_account_settings: UpdateAccountSettingsPayload;
-  create_workspace: CreateWorkspacePayload;
-  update_workspace: UpdateWorkspacePayload;
-  archive_workspace: ArchiveWorkspacePayload;
-  create_thread: CreateThreadPayload;
-  update_thread: UpdateThreadPayload;
-  archive_thread: ArchiveThreadPayload;
-  create_user_message: CreateUserMessagePayload;
-  retry_message: RetryMessagePayload;
-  edit_user_message: EditUserMessagePayload;
-  start_assistant_turn: StartAssistantTurnPayload;
-  cancel_assistant_turn: CancelAssistantTurnPayload;
-  register_attachment: RegisterAttachmentPayload;
-  complete_attachment: CompleteAttachmentPayload;
-  update_attachment: UpdateAttachmentPayload;
-  delete_attachment: DeleteAttachmentPayload;
-  set_search_mode: SetSearchModePayload;
-  delete_thread: DeleteThreadPayload;
-  fork_thread: ForkThreadPayload;
-  reset_storage: ResetStoragePayload;
+  [K in keyof typeof CommandPayloadSchemas]: Schema.Schema.Type<(typeof CommandPayloadSchemas)[K]>;
 };
 
 export type SyncCommandType = keyof SyncCommandPayloadMap;
+
+export function decodeCommand<K extends SyncCommandType>(
+  commandType: K,
+  input: unknown,
+): SyncCommandPayloadMap[K] {
+  const schema = CommandPayloadSchemas[commandType];
+  return (
+    Schema.decodeUnknownSync as (s: typeof schema) => (input: unknown) => SyncCommandPayloadMap[K]
+  )(schema)(input);
+}
+
+export function isTurnCommand(
+  commandType: SyncCommandType,
+): commandType is "create_user_message" | "retry_message" | "edit_user_message" {
+  return (
+    commandType === "create_user_message" ||
+    commandType === "retry_message" ||
+    commandType === "edit_user_message"
+  );
+}
 
 export const SYNC_COMMAND_TYPES = [
   "bootstrap_session",
@@ -653,34 +713,88 @@ export type SyncClientEnvelope =
   | SyncClientResume
   | SyncClientPing;
 
+// ---------------------------------------------------------------------------
+// Event payload schemas (Effect Schema — derived from row schemas)
+// ---------------------------------------------------------------------------
+
+export const AccountSettingsUpsertedPayload = Schema.Struct({ row: AccountSettingsRow });
+export const WorkspaceUpsertedPayload = Schema.Struct({ row: WorkspaceRow });
+export const WorkspaceArchivedPayload = Schema.Struct({
+  id: Schema.String,
+  archivedAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export const ThreadUpsertedPayload = Schema.Struct({ row: ThreadRow });
+export const ThreadArchivedPayload = Schema.Struct({
+  id: Schema.String,
+  archivedAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export const ThreadDeletedPayload = Schema.Struct({ id: Schema.String });
+export const MessageUpsertedPayload = Schema.Struct({ row: MessageRow });
+export const MessageFailedPayload = Schema.Struct({
+  messageId: Schema.String,
+  errorCode: Schema.String,
+  errorMessage: Schema.String,
+  updatedAt: Schema.String,
+});
+export const MessageCompletedPayload = Schema.Struct({
+  messageId: Schema.String,
+  text: Schema.String,
+  updatedAt: Schema.String,
+  durationMs: Schema.NullOr(Schema.Number),
+  ttftMs: Schema.NullOr(Schema.Number),
+  promptTokens: Schema.NullOr(Schema.Number),
+  completionTokens: Schema.NullOr(Schema.Number),
+});
+export const MessageDeltaPayload = Schema.Struct({
+  messageId: Schema.String,
+  delta: Schema.String,
+  updatedAt: Schema.String,
+});
+export const MessagePartAppendedPayload = Schema.Struct({ row: MessagePartRow });
+export const AttachmentUpsertedPayload = Schema.Struct({ row: AttachmentRow });
+export const AttachmentDeletedPayload = Schema.Struct({ id: Schema.String });
+export const SearchRunsReplacedPayload = Schema.Struct({
+  messageId: Schema.String,
+  rows: Schema.Array(SearchRunRow),
+});
+export const SearchResultsReplacedPayload = Schema.Struct({
+  messageId: Schema.String,
+  rows: Schema.Array(SearchResultRow),
+});
+export const ExtractRunsReplacedPayload = Schema.Struct({
+  messageId: Schema.String,
+  rows: Schema.Array(ExtractRunRow),
+});
+export const TraceRunUpsertedPayload = Schema.Struct({ row: TraceRunRow });
+export const TraceSpanUpsertedPayload = Schema.Struct({ row: TraceSpanRow });
+export const ServerStateRebasedPayload = Schema.Struct({ snapshot: SyncSnapshotSchema });
+
+export const EventPayloadSchemas = {
+  account_settings_upserted: AccountSettingsUpsertedPayload,
+  workspace_upserted: WorkspaceUpsertedPayload,
+  workspace_archived: WorkspaceArchivedPayload,
+  thread_upserted: ThreadUpsertedPayload,
+  thread_archived: ThreadArchivedPayload,
+  thread_deleted: ThreadDeletedPayload,
+  message_upserted: MessageUpsertedPayload,
+  message_failed: MessageFailedPayload,
+  message_completed: MessageCompletedPayload,
+  message_delta: MessageDeltaPayload,
+  message_part_appended: MessagePartAppendedPayload,
+  attachment_upserted: AttachmentUpsertedPayload,
+  attachment_deleted: AttachmentDeletedPayload,
+  search_runs_replaced: SearchRunsReplacedPayload,
+  search_results_replaced: SearchResultsReplacedPayload,
+  extract_runs_replaced: ExtractRunsReplacedPayload,
+  trace_run_upserted: TraceRunUpsertedPayload,
+  trace_span_upserted: TraceSpanUpsertedPayload,
+  server_state_rebased: ServerStateRebasedPayload,
+} as const;
+
 export type SyncEventPayloadMap = {
-  account_settings_upserted: { row: AccountSettings };
-  workspace_upserted: { row: Workspace };
-  workspace_archived: { id: string; archivedAt: string; updatedAt: string };
-  thread_upserted: { row: Thread };
-  thread_archived: { id: string; archivedAt: string; updatedAt: string };
-  message_upserted: { row: Message };
-  message_failed: { messageId: string; errorCode: string; errorMessage: string; updatedAt: string };
-  message_completed: {
-    messageId: string;
-    text: string;
-    updatedAt: string;
-    durationMs: number | null;
-    ttftMs: number | null;
-    promptTokens: number | null;
-    completionTokens: number | null;
-  };
-  message_delta: { messageId: string; delta: string; updatedAt: string };
-  message_part_appended: { row: MessagePart };
-  attachment_upserted: { row: Attachment };
-  attachment_deleted: { id: string };
-  search_runs_replaced: { messageId: string; rows: SearchRun[] };
-  search_results_replaced: { messageId: string; rows: SearchResult[] };
-  extract_runs_replaced: { messageId: string; rows: ExtractRun[] };
-  trace_run_upserted: { row: TraceRun };
-  trace_span_upserted: { row: TraceSpan };
-  thread_deleted: { id: string };
-  server_state_rebased: { snapshot: SyncSnapshot };
+  [K in keyof typeof EventPayloadSchemas]: Schema.Schema.Type<(typeof EventPayloadSchemas)[K]>;
 };
 
 export type SyncEventType = keyof SyncEventPayloadMap;

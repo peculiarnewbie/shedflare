@@ -5,7 +5,6 @@ import { createSignal, createEffect, Show, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { settingsCollection } from "../lib/collections";
 import { usePrivacyMode } from "../lib/privacy";
-import { useDateFormat } from "../lib/date-format";
 
 type BudgetType = "envelope" | "tracking";
 type Currency = "USD" | "IDR";
@@ -17,7 +16,6 @@ export default function SettingsPage() {
   const [currency, setCurrency] = createSignal<Currency>("USD");
   const [loading, setLoading] = createSignal(true);
   const privacy = usePrivacyMode();
-  const dateFmt = useDateFormat();
 
   const [dateFormat, setDateFormat] = createSignal<DateFormat>("iso");
   const [hideClosed, setHideClosed] = createSignal(false);

@@ -1,14 +1,4 @@
-// ---------------------------------------------------------------------------
-// Shared utilities for the sync engine — JSON helpers, logging, SQL bool conv.
-// ---------------------------------------------------------------------------
-
-export function json(data: unknown): string {
-  return JSON.stringify(data);
-}
-
-export function parseJson<T>(data: string): T {
-  return JSON.parse(data) as T;
-}
+export { json, parseJson, isWebSocketRequest, nowIso } from "@shedflare/sync-protocol";
 
 export async function parseJsonRequest(
   request: Request,
@@ -41,11 +31,6 @@ export function sqlToBool(value: unknown): boolean {
   return false;
 }
 
-export function isWebSocketRequest(request: Request): boolean {
-  const upgrade = request.headers.get("Upgrade")?.toLowerCase();
-  return upgrade === "websocket";
-}
-
 export function syncLog(message: string, details?: Record<string, unknown>) {
   const entry = JSON.stringify({ scope: "money-sync", event: message, ...details });
   console.log(entry);
@@ -62,9 +47,6 @@ export function syncLogError(message: string, error?: unknown) {
   console.error(entry);
 }
 
-// ---------------------------------------------------------------------------
-// STORAGE TABLE NAMES — used by data-access and event-store
-// ---------------------------------------------------------------------------
 export const DATA_TABLES = [
   "accounts",
   "categories",

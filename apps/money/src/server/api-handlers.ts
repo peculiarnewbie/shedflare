@@ -338,10 +338,10 @@ export function handleApiRequest(
       [
         r.date,
         Number(r.amount ?? 0) / 100,
-        `"${String(r.payee ?? "")}"`,
-        `"${String(r.category ?? "")}"`,
-        `"${String(r.notes ?? "")}"`,
-        `"${String(r.account ?? "")}"`,
+        `"${(r.payee as string) ?? ""}"`,
+        `"${(r.category as string) ?? ""}"`,
+        `"${(r.notes as string) ?? ""}"`,
+        `"${(r.account as string) ?? ""}"`,
       ].join(","),
     );
     const csv = header + csvLines.join("\n");
@@ -365,7 +365,7 @@ function mapAccountRow(row: Record<string, unknown>) {
     closed: Number(row.closed ?? 0) === 1,
     sortOrder: Number(row.sort_order ?? 0),
     balanceCurrent: Number(row.balance_current ?? 0),
-    lastReconciled: row.last_reconciled ? String(row.last_reconciled) : null,
+    lastReconciled: row.last_reconciled ? (row.last_reconciled as string) : null,
   };
 }
 
@@ -377,7 +377,7 @@ function mapDashboardWidgetRow(row: Record<string, unknown>) {
     y: Number(row.y),
     width: Number(row.width),
     height: Number(row.height),
-    meta: row.meta ? String(row.meta) : null,
+    meta: row.meta ? (row.meta as string) : null,
   };
 }
 

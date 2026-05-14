@@ -1,8 +1,7 @@
-import { createSignal, createResource, createEffect, For, Show } from "solid-js";
+import { createSignal, createEffect, For, Show } from "solid-js";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 import { dispatch } from "../lib/pending-ops";
-import { createId } from "../domain/types";
 
 type ReportId =
   | "net-worth"
@@ -79,7 +78,7 @@ export default function ReportsPage() {
   const [formEndDate, setFormEndDate] = createSignal("");
 
   // Custom report data (lazy loaded per-report)
-  const [customReportData, setCustomReportData] = createSignal<Record<string, any>>({});
+  const [customReportData, _setCustomReportData] = createSignal<Record<string, any>>({});
 
   createEffect(() => {
     const report = activeReport();
@@ -226,25 +225,12 @@ export default function ReportsPage() {
     setTimeout(() => loadCustomReports(), 300);
   }
 
-  function fetchReportData(reportId: string) {
-    void (async () => {
-      try {
-        const res = await fetch(`/api/transactions`);
-        if (res.ok) {
-          const data = (await res.json()) as any;
-          setCustomReportData((prev) => ({ ...prev, [reportId]: data.transactions ?? [] }));
-        }
-      } catch {}
-    })();
-  }
-
   function renderCustomReport(report: CustomReport) {
     const graphType = report.graph_type ?? "area";
     const data = customReportData()[report.id] ?? [];
     if (data.length === 0) {
       return <div class="chart-placeholder">Load report data to view</div>;
     }
-    const name = report.name ?? "Custom Report";
     return (
       <Show when={graphType === "area"}>
         <AreaChart

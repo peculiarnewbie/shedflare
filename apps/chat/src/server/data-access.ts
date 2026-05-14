@@ -16,9 +16,6 @@ import {
   type AccountSettings,
   type Attachment,
   type Message,
-  type SyncServerAck,
-  type SyncServerEvent,
-  type SyncEventType,
   type SyncSnapshot,
   type Thread,
   type Workspace,
@@ -34,7 +31,8 @@ import {
 import * as dbSchema from "#/db/schema";
 import { eq } from "drizzle-orm";
 import { type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
-import { parseJson, sqlToBool } from "./sync-utils";
+import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
+import { sqlToBool } from "./sync-utils";
 
 // ---------------------------------------------------------------------------
 // Standalone normalizer functions (pure, no DB dependency)
@@ -283,60 +281,36 @@ export function inflateRow(tableName: string, row: Record<string, unknown>) {
 
 export class DataAccess {
   constructor(
+    public readonly syncAccess: SyncDataAccess,
     public readonly db: DrizzleSqliteDODatabase<typeof dbSchema>,
-    private readonly sqlExec: (query: string, ...params: any[]) => { toArray(): any[] },
   ) {}
 
   exec(query: string, ...params: any[]) {
-    return this.sqlExec(query, ...params);
+    return this.syncAccess.exec(query, ...params);
   }
 
   queryOne<T extends Record<string, unknown>>(query: string, ...params: any[]) {
-    const rows = this.exec(query, ...params).toArray() as T[];
-    return rows[0] ?? null;
+    return this.syncAccess.queryOne<T>(query, ...params);
   }
 
   queryAll<T extends Record<string, unknown>>(query: string, ...params: any[]) {
-    return this.exec(query, ...params).toArray() as T[];
+    return this.syncAccess.queryAll<T>(query, ...params);
   }
 
   getLastServerSeq() {
-    const row = this.queryOne<{ seq: number }>("SELECT coalesce(max(seq), 0) as seq FROM events");
-    return Number(row?.seq ?? 0);
+    return this.syncAccess.getLastServerSeq();
   }
 
   getOldestEventSeq(): number {
-    const row = this.queryOne<{ min_seq: number | null }>(`SELECT MIN(seq) as min_seq FROM events`);
-    return row?.min_seq ?? 0;
+    return this.syncAccess.getOldestEventSeq();
   }
 
   getEventsAfter(afterSeq: number) {
-    return this.queryAll<{
-      seq: number;
-      event_id: string;
-      op_id: string | null;
-      type: string;
-      payload_json: string;
-    }>(
-      `SELECT seq, event_id, op_id, type, payload_json FROM events WHERE seq > ? ORDER BY seq ASC`,
-      afterSeq,
-    ).map((row) => ({
-      type: "event",
-      serverSeq: Number(row.seq),
-      eventId: String(row.event_id),
-      eventType: row.type as SyncEventType,
-      payload: parseJson(row.payload_json),
-      causedByOpId: row.op_id,
-    })) as SyncServerEvent[];
+    return this.syncAccess.getEventsAfter(afterSeq);
   }
 
   getCommandAck(opId: string) {
-    const row = this.db
-      .select({ responseJson: dbSchema.commands.responseJson })
-      .from(dbSchema.commands)
-      .where(eq(dbSchema.commands.opId, opId))
-      .get();
-    return row?.responseJson ? parseJson<SyncServerAck>(row.responseJson) : null;
+    return this.syncAccess.getCommandAck(opId);
   }
 
   getWorkspace(id: string) {
@@ -360,7 +334,6 @@ export class DataAccess {
   }
 
   deleteThreadCascade(id: string) {
-    // Collect all message IDs for this thread
     const messageIds = this.queryAll<{ id: string }>(
       `SELECT id FROM messages WHERE thread_id = ?`,
       id,
@@ -368,8 +341,6 @@ export class DataAccess {
 
     if (messageIds.length > 0) {
       const placeholders = messageIds.map(() => "?").join(",");
-
-      // Delete deeply nested child data first
       this.exec(
         `DELETE FROM trace_spans WHERE trace_run_id IN (SELECT id FROM trace_runs WHERE message_id IN (${placeholders}))`,
         ...messageIds,
@@ -382,7 +353,6 @@ export class DataAccess {
       this.exec(`DELETE FROM messages WHERE id IN (${placeholders})`, ...messageIds);
     }
 
-    // Delete attachments & the thread itself
     this.exec(`DELETE FROM attachments WHERE thread_id = ?`, id);
     this.exec(`DELETE FROM threads WHERE id = ?`, id);
   }

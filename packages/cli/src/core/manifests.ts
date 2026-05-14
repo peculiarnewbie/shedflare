@@ -52,6 +52,8 @@ export function loadManifest(appId: AppId): AppManifest {
     const raw = readFileSync(path, "utf-8");
     const parsed = parse(raw) as AppManifest;
     if (parsed && typeof parsed === "object") {
+      parsed.secrets ??= {};
+      parsed.resources ??= [];
       return parsed;
     }
   }

@@ -1,5 +1,4 @@
 import * as Schema from "effect/Schema";
-import { type SyncCommandType } from "./types";
 import {
   NullableString,
   TransactionInput,
@@ -291,7 +290,7 @@ export type CommandPayloadMap = {
 };
 
 export type SyncCommandPayloadMap = {
-  [K in SyncCommandType & keyof CommandPayloadMap]: CommandPayloadMap[K];
+  [K in keyof CommandPayloadMap]: CommandPayloadMap[K];
 };
 
 /** Decode and validate a command payload at runtime. Throws on invalid input. */

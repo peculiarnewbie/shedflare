@@ -7,7 +7,7 @@
  */
 
 import { REASONING_CONTENT_EVENT, type ExtendedStreamChunk } from "#/runtime";
-import { nowIso, type MessagePart, type TraceSpanKind } from "#/domain";
+import { nowIso, type MessagePart, type SyncServerEnvelope, type TraceSpanKind } from "#/domain";
 import type { SearchProgressEvent } from "./search";
 import { normalizeAssistantError } from "./error-normalization";
 
@@ -16,19 +16,13 @@ const DELTA_FLUSH_THRESHOLD = 96;
 
 export type StreamConsumerDeps = {
   /** Appends a server event to the event log and returns the event */
-  appendServerEvent: <T extends string>(
+  appendServerEvent: (
     opId: string | null,
-    eventType: T,
+    eventType: string,
     payload: Record<string, unknown>,
-  ) => Promise<{
-    type: string;
-    serverSeq: number;
-    eventId: string;
-    eventType: T;
-    payload: Record<string, unknown>;
-  }>;
+  ) => Promise<SyncServerEnvelope>;
   /** Broadcasts an event to all connected clients */
-  broadcast: (envelope: Record<string, unknown>) => void;
+  broadcast: (envelope: SyncServerEnvelope) => void;
   /**
    * Appends a message part (activity, thinking tokens, text).
    *

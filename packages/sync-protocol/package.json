@@ -1,0 +1,35 @@
+{
+  "name": "@shedflare/sync-protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sync-types": "./src/sync-types.ts",
+    "./data-access": "./src/data-access.ts",
+    "./event-store": "./src/event-store.ts",
+    "./handler-registry": "./src/handler-registry.ts",
+    "./durable-object": "./src/durable-object.ts",
+    "./sync-utils": "./src/sync-utils.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "check": "vp check src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260415.1",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

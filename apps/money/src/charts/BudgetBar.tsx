@@ -9,8 +9,6 @@ import * as d3 from "d3";
 import {
   type BudgetPair,
   type ChartDimensions,
-  defaultDimensions,
-  computeBounds,
   CHART_COLORS,
   formatChartAmount,
   formatChartTooltip,

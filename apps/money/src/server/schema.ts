@@ -2,8 +2,6 @@
  * Schema initialization — creates all tables in the DO SQLite storage.
  * Called once during DO boot.
  */
-import { syncLog } from "./sync-utils";
-
 type SqlExecFn = (query: string, ...params: any[]) => void;
 type SqlQueryOneFn = <T extends Record<string, unknown>>(
   query: string,

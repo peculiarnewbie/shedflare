@@ -329,9 +329,8 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   async function remove(file: DriveFile) {
     setError("");
     try {
-      await fetch(`/api/files/${file.id}`, { method: "DELETE" }).then(async (response) => {
-        if (!response.ok) throw new Error(await response.text());
-      });
+      const response = await fetch(`/api/files/${file.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await response.text());
       setSelectedFileId("");
       setPendingDeleteId("");
       await Promise.all([loadFiles(false, 0), loadTags()]);

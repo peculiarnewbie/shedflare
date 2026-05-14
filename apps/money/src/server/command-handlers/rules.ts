@@ -6,7 +6,6 @@ import type { DataAccess } from "../data-access";
 import type { EventStore } from "../event-store";
 import { createRule } from "../../domain/factories";
 import { decodeCommand } from "../../domain/commands";
-import { castId, type RuleId } from "../../domain/types";
 
 export function handleRuleCommands(
   opId: string,
