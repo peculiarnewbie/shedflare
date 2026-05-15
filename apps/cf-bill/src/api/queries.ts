@@ -6,11 +6,10 @@ export function workersQuery(accountId: string, start: string, end: string): str
           workersInvocationsAdaptive(
             limit: 1
             filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
-            orderBy: [datetime_DESC]
+
           ) {
             sum {
               requests
-              cpuTime
               errors
             }
           }
@@ -28,12 +27,11 @@ export function d1Query(accountId: string, start: string, end: string): string {
           d1AnalyticsAdaptiveGroups(
             limit: 100
             filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
-            orderBy: [datetime_DESC]
+
           ) {
             sum {
               rowsRead
               rowsWritten
-              queryCount
             }
             dimensions {
               databaseId
@@ -53,11 +51,11 @@ export function kvOpsQuery(accountId: string, start: string, end: string): strin
           kvOperationsAdaptiveGroups(
             limit: 100
             filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
-            orderBy: [datetime_DESC]
+
           ) {
             count
             dimensions {
-              operationType
+              actionType
             }
           }
         }
@@ -66,15 +64,19 @@ export function kvOpsQuery(accountId: string, start: string, end: string): strin
   });
 }
 
-export function kvStorageQuery(accountId: string): string {
+export function kvStorageQuery(accountId: string, start: string, end: string): string {
   return JSON.stringify({
     query: `{
       viewer {
         accounts(filter: {accountTag: "${accountId}"}) {
-          kvStorageAdaptiveGroups(limit: 100, orderBy: [datetime_DESC]) {
-            sum {
+          kvStorageAdaptiveGroups(
+            limit: 100
+            filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
+
+          ) {
+            max {
               keyCount
-              storedBytes
+              byteCount
             }
           }
         }
@@ -88,14 +90,14 @@ export function doQuery(accountId: string, start: string, end: string): string {
     query: `{
       viewer {
         accounts(filter: {accountTag: "${accountId}"}) {
-          durableObjectsInvocationsAdaptive(
+          durableObjectsInvocationsAdaptiveGroups(
             limit: 100
             filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
-            orderBy: [datetime_DESC]
+
           ) {
             sum {
               requests
-              cpuTime
+              errors
             }
             dimensions {
               namespaceId
@@ -112,17 +114,38 @@ export function r2Query(accountId: string, start: string, end: string): string {
     query: `{
       viewer {
         accounts(filter: {accountTag: "${accountId}"}) {
-          r2AnalyticsAdaptiveGroups(
+          r2OperationsAdaptiveGroups(
             limit: 100
             filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
-            orderBy: [datetime_DESC]
+
           ) {
             sum {
-              objectSize
-              storageBytes
+              requests
+              errors
             }
             dimensions {
-              operationType
+              actionType
+            }
+          }
+        }
+      }
+    }`,
+  });
+}
+
+export function r2StorageQuery(accountId: string, start: string, end: string): string {
+  return JSON.stringify({
+    query: `{
+      viewer {
+        accounts(filter: {accountTag: "${accountId}"}) {
+          r2StorageAdaptiveGroups(
+            limit: 100
+            filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
+
+          ) {
+            max {
+              objectCount
+              payloadSize
             }
           }
         }
@@ -139,11 +162,11 @@ export function httpQuery(zoneId: string, start: string, end: string): string {
           httpRequests1mGroups(
             limit: 1
             filter: {datetime_geq: "${start}", datetime_lt: "${end}"}
-            orderBy: [datetime_DESC]
+
           ) {
             sum {
               requests
-              bytes
+              errors
             }
           }
         }

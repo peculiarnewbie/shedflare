@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./consumer": "./src/consumer.ts",
-    "./issuer": "./src/issuer.ts"
+    "./issuer": "./src/issuer.ts",
+    "./http-api": "./src/http-api.ts"
   },
   "scripts": {
     "check": "vp check src",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
+    "effect": "catalog:",
     "jose": "catalog:",
     "valibot": "catalog:"
   },

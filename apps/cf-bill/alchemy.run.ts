@@ -19,13 +19,6 @@ export const CfBillStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = appConfig(loadShedflareConfig(), "cf-bill");
 
-    const secrets = yield* Cloudflare.SecretsStore("ShedflareSecrets");
-
-    const _cfApiToken = yield* Cloudflare.Secret("CF_API_TOKEN", {
-      store: secrets,
-      value: requireSecretVar("cf-bill", "CF_API_TOKEN"),
-    });
-
     const worker = yield* Cloudflare.Worker("CfBillWorker", {
       name: physicalName(stage, "cf-bill"),
       main: "apps/cf-bill/src/worker.ts",
@@ -41,6 +34,7 @@ export const CfBillStack = Alchemy.Stack(
         OWNER_EMAIL: config.ownerEmail,
         CLOUDFLARE_ACCOUNT_ID: requireVar(config, "CLOUDFLARE_ACCOUNT_ID"),
         CLOUDFLARE_ZONE_ID: config.vars.CLOUDFLARE_ZONE_ID ?? "",
+        CF_API_TOKEN: requireSecretVar("cf-bill", "CF_API_TOKEN"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });

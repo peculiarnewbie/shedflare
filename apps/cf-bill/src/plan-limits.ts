@@ -20,8 +20,6 @@ export const PLAN_LIMITS: ProductLimits[] = [
     name: "Workers",
     metrics: {
       requests: { free: 100_000, paid: 10_000_000, unit: "/day" },
-      cpuTime: { free: 10, paid: 30_000, unit: "ms" },
-      errors: { free: 1_000, paid: 10_000, unit: "/day" },
     },
   },
   {

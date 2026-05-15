@@ -4,7 +4,12 @@ import type { UsageResponse } from "../api/types";
 
 async function fetchUsage(): Promise<UsageResponse> {
   const res = await fetch("/api/usage");
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
+      error?: string;
+    };
+    throw new Error(body.error || `API error: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -33,18 +38,18 @@ export default function Dashboard() {
     setRefreshing(false);
   };
 
-  const period = data()?.period;
-  const products = data()?.products ?? [];
+  const period = () => data()?.period;
+  const products = () => data()?.products ?? [];
 
   return (
     <div>
       <div class="page-header">
         <div>
           <h1>Usage Dashboard</h1>
-          {period && (
+          {period() && (
             <p class="period-label">
-              {new Date(period.start).toLocaleDateString()} –{" "}
-              {new Date(period.end).toLocaleDateString()}
+              {new Date(period()!.start).toLocaleDateString()} –{" "}
+              {new Date(period()!.end).toLocaleDateString()}
             </p>
           )}
         </div>
@@ -56,7 +61,7 @@ export default function Dashboard() {
       {error() && <div class="error-banner">{error()}</div>}
 
       <div class="products-grid">
-        {products.map((product) => (
+        {products().map((product) => (
           <UsageCard product={product} />
         ))}
       </div>
@@ -68,7 +73,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {data() && products.length === 0 && !error() && (
+      {data() && products().length === 0 && !error() && (
         <div class="empty-state">
           <div class="empty-state-title">No usage data</div>
           <div class="empty-state-desc">
