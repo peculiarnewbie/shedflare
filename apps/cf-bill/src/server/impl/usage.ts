@@ -19,8 +19,30 @@ const GRAPHQL_URL = "https://api.cloudflare.com/client/v4/graphql";
 function monthBounds(): UsagePeriod {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  return { start: start.toISOString(), end: end.toISOString() };
+  return { start: start.toISOString(), end: now.toISOString() };
+}
+
+function elapsedDays(period: UsagePeriod): number {
+  const start = new Date(period.start).getTime();
+  const end = new Date(period.end).getTime();
+  return Math.max(1, Math.ceil((end - start) / 86_400_000));
+}
+
+function comparableLimits(
+  limits: { free: number; paid: number; unit: string },
+  period: UsagePeriod,
+): { free: number; paid: number; label?: string } {
+  if (limits.unit === "/day") {
+    const days = elapsedDays(period);
+    return {
+      free: limits.free * days,
+      paid: limits.paid * days,
+      label: `${days} day${days === 1 ? "" : "s"} at daily limit`,
+    };
+  }
+  if (limits.unit === "/month")
+    return { free: limits.free, paid: limits.paid, label: "monthly limit" };
+  return { free: limits.free, paid: limits.paid, label: limits.unit };
 }
 
 function safeSum(items: { sum?: Record<string, number | null> }[], key: string): number {
@@ -138,7 +160,8 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 label: "Requests",
                 used: sum.requests ?? 0,
                 unit: formatCount(sum.requests ?? 0),
-                limits: { free: limits.requests.free, paid: limits.requests.paid },
+                limits: comparableLimits(limits.requests, period),
+                note: "GraphQL Analytics estimate; not billing-grade.",
               },
             ],
           });
@@ -156,13 +179,15 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 label: "Rows Read",
                 used: safeSum(d1Groups, "rowsRead"),
                 unit: formatCount(safeSum(d1Groups, "rowsRead")),
-                limits: { free: limits.rowsRead.free, paid: limits.rowsRead.paid },
+                limits: comparableLimits(limits.rowsRead, period),
+                note: "GraphQL Analytics estimate; not billing-grade.",
               },
               {
                 label: "Rows Written",
                 used: safeSum(d1Groups, "rowsWritten"),
                 unit: formatCount(safeSum(d1Groups, "rowsWritten")),
-                limits: { free: limits.rowsWritten.free, paid: limits.rowsWritten.paid },
+                limits: comparableLimits(limits.rowsWritten, period),
+                note: "GraphQL Analytics estimate; not billing-grade.",
               },
             ],
           });
@@ -185,13 +210,15 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
               label: "Reads",
               used: reads,
               unit: formatCount(reads),
-              limits: { free: limits.reads.free, paid: limits.reads.paid },
+              limits: comparableLimits(limits.reads, period),
+              note: "GraphQL Analytics estimate; not billing-grade.",
             },
             {
               label: "Writes",
               used: writes,
               unit: formatCount(writes),
-              limits: { free: limits.writes.free, paid: limits.writes.paid },
+              limits: comparableLimits(limits.writes, period),
+              note: "GraphQL Analytics estimate; not billing-grade.",
             },
           ];
           if (storage) {
@@ -199,7 +226,7 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
               label: "Storage",
               used: storage.byteCount ?? 0,
               unit: formatBytes(storage.byteCount ?? 0),
-              limits: { free: limits.storage.free, paid: limits.storage.paid },
+              limits: comparableLimits(limits.storage, period),
             });
           }
           products.push({ id: "kv", name: "Workers KV", metrics });
@@ -218,7 +245,8 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 label: "Requests",
                 used: safeSum(doGroups, "requests"),
                 unit: formatCount(safeSum(doGroups, "requests")),
-                limits: { free: limits.requests.free, paid: limits.requests.paid },
+                limits: comparableLimits(limits.requests, period),
+                note: "GraphQL Analytics estimate; not billing-grade.",
               },
             ],
           });
@@ -278,19 +306,21 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 label: "Storage",
                 used: storageBytes,
                 unit: formatBytes(storageBytes),
-                limits: { free: limits.storage.free, paid: limits.storage.paid },
+                limits: comparableLimits(limits.storage, period),
               },
               {
                 label: "Class A Ops",
                 used: classA,
                 unit: formatCount(classA),
-                limits: { free: limits.classAOps.free, paid: limits.classAOps.paid },
+                limits: comparableLimits(limits.classAOps, period),
+                note: "Operation classification is approximate.",
               },
               {
                 label: "Class B Ops",
                 used: classB,
                 unit: formatCount(classB),
-                limits: { free: limits.classBOps.free, paid: limits.classBOps.paid },
+                limits: comparableLimits(limits.classBOps, period),
+                note: "Operation classification is approximate.",
               },
             ],
           });
@@ -308,13 +338,15 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 label: "Requests",
                 used: httpGroup.sum?.requests ?? 0,
                 unit: formatCount(httpGroup.sum?.requests ?? 0),
-                limits: { free: limits.requests.free, paid: limits.requests.paid },
+                limits: comparableLimits(limits.requests, period),
+                note: "HTTP analytics can include traffic Cloudflare excludes from billing.",
               },
               {
                 label: "Bandwidth",
                 used: httpGroup.sum?.bytes ?? 0,
                 unit: formatBytes(httpGroup.sum?.bytes ?? 0),
-                limits: { free: limits.bandwidth.free, paid: limits.bandwidth.paid },
+                limits: comparableLimits(limits.bandwidth, period),
+                note: "HTTP analytics can differ from billable bandwidth.",
               },
             ],
           });

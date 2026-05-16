@@ -336,6 +336,11 @@ button {
   flex-shrink: 0;
 }
 
+.metric-note {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 .empty-state {
   text-align: center;
   padding: 64px 24px;

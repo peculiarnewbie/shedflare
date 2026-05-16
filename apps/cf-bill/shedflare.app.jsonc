@@ -1,8 +1,8 @@
 {
   "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
   "id": "cf-bill",
-  "name": "Shedflare CF Bill",
-  "description": "Cloudflare usage vs plan limits dashboard",
+  "name": "Shedflare CF Usage",
+  "description": "Cloudflare estimated usage vs plan limits dashboard",
   "dependsOn": ["auth"],
   "defaultSubdomain": "cf-bill",
   "vars": {

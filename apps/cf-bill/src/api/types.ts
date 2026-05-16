@@ -2,7 +2,8 @@ export interface UsageMetric {
   label: string;
   used: number;
   unit: string;
-  limits: { free: number; paid: number };
+  limits: { free: number; paid: number; label?: string };
+  note?: string;
 }
 
 export interface ProductUsage {

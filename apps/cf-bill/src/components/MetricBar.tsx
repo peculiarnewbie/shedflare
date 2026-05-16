@@ -9,6 +9,13 @@ function pct(used: number, limit: number): number {
   return Math.min((used / limit) * 100, 100);
 }
 
+function formatLimit(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
 export default function MetricBar(props: Props) {
   const m = props.metric;
   const freePct = pct(m.used, m.limits.free);
@@ -26,16 +33,18 @@ export default function MetricBar(props: Props) {
           <div class="metric-bar-track">
             <div class="metric-bar-fill free" style={{ width: `${freePct}%` }} />
           </div>
-          <span class="metric-bar-limit">{m.limits.free.toLocaleString()}</span>
+          <span class="metric-bar-limit">{formatLimit(m.limits.free)}</span>
         </div>
         <div class="metric-bar-group">
           <span class="metric-bar-label">Paid</span>
           <div class="metric-bar-track">
             <div class="metric-bar-fill paid" style={{ width: `${paidPct}%` }} />
           </div>
-          <span class="metric-bar-limit">{m.limits.paid.toLocaleString()}</span>
+          <span class="metric-bar-limit">{formatLimit(m.limits.paid)}</span>
         </div>
       </div>
+      {m.limits.label && <div class="metric-note">Compared against {m.limits.label}.</div>}
+      {m.note && <div class="metric-note">{m.note}</div>}
     </div>
   );
 }

@@ -37,10 +37,10 @@ function AppLayout(props: { children?: JSX.Element }) {
       <header class="top-bar">
         <div class="top-bar-brand">
           <div class="top-bar-brand-dot" />
-          <span>CF Bill</span>
+          <span>CF Usage</span>
         </div>
         <div class="top-bar-separator" />
-        <span class="top-bar-title">Usage vs Plan Limits</span>
+        <span class="top-bar-title">Estimated Usage vs Plan Limits</span>
         <div class="top-bar-right">
           <span class="top-bar-email">{sessionCtrl.session()?.email}</span>
           <form action="/api/auth/logout" method="post">
@@ -61,15 +61,17 @@ export default function App() {
 
   return (
     <MetaProvider>
-      <Title>Shedflare CF Bill</Title>
+      <Title>Shedflare CF Usage</Title>
       <Show when={!sessionCtrl.loading()}>
         <Show
           when={sessionCtrl.session()}
           fallback={
             <div class="session-overlay">
               <div class="session-overlay-card">
-                <h2>CF Bill</h2>
-                <p class="session-overlay-desc">Cloudflare usage vs plan limits dashboard.</p>
+                <h2>CF Usage</h2>
+                <p class="session-overlay-desc">
+                  Cloudflare usage estimate vs plan limits dashboard.
+                </p>
                 <a href="/api/auth/login" class="btn btn-primary">
                   Sign in with Google
                 </a>

@@ -45,7 +45,7 @@ export default function Dashboard() {
     <div>
       <div class="page-header">
         <div>
-          <h1>Usage Dashboard</h1>
+          <h1>Usage Monitor</h1>
           {period() && (
             <p class="period-label">
               {new Date(period()!.start).toLocaleDateString()} –{" "}
@@ -69,7 +69,9 @@ export default function Dashboard() {
       {!data() && !error() && (
         <div class="empty-state">
           <div class="empty-state-title">Loading usage data...</div>
-          <div class="empty-state-desc">Fetching from Cloudflare GraphQL Analytics API.</div>
+          <div class="empty-state-desc">
+            Fetching Cloudflare usage estimates from GraphQL Analytics.
+          </div>
         </div>
       )}
 
@@ -84,8 +86,8 @@ export default function Dashboard() {
       )}
 
       <p class="footnote">
-        Data from Cloudflare GraphQL Analytics API. May differ from final invoice — see Cloudflare
-        dashboard for billing-grade numbers.
+        Cloudflare GraphQL Analytics provides aggregated usage estimates, not billing-grade
+        metering. Billable usage can exclude traffic that analytics includes.
       </p>
     </div>
   );
