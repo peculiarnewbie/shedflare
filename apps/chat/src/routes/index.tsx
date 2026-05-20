@@ -535,6 +535,7 @@ export default function Home() {
   const [isDragging, setIsDragging] = createSignal(false);
   let dragCounter = 0;
   const removedUploadLocalIds = new Set<string>();
+  const pendingUploads = new Map<string, Promise<unknown>>();
 
   const workspaces = createMemo(() =>
     (allWorkspaces() as Workspace[])
@@ -659,8 +660,10 @@ export default function Home() {
         setComposer("attachments", (prev) => [...prev, draftAttachment]);
       }
 
+      const uploadPromise = uploadFile(file, thread.id);
+      pendingUploads.set(localId, uploadPromise);
       try {
-        const result = await uploadFile(file, thread.id);
+        const result = await uploadPromise;
         if (removedUploadLocalIds.delete(localId)) {
           deleteAttachmentAction(result.attachment.id);
           continue;
@@ -706,6 +709,8 @@ export default function Home() {
         } else {
           setComposer("attachments", (att) => att.localId === localId, "status", "failed");
         }
+      } finally {
+        pendingUploads.delete(localId);
       }
     }
     if (fileInputRef) fileInputRef.value = "";
@@ -766,7 +771,15 @@ export default function Home() {
 
   const SCROLL_THRESHOLD = 80; // px from bottom to consider "at bottom"
 
+  const [reasoningNearBottom, setReasoningNearBottom] = createSignal(true);
+
   let lastScrollTop = 0;
+
+  const handleReasoningScroll = (e: Event) => {
+    const el = e.currentTarget as HTMLElement;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    setReasoningNearBottom(scrollHeight - scrollTop - clientHeight <= 40);
+  };
 
   const handleTimelineScroll = () => {
     if (!timelineRef) return;
@@ -1378,6 +1391,12 @@ export default function Home() {
     if (effectiveExpandReasoningByDefault()) return false;
     return !streaming;
   };
+  const toggleReasoningCollapse = (messageId: string, key: string, streaming: boolean) => {
+    setCollapsedChipByKey(
+      chipCollapseKey(messageId, key),
+      !isReasoningCollapsed(messageId, key, streaming),
+    );
+  };
 
   const expandedStreamingReasoningFingerprint = createMemo(() => {
     const messageId = messageIds().find((id) => {
@@ -1411,7 +1430,7 @@ export default function Home() {
     scrollFingerprint();
     expandedStreamingReasoningFingerprint();
     requestAnimationFrame(() => {
-      if (streamingReasoningTextRef) {
+      if (streamingReasoningTextRef && reasoningNearBottom()) {
         streamingReasoningTextRef.scrollTop = streamingReasoningTextRef.scrollHeight;
       }
       if (timelineRef && isNearBottom()) {
@@ -1445,6 +1464,13 @@ export default function Home() {
       !message.text?.trim()
     );
   };
+  const allTimelineItemsFinished = (items: TimelineItem[]) =>
+    items.length > 0 &&
+    items.every((item) => {
+      if (item.kind === "search" || item.kind === "extract") return item.status !== "active";
+      if (item.kind === "reasoning" || item.kind === "markdown") return !item.streaming;
+      return true;
+    });
   const hasAssistantPrelude = (message: Message) =>
     message.role === "assistant" &&
     !isInterleavedMessage(message.id) &&
@@ -1476,7 +1502,7 @@ export default function Home() {
     message.role === "assistant" && isInterleavedMessage(message.id);
   const thinkingLabel = (messageId: string) => {
     const tokens = thinkingTokens(messageId);
-    return tokens != null ? `${formatTokenCount(tokens)} thinking tokens` : "Thinking…";
+    return tokens != null ? `${formatTokenCount(tokens)} thinking tokens` : "Generating…";
   };
   const isAssistantPreludeCollapsed = (messageId: string) =>
     collapsedProgressByMessage[messageId] ?? false;
@@ -1823,12 +1849,13 @@ export default function Home() {
                       <Show
                         when={
                           isWaitingForVisibleAnswer(message()) &&
-                          assistantTimeline(message().id).length === 0
+                          (assistantTimeline(message().id).length === 0 ||
+                            allTimelineItemsFinished(assistantTimeline(message().id)))
                         }
                       >
                         <div class="thinking-indicator">
                           <span class="thinking-spinner" />
-                          <span>Thinking…</span>
+                          <span>Generating…</span>
                         </div>
                       </Show>
                       <Index each={assistantTimeline(message().id)}>
@@ -2165,7 +2192,11 @@ export default function Home() {
                                           class="assistant-chip-toggle"
                                           aria-expanded={!collapsed()}
                                           onClick={() =>
-                                            toggleChipCollapse(message().id, data().key)
+                                            toggleReasoningCollapse(
+                                              message().id,
+                                              data().key,
+                                              data().streaming,
+                                            )
                                           }
                                         >
                                           <span class="assistant-chip-icon" aria-hidden="true">
@@ -2210,6 +2241,9 @@ export default function Home() {
                                               data().streaming
                                                 ? (el) => (streamingReasoningTextRef = el)
                                                 : undefined
+                                            }
+                                            onScroll={
+                                              data().streaming ? handleReasoningScroll : undefined
                                             }
                                           >
                                             {data().text}
@@ -2995,16 +3029,31 @@ export default function Home() {
     });
     if (
       !thread ||
+      !isConnected() ||
+      isSelectedThreadBusy() ||
       (!composerText().trim() && composerAttachments().length === 0) ||
       composer.sending
     ) {
       console.log("[send] blocked", {
         noThread: !thread,
+        noConnection: !isConnected(),
+        threadBusy: isSelectedThreadBusy(),
         noContent: !composerText().trim() && composerAttachments().length === 0,
         alreadySending: composer.sending,
       });
       return;
     }
+
+    // Wait for any in-progress uploads before sending
+    const uploading = composerAttachments().filter((a) => a.status === "uploading");
+    if (uploading.length > 0) {
+      setComposer("sending", true);
+      const promises = uploading
+        .map((a) => pendingUploads.get(a.localId))
+        .filter((p): p is Promise<unknown> => !!p);
+      await Promise.allSettled(promises);
+    }
+
     setComposer("sending", true);
     try {
       const text = composerText().trim();
@@ -3554,13 +3603,7 @@ export default function Home() {
                       <button
                         type="button"
                         class="composer-send-btn"
-                        disabled={
-                          !isConnected() ||
-                          composer.sending ||
-                          composerAttachments().some(
-                            (attachment) => attachment.status === "uploading",
-                          )
-                        }
+                        disabled={!isConnected() || composer.sending}
                         onClick={sendMessage}
                         title={
                           !isConnected() ? "Connecting…" : composer.sending ? "Sending…" : "Send"

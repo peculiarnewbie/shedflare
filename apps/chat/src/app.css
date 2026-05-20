@@ -588,7 +588,7 @@ a {
   overflow-anchor: none;
 }
 
-.timeline * {
+.timeline :not(.timeline-anchor) {
   overflow-anchor: none;
 }
 
