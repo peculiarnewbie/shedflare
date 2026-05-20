@@ -1,0 +1,30 @@
+{
+  "name": "@shedflare/site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "typecheck": "tsc --noEmit",
+    "deploy": "vp exec alchemy deploy alchemy.run.ts",
+    "destroy": "vp exec alchemy destroy alchemy.run.ts",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.4",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.32.3",
+    "@cloudflare/workers-types": "^4.20260415.1",
+    "vite-plugin-solid": "^2.11.12",
+    "vite-plus": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

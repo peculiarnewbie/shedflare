@@ -1,0 +1,413 @@
+:root {
+  color: #f5f0df;
+  background: #10130d;
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ink: #f5f0df;
+  --muted: #bdb59b;
+  --field: #181d13;
+  --line: rgba(245, 240, 223, 0.18);
+  --acid: #d7ff4f;
+  --clay: #c96f3d;
+  --sky: #8ed8ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(215, 255, 79, 0.12), transparent 28rem),
+    radial-gradient(circle at 86% 24%, rgba(201, 111, 61, 0.14), transparent 30rem),
+    linear-gradient(135deg, rgba(245, 240, 223, 0.05) 0 1px, transparent 1px 18px), #10130d;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code {
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: rgba(245, 240, 223, 0.08);
+  padding: 0.08rem 0.32rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.topbar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: rgba(16, 19, 13, 0.82);
+  padding: 1rem clamp(1rem, 4vw, 3rem);
+  backdrop-filter: blur(18px);
+}
+
+.brand,
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.brand {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.brand-mark {
+  display: grid;
+  width: 2.2rem;
+  height: 2.2rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--acid);
+  color: #10130d;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.nav {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.nav a:hover,
+.docs-sidebar a:hover {
+  color: var(--acid);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.75fr);
+  gap: clamp(2rem, 6vw, 5rem);
+  min-height: 78vh;
+  align-items: center;
+  padding: clamp(3rem, 8vw, 7rem) clamp(1rem, 5vw, 5rem);
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  color: var(--acid);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  max-width: 13ch;
+  margin-bottom: 1.4rem;
+  font-size: clamp(4rem, 13vw, 10.5rem);
+  line-height: 0.82;
+  letter-spacing: -0.085em;
+}
+
+h2 {
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  line-height: 0.92;
+  letter-spacing: -0.06em;
+}
+
+h3 {
+  margin-bottom: 0.7rem;
+  font-size: 1.6rem;
+  letter-spacing: -0.04em;
+}
+
+.lede,
+.doc-lede {
+  max-width: 45rem;
+  color: var(--muted);
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 2rem;
+}
+
+.button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.9rem 1.2rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.button.primary {
+  border-color: transparent;
+  background: var(--acid);
+  color: #10130d;
+}
+
+.button.secondary {
+  background: rgba(245, 240, 223, 0.06);
+}
+
+.cloud-card {
+  position: relative;
+  min-height: 32rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 2rem;
+  background: linear-gradient(160deg, rgba(245, 240, 223, 0.12), rgba(245, 240, 223, 0.02));
+}
+
+.core,
+.node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(16, 19, 13, 0.76);
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+.core {
+  inset: 35% 20%;
+  color: var(--acid);
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+.node {
+  width: 5.6rem;
+  height: 5.6rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.node-a {
+  top: 12%;
+  left: 12%;
+  color: var(--sky);
+}
+.node-b {
+  top: 16%;
+  right: 14%;
+  color: var(--clay);
+}
+.node-c {
+  right: 12%;
+  bottom: 14%;
+  color: var(--acid);
+}
+.node-d {
+  bottom: 12%;
+  left: 16%;
+  color: var(--muted);
+}
+
+.orbit {
+  position: absolute;
+  inset: 18%;
+  border: 1px dashed rgba(245, 240, 223, 0.18);
+  border-radius: 50%;
+}
+
+.orbit-two {
+  inset: 8% 24%;
+  transform: rotate(36deg);
+}
+
+.statement {
+  border-block: 1px solid var(--line);
+  padding: clamp(2rem, 5vw, 4rem) clamp(1rem, 5vw, 5rem);
+  background: var(--acid);
+  color: #10130d;
+}
+
+.statement p {
+  max-width: 58rem;
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 4.8rem);
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+}
+
+.grid-section {
+  padding: clamp(3rem, 7vw, 6rem) clamp(1rem, 5vw, 5rem);
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.app-card,
+.guide-card,
+.facts div,
+.steps {
+  border: 1px solid var(--line);
+  border-radius: 1.4rem;
+  background: rgba(245, 240, 223, 0.055);
+  padding: 1.3rem;
+}
+
+.app-card {
+  min-height: 15rem;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease;
+}
+
+.app-card:hover {
+  border-color: var(--acid);
+  transform: translateY(-0.25rem);
+}
+
+.app-card span {
+  display: block;
+  margin-bottom: 2.8rem;
+  color: var(--clay);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.app-card p,
+.guide-card p,
+.docs-page p,
+dd {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 52rem);
+  gap: clamp(2rem, 6vw, 5rem);
+  padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 5vw, 5rem);
+}
+
+.docs-sidebar {
+  position: sticky;
+  top: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  align-self: start;
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.86rem;
+}
+
+.docs-page h1 {
+  max-width: 11ch;
+  font-size: clamp(3.8rem, 8vw, 7rem);
+}
+
+.guide-list,
+.facts {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.guide-card h2 {
+  margin-bottom: 0.8rem;
+  font-size: 1.8rem;
+}
+
+.facts {
+  margin-bottom: 2rem;
+}
+
+dt {
+  margin-bottom: 0.5rem;
+  color: var(--acid);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 0;
+}
+
+.steps p:last-child {
+  margin-bottom: 0;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  padding: 2rem clamp(1rem, 5vw, 5rem);
+  color: var(--muted);
+}
+
+.footer p {
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  .topbar,
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .hero,
+  .docs-layout,
+  .app-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-card {
+    min-height: 24rem;
+  }
+
+  .docs-sidebar {
+    position: static;
+    flex-flow: row wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  h1 {
+    font-size: clamp(3.4rem, 18vw, 5rem);
+  }
+
+  .core {
+    inset: 36% 12%;
+  }
+}
