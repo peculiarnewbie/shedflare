@@ -3,10 +3,12 @@
  */
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { PageState } from "../components/PageState";
 
 export default function PayeesPage() {
   const [payees, setPayees] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [newName, setNewName] = createSignal("");
   const [mergeSource, setMergeSource] = createSignal<string>("");
   const [mergeTarget, setMergeTarget] = createSignal<string>("");
@@ -16,14 +18,17 @@ export default function PayeesPage() {
   });
 
   async function loadPayees() {
+    setError(null);
     try {
       const res = await fetch("/api/payees");
       if (res.ok) {
         const data = (await res.json()) as any;
         setPayees(data.payees ?? []);
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load payees");
     } finally {
       setLoading(false);
     }
@@ -93,7 +98,12 @@ export default function PayeesPage() {
       </div>
 
       {/* Payee list */}
-      <Show when={!loading()} fallback={<div class="loading">Loading payees...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadPayees}
+        loadingMessage="Loading payees..."
+      >
         <Show when={payees().length > 0} fallback={<div class="empty-state">No payees yet.</div>}>
           <div class="payee-list">
             <For each={payees()}>
@@ -112,7 +122,7 @@ export default function PayeesPage() {
             </For>
           </div>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

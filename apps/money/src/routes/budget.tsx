@@ -6,6 +6,7 @@ import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
+import { PageState } from "../components/PageState";
 
 interface CategoryBudgetRow {
   categoryId: string;
@@ -37,6 +38,7 @@ export default function BudgetPage() {
   const [categories, setCategories] = createSignal<CategoryBudgetRow[]>([]);
   const [toBudget, setToBudget] = createSignal(0);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
 
   // Load budget data
   createEffect(() => {
@@ -45,6 +47,7 @@ export default function BudgetPage() {
   });
 
   async function loadBudget() {
+    setError(null);
     try {
       const mk = monthKey();
       const [y, m] = mk.split("-").map(Number);
@@ -54,9 +57,11 @@ export default function BudgetPage() {
         const data = (await res.json()) as any;
         setCategories(data.categories ?? []);
         setToBudget(data.toBudget ?? 0);
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load budget");
     } finally {
       setLoading(false);
     }
@@ -135,7 +140,12 @@ export default function BudgetPage() {
         </div>
       </div>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading budget...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadBudget}
+        loadingMessage="Loading budget..."
+      >
         <Show
           when={grouped().length > 0}
           fallback={
@@ -211,7 +221,7 @@ export default function BudgetPage() {
             </For>
           </div>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

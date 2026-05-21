@@ -221,6 +221,16 @@ const CREATE_TABLES = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_events_op_id ON events(op_id)`,
 
+  // transaction_filters
+  `CREATE TABLE IF NOT EXISTS transaction_filters (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    conditions TEXT NOT NULL,
+    conditions_op TEXT DEFAULT 'and',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
   // commands (idempotent command tracking)
   `CREATE TABLE IF NOT EXISTS commands (
     op_id TEXT PRIMARY KEY,

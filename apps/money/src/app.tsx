@@ -10,6 +10,7 @@ import Dashboard from "./routes/index";
 import BudgetPage from "./routes/budget";
 import AccountsPage from "./routes/accounts";
 import AccountPage from "./routes/account";
+import AllTransactionsPage from "./routes/transactions";
 import ReportsPage from "./routes/reports";
 import SchedulesPage from "./routes/schedules";
 import ScheduleDetailPage from "./routes/schedule";
@@ -117,6 +118,7 @@ export default function App() {
           <Route path="/budget" component={BudgetPage} />
           <Route path="/accounts" component={AccountsPage} />
           <Route path="/accounts/:id" component={AccountPage} />
+          <Route path="/transactions" component={AllTransactionsPage} />
           <Route path="/reports" component={ReportsPage} />
           <Route path="/schedules" component={SchedulesPage} />
           <Route path="/schedules/:id" component={ScheduleDetailPage} />

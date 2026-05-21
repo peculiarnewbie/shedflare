@@ -4,23 +4,11 @@ import { dispatch } from "../lib/pending-ops";
 import { transactionsCollection, categoriesCollection } from "../lib/collections";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
-import { useDateFormat } from "../lib/date-format";
-
-interface TransactionRow {
-  id: string;
-  date: string;
-  amount: number;
-  payee: string | null;
-  categoryId: string | null;
-  categoryName: string | null;
-  notes: string | null;
-  cleared: boolean;
-  reconciled: boolean;
-  isParent?: boolean;
-  isChild?: boolean;
-  parentId?: string | null;
-  tags?: { id: string; name: string; color: string | null }[];
-}
+import TransactionFilters from "../components/TransactionFilters";
+import TransactionTable from "../components/TransactionTable";
+import { PageState } from "../components/PageState";
+import type { TransactionRow } from "../components/TransactionTable";
+import type { Condition } from "../components/TransactionFilters";
 
 interface CategoryRow {
   id: string;
@@ -28,46 +16,29 @@ interface CategoryRow {
   groupName: string | null;
 }
 
-type TxField = "date" | "payee" | "amount" | "category" | "notes";
-
-interface SplitChild {
-  tempId: string;
-  categoryId: string;
-  amount: string;
-  notes: string;
-}
-
 export default function AccountPage() {
-  // Close tag picker on outside click
-  createEffect(() => {
-    if (showTagPicker()) {
-      const handler = () => setShowTagPicker(null);
-      document.addEventListener("click", handler);
-      onCleanup(() => document.removeEventListener("click", handler));
-    }
-  });
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [account, setAccount] = createSignal<any>(null);
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
   const [categories, setCategories] = createSignal<CategoryRow[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [showImport, setShowImport] = createSignal(false);
   const [showAddTx, setShowAddTx] = createSignal(false);
   const [showReconcile, setShowReconcile] = createSignal(false);
   const accountId = params.id;
   const fmt = useCurrency();
   const privacyBlur = usePrivacyMode();
-  const df = useDateFormat();
 
-  const [editingId, setEditingId] = createSignal<string | null>(null);
-  const [editingField, setEditingField] = createSignal<TxField | null>(null);
+  const [filterId, setFilterId] = createSignal<string | null>(null);
+  const [filterConditions, setFilterConditions] = createSignal<Condition[]>([]);
+  const [_filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
 
   const [tagList, setTagList] = createSignal<any[]>([]);
   const [txTags, setTxTags] = createSignal<
     Record<string, { id: string; name: string; color: string | null }[]>
   >({});
-  const [showTagPicker, setShowTagPicker] = createSignal<string | null>(null);
 
   const reconciliableTransactions = createMemo(() =>
     transactions().filter((tx) => tx.cleared && !tx.reconciled && !tx.isChild),
@@ -79,68 +50,17 @@ export default function AccountPage() {
   const [txCategory, setTxCategory] = createSignal("");
   const [txNotes, setTxNotes] = createSignal("");
 
-  const [splitParentId, setSplitParentId] = createSignal<string | null>(null);
-  const [splitChildren, setSplitChildren] = createSignal<SplitChild[]>([]);
-
-  function initSplit(parent: TransactionRow) {
-    setSplitParentId(parent.id);
-    setSplitChildren([{ tempId: crypto.randomUUID(), categoryId: "", amount: "", notes: "" }]);
+  function handleFilterChange(
+    conditions: Condition[],
+    conditionsOp: "and" | "or",
+    fId: string | null,
+  ) {
+    setFilterConditions(conditions);
+    setFilterConditionsOp(conditionsOp);
+    setFilterId(fId);
+    setLoading(true);
+    void loadAccount();
   }
-
-  function addSplitChild() {
-    setSplitChildren((prev) => [
-      ...prev,
-      { tempId: crypto.randomUUID(), categoryId: "", amount: "", notes: "" },
-    ]);
-  }
-
-  function updateSplitChild(tempId: string, field: keyof SplitChild, value: string) {
-    setSplitChildren((prev) =>
-      prev.map((c) => (c.tempId === tempId ? { ...c, [field]: value } : c)),
-    );
-  }
-
-  function cancelSplit() {
-    setSplitParentId(null);
-    setSplitChildren([]);
-  }
-
-  function saveSplit() {
-    const parentId = splitParentId();
-    if (!parentId) return;
-
-    const parent = transactions().find((t) => t.id === parentId);
-    if (!parent) return;
-
-    const children = splitChildren()
-      .map((c) => {
-        const cents = fmt().parseInput(c.amount);
-        if (cents === 0) return null;
-        return {
-          accountId: accountId,
-          date: parent.date,
-          amount: cents,
-          categoryId: c.categoryId || null,
-          notes: c.notes || undefined,
-          payee: parent.payee || undefined,
-        };
-      })
-      .filter(Boolean);
-
-    if (children.length === 0) return;
-
-    dispatch("split_transaction", { parentId, children });
-
-    cancelSplit();
-  }
-
-  const payeeNames = createMemo(() => {
-    const names = new Set<string>();
-    for (const tx of transactions()) {
-      if (tx.payee) names.add(tx.payee);
-    }
-    return [...names].sort();
-  });
 
   createEffect(() => {
     if (accountId) {
@@ -164,18 +84,19 @@ export default function AccountPage() {
   });
 
   async function loadAccount() {
+    setError(null);
     try {
+      const fId = filterId();
+      const filterParam = fId ? `?filter=${encodeURIComponent(fId)}` : "";
       const [acctRes, txRes, txTagsRes] = await Promise.all([
         fetch(`/api/accounts/${accountId}`),
-        fetch(`/api/accounts/${accountId}/transactions`),
+        fetch(`/api/accounts/${accountId}/transactions${filterParam}`),
         fetch(`/api/accounts/${accountId}/tags`),
       ]);
       if (acctRes.ok) setAccount((await acctRes.json()) as any);
       if (txRes.ok) {
         const data = (await txRes.json()) as any;
-        if (data.transactions && data.transactions.length > 0) {
-          setTransactions(data.transactions);
-        }
+        setTransactions(data.transactions ?? []);
       }
       if (txTagsRes.ok) {
         const data = (await txTagsRes.json()) as any;
@@ -191,8 +112,8 @@ export default function AccountPage() {
         }
         setTxTags(map);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load account");
     } finally {
       setLoading(false);
     }
@@ -222,42 +143,13 @@ export default function AccountPage() {
     }
   }
 
-  function handleAddTag(txId: string, tagId: string) {
-    dispatch("add_transaction_tag", { transactionId: txId, tagId });
-    const tag = tagList().find((t: any) => t.id === tagId);
-    if (tag) {
-      setTxTags((prev) => {
-        const existing = [...(prev[txId] ?? [])];
-        if (!existing.find((t) => t.id === tagId)) {
-          existing.push({ id: tag.id, name: tag.name, color: tag.color ?? null });
-        }
-        return { ...prev, [txId]: existing };
-      });
-    }
-    setShowTagPicker(null);
-  }
-
-  function handleRemoveTag(txId: string, tagId: string) {
-    dispatch("remove_transaction_tag", { transactionId: txId, tagId });
-    setTxTags((prev) => ({
-      ...prev,
-      [txId]: (prev[txId] ?? []).filter((t) => t.id !== tagId),
-    }));
-  }
-
-  async function handleDelete(txId: string) {
-    if (!confirm("Delete this transaction?")) return;
-    dispatch("delete_transaction", { id: txId });
-    setTransactions((prev) => prev.filter((t) => t.id !== txId));
-  }
-
   function handleAddTransaction(e: Event) {
     e.preventDefault();
     const raw = txAmount();
     const cents = fmt().parseInput(raw);
     if (cents === 0) return;
 
-    const payload = {
+    dispatch("create_transaction", {
       row: {
         accountId,
         date: txDate(),
@@ -267,24 +159,7 @@ export default function AccountPage() {
         categoryId: txCategory() || null,
         cleared: true,
       },
-    };
-
-    dispatch("create_transaction", payload);
-
-    setTransactions((prev) => [
-      {
-        id: `pending_${Date.now()}`,
-        date: txDate(),
-        amount: cents,
-        payee: txPayee() || null,
-        categoryId: txCategory() || null,
-        categoryName: categories().find((c) => c.id === txCategory())?.name ?? null,
-        notes: txNotes() || null,
-        cleared: true,
-        reconciled: false,
-      },
-      ...prev,
-    ]);
+    });
 
     setTxDate(new Date().toISOString().slice(0, 10));
     setTxPayee("");
@@ -300,110 +175,9 @@ export default function AccountPage() {
     navigate("/accounts");
   }
 
-  function startEdit(txId: string, field: TxField) {
-    setEditingId(txId);
-    setEditingField(field);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditingField(null);
-  }
-
-  function saveEdit(tx: TransactionRow, field: TxField, value: string) {
-    if (field === "amount") {
-      const cents = fmt().parseInput(value);
-      if (cents !== tx.amount) {
-        dispatch("update_transaction", {
-          id: tx.id,
-          fields: { amount: cents },
-        });
-        setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, amount: cents } : t)));
-      }
-    } else if (field === "date") {
-      if (value !== tx.date) {
-        dispatch("update_transaction", {
-          id: tx.id,
-          fields: { date: value },
-        });
-        setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, date: value } : t)));
-      }
-    } else if (field === "payee") {
-      if (value !== (tx.payee ?? "")) {
-        dispatch("update_transaction", {
-          id: tx.id,
-          fields: { payee: value || undefined },
-        });
-        setTransactions((prev) =>
-          prev.map((t) => (t.id === tx.id ? { ...t, payee: value || null } : t)),
-        );
-      }
-    } else if (field === "notes") {
-      if (value !== (tx.notes ?? "")) {
-        dispatch("update_transaction", {
-          id: tx.id,
-          fields: { notes: value || undefined },
-        });
-        setTransactions((prev) =>
-          prev.map((t) => (t.id === tx.id ? { ...t, notes: value || null } : t)),
-        );
-      }
-    } else if (field === "category") {
-      const catId = value || null;
-      if (catId !== tx.categoryId) {
-        dispatch("update_transaction", {
-          id: tx.id,
-          fields: { categoryId: catId },
-        });
-        const catName = categories().find((c) => c.id === catId)?.name ?? null;
-        setTransactions((prev) =>
-          prev.map((t) =>
-            t.id === tx.id ? { ...t, categoryId: catId, categoryName: catName } : t,
-          ),
-        );
-      }
-    }
-    cancelEdit();
-  }
-
-  function toggleCleared(tx: TransactionRow) {
-    const next = !tx.cleared;
-    dispatch("update_transaction", {
-      id: tx.id,
-      fields: { cleared: next },
-    });
-    setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, cleared: next } : t)));
-  }
-
-  function toggleReconciled(tx: TransactionRow) {
-    const next = !tx.reconciled;
-    dispatch("update_transaction", {
-      id: tx.id,
-      fields: { reconciled: next },
-    });
-    setTransactions((prev) => prev.map((t) => (t.id === tx.id ? { ...t, reconciled: next } : t)));
-  }
-
-  function formatCents(cents: number): string {
-    return fmt().formatCents(cents);
-  }
-
   const runningBalance = createMemo(() =>
     transactions().reduce((sum, tx) => sum + (tx.amount ?? 0), 0),
   );
-
-  const transactionsWithBalance = createMemo(() => {
-    const txs = [...transactions()].sort(
-      (a, _b) => new Date(a.date).getTime() - new Date(a.date).getTime(),
-    );
-    const result: Array<TransactionRow & { balance: number }> = [];
-    let balance = 0;
-    for (const tx of txs) {
-      balance += tx.amount;
-      result.push({ ...tx, balance });
-    }
-    return result.reverse();
-  });
 
   return (
     <div class="page">
@@ -431,15 +205,19 @@ export default function AccountPage() {
       <Show when={account()}>
         <div class="account-header">
           <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
-            {formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
+            {fmt().formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
           </div>
           <Show when={account().lastReconciled}>
-            <div class="account-reconciled-info">
-              Last reconciled: {df().formatDate(account().lastReconciled)}
-            </div>
+            <div class="account-reconciled-info">Last reconciled: {account().lastReconciled}</div>
           </Show>
         </div>
       </Show>
+
+      <TransactionFilters
+        accountId={params.id}
+        activeConditions={filterConditions()}
+        onConditionsChange={handleFilterChange}
+      />
 
       <Show when={showAddTx()}>
         <div class="section">
@@ -462,7 +240,7 @@ export default function AccountPage() {
                 <label>Payee</label>
                 <input
                   type="text"
-                  list="payee-list"
+                  list="tx-payee-list"
                   placeholder="e.g. Grocery Store"
                   value={txPayee()}
                   onInput={(e) => setTxPayee(e.currentTarget.value)}
@@ -533,351 +311,25 @@ export default function AccountPage() {
         />
       </Show>
 
-      <datalist id="payee-list">
-        <For each={payeeNames()}>{(name) => <option value={name} />}</For>
-      </datalist>
-
-      <Show when={!loading()} fallback={<div class="loading">Loading transactions...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadAccount}
+        loadingMessage="Loading transactions..."
+      >
         <Show
-          when={transactionsWithBalance().length > 0}
+          when={transactions().length > 0}
           fallback={<div class="empty-state">No transactions yet.</div>}
         >
-          <div class="transaction-table">
-            <div class="tx-table-header">
-              <span class="tx-col-cr">C/R</span>
-              <span class="tx-col-date">Date</span>
-              <span class="tx-col-payee">Payee</span>
-              <span class="tx-col-category">Category</span>
-              <span class="tx-col-tags">Tags</span>
-              <span class="tx-col-amount">Amount ({fmt().symbol})</span>
-              <span class="tx-col-balance">Balance</span>
-              <span class="tx-col-actions" />
-            </div>
-            <For each={transactionsWithBalance()}>
-              {(tx) => {
-                const isEditing = (field: TxField) =>
-                  editingId() === tx.id && editingField() === field;
-                const isSplitting = splitParentId() === tx.id;
-
-                return (
-                  <>
-                    <div
-                      class="tx-row"
-                      classList={{
-                        uncleared: !tx.cleared,
-                        reconciled: tx.reconciled,
-                        "tx-row-parent": tx.isParent,
-                        "tx-row-child": tx.isChild,
-                      }}
-                    >
-                      <span class="tx-col-cr">
-                        <button
-                          class="btn btn-icon btn-xs"
-                          classList={{ "btn-ghost": !tx.cleared, "btn-primary": tx.cleared }}
-                          style={{ padding: "2px 6px", "font-size": "0.65rem" }}
-                          onClick={() => toggleCleared(tx)}
-                          title={tx.cleared ? "Cleared" : "Uncleared"}
-                        >
-                          C
-                        </button>
-                        <button
-                          class="btn btn-icon btn-xs"
-                          classList={{
-                            "btn-ghost": !tx.reconciled,
-                            "btn-reconciled": tx.reconciled,
-                          }}
-                          style={{ padding: "2px 6px", "font-size": "0.65rem" }}
-                          onClick={() => toggleReconciled(tx)}
-                          title={tx.reconciled ? "Reconciled" : "Not reconciled"}
-                        >
-                          🔒
-                        </button>
-                      </span>
-
-                      <span class="tx-col-date">
-                        {isEditing("date") ? (
-                          <input
-                            type="date"
-                            class="tx-inline-input"
-                            value={tx.date}
-                            onBlur={(e) => saveEdit(tx, "date", e.currentTarget.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                saveEdit(tx, "date", (e.target as HTMLInputElement).value);
-                              if (e.key === "Escape") cancelEdit();
-                            }}
-                            autofocus
-                          />
-                        ) : (
-                          <span onClick={() => startEdit(tx.id, "date")}>
-                            {df().formatDate(tx.date)}
-                          </span>
-                        )}
-                      </span>
-
-                      <span class="tx-col-payee">
-                        {isEditing("payee") ? (
-                          <input
-                            type="text"
-                            list="payee-list"
-                            class="tx-inline-input"
-                            value={tx.payee ?? ""}
-                            onBlur={(e) => saveEdit(tx, "payee", e.currentTarget.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                saveEdit(tx, "payee", (e.target as HTMLInputElement).value);
-                              if (e.key === "Escape") cancelEdit();
-                            }}
-                            autofocus
-                          />
-                        ) : (
-                          <span onClick={() => startEdit(tx.id, "payee")}>
-                            {tx.isParent ? <em>Split</em> : (tx.payee ?? "—")}
-                          </span>
-                        )}
-                      </span>
-
-                      <span class="tx-col-category">
-                        {isEditing("category") ? (
-                          <select
-                            class="tx-inline-select"
-                            value={tx.categoryId ?? ""}
-                            onBlur={(e) => saveEdit(tx, "category", e.currentTarget.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                saveEdit(
-                                  tx,
-                                  "category",
-                                  (e.currentTarget as HTMLSelectElement).value,
-                                );
-                              if (e.key === "Escape") cancelEdit();
-                            }}
-                            autofocus
-                          >
-                            <option value="">Uncategorized</option>
-                            <For each={categories()}>
-                              {(cat) => (
-                                <option value={cat.id}>
-                                  {cat.groupName ? `${cat.groupName}: ` : ""}
-                                  {cat.name}
-                                </option>
-                              )}
-                            </For>
-                          </select>
-                        ) : (
-                          <span
-                            classList={{ "tx-split-label": tx.isParent }}
-                            onClick={() => startEdit(tx.id, "category")}
-                          >
-                            {tx.isParent ? "Split" : (tx.categoryName ?? "Uncategorized")}
-                          </span>
-                        )}
-                      </span>
-
-                      <span class="tx-col-tags">
-                        <div
-                          style={{
-                            display: "flex",
-                            "flex-wrap": "wrap",
-                            gap: "2px",
-                            "align-items": "center",
-                          }}
-                        >
-                          <For each={txTags()[tx.id] ?? []}>
-                            {(tag) => (
-                              <span
-                                class="tag-chip-sm"
-                                style={{
-                                  background: tag.color ?? "#4f46e5",
-                                  color: "#fff",
-                                  cursor: "pointer",
-                                }}
-                                onClick={() => handleRemoveTag(tx.id, tag.id)}
-                                title={`Remove tag "${tag.name}"`}
-                              >
-                                {tag.name} ✕
-                              </span>
-                            )}
-                          </For>
-                          <button
-                            class="btn btn-icon btn-xs btn-ghost"
-                            style={{ "font-size": "0.65rem", padding: "1px 4px" }}
-                            onClick={() =>
-                              setShowTagPicker(showTagPicker() === tx.id ? null : tx.id)
-                            }
-                            title="Add tag"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <Show when={showTagPicker() === tx.id}>
-                          <div class="tag-picker-dropdown" onClick={(e) => e.stopPropagation()}>
-                            <For
-                              each={tagList().filter(
-                                (t: any) => !(txTags()[tx.id] ?? []).find((tt) => tt.id === t.id),
-                              )}
-                            >
-                              {(tag: any) => (
-                                <button
-                                  class="btn btn-ghost btn-xs tag-picker-option"
-                                  onClick={() => handleAddTag(tx.id, tag.id)}
-                                >
-                                  <span
-                                    class="tag-dot-sm"
-                                    style={{ background: tag.color ?? "#4f46e5" }}
-                                  />
-                                  {tag.name}
-                                </button>
-                              )}
-                            </For>
-                            <Show
-                              when={
-                                tagList().filter(
-                                  (t: any) => !(txTags()[tx.id] ?? []).find((tt) => tt.id === t.id),
-                                ).length === 0
-                              }
-                            >
-                              <span
-                                style={{
-                                  color: "var(--text-muted)",
-                                  "font-size": "0.75rem",
-                                  padding: "4px",
-                                }}
-                              >
-                                No more tags
-                              </span>
-                            </Show>
-                          </div>
-                        </Show>
-                      </span>
-
-                      <span
-                        class="tx-col-amount"
-                        classList={{
-                          positive: (tx.amount ?? 0) > 0,
-                          negative: (tx.amount ?? 0) < 0,
-                          "tx-amount-parent": tx.isParent,
-                        }}
-                      >
-                        {isEditing("amount") ? (
-                          <input
-                            type="number"
-                            step={fmt().code === "IDR" ? "1" : "0.01"}
-                            class="tx-inline-input"
-                            value={fmt().formatCentsInput(tx.amount ?? 0)}
-                            onBlur={(e) => saveEdit(tx, "amount", e.currentTarget.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter")
-                                saveEdit(tx, "amount", (e.target as HTMLInputElement).value);
-                              if (e.key === "Escape") cancelEdit();
-                            }}
-                            autofocus
-                          />
-                        ) : (
-                          <span
-                            class={privacyBlur().blurClass()}
-                            onClick={() => startEdit(tx.id, "amount")}
-                          >
-                            {formatCents(tx.amount ?? 0)}
-                          </span>
-                        )}
-                      </span>
-
-                      <span class={`tx-col-balance ${privacyBlur().blurClass()}`}>
-                        {formatCents(tx.balance)}
-                      </span>
-
-                      <span class="tx-col-actions">
-                        <button
-                          class="btn btn-icon btn-ghost btn-xs"
-                          onClick={() => initSplit(tx)}
-                          title="Split transaction"
-                          disabled={!!tx.isChild || !!tx.isParent}
-                        >
-                          ⇄
-                        </button>
-                        <button
-                          class="btn btn-icon btn-ghost btn-xs"
-                          onClick={() => handleDelete(tx.id)}
-                        >
-                          🗑️
-                        </button>
-                      </span>
-                    </div>
-
-                    <Show when={isSplitting}>
-                      <div class="tx-split-form">
-                        <div class="tx-split-children">
-                          <For each={splitChildren()}>
-                            {(child, idx) => (
-                              <div class="tx-split-child">
-                                <span class="tx-split-child-num">{idx() + 1}.</span>
-                                <select
-                                  class="tx-inline-select"
-                                  value={child.categoryId}
-                                  onChange={(e) =>
-                                    updateSplitChild(
-                                      child.tempId,
-                                      "categoryId",
-                                      e.currentTarget.value,
-                                    )
-                                  }
-                                >
-                                  <option value="">Category</option>
-                                  <For each={categories()}>
-                                    {(cat) => (
-                                      <option value={cat.id}>
-                                        {cat.groupName ? `${cat.groupName}: ` : ""}
-                                        {cat.name}
-                                      </option>
-                                    )}
-                                  </For>
-                                </select>
-                                <input
-                                  type="number"
-                                  step={fmt().code === "IDR" ? "1" : "0.01"}
-                                  class="tx-inline-input"
-                                  style={{ width: "120px" }}
-                                  placeholder="Amount"
-                                  value={child.amount}
-                                  onInput={(e) =>
-                                    updateSplitChild(child.tempId, "amount", e.currentTarget.value)
-                                  }
-                                />
-                                <input
-                                  type="text"
-                                  class="tx-inline-input"
-                                  style={{ flex: 1 }}
-                                  placeholder="Notes"
-                                  value={child.notes}
-                                  onInput={(e) =>
-                                    updateSplitChild(child.tempId, "notes", e.currentTarget.value)
-                                  }
-                                />
-                              </div>
-                            )}
-                          </For>
-                        </div>
-                        <div class="tx-split-actions">
-                          <button class="btn btn-ghost btn-xs" onClick={addSplitChild}>
-                            + Add Child
-                          </button>
-                          <button class="btn btn-primary btn-xs" onClick={saveSplit}>
-                            Save Split
-                          </button>
-                          <button class="btn btn-ghost btn-xs" onClick={cancelSplit}>
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </Show>
-                  </>
-                );
-              }}
-            </For>
-          </div>
+          <TransactionTable
+            transactions={transactions()}
+            categories={categories()}
+            txTags={txTags()}
+            tagList={tagList()}
+            showBalance
+          />
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

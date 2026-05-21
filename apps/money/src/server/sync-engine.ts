@@ -16,6 +16,7 @@ import { handleScheduleCommands } from "./command-handlers/schedules";
 import { handleRuleCommands } from "./command-handlers/rules";
 import { handleTagCommands } from "./command-handlers/tags";
 import { handleImportCommands } from "./command-handlers/import";
+import { handleFilterCommands } from "./command-handlers/filters";
 import { handleReportCommands } from "./command-handlers/reports";
 import { handleSettingCommands } from "./command-handlers/settings";
 import { handleApiRequest } from "./api-handlers";
@@ -127,6 +128,9 @@ export class MoneyBudgetDO extends SyncEngineDO<Env> {
       ["add_transaction_tag", handleTagCommands],
       ["remove_transaction_tag", handleTagCommands],
       ["import_transactions", handleImportCommands],
+      ["create_filter", handleFilterCommands],
+      ["update_filter", handleFilterCommands],
+      ["delete_filter", handleFilterCommands],
       ["create_report", handleReportCommands],
       ["update_report", handleReportCommands],
       ["delete_report", handleReportCommands],
@@ -169,7 +173,7 @@ export class MoneyBudgetDO extends SyncEngineDO<Env> {
     const url = new URL(request.url);
     const apiPath = url.pathname.startsWith("/api/") ? url.pathname : null;
     if (apiPath) {
-      const apiResponse = handleApiRequest(apiPath, request.method, this.moneyAccess);
+      const apiResponse = handleApiRequest(url, request.method, this.moneyAccess);
       if (apiResponse) return apiResponse;
     }
     return super.handleApiRequest(request);

@@ -2,6 +2,7 @@ import { createSignal, createEffect, For, Show } from "solid-js";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 import { dispatch } from "../lib/pending-ops";
+import { PageState } from "../components/PageState";
 
 type ReportId =
   | "net-worth"
@@ -65,6 +66,7 @@ export default function ReportsPage() {
   const [budgetData, setBudgetData] = createSignal<BudgetPair[]>([]);
   const [ageOfMoney, setAgeOfMoney] = createSignal<number | null>(null);
   const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
 
   // Custom reports state
   const [customReports, setCustomReports] = createSignal<CustomReport[]>([]);
@@ -91,6 +93,7 @@ export default function ReportsPage() {
 
   async function loadReport(report: ReportId) {
     setLoading(true);
+    setError(null);
     try {
       switch (report) {
         case "net-worth": {
@@ -141,7 +144,8 @@ export default function ReportsPage() {
           break;
         }
       }
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to load report`);
     } finally {
       setLoading(false);
     }
@@ -160,13 +164,17 @@ export default function ReportsPage() {
 
   async function loadCustomReports() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/reports/custom");
       if (res.ok) {
         const data = (await res.json()) as any;
         setCustomReports(data.reports ?? []);
+      } else {
+        setError(`Failed to load custom reports (${res.status})`);
       }
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load custom reports");
     } finally {
       setLoading(false);
     }
@@ -265,7 +273,12 @@ export default function ReportsPage() {
         <Show
           when={activeReport() !== "custom"}
           fallback={
-            <Show when={!loading()} fallback={<div class="loading">Loading custom reports...</div>}>
+            <PageState
+              loading={loading()}
+              error={error()}
+              onRetry={loadCustomReports}
+              loadingMessage="Loading custom reports..."
+            >
               <div class="page-header" style={{ "margin-bottom": "12px" }}>
                 <p class="page-subtitle">Create and manage your own custom reports</p>
                 <button class="btn btn-primary btn-sm" onClick={openCreateModal}>
@@ -319,10 +332,15 @@ export default function ReportsPage() {
                   </For>
                 </div>
               </Show>
-            </Show>
+            </PageState>
           }
         >
-          <Show when={!loading()} fallback={<div class="loading">Loading report data...</div>}>
+          <PageState
+            loading={loading()}
+            error={error()}
+            onRetry={() => loadReport(activeReport())}
+            loadingMessage="Loading report data..."
+          >
             <Show when={activeReport() === "net-worth"}>
               <div class="report-card">
                 <h2 class="report-title">Net Worth Over Time</h2>
@@ -397,7 +415,7 @@ export default function ReportsPage() {
                 </div>
               </div>
             </Show>
-          </Show>
+          </PageState>
         </Show>
       </div>
 

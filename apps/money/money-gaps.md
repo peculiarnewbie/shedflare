@@ -27,17 +27,18 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Transactions
 
-| Gap                                  | Notes                                                                                                                                                                                 |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ~~Split transaction UI~~             | ✅ Inline split form with child inputs, dispatches `split_transaction`                                                                                                                |
-| ~~Reconciliation workflow~~          | ✅ Reconcile button + modal on account page: enter statement balance, shows difference, marks cleared txns as reconciled, creates adjustment txn if needed, updates `last_reconciled` |
-| ~~Reconciled flag on transactions~~  | ✅ `reconciled` column + lock-icon toggle button in transaction table                                                                                                                 |
-| ~~Tag assignment per transaction~~   | ✅ Tag picker in tx table rows, colored chips, add/remove via commands                                                                                                                |
-| Undo/redo                            | Not implemented                                                                                                                                                                       |
-| Notes entity                         | Generic notes key-value store not implemented                                                                                                                                         |
-| Transaction filters (saved searches) | Not implemented                                                                                                                                                                       |
-| Link schedules from transactions     | Not implemented                                                                                                                                                                       |
-| Payee learn categories               | Not implemented                                                                                                                                                                       |
+| Gap                                       | Notes                                                                                                                                                                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Split transaction UI~~                  | ✅ Inline split form with child inputs, dispatches `split_transaction`                                                                                                                                                                                        |
+| ~~Reconciliation workflow~~               | ✅ Reconcile button + modal on account page: enter statement balance, shows difference, marks cleared txns as reconciled, creates adjustment txn if needed, updates `last_reconciled`                                                                         |
+| ~~Reconciled flag on transactions~~       | ✅ `reconciled` column + lock-icon toggle button in transaction table                                                                                                                                                                                         |
+| ~~Tag assignment per transaction~~        | ✅ Tag picker in tx table rows, colored chips, add/remove via commands                                                                                                                                                                                        |
+| Undo/redo                                 | Not implemented                                                                                                                                                                                                                                               |
+| Notes entity                              | Generic notes key-value store not implemented                                                                                                                                                                                                                 |
+| ~~Transaction filters (saved searches)~~  | ✅ Inline filter bar on account page: condition builder (account/category/amount/date/notes/cleared/reconciled), save/load/delete filters, server-side SQL on saved filters, client-side fallback for ad-hoc. `?filter=` query param on transactions endpoint |
+| ~~All transactions (global filter view)~~ | ✅ Server `/api/transactions` supports `?filter=`, new `/transactions` route with reusable TransactionTable component showing account column, filter bar works cross-account, nav item + command palette entry                                                |
+| Link schedules from transactions          | Not implemented                                                                                                                                                                                                                                               |
+| Payee learn categories                    | Not implemented                                                                                                                                                                                                                                               |
 
 ## Budget
 
@@ -123,12 +124,12 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## UI / Polish
 
-| Gap                                       | Notes                                                                                                     |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Keyboard shortcuts (Cmd+K command bar)    | Not implemented                                                                                           |
-| Loading states on pages                   | Some pages lack proper loading/error states                                                               |
-| Input validation errors displayed to user | Effect/Schema errors may cause unhandled rejections                                                       |
-| ~~Offline indicator in header~~           | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header |
-| Goal templates category editor            | `goal_def` JSON stored but no inline editor on categories page                                            |
-| ~~Schedule edit page~~                    | ✅ `/schedules/:id` route with detail view and inline editing form                                        |
-| Report color scheme per report            | Not implemented                                                                                           |
+| Gap                                        | Notes                                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| ~~Keyboard shortcuts (Cmd+K command bar)~~ | ✅ Mod+K opens command palette: fuzzy search pages, accounts, payees, categories, schedules; keyboard nav |
+| Loading states on pages                    | Some pages lack proper loading/error states                                                               |
+| Input validation errors displayed to user  | Effect/Schema errors may cause unhandled rejections                                                       |
+| ~~Offline indicator in header~~            | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header |
+| Goal templates category editor             | `goal_def` JSON stored but no inline editor on categories page                                            |
+| ~~Schedule edit page~~                     | ✅ `/schedules/:id` route with detail view and inline editing form                                        |
+| Report color scheme per report             | Not implemented                                                                                           |

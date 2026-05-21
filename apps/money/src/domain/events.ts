@@ -7,6 +7,7 @@ import type {
   Schedule,
   Rule,
   Tag,
+  TransactionFilter,
   CustomReport,
   DashboardWidget,
   Setting,
@@ -44,6 +45,11 @@ export interface SyncEventPayloadMap {
 
   rule_created: { row: Rule };
   rule_updated: { row: Rule };
+
+  filter_created: { row: TransactionFilter };
+  filter_updated: { row: TransactionFilter };
+
+  filter_deleted: { id: string };
 
   tag_created: { row: Tag };
   tag_deleted: { id: string };
@@ -97,6 +103,9 @@ export const SYNC_EVENT_TYPES: readonly SyncEventType[] = [
   "schedule_deleted",
   "rule_created",
   "rule_updated",
+  "filter_created",
+  "filter_updated",
+  "filter_deleted",
   "tag_created",
   "tag_deleted",
   "transaction_tag_added",

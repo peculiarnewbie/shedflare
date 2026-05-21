@@ -10,6 +10,7 @@ export const PayeeSchema = createSelectSchema(schema.payees);
 export const ScheduleSchema = createSelectSchema(schema.schedules);
 export const RuleSchema = createSelectSchema(schema.rules);
 export const TagSchema = createSelectSchema(schema.tags);
+export const TransactionFilterSchema = createSelectSchema(schema.transactionFilters);
 export const CustomReportSchema = createSelectSchema(schema.customReports);
 export const DashboardWidgetSchema = createSelectSchema(schema.dashboardWidgets);
 export const ExchangeRateSchema = createSelectSchema(schema.exchangeRates);
@@ -43,6 +44,12 @@ export const ScheduleInput = omitFields(
 );
 export const RuleInput = omitFields(
   createInsertSchema(schema.rules),
+  "id",
+  "createdAt",
+  "updatedAt",
+);
+export const TransactionFilterInput = omitFields(
+  createInsertSchema(schema.transactionFilters),
   "id",
   "createdAt",
   "updatedAt",

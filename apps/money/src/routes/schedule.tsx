@@ -7,6 +7,7 @@ import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
+import { PageState } from "../components/PageState";
 
 export default function ScheduleDetailPage() {
   const params = useParams<{ id: string }>();
@@ -16,6 +17,7 @@ export default function ScheduleDetailPage() {
   const df = useDateFormat();
   const [schedule, setSchedule] = createSignal<any>(null);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [editing, setEditing] = createSignal(false);
   const _removing = createSignal(false);
 
@@ -33,6 +35,7 @@ export default function ScheduleDetailPage() {
   });
 
   async function loadSchedule() {
+    setError(null);
     try {
       const res = await fetch(`/api/schedules/${params.id}`);
       if (res.ok) {
@@ -48,9 +51,11 @@ export default function ScheduleDetailPage() {
         setEndMode(config.endMode ?? "never");
         setEndOccurrences(config.endOccurrences ?? 10);
         setEndDate(config.endDate ?? "");
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load schedule");
     } finally {
       setLoading(false);
     }
@@ -150,7 +155,12 @@ export default function ScheduleDetailPage() {
         <h1 class="page-title">{schedule()?.name ?? "Schedule"}</h1>
       </div>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading schedule...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadSchedule}
+        loadingMessage="Loading schedule..."
+      >
         <Show when={schedule()} fallback={<div class="empty-state">Schedule not found.</div>}>
           <div class="schedule-detail-page">
             <Show
@@ -339,7 +349,7 @@ export default function ScheduleDetailPage() {
             </Show>
           </div>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

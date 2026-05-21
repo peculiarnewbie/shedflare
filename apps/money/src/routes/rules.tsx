@@ -4,10 +4,12 @@
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
+import { PageState } from "../components/PageState";
 
 export default function RulesPage() {
   const [rules, setRules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
   const [testingRule, setTestingRule] = createSignal<any>(null);
 
@@ -16,14 +18,17 @@ export default function RulesPage() {
   });
 
   async function loadRules() {
+    setError(null);
     try {
       const res = await fetch("/api/rules");
       if (res.ok) {
         const data = (await res.json()) as any;
         setRules(data.rules ?? []);
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load rules");
     } finally {
       setLoading(false);
     }
@@ -57,7 +62,12 @@ export default function RulesPage() {
         <RuleTestModal rule={testingRule()!} onClose={() => setTestingRule(null)} />
       </Show>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading rules...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadRules}
+        loadingMessage="Loading rules..."
+      >
         <Show
           when={rules().length > 0}
           fallback={
@@ -105,7 +115,7 @@ export default function RulesPage() {
             </For>
           </div>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

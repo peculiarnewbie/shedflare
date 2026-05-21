@@ -259,6 +259,22 @@ export function createCustomReport(input: {
   } satisfies schema.CustomReport;
 }
 
+export function createTransactionFilter(input: {
+  name: string;
+  conditions: string;
+  conditionsOp?: string;
+}) {
+  const now = nowIso();
+  return {
+    id: createId("flt"),
+    name: input.name,
+    conditions: input.conditions,
+    conditionsOp: input.conditionsOp ?? "and",
+    createdAt: now,
+    updatedAt: now,
+  } satisfies schema.TransactionFilter;
+}
+
 export function createDashboardWidget(input: {
   type: string;
   x: number;

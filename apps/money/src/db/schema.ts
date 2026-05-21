@@ -275,6 +275,18 @@ export const events = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// transaction_filters (saved searches)
+// ---------------------------------------------------------------------------
+export const transactionFilters = sqliteTable("transaction_filters", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  conditions: text("conditions").notNull(), // JSON array of condition objects
+  conditionsOp: text("conditions_op").notNull().default("and"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // commands (idempotent command tracking)
 // ---------------------------------------------------------------------------
 export const commands = sqliteTable(
@@ -320,5 +332,7 @@ export type DashboardWidget = typeof dashboardWidgets.$inferSelect;
 export type NewDashboardWidget = typeof dashboardWidgets.$inferInsert;
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
+export type TransactionFilter = typeof transactionFilters.$inferSelect;
+export type NewTransactionFilter = typeof transactionFilters.$inferInsert;
 export type SyncEvent = typeof events.$inferSelect;
 export type Command = typeof commands.$inferSelect;

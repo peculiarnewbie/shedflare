@@ -1,6 +1,7 @@
 import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { usePrivacyMode } from "../lib/privacy";
+import { PageState } from "../components/PageState";
 
 interface CategoryGroup {
   id: string;
@@ -40,6 +41,7 @@ export default function CategoriesPage() {
   const [groups, setGroups] = createSignal<CategoryGroup[]>([]);
   const [categories, setCategories] = createSignal<Category[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
 
   // Add group form
   const [showAddGroup, setShowAddGroup] = createSignal(false);
@@ -86,6 +88,7 @@ export default function CategoriesPage() {
   });
 
   async function loadData() {
+    setError(null);
     try {
       const [categoriesRes, groupsRes, goalProgressRes] = await Promise.all([
         fetch("/api/categories"),
@@ -105,6 +108,8 @@ export default function CategoriesPage() {
           hidden: Boolean(c.hidden),
         }));
         setCategories(cats);
+      } else {
+        setError(`Failed to load categories (${categoriesRes.status})`);
       }
 
       if (groupsRes.ok) {
@@ -124,8 +129,8 @@ export default function CategoriesPage() {
         const data = (await goalProgressRes.json()) as any;
         setGoalProgress(data.progress ?? []);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load categories");
     } finally {
       setLoading(false);
     }
@@ -365,7 +370,12 @@ export default function CategoriesPage() {
         </div>
       </Show>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading categories...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadData}
+        loadingMessage="Loading categories..."
+      >
         <Show
           when={groups().length > 0 || categories().length > 0}
           fallback={
@@ -617,7 +627,11 @@ export default function CategoriesPage() {
                                 ⠿
                               </span>
                               <div
-                                style={{ display: "flex", "flex-direction": "column", gap: "2px" }}
+                                style={{
+                                  display: "flex",
+                                  "flex-direction": "column",
+                                  gap: "2px",
+                                }}
                               >
                                 <div
                                   style={{ display: "flex", "align-items": "center", gap: "6px" }}
@@ -800,7 +814,7 @@ export default function CategoriesPage() {
             </div>
           </Show>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

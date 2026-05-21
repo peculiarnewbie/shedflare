@@ -60,7 +60,7 @@ export const ChatStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("ChatWorker", {
       name: physicalName(stage, "chat"),
       main: "apps/chat/src/worker.ts",
-      assets: "apps/chat/dist",
+      assets: "apps/chat/dist/client",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],

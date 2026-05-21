@@ -5,12 +5,14 @@ import { createSignal, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { useDateFormat } from "../lib/date-format";
+import { PageState } from "../components/PageState";
 
 export default function SchedulesPage() {
   const navigate = useNavigate();
   const df = useDateFormat();
   const [schedules, setSchedules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
   const [editingSchedule, setEditingSchedule] = createSignal<any>(null);
 
@@ -19,14 +21,17 @@ export default function SchedulesPage() {
   });
 
   async function loadSchedules() {
+    setError(null);
     try {
       const res = await fetch("/api/schedules");
       if (res.ok) {
         const data = (await res.json()) as any;
         setSchedules(data.schedules ?? []);
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load schedules");
     } finally {
       setLoading(false);
     }
@@ -119,7 +124,12 @@ export default function SchedulesPage() {
         />
       </Show>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading schedules...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadSchedules}
+        loadingMessage="Loading schedules..."
+      >
         <Show
           when={schedules().length > 0}
           fallback={<div class="empty-state">No recurring schedules yet.</div>}
@@ -165,7 +175,7 @@ export default function SchedulesPage() {
             </For>
           </div>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

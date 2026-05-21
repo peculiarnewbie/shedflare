@@ -5,6 +5,7 @@ import {
   ScheduleInput,
   RuleInput,
   CustomReportInput,
+  TransactionFilterInput,
   ParsedTransaction,
 } from "./schemas";
 
@@ -255,6 +256,19 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
   }),
 
   delete_report: Schema.Struct({
+    id: Schema.String,
+  }),
+
+  create_filter: Schema.Struct({
+    filter: TransactionFilterInput,
+  }),
+
+  update_filter: Schema.Struct({
+    id: Schema.String,
+    fields: TransactionFilterInput,
+  }),
+
+  delete_filter: Schema.Struct({
     id: Schema.String,
   }),
 

@@ -1,10 +1,11 @@
 /**
  * Settings page — currency, budget type, exchange rate, export, privacy, display.
  */
-import { createSignal, createEffect, Show, onCleanup } from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { settingsCollection } from "../lib/collections";
 import { usePrivacyMode } from "../lib/privacy";
+import { PageState } from "../components/PageState";
 
 type BudgetType = "envelope" | "tracking";
 type Currency = "USD" | "IDR";
@@ -15,6 +16,7 @@ export default function SettingsPage() {
   const [budgetType, setBudgetType] = createSignal<BudgetType>("envelope");
   const [currency, setCurrency] = createSignal<Currency>("USD");
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const privacy = usePrivacyMode();
 
   const [dateFormat, setDateFormat] = createSignal<DateFormat>("iso");
@@ -57,14 +59,17 @@ export default function SettingsPage() {
   }
 
   async function loadSettings() {
+    setError(null);
     try {
       const ratesRes = await fetch("/api/rates");
       if (ratesRes.ok) {
         const data = (await ratesRes.json()) as any;
         setExchangeRate(data.usdToIdr ?? 16000);
+      } else {
+        setError(`Failed to load settings (${ratesRes.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
       setLoading(false);
     }
@@ -108,7 +113,12 @@ export default function SettingsPage() {
       <h1 class="page-title">Settings</h1>
       <p class="page-subtitle">Configure your budget preferences</p>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadSettings}
+        loadingMessage="Loading..."
+      >
         {/* Privacy Mode */}
         <div class="settings-section">
           <h2>Privacy Mode</h2>
@@ -230,7 +240,7 @@ export default function SettingsPage() {
             Export CSV
           </button>
         </div>
-      </Show>
+      </PageState>
     </div>
   );
 }

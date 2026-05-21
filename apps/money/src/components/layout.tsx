@@ -1,6 +1,8 @@
 import { createSignal, Show, For } from "solid-js";
 import { A, useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
+import { createHotkey } from "@tanstack/solid-hotkeys";
 import { isConnected, reconnectAttempt, reconnectDelay } from "../lib/ws-connection";
+import CommandBar from "./CommandBar";
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -17,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/budget", label: "Budget", icon: "💰" },
   { path: "/categories", label: "Categories", icon: "📁" },
   { path: "/accounts", label: "Accounts", icon: "🏦" },
+  { path: "/transactions", label: "Transactions", icon: "💳" },
   { path: "/reports", label: "Reports", icon: "📈" },
   { path: "/schedules", label: "Schedules", icon: "🔄" },
   { path: "/payees", label: "Payees", icon: "👤" },
@@ -41,6 +44,8 @@ export default function Layout(props: RouteSectionProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showMobileMenu, setShowMobileMenu] = createSignal(false);
+  const [showCmdBar, setShowCmdBar] = createSignal(false);
+  createHotkey("Mod+K", () => setShowCmdBar(true));
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -84,6 +89,16 @@ export default function Layout(props: RouteSectionProps) {
               {isConnected() ? "Synced" : reconnectAttempt() > 0 ? `Reconnecting...` : "Offline"}
             </span>
           </div>
+          <button
+            class="btn btn-ghost btn-sm"
+            style="width:100%;justify-content:flex-start;gap:8px;font-size:0.75rem;color:var(--text-muted)"
+            onClick={() => setShowCmdBar(true)}
+          >
+            <kbd style="font-size:0.65rem;padding:1px 4px;border:1px solid var(--border);border-radius:3px;color:var(--text-muted);background:var(--bg-input)">
+              ⌘K
+            </kbd>
+            Commands
+          </button>
           <button
             class="btn btn-ghost btn-sm"
             style="width:100%"
@@ -193,6 +208,11 @@ export default function Layout(props: RouteSectionProps) {
           )}
         </For>
       </nav>
+
+      {/* Command palette */}
+      <Show when={showCmdBar()}>
+        <CommandBar open={showCmdBar()} onClose={() => setShowCmdBar(false)} />
+      </Show>
     </div>
   );
 }

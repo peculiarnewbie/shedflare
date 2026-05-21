@@ -15,6 +15,9 @@ catalogs:
     '@tanstack/solid-db':
       specifier: ^0.2.19
       version: 0.2.19
+    '@tanstack/solid-hotkeys':
+      specifier: ^0.10.0
+      version: 0.10.0
     '@types/node':
       specifier: ^24.12.2
       version: 24.12.2
@@ -286,6 +289,9 @@ importers:
       '@tanstack/solid-db':
         specifier: 'catalog:'
         version: 0.2.19(solid-js@1.9.12)(typescript@5.9.3)
+      '@tanstack/solid-hotkeys':
+        specifier: 'catalog:'
+        version: 0.10.0(solid-js@1.9.12)
       d3:
         specifier: ^7.9.0
         version: 7.9.0
@@ -301,7 +307,7 @@ importers:
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: ^1.32.3
-        version: 1.32.3(@voidzero-dev/vite-plus-core@0.1.20(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3))(workerd@1.20260417.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))
+        version: 1.32.3(@voidzero-dev/vite-plus-core@0.1.20(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3))(workerd@1.20260415.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))
       '@cloudflare/workers-types':
         specifier: ^4.20260415.1
         version: 4.20260415.1
@@ -2636,6 +2642,10 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  '@tanstack/hotkeys@0.8.0':
+    resolution: {integrity: sha512-vqH7X9nb0MTJ/O08++dB5bP9jgj4+BIPOUu/U+6myG86lDsirZSVSobpq5UQpE7nBuk62i8eIYeOhd+OMl/UrA==}
+    engines: {node: '>=18'}
+
   '@tanstack/pacer-lite@0.2.1':
     resolution: {integrity: sha512-3PouiFjR4B6x1c969/Pl4ZIJleof1M0n6fNX8NRiC9Sqv1g06CVDlEaXUR4212ycGFyfq4q+t8Gi37Xy+z34iQ==}
     engines: {node: '>=18'}
@@ -2644,6 +2654,20 @@ packages:
     resolution: {integrity: sha512-3pbTO3p+yznbJfVcSU+oq4r52Wd3vsDIeeokoi7G8S81FgztRgT+6jkPBUUxZdN/fH6pOIDqCFTB1ahS+ZVKWw==}
     peerDependencies:
       solid-js: '>=1.9.0'
+
+  '@tanstack/solid-hotkeys@0.10.0':
+    resolution: {integrity: sha512-jThxkZMt1ShaQ/ynvyzHfwdbl15gTxJWXnQtbHuRHrzYFvuBB5fx4+D0jKQJ3sSq6XN3HwB3f9cVI0na5rN+Bw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      solid-js: '>=1.7.0'
+
+  '@tanstack/solid-store@0.11.0':
+    resolution: {integrity: sha512-2isL0ZnnyI1iN0V+QPrxE3OcPndohBgVlBcHZYoAOIAiU1WoWjVy0q5gb0suPu1Id0h5cKC23JnwzQTxWDZD0w==}
+    peerDependencies:
+      solid-js: ^1.6.0
+
+  '@tanstack/store@0.11.0':
+    resolution: {integrity: sha512-WlzzCt3xi0G6pCAJu1U+2jiECwabETDpQDi3hfkFZvJii9AuZqEKbOiVarX1/bWhTNjU486yQtJCCasi/0q+Cw==}
 
   '@tokenizer/token@0.3.0':
     resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
@@ -6016,9 +6040,9 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vite-plugin@1.32.3(@voidzero-dev/vite-plus-core@0.1.20(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3))(workerd@1.20260417.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))':
+  '@cloudflare/vite-plugin@1.32.3(@voidzero-dev/vite-plus-core@0.1.20(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3))(workerd@1.20260415.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))':
     dependencies:
-      '@cloudflare/unenv-preset': 2.16.0(unenv@2.0.0-rc.24)(workerd@1.20260417.1)
+      '@cloudflare/unenv-preset': 2.16.0(unenv@2.0.0-rc.24)(workerd@1.20260415.1)
       miniflare: 4.20260415.0
       unenv: 2.0.0-rc.24
       vite: '@voidzero-dev/vite-plus-core@0.1.20(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)'
@@ -7562,6 +7586,10 @@ snapshots:
 
   '@tanstack/devtools-event-client@0.4.3': {}
 
+  '@tanstack/hotkeys@0.8.0':
+    dependencies:
+      '@tanstack/store': 0.11.0
+
   '@tanstack/pacer-lite@0.2.1': {}
 
   '@tanstack/solid-db@0.2.19(solid-js@1.9.12)(typescript@5.9.3)':
@@ -7571,6 +7599,19 @@ snapshots:
       solid-js: 1.9.12
     transitivePeerDependencies:
       - typescript
+
+  '@tanstack/solid-hotkeys@0.10.0(solid-js@1.9.12)':
+    dependencies:
+      '@tanstack/hotkeys': 0.8.0
+      '@tanstack/solid-store': 0.11.0(solid-js@1.9.12)
+      solid-js: 1.9.12
+
+  '@tanstack/solid-store@0.11.0(solid-js@1.9.12)':
+    dependencies:
+      '@tanstack/store': 0.11.0
+      solid-js: 1.9.12
+
+  '@tanstack/store@0.11.0': {}
 
   '@tokenizer/token@0.3.0': {}
 

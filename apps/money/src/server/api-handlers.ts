@@ -12,12 +12,10 @@ import {
   computeAgeOfMoney,
   computeCrossoverProjection,
 } from "./budget-engine";
+import { buildFilterWhereSql, type FilterCondition } from "./conditions-to-sql";
 
-export function handleApiRequest(
-  pathname: string,
-  method: string,
-  access: DataAccess,
-): Response | null {
+export function handleApiRequest(url: URL, method: string, access: DataAccess): Response | null {
+  const pathname = url.pathname;
   const json = (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), {
       status,
@@ -55,13 +53,38 @@ export function handleApiRequest(
   // Account transactions
   const accountTxMatch = pathname.match(/^\/api\/accounts\/([^/]+)\/transactions$/);
   if (accountTxMatch && method === "GET") {
+    const filterId = url.searchParams.get("filter");
+    let whereExtra = "";
+    let params: unknown[] = [accountTxMatch[1]];
+
+    if (filterId) {
+      const filterRow = access.queryOne<Record<string, unknown>>(
+        `SELECT * FROM transaction_filters WHERE id = ?`,
+        filterId,
+      );
+      if (filterRow) {
+        const conditions = JSON.parse(
+          (filterRow.conditions as string) ?? "[]",
+        ) as FilterCondition[];
+        const conditionsOp = (filterRow.conditions_op as string) ?? "and";
+        const { whereClause, params: filterParams } = buildFilterWhereSql(
+          conditions,
+          conditionsOp as "and" | "or",
+        );
+        if (whereClause) {
+          whereExtra = ` AND (${whereClause})`;
+          params = [...params, ...filterParams];
+        }
+      }
+    }
+
     const rows = access.queryAll<Record<string, unknown>>(
       `SELECT t.*, c.name as category_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.account_id = ?
+       WHERE t.account_id = ?${whereExtra}
        ORDER BY t.date DESC, t.created_at DESC`,
-      accountTxMatch[1],
+      ...params,
     );
     return json({ transactions: rows });
   }
@@ -192,14 +215,48 @@ export function handleApiRequest(
 
   // All transactions (across all accounts, for rule testing and general use)
   if (pathname === "/api/transactions" && method === "GET") {
+    const filterId = url.searchParams.get("filter");
+    let whereExtra = "";
+    let params: unknown[] = [];
+
+    if (filterId) {
+      const filterRow = access.queryOne<Record<string, unknown>>(
+        `SELECT * FROM transaction_filters WHERE id = ?`,
+        filterId,
+      );
+      if (filterRow) {
+        const conditions = JSON.parse(
+          (filterRow.conditions as string) ?? "[]",
+        ) as FilterCondition[];
+        const conditionsOp = (filterRow.conditions_op as string) ?? "and";
+        const { whereClause, params: filterParams } = buildFilterWhereSql(
+          conditions,
+          conditionsOp as "and" | "or",
+        );
+        if (whereClause) {
+          whereExtra = ` WHERE ${whereClause}`;
+          params = [...params, ...filterParams];
+        }
+      }
+    }
+
     const rows = access.queryAll<Record<string, unknown>>(
       `SELECT t.*, c.name as category_name, a.name as account_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       LEFT JOIN accounts a ON t.account_id = a.id
+       LEFT JOIN accounts a ON t.account_id = a.id${whereExtra}
        ORDER BY t.date DESC, t.created_at DESC`,
+      ...params,
     );
     return json({ transactions: rows });
+  }
+
+  // Transaction filters
+  if (pathname === "/api/filters" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM transaction_filters ORDER BY name",
+    );
+    return json({ filters: rows });
   }
 
   // Rules

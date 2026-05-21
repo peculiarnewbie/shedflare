@@ -4,13 +4,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoDir = path.resolve(scriptDir, "..");
-const pkg = JSON.parse(readFileSync(path.join(repoDir, "package.json"), "utf8"));
+const chatDir = path.resolve(scriptDir, "..");
+const repoRoot = path.resolve(chatDir, "../..");
+const pkg = JSON.parse(readFileSync(path.join(chatDir, "package.json"), "utf8"));
 
 function gitCommit() {
   try {
     return execSync("git rev-parse --short HEAD", {
-      cwd: repoDir,
+      cwd: chatDir,
       stdio: ["ignore", "pipe", "ignore"],
     })
       .toString()
@@ -42,5 +43,9 @@ const env = {
 };
 
 console.log(`[deploy] version ${meta.version}`);
-execSync("vp build", { cwd: repoDir, stdio: "inherit", env });
-execSync("vp exec wrangler deploy", { cwd: repoDir, stdio: "inherit", env });
+execSync("vp build", { cwd: chatDir, stdio: "inherit", env });
+execSync("vp exec alchemy deploy apps/chat/alchemy.run.ts", {
+  cwd: repoRoot,
+  stdio: "inherit",
+  env,
+});

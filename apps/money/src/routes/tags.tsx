@@ -3,10 +3,12 @@
  */
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { PageState } from "../components/PageState";
 
 export default function TagsPage() {
   const [tags, setTags] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [newName, setNewName] = createSignal("");
   const [newColor, setNewColor] = createSignal("#4f46e5");
 
@@ -15,14 +17,17 @@ export default function TagsPage() {
   });
 
   async function loadTags() {
+    setError(null);
     try {
       const res = await fetch("/api/tags");
       if (res.ok) {
         const data = (await res.json()) as any;
         setTags(data.tags ?? []);
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load tags");
     } finally {
       setLoading(false);
     }
@@ -64,7 +69,12 @@ export default function TagsPage() {
         </button>
       </div>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading tags...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadTags}
+        loadingMessage="Loading tags..."
+      >
         <Show
           when={tags().length > 0}
           fallback={<div class="empty-state">No tags yet. Create one above.</div>}
@@ -86,7 +96,7 @@ export default function TagsPage() {
             </For>
           </div>
         </Show>
-      </Show>
+      </PageState>
     </div>
   );
 }

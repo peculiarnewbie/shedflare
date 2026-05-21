@@ -7,6 +7,7 @@ import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { settingsCollection } from "../lib/collections";
+import { PageState } from "../components/PageState";
 
 interface AccountRow {
   id: string;
@@ -23,6 +24,7 @@ export default function AccountsPage() {
   const privacyBlur = usePrivacyMode();
   const [accounts, setAccounts] = createSignal<AccountRow[]>([]);
   const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
   const [showAddForm, setShowAddForm] = createSignal(false);
   const [newName, setNewName] = createSignal("");
   const [newOffBudget, setNewOffBudget] = createSignal(false);
@@ -44,14 +46,17 @@ export default function AccountsPage() {
   });
 
   async function loadAccounts() {
+    setError(null);
     try {
       const res = await fetch("/api/accounts");
       if (res.ok) {
         const data = (await res.json()) as any;
         setAccounts(data.accounts ?? []);
+      } else {
+        setError(`Failed to load (${res.status})`);
       }
-    } catch {
-      // Will work once sync is connected
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load accounts");
     } finally {
       setLoading(false);
     }
@@ -165,32 +170,46 @@ export default function AccountsPage() {
         </div>
       </Show>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading accounts...</div>}>
-        <RenderAccountGroup
-          title="On Budget"
-          accounts={onBudgetAccounts()}
-          navigate={navigate}
-          formatBalance={formatBalance}
-          onDelete={handleDeleteAccount}
-          blurClass={privacyBlur().blurClass()}
-        />
-        <RenderAccountGroup
-          title="Off Budget"
-          accounts={offBudgetAccounts()}
-          navigate={navigate}
-          formatBalance={formatBalance}
-          onDelete={handleDeleteAccount}
-          blurClass={privacyBlur().blurClass()}
-        />
-        <RenderAccountGroup
-          title="Closed"
-          accounts={closedAccounts()}
-          navigate={navigate}
-          formatBalance={formatBalance}
-          onDelete={handleDeleteAccount}
-          blurClass={privacyBlur().blurClass()}
-        />
-      </Show>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadAccounts}
+        loadingMessage="Loading accounts..."
+      >
+        <Show
+          when={
+            onBudgetAccounts().length > 0 ||
+            offBudgetAccounts().length > 0 ||
+            closedAccounts().length > 0
+          }
+          fallback={<div class="empty-state">No accounts yet. Create one above.</div>}
+        >
+          <RenderAccountGroup
+            title="On Budget"
+            accounts={onBudgetAccounts()}
+            navigate={navigate}
+            formatBalance={formatBalance}
+            onDelete={handleDeleteAccount}
+            blurClass={privacyBlur().blurClass()}
+          />
+          <RenderAccountGroup
+            title="Off Budget"
+            accounts={offBudgetAccounts()}
+            navigate={navigate}
+            formatBalance={formatBalance}
+            onDelete={handleDeleteAccount}
+            blurClass={privacyBlur().blurClass()}
+          />
+          <RenderAccountGroup
+            title="Closed"
+            accounts={closedAccounts()}
+            navigate={navigate}
+            formatBalance={formatBalance}
+            onDelete={handleDeleteAccount}
+            blurClass={privacyBlur().blurClass()}
+          />
+        </Show>
+      </PageState>
     </div>
   );
 }
