@@ -20,7 +20,7 @@
     "destroy:cf-bill": "vp exec alchemy destroy apps/cf-bill/alchemy.run.ts",
     "deploy:drive": "vp exec alchemy deploy apps/drive/alchemy.run.ts",
     "destroy:drive": "vp exec alchemy destroy apps/drive/alchemy.run.ts",
-    "deploy:chat": "node apps/chat/scripts/deploy.mjs",
+    "deploy:chat": "vp exec alchemy deploy apps/chat/alchemy.run.ts",
     "destroy:chat": "vp exec alchemy destroy apps/chat/alchemy.run.ts",
     "deploy:money": "vp exec alchemy deploy apps/money/alchemy.run.ts",
     "destroy:money": "vp exec alchemy destroy apps/money/alchemy.run.ts",

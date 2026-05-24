@@ -24,9 +24,14 @@ function gitCommit() {
   }
 }
 
-const computedVersion = process.env.VITE_APP_VERSION || `${pkg.version ?? "0.0.0"}+${gitCommit()}`;
-const computedCommit = process.env.VITE_GIT_SHA || gitCommit();
-const computedBuildTime = process.env.VITE_BUILD_TIME || new Date().toISOString();
+const commit = gitCommit();
+const buildStamp = new Date()
+  .toISOString()
+  .replace(/\.\d{3}Z$/, "Z")
+  .replace(/[:]/g, "");
+const computedVersion = process.env.VITE_APP_VERSION || `${pkg.version ?? "0.0.0"}+deploy.${buildStamp}.${commit}`;
+const computedCommit = process.env.VITE_GIT_SHA || commit;
+const computedBuildTime = process.env.VITE_BUILD_TIME || buildStamp;
 
 export default defineConfig({
   resolve: {

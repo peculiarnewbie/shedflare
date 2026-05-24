@@ -4,17 +4,20 @@
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { useCurrency } from "../lib/currency";
 import { useDateFormat } from "../lib/date-format";
 import { PageState } from "../components/PageState";
 
 export default function SchedulesPage() {
   const navigate = useNavigate();
   const df = useDateFormat();
+  const fmt = useCurrency();
   const [schedules, setSchedules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
   const [editingSchedule, setEditingSchedule] = createSignal<any>(null);
+  const [showDiscover, setShowDiscover] = createSignal(false);
 
   createEffect(() => {
     void loadSchedules();
@@ -111,9 +114,14 @@ export default function SchedulesPage() {
     <div class="page">
       <div class="page-header">
         <h1 class="page-title">Schedules</h1>
-        <button class="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
-          + Add Schedule
-        </button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onClick={() => setShowDiscover(true)}>
+            Discover
+          </button>
+          <button class="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
+            + Add Schedule
+          </button>
+        </div>
       </div>
 
       <Show when={showForm()}>
@@ -121,6 +129,25 @@ export default function SchedulesPage() {
           schedule={editingSchedule()}
           onClose={handleFormClose}
           onSaved={handleSaved}
+        />
+      </Show>
+
+      <Show when={showDiscover()}>
+        <DiscoverModal
+          fmt={fmt}
+          df={df}
+          onClose={() => setShowDiscover(false)}
+          onCreateSchedule={(candidate) => {
+            setShowDiscover(false);
+            dispatch("create_schedule", {
+              schedule: {
+                name: candidate.payee,
+                amount: candidate.amount || null,
+                recurrenceRules: JSON.stringify({ type: candidate.recurrenceType }),
+                startDate: new Date().toISOString().slice(0, 10),
+              },
+            });
+          }}
         />
       </Show>
 
@@ -374,6 +401,139 @@ function ScheduleForm(props: {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+interface DiscoverCandidate {
+  payee: string;
+  accountId: string;
+  accountName: string;
+  amount: number;
+  recurrenceType: string;
+  intervalDays: number;
+  confidence: number;
+  transactionCount: number;
+  matchedTransactionCount: number;
+}
+
+function DiscoverModal(props: {
+  fmt: ReturnType<typeof useCurrency>;
+  df: ReturnType<typeof useDateFormat>;
+  onClose: () => void;
+  onCreateSchedule: (candidate: DiscoverCandidate) => void;
+}) {
+  const [candidates, setCandidates] = createSignal<DiscoverCandidate[]>([]);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
+  const [created, setCreated] = createSignal<Set<string>>(new Set());
+
+  createEffect(() => {
+    void loadCandidates();
+  });
+
+  async function loadCandidates() {
+    setError(null);
+    try {
+      const res = await fetch("/api/schedules/discover");
+      if (res.ok) {
+        const data = (await res.json()) as { discovered: DiscoverCandidate[] };
+        setCandidates(data.discovered ?? []);
+      } else {
+        setError(`Failed (${res.status})`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to discover");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleCreate(candidate: DiscoverCandidate) {
+    setCreated((prev) => new Set(prev).add(`${candidate.payee}||${candidate.accountId}`));
+    props.onCreateSchedule(candidate);
+  }
+
+  function recurrenceLabel(type: string): string {
+    const labels: Record<string, string> = {
+      weekly: "Weekly",
+      biweekly: "Bi-weekly",
+      monthly: "Monthly",
+      quarterly: "Quarterly",
+      yearly: "Yearly",
+    };
+    return labels[type] ?? type;
+  }
+
+  function confidenceClass(conf: number): string {
+    if (conf >= 80) return "confidence-high";
+    if (conf >= 60) return "confidence-mid";
+    return "confidence-low";
+  }
+
+  return (
+    <div class="modal-overlay" onClick={props.onClose}>
+      <div class="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+        <div class="modal-header">
+          <h2>Discover Recurring Transactions</h2>
+          <button class="modal-close" onClick={props.onClose}>
+            ✕
+          </button>
+        </div>
+        <div class="modal-body">
+          <Show when={loading()}>
+            <p class="text-muted">Analyzing transaction history...</p>
+          </Show>
+          <Show when={error()}>
+            <p class="text-danger">{error()}</p>
+          </Show>
+          <Show when={!loading() && !error() && candidates().length === 0}>
+            <p class="text-muted">No recurring patterns detected. Add more transactions first.</p>
+          </Show>
+          <Show when={!loading() && !error() && candidates().length > 0}>
+            <p class="text-muted" style="margin-bottom: 1rem">
+              Found {candidates().length} recurring pattern{candidates().length !== 1 ? "s" : ""} in
+              your transaction history.
+            </p>
+            <div class="discover-list">
+              <For each={candidates()}>
+                {(candidate) => {
+                  const isCreated = () =>
+                    created().has(`${candidate.payee}||${candidate.accountId}`);
+                  return (
+                    <div class="discover-card">
+                      <div class="discover-info">
+                        <div class="discover-payee">{candidate.payee}</div>
+                        <div class="discover-meta">
+                          {candidate.accountName && `${candidate.accountName} · `}
+                          {props.fmt().formatCents(candidate.amount)} ·{" "}
+                          {recurrenceLabel(candidate.recurrenceType)}
+                        </div>
+                        <div class="discover-stats">
+                          <span class={`confidence-badge ${confidenceClass(candidate.confidence)}`}>
+                            {candidate.confidence}% confidence
+                          </span>
+                          <span class="text-muted">
+                            {candidate.matchedTransactionCount} of {candidate.transactionCount}{" "}
+                            transactions matched
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        class="btn btn-sm btn-primary"
+                        onClick={() => handleCreate(candidate)}
+                        disabled={isCreated()}
+                      >
+                        {isCreated() ? "Created" : "Create Schedule"}
+                      </button>
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+        </div>
       </div>
     </div>
   );

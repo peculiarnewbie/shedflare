@@ -4,6 +4,7 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import { drizzle } from "drizzle-orm/node-sqlite";
+import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
 import * as schema from "../db/schema";
 import { DataAccess } from "../server/data-access";
 import { computeMonthBudget, computeNetWorth, computeAgeOfMoney } from "../server/budget-engine";
@@ -26,11 +27,12 @@ function createTestDb() {
     const rows = stmt.all(...params) as T[];
     return rows[0] ?? null;
   };
-  const access = new DataAccess(db, (query: string, ...params: any[]) => {
+  const queryAll = <T>(query: string, ...params: any[]): T[] => {
     const stmt = sqlite.prepare(query);
-    const result = stmt.all(...params) as any[];
-    return { toArray: () => result };
-  });
+    return stmt.all(...params) as T[];
+  };
+  const syncAccess = new SyncDataAccess(exec, queryOne, queryAll);
+  const access = new DataAccess(syncAccess, db);
   initializeStorage(exec, queryOne, () => {});
   sqlite.exec("PRAGMA foreign_keys = OFF");
   return { sqlite, db, access };
@@ -87,7 +89,11 @@ describe("computeMonthBudget", () => {
     );
     run(
       sqlite,
-      "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      `INSERT INTO transactions
+       (id, account_id, category_id, amount, payee, notes, date, cleared, reconciled,
+        imported_description, starting_balance_flag, sort_order, is_parent, is_child,
+        parent_id, transfer_id, schedule_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       "txn_1",
       "acct_1",
       "cat_1",
@@ -97,10 +103,12 @@ describe("computeMonthBudget", () => {
       "2026-04-15",
       1,
       null,
+      null,
       0,
       null,
       0,
       0,
+      null,
       null,
       null,
       now,
@@ -153,7 +161,11 @@ describe("computeMonthBudget", () => {
     );
     run(
       sqlite,
-      "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      `INSERT INTO transactions
+       (id, account_id, category_id, amount, payee, notes, date, cleared, reconciled,
+        imported_description, starting_balance_flag, sort_order, is_parent, is_child,
+        parent_id, transfer_id, schedule_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       "txn_1",
       "acct_1",
       "cat_1",
@@ -163,10 +175,12 @@ describe("computeMonthBudget", () => {
       "2026-04-10",
       1,
       null,
+      null,
       0,
       null,
       0,
       0,
+      null,
       null,
       null,
       now,
@@ -229,7 +243,11 @@ describe("computeMonthBudget", () => {
     );
     run(
       sqlite,
-      "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      `INSERT INTO transactions
+       (id, account_id, category_id, amount, payee, notes, date, cleared, reconciled,
+        imported_description, starting_balance_flag, sort_order, is_parent, is_child,
+        parent_id, transfer_id, schedule_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       "txn_1",
       "acct_1",
       "cat_1",
@@ -239,10 +257,12 @@ describe("computeMonthBudget", () => {
       "2026-03-15",
       1,
       null,
+      null,
       0,
       null,
       0,
       0,
+      null,
       null,
       null,
       now,
@@ -317,7 +337,11 @@ describe("computeMonthBudget", () => {
     );
     run(
       sqlite,
-      "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      `INSERT INTO transactions
+       (id, account_id, category_id, amount, payee, notes, date, cleared, reconciled,
+        imported_description, starting_balance_flag, sort_order, is_parent, is_child,
+        parent_id, transfer_id, schedule_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       "txn_1",
       "acct_1",
       "cat_i",
@@ -327,10 +351,12 @@ describe("computeMonthBudget", () => {
       "2026-04-01",
       1,
       null,
+      null,
       0,
       null,
       0,
       0,
+      null,
       null,
       null,
       now,
@@ -522,13 +548,20 @@ describe("computeAgeOfMoney", () => {
       now,
       now,
     );
+    const insertTxnSql = [
+      "INSERT INTO transactions",
+      "(id, account_id, category_id, amount, payee, notes, date, cleared, reconciled,",
+      " imported_description, starting_balance_flag, sort_order, is_parent, is_child,",
+      " parent_id, transfer_id, schedule_id, created_at, updated_at)",
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    ].join("\n");
     for (let i = 0; i < 90; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() - 89 + i);
       const ds = d.toISOString().slice(0, 10);
       run(
         sqlite,
-        "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        insertTxnSql,
         `txn_${i}`,
         "acct_1",
         "cat_1",
@@ -538,10 +571,12 @@ describe("computeAgeOfMoney", () => {
         ds,
         1,
         null,
+        null,
         0,
         null,
         0,
         0,
+        null,
         null,
         null,
         now,

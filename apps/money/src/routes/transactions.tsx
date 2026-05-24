@@ -3,6 +3,7 @@ import { transactionsCollection, categoriesCollection } from "../lib/collections
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
+import { dispatch } from "../lib/pending-ops";
 import type { TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
 
@@ -140,6 +141,16 @@ export default function AllTransactionsPage() {
             tagList={tagList()}
             showAccount
             accountNames={accounts()}
+            onCreateSchedule={(tx) => {
+              dispatch("create_schedule", {
+                schedule: {
+                  name: tx.payee ?? "From transaction",
+                  amount: tx.amount,
+                  recurrenceRules: JSON.stringify({ type: "monthly" }),
+                  startDate: new Date().toISOString().slice(0, 10),
+                },
+              });
+            }}
           />
         </Show>
       </PageState>

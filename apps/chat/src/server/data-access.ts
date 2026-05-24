@@ -1,5 +1,6 @@
 import {
   TABLES,
+  clampSearchesPerTurn,
   decodeAttachmentRow,
   decodeAccountSettingsRow,
   decodeExtractRunRow,
@@ -42,6 +43,7 @@ export function normalizeWorkspace(row: Workspace, opId: string) {
   return decodeWorkspaceRow({
     ...row,
     defaultReasoningLevel: row.defaultReasoningLevel ?? "off",
+    defaultSearchLimit: clampSearchesPerTurn(row.defaultSearchLimit),
     preferFreeSearch: row.preferFreeSearch ?? false,
     optimistic: false,
     opId,
@@ -67,6 +69,8 @@ export function normalizeThread(row: Partial<Thread>, opId: string) {
   return decodeThreadRow({
     ...row,
     headMessageId: row.headMessageId ?? null,
+    searchEnabled: row.searchEnabled ?? null,
+    searchLimit: row.searchLimit == null ? null : clampSearchesPerTurn(row.searchLimit),
     forkedFromThreadId: row.forkedFromThreadId ?? null,
     forkedFromMessageId: row.forkedFromMessageId ?? null,
     optimistic: false,
@@ -120,6 +124,7 @@ export function inflateRow(tableName: string, row: Record<string, unknown>) {
         defaultModelId: row.default_model_id,
         defaultReasoningLevel: row.default_reasoning_level,
         defaultSearchMode: sqlToBool(row.default_search_mode),
+        defaultSearchLimit: clampSearchesPerTurn(row.default_search_limit),
         preferFreeSearch: sqlToBool(row.prefer_free_search),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -137,6 +142,8 @@ export function inflateRow(tableName: string, row: Record<string, unknown>) {
         headMessageId: row.head_message_id ?? null,
         modelId: row.model_id ?? null,
         reasoningLevel: row.reasoning_level ?? null,
+        searchEnabled: row.search_enabled == null ? null : sqlToBool(row.search_enabled),
+        searchLimit: row.search_limit == null ? null : clampSearchesPerTurn(row.search_limit),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         lastMessageAt: row.last_message_at,

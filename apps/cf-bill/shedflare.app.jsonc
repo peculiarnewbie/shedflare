@@ -31,9 +31,11 @@
       "from": "user",
       "description": "Cloudflare zone ID for HTTP analytics (optional)",
     },
+  },
+  "secrets": {
     "CF_API_TOKEN": {
-      "from": "user",
       "description": "API token with Account Analytics: Read permission",
+      "required": true,
     },
   },
   "resources": [],

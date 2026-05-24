@@ -617,6 +617,32 @@ a {
   max-width: min(72%, 36rem);
 }
 
+@media (max-width: 768px) {
+  .msg {
+    max-width: 100%;
+  }
+
+  .msg.user {
+    max-width: 100%;
+  }
+
+  .msg-user-row {
+    flex-direction: column;
+    align-items: flex-end;
+    width: 100%;
+  }
+
+  .msg-user-actions {
+    opacity: 1;
+    pointer-events: auto;
+    order: 1;
+  }
+
+  .msg-user-stack {
+    width: 100%;
+  }
+}
+
 .msg.assistant {
   align-self: flex-start;
   max-width: min(72%, 42rem);
@@ -2553,9 +2579,11 @@ a {
   }
   .msg {
     max-width: 90%;
+    min-width: 60%;
   }
   .msg.assistant {
     max-width: 100%;
+    min-width: 60%;
   }
   .composer-row {
     align-items: flex-start;

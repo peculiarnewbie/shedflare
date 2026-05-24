@@ -151,8 +151,8 @@ export class EventStore {
       case "workspace_upserted": {
         const row = payload.row;
         this.access.exec(
-          `INSERT OR REPLACE INTO workspaces (id, name, slug, system_prompt, default_model_id, default_reasoning_level, default_search_mode, prefer_free_search, created_at, updated_at, archived_at, sort_key, optimistic, op_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO workspaces (id, name, slug, system_prompt, default_model_id, default_reasoning_level, default_search_mode, default_search_limit, prefer_free_search, created_at, updated_at, archived_at, sort_key, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.name,
           row.slug,
@@ -160,6 +160,7 @@ export class EventStore {
           row.defaultModelId,
           row.defaultReasoningLevel,
           boolToSql(row.defaultSearchMode),
+          row.defaultSearchLimit,
           boolToSql(row.preferFreeSearch),
           row.createdAt,
           row.updatedAt,
@@ -184,8 +185,8 @@ export class EventStore {
       case "thread_upserted": {
         const row = payload.row;
         this.access.exec(
-          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, created_at, updated_at, last_message_at, archived_at, forked_from_thread_id, forked_from_message_id, optimistic, op_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, search_enabled, search_limit, created_at, updated_at, last_message_at, archived_at, forked_from_thread_id, forked_from_message_id, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.workspaceId,
           row.title,
@@ -193,6 +194,8 @@ export class EventStore {
           row.headMessageId,
           row.modelId,
           row.reasoningLevel,
+          row.searchEnabled == null ? null : boolToSql(row.searchEnabled),
+          row.searchLimit,
           row.createdAt,
           row.updatedAt,
           row.lastMessageAt,

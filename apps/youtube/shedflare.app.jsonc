@@ -23,9 +23,11 @@
       "from": "ownerEmail",
       "description": "Deployment owner email",
     },
+  },
+  "secrets": {
     "SYNC_SECRET": {
-      "from": "user",
       "description": "Shared secret to authenticate sync requests from CLI",
+      "required": true,
     },
   },
   "resources": [

@@ -12,7 +12,7 @@ import type { AuthEnv } from "@shedflare/auth-client/consumer";
 type Env = AuthEnv & {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
-  SYNC_SECRET: { get(): Promise<string> };
+  SYNC_SECRET: string;
 };
 
 export function createRouter(env: Env) {

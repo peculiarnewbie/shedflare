@@ -30,7 +30,7 @@ export const TABLES = {
 // Bumped from "effect4-trace-v1" because we added a new persisted table
 // (extract_runs). Clients on the old schema will see a hello_ack mismatch
 // and reload to pick up the new snapshot shape.
-export const SYNC_PROTOCOL_VERSION = "effect4-fork-v1";
+export const SYNC_PROTOCOL_VERSION = "effect4-search-limit-v1";
 
 export const MAX_SEARCHES_PER_TURN = 5;
 export const DEFAULT_SEARCHES_PER_TURN = 3;
@@ -97,6 +97,7 @@ export const WorkspaceRow = Schema.Struct({
   defaultModelId: Schema.String,
   defaultReasoningLevel: ReasoningLevel,
   defaultSearchMode: Schema.Boolean,
+  defaultSearchLimit: Schema.Number,
   preferFreeSearch: Schema.Boolean,
   createdAt: Schema.String,
   updatedAt: Schema.String,
@@ -124,6 +125,8 @@ export const ThreadRow = Schema.Struct({
   headMessageId: NullableString,
   modelId: NullableString,
   reasoningLevel: Schema.NullOr(ReasoningLevel),
+  searchEnabled: Schema.NullOr(Schema.Boolean),
+  searchLimit: Schema.NullOr(Schema.Number),
   createdAt: Schema.String,
   updatedAt: Schema.String,
   lastMessageAt: Schema.String,
@@ -905,6 +908,7 @@ export function createWorkspace(input: {
   systemPrompt?: string;
   defaultReasoningLevel?: ReasoningLevel;
   defaultSearchMode?: boolean;
+  defaultSearchLimit?: number;
   preferFreeSearch?: boolean;
 }) {
   const now = nowIso();
@@ -916,6 +920,7 @@ export function createWorkspace(input: {
     defaultModelId: input.defaultModelId,
     defaultReasoningLevel: input.defaultReasoningLevel ?? "off",
     defaultSearchMode: input.defaultSearchMode ?? false,
+    defaultSearchLimit: clampSearchesPerTurn(input.defaultSearchLimit),
     preferFreeSearch: input.preferFreeSearch ?? false,
     createdAt: now,
     updatedAt: now,
@@ -948,6 +953,8 @@ export function createThread(input: {
   title?: string;
   modelId?: string | null;
   reasoningLevel?: ReasoningLevel | null;
+  searchEnabled?: boolean | null;
+  searchLimit?: number | null;
   forkedFromThreadId?: string | null;
   forkedFromMessageId?: string | null;
 }) {
@@ -960,6 +967,8 @@ export function createThread(input: {
     headMessageId: null,
     modelId: input.modelId ?? null,
     reasoningLevel: input.reasoningLevel ?? null,
+    searchEnabled: input.searchEnabled ?? null,
+    searchLimit: input.searchLimit == null ? null : clampSearchesPerTurn(input.searchLimit),
     createdAt: now,
     updatedAt: now,
     lastMessageAt: now,

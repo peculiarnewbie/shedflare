@@ -849,8 +849,11 @@ export default function Home() {
       "reasoningLevel",
       thread?.reasoningLevel ?? workspace.defaultReasoningLevel ?? "off",
     );
-    setComposer("search", workspace.defaultSearchMode);
-    setComposer("searchLimit", DEFAULT_SEARCHES_PER_TURN);
+    setComposer("search", thread?.searchEnabled ?? workspace.defaultSearchMode);
+    setComposer(
+      "searchLimit",
+      clampSearchesPerTurn(thread?.searchLimit ?? workspace.defaultSearchLimit),
+    );
   });
 
   createEffect(() => {
@@ -2728,6 +2731,7 @@ export default function Home() {
       defaultModelId: composerModelId() || models()?.models?.[0]?.id || "auto",
       defaultReasoningLevel: composerReasoningLevel(),
       defaultSearchMode: composerSearch(),
+      defaultSearchLimit: composerSearchLimit(),
     });
   };
 
@@ -2815,7 +2819,11 @@ export default function Home() {
     changes: Partial<
       Pick<
         Workspace,
-        "defaultModelId" | "defaultReasoningLevel" | "defaultSearchMode" | "preferFreeSearch"
+        | "defaultModelId"
+        | "defaultReasoningLevel"
+        | "defaultSearchMode"
+        | "defaultSearchLimit"
+        | "preferFreeSearch"
       >
     >,
   ) => {
@@ -2881,6 +2889,7 @@ export default function Home() {
 
   const handleSearchChange = (search: boolean) => {
     const workspace = activeWorkspace();
+    const thread = activeThread();
     if (workspace && isDraftViewActive()) {
       updateWorkspaceDraft(workspace.id, (draft) => ({
         ...draft,
@@ -2889,6 +2898,9 @@ export default function Home() {
       }));
     } else {
       setComposer("search", search);
+      if (thread) {
+        updateThreadAction({ ...thread, searchEnabled: search, updatedAt: nowIso() });
+      }
     }
     updateWorkspacePreferences({ defaultSearchMode: search });
   };
@@ -2896,6 +2908,7 @@ export default function Home() {
   const handleSearchLimitChange = (value: number) => {
     const searchLimit = clampSearchesPerTurn(value);
     const workspace = activeWorkspace();
+    const thread = activeThread();
     if (workspace && isDraftViewActive()) {
       updateWorkspaceDraft(workspace.id, (draft) => ({
         ...draft,
@@ -2906,8 +2919,11 @@ export default function Home() {
     } else {
       setComposer("search", true);
       setComposer("searchLimit", searchLimit);
+      if (thread) {
+        updateThreadAction({ ...thread, searchEnabled: true, searchLimit, updatedAt: nowIso() });
+      }
     }
-    updateWorkspacePreferences({ defaultSearchMode: true });
+    updateWorkspacePreferences({ defaultSearchMode: true, defaultSearchLimit: searchLimit });
   };
 
   const handleReasoningChange = (reasoningLevel: ReasoningLevel) => {

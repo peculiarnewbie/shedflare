@@ -1295,6 +1295,74 @@ button {
   gap: 4px;
 }
 
+/* ─── Schedule Discovery ─────────────────────────────────────────── */
+
+.discover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.discover-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.discover-payee {
+  font-weight: 500;
+}
+
+.discover-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.discover-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 0.78rem;
+}
+
+.confidence-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.confidence-high {
+  background: #1b5e2020;
+  color: #4caf50;
+}
+
+.confidence-mid {
+  background: #e6510020;
+  color: #ff9800;
+}
+
+.confidence-low {
+  background: #c6282820;
+  color: #ef5350;
+}
+
+.text-danger {
+  color: #ef5350;
+}
+
+.modal-body {
+  min-height: 100px;
+}
+
 /* ============================================================
    Payee list
    ============================================================ */

@@ -53,6 +53,7 @@ const DDL = `
     default_model_id TEXT NOT NULL,
     default_reasoning_level TEXT NOT NULL,
     default_search_mode INTEGER NOT NULL,
+    default_search_limit INTEGER NOT NULL,
     prefer_free_search INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -80,6 +81,8 @@ const DDL = `
     head_message_id TEXT,
     model_id TEXT,
     reasoning_level TEXT,
+    search_enabled INTEGER,
+    search_limit INTEGER,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_message_at TEXT NOT NULL,
@@ -233,11 +236,25 @@ export function initializeStorage(
   exec(DDL);
   {
     const cols = queryOne<{ sql: string }>(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='workspaces'`,
+    );
+    if (cols && !cols.sql.includes("default_search_limit")) {
+      exec(`ALTER TABLE workspaces ADD COLUMN default_search_limit INTEGER NOT NULL DEFAULT 3`);
+    }
+  }
+  {
+    const cols = queryOne<{ sql: string }>(
       `SELECT sql FROM sqlite_master WHERE type='table' AND name='threads'`,
     );
     if (cols && !cols.sql.includes("forked_from_thread_id")) {
       exec(`ALTER TABLE threads ADD COLUMN forked_from_thread_id TEXT`);
       exec(`ALTER TABLE threads ADD COLUMN forked_from_message_id TEXT`);
+    }
+    if (cols && !cols.sql.includes("search_enabled")) {
+      exec(`ALTER TABLE threads ADD COLUMN search_enabled INTEGER`);
+    }
+    if (cols && !cols.sql.includes("search_limit")) {
+      exec(`ALTER TABLE threads ADD COLUMN search_limit INTEGER`);
     }
   }
   const version = queryOne<{ value: string }>(

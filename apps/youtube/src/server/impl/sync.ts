@@ -7,7 +7,7 @@ import { youtubeApi } from "../definitions";
 
 export interface SyncSecretEnv {
   DB: D1Database;
-  SYNC_SECRET: { get(): Promise<string> };
+  SYNC_SECRET: string;
 }
 
 export function createSyncGroup(env: SyncSecretEnv) {
@@ -17,7 +17,7 @@ export function createSyncGroup(env: SyncSecretEnv) {
       endpoint,
       handler: (ctx: any) =>
         Effect.gen(function* () {
-          const secret = yield* Effect.tryPromise(() => env.SYNC_SECRET.get());
+          const secret = env.SYNC_SECRET;
           const authHeader = ctx.request.headers["x-sync-secret"];
           if (!authHeader || authHeader !== secret) {
             return HttpServerResponse.fromWeb(

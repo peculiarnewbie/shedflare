@@ -5,7 +5,6 @@ import {
   appConfig,
   loadShedflareConfig,
   physicalName,
-  requireSecretVar,
   requireVar,
 } from "../../infra/alchemy-config.ts";
 
@@ -19,6 +18,8 @@ export const CfBillStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = appConfig(loadShedflareConfig(), "cf-bill");
 
+    const cfApiToken = yield* Alchemy.Secret("CF_API_TOKEN");
+
     const worker = yield* Cloudflare.Worker("CfBillWorker", {
       name: physicalName(stage, "cf-bill"),
       main: "apps/cf-bill/src/worker.ts",
@@ -27,6 +28,9 @@ export const CfBillStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
+      bindings: {
+        CF_API_TOKEN: cfApiToken,
+      },
       env: {
         APP_PUBLIC_URL: config.url,
         AUTH_ISSUER_URL: requireVar(config, "AUTH_ISSUER_URL"),
@@ -34,7 +38,6 @@ export const CfBillStack = Alchemy.Stack(
         OWNER_EMAIL: config.ownerEmail,
         CLOUDFLARE_ACCOUNT_ID: requireVar(config, "CLOUDFLARE_ACCOUNT_ID"),
         CLOUDFLARE_ZONE_ID: config.vars.CLOUDFLARE_ZONE_ID ?? "",
-        CF_API_TOKEN: requireSecretVar("cf-bill", "CF_API_TOKEN"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });

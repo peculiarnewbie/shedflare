@@ -242,6 +242,7 @@ describe("domain helpers", () => {
         modelId: workspace.defaultModelId,
         reasoningLevel: "medium",
         search: false,
+        searchLimit: 4,
       }),
     ).not.toThrow();
 
@@ -255,6 +256,8 @@ describe("domain helpers", () => {
     expect(persistedThread?.headMessageId).toBeTruthy();
     expect(persistedThread?.modelId).toBe(workspace.defaultModelId);
     expect(persistedThread?.reasoningLevel).toBe("medium");
+    expect(persistedThread?.searchEnabled).toBe(false);
+    expect(persistedThread?.searchLimit).toBe(4);
     expect(optimisticMessages).toHaveLength(2);
     expect(optimisticMessages.map((message) => message.role).sort()).toEqual(["assistant", "user"]);
     expect(optimisticMessages.map((message) => message.reasoningLevel)).toEqual([
@@ -285,10 +288,12 @@ describe("domain helpers", () => {
       modelId: workspace.defaultModelId,
       reasoningLevel: "off",
       search: false,
+      searchLimit: 2,
     });
 
     expect(threads.get(draftThread.id)?.title).toBe("New Chat");
     expect(threads.get(draftThread.id)?.modelId).toBe(workspace.defaultModelId);
+    expect(threads.get(draftThread.id)?.searchLimit).toBe(2);
     expect(
       [...messages.state.values()].filter((message) => message.threadId === draftThread.id),
     ).toHaveLength(2);
@@ -325,6 +330,7 @@ describe("domain helpers", () => {
       modelId: workspace.defaultModelId,
       reasoningLevel: "off",
       search: false,
+      searchLimit: 5,
     });
 
     const threadAfterRetry = threads.get(thread.id);
@@ -342,6 +348,8 @@ describe("domain helpers", () => {
     expect(threadAfterRetry?.headMessageId).toBe(retriedAssistant?.id);
     expect(threadAfterRetry?.modelId).toBe(workspace.defaultModelId);
     expect(threadAfterRetry?.reasoningLevel).toBe("off");
+    expect(threadAfterRetry?.searchEnabled).toBe(false);
+    expect(threadAfterRetry?.searchLimit).toBe(5);
   });
 
   it("edits a user turn by creating a new user branch and cloned attachments", () => {
@@ -386,6 +394,7 @@ describe("domain helpers", () => {
       modelId: workspace.defaultModelId,
       reasoningLevel: "off",
       search: false,
+      searchLimit: 1,
       attachmentIds: [originalAttachment.id],
     });
 
@@ -408,6 +417,8 @@ describe("domain helpers", () => {
     expect(threadAfterEdit?.headMessageId).toBe(editedAssistant?.id);
     expect(threadAfterEdit?.modelId).toBe(workspace.defaultModelId);
     expect(threadAfterEdit?.reasoningLevel).toBe("off");
+    expect(threadAfterEdit?.searchEnabled).toBe(false);
+    expect(threadAfterEdit?.searchLimit).toBe(1);
     expect(clonedAttachments).toHaveLength(1);
     expect(clonedAttachments[0]?.messageId).toBe(editedUser?.id);
     expect(clonedAttachments[0]?.objectKey).toBe(originalAttachment.objectKey);
@@ -478,6 +489,39 @@ describe("domain helpers", () => {
 
     expect(getLastServerSeq()).toBe(7);
     expect(workspaces.get(workspace.id)?.id).toBe(workspace.id);
+  });
+
+  it("advances the sync cursor after applying acks and events", () => {
+    const workspace = createWorkspace({
+      name: "Writing",
+      defaultModelId: "openai/gpt-4.1",
+    });
+
+    processEnvelopes([
+      {
+        type: "ack",
+        opId: "op_workspace",
+        serverSeq: 3,
+        acceptedAt: "2026-04-24T00:00:00.000Z",
+        commandType: "create_workspace",
+      },
+    ]);
+
+    expect(getLastServerSeq()).toBe(3);
+
+    processEnvelopes([
+      {
+        type: "event",
+        serverSeq: 4,
+        eventId: "evt_workspace",
+        eventType: "workspace_upserted",
+        payload: { row: workspace },
+        causedByOpId: "op_workspace",
+      },
+    ]);
+
+    expect(workspaces.get(workspace.id)?.id).toBe(workspace.id);
+    expect(getLastServerSeq()).toBe(4);
   });
 
   it("applies message completion after same-batch message creation", () => {

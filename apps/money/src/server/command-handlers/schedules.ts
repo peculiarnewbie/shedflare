@@ -172,6 +172,7 @@ export function handleScheduleCommands(
             ? (access.getPayee(castId<PayeeId>(existing.payeeId))?.name ?? undefined)
             : undefined,
           date: new Date().toISOString().slice(0, 10),
+          scheduleId: existing.id,
         });
         events.push(
           eventStore.insertEvent(opId, "transaction_created", { row: tx }) as SyncServerEvent,

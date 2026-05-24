@@ -119,6 +119,7 @@ export function createWorkspaceAction(
     defaultModelId: string;
     defaultReasoningLevel?: ReasoningLevel;
     defaultSearchMode?: boolean;
+    defaultSearchLimit?: number;
   },
 ) {
   const opId = createId("op");
@@ -127,6 +128,7 @@ export function createWorkspaceAction(
     defaultModelId: input.defaultModelId,
     defaultReasoningLevel: input.defaultReasoningLevel,
     defaultSearchMode: input.defaultSearchMode,
+    defaultSearchLimit: input.defaultSearchLimit,
   });
   const initialThread = createThread({ workspaceId: workspace.id });
 
@@ -199,6 +201,10 @@ export function forkThreadAction(input: {
     ...createThread({
       workspaceId: input.workspaceId,
       title: sourceThread?.title ?? "Forked Chat",
+      modelId: sourceThread?.modelId ?? null,
+      reasoningLevel: sourceThread?.reasoningLevel ?? null,
+      searchEnabled: sourceThread?.searchEnabled ?? null,
+      searchLimit: sourceThread?.searchLimit ?? null,
       forkedFromThreadId: input.sourceThreadId,
       forkedFromMessageId: input.sourceMessageId,
     }),
@@ -402,6 +408,8 @@ export function sendMessageAction(input: {
     headMessageId: assistantMessage.id,
     modelId: input.modelId,
     reasoningLevel: input.reasoningLevel,
+    searchEnabled: input.search,
+    searchLimit: input.searchLimit ?? null,
     updatedAt,
     lastMessageAt: updatedAt,
   };
@@ -486,6 +494,8 @@ export function retryMessageAction(input: {
     headMessageId: assistantMessage.id,
     modelId: input.modelId,
     reasoningLevel: input.reasoningLevel,
+    searchEnabled: input.search,
+    searchLimit: input.searchLimit ?? null,
     updatedAt,
     lastMessageAt: updatedAt,
   };
@@ -561,6 +571,8 @@ export function editUserMessageAction(input: {
     headMessageId: assistantMessage.id,
     modelId: input.modelId,
     reasoningLevel: input.reasoningLevel,
+    searchEnabled: input.search,
+    searchLimit: input.searchLimit ?? null,
     updatedAt,
     lastMessageAt: updatedAt,
   };

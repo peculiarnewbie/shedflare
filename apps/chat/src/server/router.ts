@@ -42,9 +42,9 @@ type RawEnv = {
   APP_PUBLIC_URL: string;
   AUTH_ISSUER_URL?: string;
   AUTH_CLIENT_ID?: string;
-  OPENCODE_GO_API_KEY: { get(): Promise<string> };
-  UPLOAD_TOKEN_SECRET: { get(): Promise<string> };
-  EXA_API_KEY?: { get(): Promise<string> };
+  OPENCODE_GO_API_KEY: string;
+  UPLOAD_TOKEN_SECRET: string;
+  EXA_API_KEY?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
   UPLOADS: R2Bucket;
   SYNC_ENGINE: DurableObjectNamespace;
@@ -68,18 +68,6 @@ export function createRouter(env: RawEnv) {
     async fetch(request: Request): Promise<Response> {
       try {
         const resolved: Record<string, unknown> = { ...(env as any) };
-
-        for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET", "EXA_API_KEY"] as const) {
-          const binding = resolved[key];
-          if (
-            binding &&
-            typeof binding === "object" &&
-            "get" in binding &&
-            typeof (binding as any).get === "function"
-          ) {
-            resolved[key] = await (binding as { get(): Promise<string> }).get();
-          }
-        }
         setRuntimeEnv(resolved);
 
         const url = new URL(request.url);

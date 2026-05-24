@@ -76,6 +76,7 @@ export const transactions = sqliteTable(
     isChild: integer("is_child", { mode: "boolean" }).notNull().default(false),
     parentId: text("parent_id"),
     transferId: text("transfer_id"),
+    scheduleId: text("schedule_id"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

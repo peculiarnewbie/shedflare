@@ -13,7 +13,7 @@
     "test": "vp test",
     "check": "vp check",
     "typecheck": "tsc --noEmit",
-    "deploy": "node ./scripts/deploy.mjs",
+    "deploy": "npx wrangler deploy --env production",
     "ready": "vp fmt && vp lint && vp run test -r && vp run build -r",
     "prepare": "vp config"
   },

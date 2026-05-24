@@ -83,6 +83,7 @@ interface TransactionInput {
   isChild?: boolean;
   parentId?: string | null;
   transferId?: string | null;
+  scheduleId?: string | null;
 }
 
 export function createTransaction(input: TransactionInput & { id?: string }) {
@@ -104,6 +105,7 @@ export function createTransaction(input: TransactionInput & { id?: string }) {
     isChild: input.isChild ?? false,
     parentId: input.parentId ?? null,
     transferId: input.transferId ?? null,
+    scheduleId: input.scheduleId ?? null,
     createdAt: now,
     updatedAt: now,
   } satisfies schema.Transaction;

@@ -69,6 +69,7 @@ const CREATE_TABLES = [
     is_child INTEGER DEFAULT 0,
     parent_id TEXT,
     transfer_id TEXT,
+    schedule_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,

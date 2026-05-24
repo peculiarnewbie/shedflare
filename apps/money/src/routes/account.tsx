@@ -327,6 +327,16 @@ export default function AccountPage() {
             txTags={txTags()}
             tagList={tagList()}
             showBalance
+            onCreateSchedule={(tx) => {
+              dispatch("create_schedule", {
+                schedule: {
+                  name: tx.payee ?? "From transaction",
+                  amount: tx.amount,
+                  recurrenceRules: JSON.stringify({ type: "monthly" }),
+                  startDate: new Date().toISOString().slice(0, 10),
+                },
+              });
+            }}
           />
         </Show>
       </PageState>

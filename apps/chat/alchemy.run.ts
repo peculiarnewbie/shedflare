@@ -1,12 +1,12 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
+import { DeployActionLive } from "../../packages/alchemy/src/Cloudflare/Workers/Deploy.ts";
+import { Config } from "effect";
 import {
   appConfig,
   loadShedflareConfig,
-  optionalSecretVar,
   physicalName,
-  requireSecretVar,
   requireVar,
 } from "../../infra/alchemy-config.ts";
 
@@ -20,6 +20,13 @@ export const ChatStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = appConfig(loadShedflareConfig(), "chat");
 
+    const opencodeGoApiKey = yield* Alchemy.Secret("OPENCODE_GO_API_KEY");
+    const uploadTokenSecret = yield* Alchemy.Secret("UPLOAD_TOKEN_SECRET");
+    const exaApiKey = yield* Alchemy.Secret(
+      "EXA_API_KEY",
+      Config.redacted("EXA_API_KEY").pipe(Config.withDefault("")),
+    );
+
     const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
       name: physicalName(stage, "chat", "uploads"),
     });
@@ -31,31 +38,22 @@ export const ChatStack = Alchemy.Stack(
       className: "SyncEngineDurableObject",
     });
 
+    // Create the deployment workflow using DeployAction
+    const deployAction = yield* DeployAction({
+      appDir: "apps/chat",
+      stackPath: "apps/chat/alchemy.run.ts",
+      force: false,
+      skipBuild: false,
+    });
+
+    // Durable Object declared as a binding reference.
+    // The actual class (SyncEngineDurableObject) is exported from src/worker.ts
+    // and Alchemy bundles it as part of the Worker deploy.
     // NOTE: Browser Rendering binding (BROWSER) is not yet supported as an
     // Alchemy resource type. After deploying, manually add the binding:
     //   wrangler secret put BROWSER  (or via Cloudflare Dashboard)
     // Or add it to the Worker's wrangler.jsonc after generation:
     //   "browser": { "binding": "BROWSER" }
-
-    const secrets = yield* Cloudflare.SecretsStore("ShedflareSecrets");
-
-    const _opencodeGoApiKey = yield* Cloudflare.Secret("OPENCODE_GO_API_KEY", {
-      store: secrets,
-      value: requireSecretVar("chat", "OPENCODE_GO_API_KEY"),
-    });
-
-    const _uploadTokenSecret = yield* Cloudflare.Secret("UPLOAD_TOKEN_SECRET", {
-      store: secrets,
-      value: requireSecretVar("chat", "UPLOAD_TOKEN_SECRET"),
-    });
-
-    const _exaApiKey = optionalSecretVar("chat", "EXA_API_KEY");
-    if (_exaApiKey) {
-      yield* Cloudflare.Secret("EXA_API_KEY", {
-        store: secrets,
-        value: _exaApiKey,
-      });
-    }
 
     const worker = yield* Cloudflare.Worker("ChatWorker", {
       name: physicalName(stage, "chat"),
@@ -68,6 +66,9 @@ export const ChatStack = Alchemy.Stack(
       bindings: {
         UPLOADS: uploads,
         SYNC_ENGINE: syncEngine,
+        OPENCODE_GO_API_KEY: opencodeGoApiKey,
+        UPLOAD_TOKEN_SECRET: uploadTokenSecret,
+        EXA_API_KEY: exaApiKey,
       },
       env: {
         APP_PUBLIC_URL: config.url,
@@ -85,6 +86,7 @@ export const ChatStack = Alchemy.Stack(
       configuredUrl: config.url,
       workerName: worker.workerName,
       bucketName: uploads.bucketName,
+      deployOutput: deployAction,
     };
   }),
 );

@@ -16,7 +16,7 @@ import { getDefaultModelId, type AppEnv } from "#/runtime";
 import * as dbSchema from "#/db/schema";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { eq } from "drizzle-orm";
-import { SyncEngineDO, type HandlerContext } from "@shedflare/sync-protocol";
+import { SyncEngineDO } from "@shedflare/sync-protocol";
 import { json, parseJsonRequest, parseInternalCommandBody, syncLog } from "./sync-utils";
 import { initializeStorage } from "./schema";
 import { DataAccess } from "./data-access";
@@ -40,7 +40,6 @@ import {
   handleDeleteAttachment,
   handleSetSearchMode,
   handleResetStorage,
-  type CommandHandlerResult,
   type DeferredFollowUp,
   type CommandHandlerContext,
   type AssistantTurnPayload,
@@ -96,17 +95,6 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
     const raw = env as unknown as Record<string, unknown>;
     void ctx.blockConcurrencyWhile(async () => {
-      for (const key of ["OPENCODE_GO_API_KEY", "UPLOAD_TOKEN_SECRET", "EXA_API_KEY"] as const) {
-        const binding = raw[key];
-        if (
-          binding &&
-          typeof binding === "object" &&
-          "get" in binding &&
-          typeof (binding as { get(): Promise<string> }).get === "function"
-        ) {
-          raw[key] = await (binding as { get(): Promise<string> }).get();
-        }
-      }
       initializeStorage(
         (query, ...params) => {
           ctx.storage.sql.exec(query, ...params);

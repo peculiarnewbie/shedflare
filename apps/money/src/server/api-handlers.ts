@@ -13,6 +13,7 @@ import {
   computeCrossoverProjection,
 } from "./budget-engine";
 import { buildFilterWhereSql, type FilterCondition } from "./conditions-to-sql";
+import { discoverSchedules } from "./discover-schedules";
 
 export function handleApiRequest(url: URL, method: string, access: DataAccess): Response | null {
   const pathname = url.pathname;
@@ -79,9 +80,10 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     }
 
     const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.*, c.name as category_name
+      `SELECT t.*, c.name as category_name, s.name as schedule_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
+       LEFT JOIN schedules s ON t.schedule_id = s.id
        WHERE t.account_id = ?${whereExtra}
        ORDER BY t.date DESC, t.created_at DESC`,
       ...params,
@@ -195,6 +197,12 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     return json({ schedules: rows });
   }
 
+  // Schedule discovery
+  if (pathname === "/api/schedules/discover" && method === "GET") {
+    const discovered = discoverSchedules(access);
+    return json({ discovered });
+  }
+
   // Single schedule by ID
   const scheduleMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
   if (scheduleMatch && method === "GET") {
@@ -241,10 +249,11 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     }
 
     const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.*, c.name as category_name, a.name as account_name
+      `SELECT t.*, c.name as category_name, a.name as account_name, s.name as schedule_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       LEFT JOIN accounts a ON t.account_id = a.id${whereExtra}
+       LEFT JOIN accounts a ON t.account_id = a.id
+       LEFT JOIN schedules s ON t.schedule_id = s.id${whereExtra}
        ORDER BY t.date DESC, t.created_at DESC`,
       ...params,
     );

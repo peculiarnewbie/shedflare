@@ -449,9 +449,6 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
         events.push(envelopes[index] as EventEnvelope);
         index += 1;
       }
-      const lastSeq = events.at(-1)!.serverSeq;
-      conn.setLastServerSeq(lastSeq);
-
       const coalesced = coalesceDeltas(events);
       beginBatch();
       for (const evt of coalesced) {
@@ -461,6 +458,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
         }
       }
       flushBatch();
+      conn.setLastServerSeq(events.at(-1)!.serverSeq);
       needsSelectionCheck = true;
       continue;
     }
@@ -488,6 +486,9 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
       case "ack":
         confirmOp(envelope.opId);
         pendingOps.resolve(envelope.opId);
+        if (envelope.serverSeq > conn.getLastServerSeq()) {
+          conn.setLastServerSeq(envelope.serverSeq);
+        }
         break;
 
       case "reject":

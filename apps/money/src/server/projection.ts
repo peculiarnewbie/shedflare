@@ -272,8 +272,8 @@ export class Projection {
 
   execTransactionUpsert(row: Transaction) {
     this.access.exec(
-      `INSERT OR REPLACE INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       row.id,
       row.accountId,
       row.categoryId,
@@ -289,6 +289,7 @@ export class Projection {
       boolToSql(row.isChild),
       row.parentId,
       row.transferId,
+      row.scheduleId,
       row.createdAt,
       row.updatedAt,
     );

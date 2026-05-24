@@ -37,7 +37,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Notes entity                              | Generic notes key-value store not implemented                                                                                                                                                                                                                 |
 | ~~Transaction filters (saved searches)~~  | ✅ Inline filter bar on account page: condition builder (account/category/amount/date/notes/cleared/reconciled), save/load/delete filters, server-side SQL on saved filters, client-side fallback for ad-hoc. `?filter=` query param on transactions endpoint |
 | ~~All transactions (global filter view)~~ | ✅ Server `/api/transactions` supports `?filter=`, new `/transactions` route with reusable TransactionTable component showing account column, filter bar works cross-account, nav item + command palette entry                                                |
-| Link schedules from transactions          | Not implemented                                                                                                                                                                                                                                               |
+| ~~Link schedules from transactions~~      | ✅ Transactions have `schedule_id` FK, ↻ badge on scheduled txns, 📅 "Create schedule" action button                                                                                                 |
 | Payee learn categories                    | Not implemented                                                                                                                                                                                                                                               |
 
 ## Budget
@@ -51,13 +51,13 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Schedules
 
-| Gap                                               | Notes                                                                                 |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| ~~Edit existing schedule UI~~                     | ✅ Edit button opens pre-populated modal, updates via `update_schedule` command       |
-| ~~End conditions (after N occurrences, on date)~~ | ✅ UI select for never/after N/on date, server-side end-condition check on post/skip  |
-| ~~Weekend handling config (skip/before/after)~~   | ✅ Checkbox toggle + before/after select, server-side weekend adjustment on post/skip |
-| Schedule discovery (detect recurring txns)        | Not implemented                                                                       |
-| Link schedule via rules                           | Not implemented                                                                       |
+| Gap                                               | Notes                                                                                                                                 |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Edit existing schedule UI~~                     | ✅ Edit button opens pre-populated modal, updates via `update_schedule` command                                                       |
+| ~~End conditions (after N occurrences, on date)~~ | ✅ UI select for never/after N/on date, server-side end-condition check on post/skip                                                  |
+| ~~Weekend handling config (skip/before/after)~~   | ✅ Checkbox toggle + before/after select, server-side weekend adjustment on post/skip                                                 |
+| ~~Schedule discovery (detect recurring txns)~~    | ✅ Analyzes transaction history by payee, detects consistent intervals + amounts, suggests schedule candidates with confidence scores |
+| Link schedule via rules                           | Not implemented                                                                                                                       |
 
 ## Rules
 

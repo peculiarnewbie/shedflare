@@ -1,4 +1,5 @@
 import { createSignal, createMemo, createEffect, For, Show, onCleanup } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
@@ -19,6 +20,8 @@ export interface TransactionRow {
   isParent?: boolean;
   isChild?: boolean;
   parentId?: string | null;
+  scheduleId?: string | null;
+  scheduleName?: string | null;
   tags?: { id: string; name: string; color: string | null }[];
 }
 
@@ -51,9 +54,11 @@ interface TransactionTableProps {
   showBalance?: boolean;
   showAccount?: boolean;
   accountNames?: Record<string, string>;
+  onCreateSchedule?: (tx: TransactionRow) => void;
 }
 
 export default function TransactionTable(props: TransactionTableProps) {
+  const navigate = useNavigate();
   const fmt = useCurrency();
   const privacyBlur = usePrivacyMode();
   const df = useDateFormat();
@@ -297,6 +302,19 @@ export default function TransactionTable(props: TransactionTableProps) {
                   </Show>
 
                   <span class="tx-col-payee">
+                    <Show when={tx.scheduleId}>
+                      <span
+                        class="schedule-badge"
+                        title={`From schedule: ${tx.scheduleName ?? "Unknown"}`}
+                        style={{ cursor: "pointer", "margin-right": "4px" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/schedules/${tx.scheduleId}`);
+                        }}
+                      >
+                        ↻
+                      </span>
+                    </Show>
                     {isEditing("payee") ? (
                       <input
                         type="text"
@@ -312,8 +330,10 @@ export default function TransactionTable(props: TransactionTableProps) {
                         autofocus
                       />
                     ) : (
-                      <span onClick={() => startEdit(tx.id, "payee")}>
-                        {tx.isParent ? <em>Split</em> : (tx.payee ?? "—")}
+                      <span classList={{ "tx-schedule-linked": !!tx.scheduleId }}>
+                        <span onClick={() => startEdit(tx.id, "payee")}>
+                          {tx.isParent ? <em>Split</em> : (tx.payee ?? "—")}
+                        </span>
                       </span>
                     )}
                   </span>
@@ -474,6 +494,14 @@ export default function TransactionTable(props: TransactionTableProps) {
                       disabled={!!tx.isChild || !!tx.isParent}
                     >
                       ⇄
+                    </button>
+                    <button
+                      class="btn btn-icon btn-ghost btn-xs"
+                      onClick={() => props.onCreateSchedule?.(tx)}
+                      title="Create schedule from this transaction"
+                      disabled={!!tx.isChild || !!tx.isParent}
+                    >
+                      📅
                     </button>
                     <button
                       class="btn btn-icon btn-ghost btn-xs"
