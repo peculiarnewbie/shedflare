@@ -8,6 +8,7 @@ import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { settingsCollection } from "../lib/collections";
 import { PageState } from "../components/PageState";
+import { useAccountForm } from "../lib/forms/accounts";
 
 interface AccountRow {
   id: string;
@@ -26,10 +27,9 @@ export default function AccountsPage() {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [showAddForm, setShowAddForm] = createSignal(false);
-  const [newName, setNewName] = createSignal("");
-  const [newOffBudget, setNewOffBudget] = createSignal(false);
-  const [newBalance, setNewBalance] = createSignal("");
   const [hideClosed, setHideClosed] = createSignal(false);
+
+  const { values, errors, setValues, validate, resetForm } = useAccountForm();
 
   createEffect(() => {
     function sync() {
@@ -62,22 +62,20 @@ export default function AccountsPage() {
     }
   }
 
-  async function handleCreate(e: Event) {
+  async function handleSubmit(e: Event) {
     e.preventDefault();
-    const name = newName().trim();
-    if (!name) return;
+    if (!validate()) return;
 
-    const balance = parseFloat(newBalance());
+    const name = values.name.trim();
+    const balance = values.balance ? parseFloat(values.balance) : undefined;
     const op = dispatch("create_account", {
       name,
-      offBudget: newOffBudget(),
-      balance: isNaN(balance) ? undefined : Math.round(balance * 100),
+      offBudget: values.offbudget,
+      balance: balance ? Math.round(balance * 100) : undefined,
     });
 
     setShowAddForm(false);
-    setNewName("");
-    setNewOffBudget(false);
-    setNewBalance("");
+    resetForm();
     await op.promise;
     await loadAccounts();
   }
@@ -129,17 +127,17 @@ export default function AccountsPage() {
                 ✕
               </button>
             </div>
-            <form onSubmit={handleCreate}>
+            <form onSubmit={handleSubmit}>
               <div class="form-group">
                 <label>Name</label>
                 <input
                   type="text"
                   placeholder="e.g. Checking, Savings, Credit Card"
-                  value={newName()}
-                  onInput={(e) => setNewName(e.currentTarget.value)}
-                  required
-                  autofocus
+                  value={values.name}
+                  onInput={(e) => setValues("name", e.currentTarget.value)}
+                  class={errors.name ? "input-error" : ""}
                 />
+                {errors.name && <span class="error-message">{errors.name.message}</span>}
               </div>
               <div class="form-group">
                 <label>Starting Balance (optional)</label>
@@ -147,16 +145,16 @@ export default function AccountsPage() {
                   type="number"
                   step="0.01"
                   placeholder="0.00"
-                  value={newBalance()}
-                  onInput={(e) => setNewBalance(e.currentTarget.value)}
+                  value={values.balance || ""}
+                  onInput={(e) => setValues("balance", e.currentTarget.value)}
                 />
               </div>
               <div class="form-check">
                 <input
                   type="checkbox"
                   id="off-budget"
-                  checked={newOffBudget()}
-                  onChange={(e) => setNewOffBudget(e.currentTarget.checked)}
+                  checked={values.offbudget}
+                  onChange={(e) => setValues("offbudget", e.currentTarget.checked)}
                 />
                 <label for="off-budget">Off-budget (e.g. credit card, investment)</label>
               </div>

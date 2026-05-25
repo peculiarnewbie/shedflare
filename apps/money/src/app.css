@@ -1933,6 +1933,21 @@ button {
   border-radius: var(--radius-sm);
 }
 
+/* ─── Error States ───────────────────────────────────────────────────────── */
+.input-error {
+  border-color: var(--negative);
+  border-width: 2px;
+  background: var(--bg-input);
+}
+
+.error-message {
+  color: var(--negative);
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+}
+
 /* ─── Calendar Heatmap Widget ───────────────────────────────────────── */
 
 .heatmap-grid {

@@ -2,6 +2,7 @@ import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
+import { useCategoryForm, useCategoryGroupForm } from "../lib/forms/categories";
 
 interface CategoryGroup {
   id: string;
@@ -45,12 +46,9 @@ export default function CategoriesPage() {
 
   // Add group form
   const [showAddGroup, setShowAddGroup] = createSignal(false);
-  const [newGroupName, setNewGroupName] = createSignal("");
-  const [newGroupIsIncome, setNewGroupIsIncome] = createSignal(false);
 
   // Add category form
   const [activeGroupId, setActiveGroupId] = createSignal<string | null>(null);
-  const [newCatName, setNewCatName] = createSignal("");
 
   // Goal editing
   const [editingGoalCatId, setEditingGoalCatId] = createSignal<string | null>(null);
@@ -82,6 +80,21 @@ export default function CategoriesPage() {
   // Drag-and-drop reorder
   const [dragSourceId, setDragSourceId] = createSignal<string | null>(null);
   const [dragTargetId, setDragTargetId] = createSignal<string | null>(null);
+
+  const {
+    values: valuesGroup,
+    errors: errorsGroup,
+    setValues: setValuesGroup,
+    validate: validateGroup,
+    resetForm: resetFormGroup,
+  } = useCategoryGroupForm();
+  const {
+    values: valuesCategory,
+    errors: errorsCategory,
+    setValues: setValuesCategory,
+    validate: validateCategory,
+    resetForm: resetFormCategory,
+  } = useCategoryForm();
 
   createEffect(() => {
     void loadData();
@@ -138,23 +151,22 @@ export default function CategoriesPage() {
 
   function handleAddGroup(e: Event) {
     e.preventDefault();
-    const name = newGroupName().trim();
-    if (!name) return;
-    setNewGroupName("");
-    setNewGroupIsIncome(false);
+    if (!validateGroup()) return;
+    const name = valuesGroup.name.trim();
     setShowAddGroup(false);
-    void dispatch("create_category_group", { name, isIncome: newGroupIsIncome() }).promise.then(
+    void dispatch("create_category_group", { name, isIncome: valuesGroup.isIncome }).promise.then(
       loadData,
     );
+    resetFormGroup();
   }
 
   function handleAddCategory(e: Event, groupId: string) {
     e.preventDefault();
-    const name = newCatName().trim();
-    if (!name) return;
-    setNewCatName("");
+    if (!validateCategory()) return;
+    const name = valuesCategory.name.trim();
     setActiveGroupId(null);
     void dispatch("create_category", { name, groupId }).promise.then(loadData);
+    resetFormCategory();
   }
 
   function startRenameGroup(group: CategoryGroup) {
@@ -342,18 +354,18 @@ export default function CategoriesPage() {
                 <input
                   type="text"
                   placeholder="e.g. Fixed Expenses"
-                  value={newGroupName()}
-                  onInput={(e) => setNewGroupName(e.currentTarget.value)}
-                  required
-                  autofocus
+                  value={valuesGroup.name}
+                  onInput={(e) => setValuesGroup("name", e.currentTarget.value)}
+                  class={errorsGroup.name ? "input-error" : ""}
                 />
+                {errorsGroup.name && <span class="error-message">{errorsGroup.name.message}</span>}
               </div>
               <div class="form-check" style={{ "margin-top": "24px" }}>
                 <input
                   type="checkbox"
                   id="income-group"
-                  checked={newGroupIsIncome()}
-                  onChange={(e) => setNewGroupIsIncome(e.currentTarget.checked)}
+                  checked={valuesGroup.isIncome}
+                  onChange={(e) => setValuesGroup("isIncome", e.currentTarget.checked)}
                 />
                 <label for="income-group">Income group</label>
               </div>
@@ -516,11 +528,13 @@ export default function CategoriesPage() {
                           <input
                             type="text"
                             placeholder="Category name"
-                            value={newCatName()}
-                            onInput={(e) => setNewCatName(e.currentTarget.value)}
-                            required
-                            autofocus
+                            value={valuesCategory.name}
+                            onInput={(e) => setValuesCategory("name", e.currentTarget.value)}
+                            class={errorsCategory.name ? "input-error" : ""}
                           />
+                          {errorsCategory.name && (
+                            <span class="error-message">{errorsCategory.name.message}</span>
+                          )}
                         </div>
                         <button type="submit" class="btn btn-primary btn-sm">
                           Add
