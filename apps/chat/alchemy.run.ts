@@ -1,14 +1,14 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import { DeployActionLive } from "../../packages/alchemy/src/Cloudflare/Workers/Deploy.ts";
-import { Config } from "effect";
 import {
   appConfig,
-  loadShedflareConfig,
+  authIssuerUrl,
+  optionalEnv,
+  optionalSecretEnv,
   physicalName,
-  requireVar,
-} from "../../infra/alchemy-config.ts";
+  secretEnv,
+} from "../../infra/alchemy-env.ts";
 
 export const ChatStack = Alchemy.Stack(
   "ShedflareChat",
@@ -18,14 +18,7 @@ export const ChatStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = appConfig(loadShedflareConfig(), "chat");
-
-    const opencodeGoApiKey = yield* Alchemy.Secret("OPENCODE_GO_API_KEY");
-    const uploadTokenSecret = yield* Alchemy.Secret("UPLOAD_TOKEN_SECRET");
-    const exaApiKey = yield* Alchemy.Secret(
-      "EXA_API_KEY",
-      Config.redacted("EXA_API_KEY").pipe(Config.withDefault("")),
-    );
+    const config = yield* appConfig("chat");
 
     const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
       name: physicalName(stage, "chat", "uploads"),
@@ -36,14 +29,6 @@ export const ChatStack = Alchemy.Stack(
     // and Alchemy bundles it as part of the Worker deploy.
     const syncEngine = Cloudflare.DurableObjectNamespace("SYNC_ENGINE", {
       className: "SyncEngineDurableObject",
-    });
-
-    // Create the deployment workflow using DeployAction
-    const deployAction = yield* DeployAction({
-      appDir: "apps/chat",
-      stackPath: "apps/chat/alchemy.run.ts",
-      force: false,
-      skipBuild: false,
     });
 
     // Durable Object declared as a binding reference.
@@ -66,16 +51,16 @@ export const ChatStack = Alchemy.Stack(
       bindings: {
         UPLOADS: uploads,
         SYNC_ENGINE: syncEngine,
-        OPENCODE_GO_API_KEY: opencodeGoApiKey,
-        UPLOAD_TOKEN_SECRET: uploadTokenSecret,
-        EXA_API_KEY: exaApiKey,
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: requireVar(config, "AUTH_ISSUER_URL"),
+        AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-chat`,
         OWNER_EMAIL: config.ownerEmail,
-        DEFAULT_MODEL_ID: requireVar(config, "DEFAULT_MODEL_ID"),
+        DEFAULT_MODEL_ID: yield* optionalEnv("DEFAULT_MODEL_ID", "auto"),
+        OPENCODE_GO_API_KEY: yield* secretEnv("OPENCODE_GO_API_KEY"),
+        UPLOAD_TOKEN_SECRET: yield* secretEnv("UPLOAD_TOKEN_SECRET"),
+        EXA_API_KEY: yield* optionalSecretEnv("EXA_API_KEY"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });
@@ -86,7 +71,6 @@ export const ChatStack = Alchemy.Stack(
       configuredUrl: config.url,
       workerName: worker.workerName,
       bucketName: uploads.bucketName,
-      deployOutput: deployAction,
     };
   }),
 );
