@@ -1,12 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import {
-  appConfig,
-  loadShedflareConfig,
-  physicalName,
-  requireVar,
-} from "../../infra/alchemy-config.ts";
+import { appConfig, authIssuerUrl, physicalName } from "../../infra/alchemy-env.ts";
 
 export const DriveStack = Alchemy.Stack(
   "ShedflareDrive",
@@ -16,7 +11,7 @@ export const DriveStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = appConfig(loadShedflareConfig(), "drive");
+    const config = yield* appConfig("drive");
 
     const db = yield* Cloudflare.D1Database("DB", {
       name: physicalName(stage, "drive"),
@@ -41,7 +36,7 @@ export const DriveStack = Alchemy.Stack(
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: requireVar(config, "AUTH_ISSUER_URL"),
+        AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-drive`,
         OWNER_EMAIL: config.ownerEmail,
       },

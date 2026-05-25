@@ -1,12 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import {
-  appConfig,
-  loadShedflareConfig,
-  physicalName,
-  requireVar,
-} from "../../infra/alchemy-config.ts";
+import { appConfig, authIssuerUrl, physicalName, secretEnv } from "../../infra/alchemy-env.ts";
 
 export const YouTubeStack = Alchemy.Stack(
   "ShedflareYouTube",
@@ -16,14 +11,12 @@ export const YouTubeStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = appConfig(loadShedflareConfig(), "youtube");
+    const config = yield* appConfig("youtube");
 
     const db = yield* Cloudflare.D1Database("DB", {
       name: physicalName(stage, "youtube"),
       migrationsDir: "apps/youtube/src/migrations",
     });
-
-    const syncSecret = yield* Alchemy.Secret("SYNC_SECRET");
 
     const worker = yield* Cloudflare.Worker("YouTubeWorker", {
       name: physicalName(stage, "youtube"),
@@ -35,13 +28,13 @@ export const YouTubeStack = Alchemy.Stack(
       },
       bindings: {
         DB: db,
-        SYNC_SECRET: syncSecret,
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: requireVar(config, "AUTH_ISSUER_URL"),
+        AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-youtube`,
         OWNER_EMAIL: config.ownerEmail,
+        SYNC_SECRET: yield* secretEnv("SYNC_SECRET"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });

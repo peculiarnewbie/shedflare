@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import { physicalName } from "../infra/alchemy-config.ts";
+import { physicalName } from "../infra/alchemy-env.ts";
 
 const SITE_DOMAIN = process.env.SHEDFLARE_SITE_DOMAIN;
 

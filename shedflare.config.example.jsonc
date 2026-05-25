@@ -35,6 +35,9 @@
     },
     "chat": {
       "DEFAULT_MODEL_ID": "auto",
+      "OPENCODE_GO_API_KEY": "",
+      "UPLOAD_TOKEN_SECRET": "",
+      "EXA_API_KEY": "",
     },
     "drive": {},
     "money": {},

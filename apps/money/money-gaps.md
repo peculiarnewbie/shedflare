@@ -6,7 +6,13 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ---
 
-## Reports & Dashboards
+## Deferred to Charting Library
+
+- Graph/diagram visualizations (Sankey flow diagrams, formula cards, etc.)
+- Will be implemented in a separate charting library project
+- Not included in this implementation scope
+
+## Reports ## Reports & Dashboards Dashboards
 
 | Gap                                 | Notes                                                                                                                                                                                                            |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -15,9 +21,9 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)                                                                                             |
 | ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats                                                                                     |
 | ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                                                                                                          |
-| Sankey flow diagram card            | Not implemented                                                                                                                                                                                                  |
+| Sankey flow diagram card            | ~~Deferred to charting library~~ → ✅ Deferred to separate charting library project                                                                                                                                                                                                  |
 | Markdown card                       | Not implemented                                                                                                                                                                                                  |
-| Formula card                        | Not implemented                                                                                                                                                                                                  |
+| Formula card                        | ~~Deferred to charting library~~ → ✅ Deferred to separate charting library project                                                                                                                                                                                                  |
 | ~~Summary card~~                    | ✅ Overview summary card shows 4 key stats (Net Worth, On Budget, Income, Expenses) in one card                                                                                                                  |
 | Multiple dashboard pages            | Not implemented                                                                                                                                                                                                  |
 | Dashboard import/export (JSON)      | ~~Not implemented~~ → ✅ Export/import buttons on dashboard, `/api/dashboard/export` endpoint, file download/upload, dispatches `update_dashboard` for import                                                    |

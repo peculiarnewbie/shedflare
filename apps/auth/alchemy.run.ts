@@ -1,12 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import {
-  appConfig,
-  loadShedflareConfig,
-  physicalName,
-  requireVar,
-} from "../../infra/alchemy-config.ts";
+import { appConfig, physicalName, requireEnv } from "../../infra/alchemy-env.ts";
 
 export const AuthStack = Alchemy.Stack(
   "ShedflareAuth",
@@ -16,7 +11,7 @@ export const AuthStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = appConfig(loadShedflareConfig(), "auth");
+    const config = yield* appConfig("auth");
 
     const storage = yield* Cloudflare.KVNamespace("AuthStorage", {
       title: physicalName(stage, "auth", "storage"),
@@ -34,7 +29,7 @@ export const AuthStack = Alchemy.Stack(
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        GOOGLE_CLIENT_ID: requireVar(config, "GOOGLE_CLIENT_ID"),
+        GOOGLE_CLIENT_ID: yield* requireEnv("GOOGLE_CLIENT_ID"),
         OWNER_EMAIL: config.ownerEmail,
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
