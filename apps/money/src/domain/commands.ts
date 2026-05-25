@@ -294,6 +294,27 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     key: Schema.String,
     value: Schema.String,
   }),
+
+  create_note: Schema.Struct({
+    noteableType: Schema.String,
+    noteableId: Schema.String,
+    body: Schema.String,
+  }),
+
+  update_note: Schema.Struct({
+    noteableType: Schema.String,
+    noteableId: Schema.String,
+    body: Schema.String,
+  }),
+
+  delete_note: Schema.Struct({
+    noteableType: Schema.String,
+    noteableId: Schema.String,
+  }),
+
+  list_notes: Schema.Struct({
+    noteableType: Schema.String,
+  }),
 };
 
 // ---------------------------------------------------------------------------

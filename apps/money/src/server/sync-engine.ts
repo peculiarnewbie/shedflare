@@ -19,6 +19,7 @@ import { handleImportCommands } from "./command-handlers/import";
 import { handleFilterCommands } from "./command-handlers/filters";
 import { handleReportCommands } from "./command-handlers/reports";
 import { handleSettingCommands } from "./command-handlers/settings";
+import { handleNotesCommands } from "./command-handlers/notes";
 import { handleApiRequest } from "./api-handlers";
 
 type Env = {
@@ -137,6 +138,10 @@ export class MoneyBudgetDO extends SyncEngineDO<Env> {
       ["update_dashboard", handleReportCommands],
       ["update_exchange_rate", handleAccountCommands],
       ["update_setting", handleSettingCommands],
+      ["create_note", handleNotesCommands],
+      ["update_note", handleNotesCommands],
+      ["delete_note", handleNotesCommands],
+      ["list_notes", handleNotesCommands],
     ];
 
     for (const [type, handler] of entries) {

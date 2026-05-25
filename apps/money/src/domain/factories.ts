@@ -299,3 +299,23 @@ export function createDashboardWidget(input: {
     updatedAt: now,
   } satisfies schema.DashboardWidget;
 }
+
+export function createNote(input: { noteableType: string; noteableId: string; body: string }) {
+  const now = nowIso();
+  return {
+    id: createId("nt"),
+    noteableType: input.noteableType,
+    noteableId: input.noteableId,
+    body: input.body,
+    createdAt: now,
+    updatedAt: now,
+  } satisfies schema.Note;
+}
+
+export function updateNote(existing: schema.Note, body: string) {
+  return {
+    ...existing,
+    body,
+    updatedAt: nowIso(),
+  } satisfies schema.Note;
+}

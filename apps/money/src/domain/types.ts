@@ -53,6 +53,10 @@ export const SYNC_COMMAND_TYPES = [
   "update_dashboard",
   "update_exchange_rate",
   "update_setting",
+  "create_note",
+  "update_note",
+  "delete_note",
+  "list_notes",
 ] as const;
 
 export type SyncCommandType = (typeof SYNC_COMMAND_TYPES)[number];
@@ -178,6 +182,7 @@ import type {
   DashboardWidget,
   ExchangeRate,
   Setting,
+  Note,
 } from "../db/schema";
 
 export type SyncTables = {
@@ -196,6 +201,7 @@ export type SyncTables = {
   dashboard_widgets?: Record<string, DashboardWidget>;
   exchange_rates?: Record<string, ExchangeRate>;
   settings?: Record<string, Setting>;
+  notes?: Record<string, Note>;
 };
 
 // ---------------------------------------------------------------------------

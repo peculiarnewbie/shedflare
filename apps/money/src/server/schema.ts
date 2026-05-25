@@ -223,6 +223,16 @@ const CREATE_TABLES = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_events_op_id ON events(op_id)`,
 
+  // notes (generic key-value notes for any entity)
+  `CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY,
+    noteable_type TEXT NOT NULL,
+    noteable_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
   // transaction_filters
   `CREATE TABLE IF NOT EXISTS transaction_filters (
     id TEXT PRIMARY KEY,

@@ -63,6 +63,7 @@ export const DATA_TABLES = [
   "dashboard_widgets",
   "exchange_rates",
   "settings",
+  "notes",
 ] as const;
 
 export type DataTableName = (typeof DATA_TABLES)[number];

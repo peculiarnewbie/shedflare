@@ -22,6 +22,7 @@ import {
   dashboardWidgetsCollection,
   exchangeRatesCollection,
   settingsCollection,
+  notesCollection,
   getSyncWriter,
   TABLE_TO_COLLECTION,
 } from "./collections";
@@ -113,6 +114,7 @@ function hasRow(collectionId: string, key: string): boolean {
     dashboardWidgets: dashboardWidgetsCollection,
     exchangeRates: exchangeRatesCollection,
     settings: settingsCollection,
+    notes: notesCollection,
   };
   const collection = writers[collectionId] as any;
   return Boolean(collection?.get(key));
@@ -288,6 +290,20 @@ function applyEvent(eventType: string, payload: unknown) {
       syncUpsert("settings", event.row.id, event.row);
       break;
     }
+    case "note_created":
+    case "note_updated": {
+      const event = payload as SyncEventPayloadMap["note_created"];
+      syncUpsert("notes", event.row.id, event.row);
+      break;
+    }
+    case "note_deleted": {
+      const event = payload as SyncEventPayloadMap["note_deleted"];
+      syncDelete("notes", event.id);
+      break;
+    }
+    case "notes_listed": {
+      break;
+    }
     case "server_state_rebased": {
       const event = payload as SyncEventPayloadMap["server_state_rebased"];
       applySnapshot(event.snapshot.tables);
@@ -422,6 +438,7 @@ function buildCachedSnapshotTables(): SyncTables {
     dashboardWidgets: dashboardWidgetsCollection,
     exchangeRates: exchangeRatesCollection,
     settings: settingsCollection,
+    notes: notesCollection,
   };
 
   for (const [tableName, collection] of Object.entries(snapshot)) {

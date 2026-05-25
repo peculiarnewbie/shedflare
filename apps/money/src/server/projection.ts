@@ -15,6 +15,7 @@ import type {
   CustomReport,
   DashboardWidget,
   Setting,
+  Note,
 } from "../db/schema";
 import type { SyncSnapshot } from "../domain/types";
 import type { DataAccess } from "./data-access";
@@ -162,6 +163,20 @@ export class Projection {
         this.execSettingUpsert(row);
         break;
       }
+      case "note_created":
+      case "note_updated": {
+        const row = payload.row as Note;
+        this.execNoteUpsert(row);
+        break;
+      }
+      case "note_deleted": {
+        access.exec(
+          `DELETE FROM notes WHERE noteable_type = ? AND noteable_id = ?`,
+          payload.noteableType,
+          payload.noteableId,
+        );
+        break;
+      }
       case "category_budget_set": {
         const id = `${payload.month}-${payload.categoryId}`;
         access.exec(
@@ -244,6 +259,9 @@ export class Projection {
       }
       for (const row of Object.values(tables.settings ?? {})) {
         this.apply("settings_updated", { row });
+      }
+      for (const row of Object.values(tables.notes ?? {})) {
+        this.apply("note_created", { row });
       }
     });
   }
@@ -449,6 +467,19 @@ export class Projection {
       row.id,
       row.key,
       row.value,
+      row.updatedAt,
+    );
+  }
+
+  execNoteUpsert(row: Note) {
+    this.access.exec(
+      `INSERT OR REPLACE INTO notes (id, noteable_type, noteable_id, body, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      row.id,
+      row.noteableType,
+      row.noteableId,
+      row.body,
+      row.createdAt,
       row.updatedAt,
     );
   }

@@ -18,6 +18,7 @@ import type {
   BudgetMonth,
   ExchangeRate,
   Setting,
+  Note,
 } from "../db/schema";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ export const COLLECTION_IDS = [
   "dashboardWidgets",
   "exchangeRates",
   "settings",
+  "notes",
 ] as const;
 
 export type CollectionId = (typeof COLLECTION_IDS)[number];
@@ -136,6 +138,7 @@ export const exchangeRatesCollection = createSyncedCollection<ExchangeRate>(
   (er) => er.id,
 );
 export const settingsCollection = createSyncedCollection<Setting>("settings", (s) => s.id);
+export const notesCollection = createSyncedCollection<Note>("notes", (n) => n.id);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,4 +185,5 @@ export const TABLE_TO_COLLECTION: Record<string, string> = {
   dashboard_widgets: "dashboardWidgets",
   exchange_rates: "exchangeRates",
   settings: "settings",
+  notes: "notes",
 };

@@ -11,6 +11,7 @@ import type {
   CustomReport,
   DashboardWidget,
   Setting,
+  Note,
 } from "../db/schema";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,11 @@ export interface SyncEventPayloadMap {
 
   exchange_rate_updated: { usdToIdr: number; updatedAt: string };
   settings_updated: { row: Setting };
+
+  note_created: { row: Note };
+  note_updated: { row: Note };
+  note_deleted: { id: string; noteableType: string; noteableId: string };
+  notes_listed: { noteableType: string; notes: Note[] };
 
   // Computed value events (triggered by budget engine)
   budget_recalculated: { month: number; toBudget: number; buffered: number };
@@ -115,6 +121,10 @@ export const SYNC_EVENT_TYPES: readonly SyncEventType[] = [
   "dashboard_updated",
   "exchange_rate_updated",
   "settings_updated",
+  "note_created",
+  "note_updated",
+  "note_deleted",
+  "notes_listed",
   "budget_recalculated",
   "category_leftover_changed",
   "category_budget_set",

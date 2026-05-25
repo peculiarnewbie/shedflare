@@ -277,6 +277,18 @@ export const events = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// notes (generic key-value notes for any entity)
+// ---------------------------------------------------------------------------
+export const notes = sqliteTable("notes", {
+  id: text("id").primaryKey(),
+  noteableType: text("noteable_type").notNull(),
+  noteableId: text("noteable_id").notNull(),
+  body: text("body").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // transaction_filters (saved searches)
 // ---------------------------------------------------------------------------
 export const transactionFilters = sqliteTable("transaction_filters", {
@@ -336,5 +348,7 @@ export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
 export type TransactionFilter = typeof transactionFilters.$inferSelect;
 export type NewTransactionFilter = typeof transactionFilters.$inferInsert;
+export type Note = typeof notes.$inferSelect;
+export type NewNote = typeof notes.$inferInsert;
 export type SyncEvent = typeof events.$inferSelect;
 export type Command = typeof commands.$inferSelect;
