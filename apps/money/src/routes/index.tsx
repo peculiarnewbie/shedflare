@@ -8,6 +8,7 @@ import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { dispatch } from "../lib/pending-ops";
 import { createId } from "../domain/types";
+import { settingsCollection } from "../lib/collections";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 
@@ -17,6 +18,7 @@ import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts"
 
 type WidgetType =
   | "summary-card"
+  | "overview-summary-card"
   | "net-worth-card"
   | "cash-flow-card"
   | "spending-card"
@@ -41,6 +43,7 @@ const ROW_HEIGHT = 100;
 
 const ALL_WIDGET_TYPES: { type: WidgetType; label: string }[] = [
   { type: "summary-card", label: "Summary Card" },
+  { type: "overview-summary-card", label: "Overview Summary" },
   { type: "net-worth-card", label: "Net Worth Chart" },
   { type: "cash-flow-card", label: "Cash Flow Chart" },
   { type: "spending-card", label: "Spending Chart" },
@@ -172,6 +175,15 @@ function buildDefaultWidgets(): WidgetDef[] {
       y: 8,
       width: 6,
       height: 4,
+      meta: null,
+    },
+    {
+      id: createId("wgt"),
+      type: "overview-summary-card",
+      x: 0,
+      y: 12,
+      width: 12,
+      height: 2,
       meta: null,
     },
   ];
@@ -394,12 +406,14 @@ export default function Dashboard() {
     const maxY = widgets().reduce((max, w) => Math.max(max, w.y + w.height), 0);
     const colWidth = type.startsWith("summary-")
       ? 4
-      : type === "age-of-money-card" ||
-          type === "markdown-card" ||
-          type === "calendar-heatmap-card" ||
-          type === "crossover-card"
-        ? 6
-        : 6;
+      : type === "overview-summary-card"
+        ? 12
+        : type === "age-of-money-card" ||
+            type === "markdown-card" ||
+            type === "calendar-heatmap-card" ||
+            type === "crossover-card"
+          ? 6
+          : 6;
 
     // Check current row occupancy at maxY
     const rowOccupied = Array.from({ length: GRID_COLS }, () => false);
@@ -427,11 +441,13 @@ export default function Dashboard() {
       width: colWidth,
       height: type.startsWith("summary-")
         ? 1
-        : type === "markdown-card"
+        : type === "overview-summary-card"
           ? 2
-          : type === "calendar-heatmap-card" || type === "crossover-card"
-            ? 4
-            : 3,
+          : type === "markdown-card"
+            ? 2
+            : type === "calendar-heatmap-card" || type === "crossover-card"
+              ? 4
+              : 3,
       meta:
         type === "summary-card"
           ? JSON.stringify({ label: "New Summary", source: "netWorth" })
@@ -519,6 +535,30 @@ export default function Dashboard() {
             >
               {isCurrency ? fmt().formatCents(value) : String(Math.round(value))}
             </div>
+          </div>
+        );
+      }
+
+      case "overview-summary-card": {
+        const stats = [
+          { label: "Net Worth", value: overview().netWorth ?? 0 },
+          { label: "On Budget", value: overview().onBudget ?? 0 },
+          { label: "Income", value: overview().income ?? 0 },
+          { label: "Expenses", value: overview().expense ?? 0 },
+        ];
+        return (
+          <div class="widget-overview-summary">
+            {stats.map((s) => (
+              <div class="overview-stat">
+                <span class="overview-stat-label">{s.label}</span>
+                <span
+                  class={`overview-stat-value ${privacyBlur().blurIf(true)}`}
+                  classList={{ positive: s.value >= 0, negative: s.value < 0 }}
+                >
+                  {fmt().formatCents(s.value)}
+                </span>
+              </div>
+            ))}
           </div>
         );
       }
@@ -752,7 +792,13 @@ export default function Dashboard() {
         const [year, mon] = monthKey.split("-").map(Number);
         const daysInMonth = new Date(year, mon, 0).getDate();
         const firstDay = new Date(year, mon - 1, 1).getDay();
-        const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const firstDayOfWeekSetting =
+          (settingsCollection.state.get("first_day_of_week")?.value as string) ?? "sunday";
+        const mondayFirst = firstDayOfWeekSetting === "monday";
+        const dayLabels = mondayFirst
+          ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+          : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const padCount = mondayFirst ? (firstDay + 6) % 7 : firstDay;
 
         const maxAbs = Math.max(1, ...Object.values(days).map((v) => Math.abs(v)));
         const intensity = (day: number) => {
@@ -774,7 +820,7 @@ export default function Dashboard() {
           cells.push({ day: d, style: intensity(d) });
         }
 
-        const padStart = Array.from({ length: firstDay }, (_, _i) => (
+        const padStart = Array.from({ length: padCount }, (_, _i) => (
           <div class="heatmap-cell heatmap-cell-empty" />
         ));
 

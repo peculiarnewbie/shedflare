@@ -169,6 +169,7 @@ export const rules = sqliteTable("rules", {
   conditions: text("conditions").notNull(), // JSON array
   actions: text("actions").notNull(), // JSON array
   active: integer("active", { mode: "boolean" }).notNull().default(true),
+  deleted: integer("deleted", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

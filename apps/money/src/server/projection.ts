@@ -362,13 +362,15 @@ export class Projection {
 
   execRuleUpsert(row: Rule) {
     this.access.exec(
-      `INSERT OR REPLACE INTO rules (id, stage, conditions_op, conditions, actions, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO rules (id, stage, conditions_op, conditions, actions, active, deleted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       row.id,
       row.stage,
       row.conditionsOp,
       row.conditions,
       row.actions,
+      boolToSql(row.active),
+      boolToSql(row.deleted),
       row.createdAt,
       row.updatedAt,
     );

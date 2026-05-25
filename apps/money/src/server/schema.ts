@@ -137,6 +137,7 @@ const CREATE_TABLES = [
     conditions TEXT NOT NULL,
     actions TEXT NOT NULL,
     active INTEGER DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -258,6 +259,7 @@ export function initializeStorage(
     for (const sql of CREATE_TABLES) {
       exec(sql);
     }
+    runMigrations(exec, log);
     return;
   }
 
@@ -267,6 +269,9 @@ export function initializeStorage(
   }
   log("storage initialized successfully");
 
+  // Run migrations for existing deployments
+  runMigrations(exec, log);
+
   // Insert default exchange rate
   exec(
     "INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES (?, ?, ?)",
@@ -274,4 +279,13 @@ export function initializeStorage(
     16000,
     new Date().toISOString(),
   );
+}
+
+function runMigrations(exec: SqlExecFn, log: (msg: string) => void) {
+  try {
+    exec("ALTER TABLE rules ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0");
+    log("migration: added deleted column to rules");
+  } catch {
+    // Column already exists — safe to ignore
+  }
 }

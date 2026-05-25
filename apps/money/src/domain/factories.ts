@@ -172,6 +172,7 @@ export function createRule(input: {
     conditions: input.conditions,
     actions: input.actions,
     active: input.active ?? true,
+    deleted: false,
     createdAt: now,
     updatedAt: now,
   } satisfies schema.Rule;

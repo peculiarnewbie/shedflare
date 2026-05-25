@@ -271,7 +271,7 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
   // Rules
   if (pathname === "/api/rules" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM rules ORDER BY created_at",
+      "SELECT * FROM rules WHERE deleted = 0 ORDER BY created_at",
     );
     return json({ rules: rows });
   }

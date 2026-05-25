@@ -63,7 +63,17 @@ export function handleRuleCommands(
     }
 
     case "delete_rule": {
-      access.exec(`DELETE FROM rules WHERE id = ?`, payload.id);
+      const now = new Date().toISOString();
+      access.exec(`UPDATE rules SET deleted = 1, updated_at = ? WHERE id = ?`, now, payload.id);
+      const updated = access.queryOne<Record<string, unknown>>(
+        `SELECT * FROM rules WHERE id = ?`,
+        payload.id,
+      );
+      if (updated) {
+        events.push(
+          eventStore.insertEvent(opId, "rule_updated", { row: updated as any }) as SyncServerEvent,
+        );
+      }
       break;
     }
   }

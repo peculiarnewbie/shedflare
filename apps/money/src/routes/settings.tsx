@@ -21,6 +21,7 @@ export default function SettingsPage() {
 
   const [dateFormat, setDateFormat] = createSignal<DateFormat>("iso");
   const [hideClosed, setHideClosed] = createSignal(false);
+  const [firstDayOfWeek, setFirstDayOfWeek] = createSignal<"sunday" | "monday">("sunday");
 
   createEffect(() => {
     void loadSettings();
@@ -56,6 +57,9 @@ export default function SettingsPage() {
     const hc = settingsCollection.state.get("hide_closed_accounts")?.value;
     if (hc === "true") setHideClosed(true);
     else setHideClosed(false);
+
+    const fdw = settingsCollection.state.get("first_day_of_week")?.value;
+    if (fdw === "sunday" || fdw === "monday") setFirstDayOfWeek(fdw);
   }
 
   async function loadSettings() {
@@ -102,6 +106,11 @@ export default function SettingsPage() {
     const next = !hideClosed();
     setHideClosed(next);
     dispatch("update_setting", { key: "hide_closed_accounts", value: String(next) });
+  }
+
+  function updateFirstDayOfWeek(value: "sunday" | "monday") {
+    setFirstDayOfWeek(value);
+    dispatch("update_setting", { key: "first_day_of_week", value });
   }
 
   function handleExport() {
@@ -214,6 +223,20 @@ export default function SettingsPage() {
             <option value="iso">ISO (2026-05-13)</option>
             <option value="us">US (05/13/2026)</option>
             <option value="eu">EU (13/05/2026)</option>
+          </select>
+        </div>
+
+        {/* First Day of Week */}
+        <div class="settings-section">
+          <h2>First Day of Week</h2>
+          <p class="settings-description">Set which day the calendar week starts on.</p>
+          <select
+            value={firstDayOfWeek()}
+            onChange={(e) => updateFirstDayOfWeek(e.currentTarget.value as "sunday" | "monday")}
+            style="max-width:200px"
+          >
+            <option value="sunday">Sunday</option>
+            <option value="monday">Monday</option>
           </select>
         </div>
 

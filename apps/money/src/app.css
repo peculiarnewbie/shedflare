@@ -492,6 +492,27 @@ button {
   gap: 8px;
   margin: 12px 0;
 }
+
+.form-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.form-color input[type="color"] {
+  width: 36px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.form-color code {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 .form-check input[type="checkbox"] {
   width: 18px;
   height: 18px;
@@ -731,6 +752,43 @@ button {
 }
 
 .widget-summary-value.negative {
+  color: var(--negative);
+}
+
+.widget-overview-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  height: 100%;
+  padding: 8px 0;
+}
+
+.overview-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+}
+
+.overview-stat-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.overview-stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.overview-stat-value.positive {
+  color: var(--positive);
+}
+
+.overview-stat-value.negative {
   color: var(--negative);
 }
 

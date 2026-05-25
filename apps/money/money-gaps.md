@@ -8,22 +8,23 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Reports & Dashboards
 
-| Gap                                 | Notes                                                                                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type          |
-| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove      |
-| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)         |
-| ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats |
-| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                      |
-| Sankey flow diagram card            | Not implemented                                                                                                              |
-| Markdown card                       | Not implemented                                                                                                              |
-| Formula card                        | Not implemented                                                                                                              |
-| Summary card                        | Not implemented                                                                                                              |
-| Multiple dashboard pages            | Not implemented                                                                                                              |
-| Dashboard import/export (JSON)      | Not implemented                                                                                                              |
-| Report color scheme config          | Not implemented                                                                                                              |
-| Report cond_format / locale options | Not implemented                                                                                                              |
-| Report table mode coloring          | Not implemented                                                                                                              |
+| Gap                                 | Notes                                                                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type                        |
+| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove                    |
+| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)                       |
+| ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats               |
+| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                                    |
+| Sankey flow diagram card            | Not implemented                                                                                                                            |
+| Markdown card                       | Not implemented                                                                                                                            |
+| Formula card                        | Not implemented                                                                                                                            |
+| ~~Summary card~~                    | ✅ Overview summary card shows 4 key stats (Net Worth, On Budget, Income, Expenses) in one card                                            |
+| Multiple dashboard pages            | Not implemented                                                                                                                            |
+| Dashboard import/export (JSON)      | Not implemented                                                                                                                            |
+| Report color scheme config          | Not implemented                                                                                                                            |
+| ~~Report color scheme per report~~  | ✅ Color scheme picker in report create/edit modal (income, expense, balance, background); stored in `metadata` JSON and applied to charts |
+| Report cond_format / locale options | Not implemented                                                                                                                            |
+| Report table mode coloring          | Not implemented                                                                                                                            |
 
 ## Transactions
 
@@ -37,7 +38,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Notes entity                              | Generic notes key-value store not implemented                                                                                                                                                                                                                 |
 | ~~Transaction filters (saved searches)~~  | ✅ Inline filter bar on account page: condition builder (account/category/amount/date/notes/cleared/reconciled), save/load/delete filters, server-side SQL on saved filters, client-side fallback for ad-hoc. `?filter=` query param on transactions endpoint |
 | ~~All transactions (global filter view)~~ | ✅ Server `/api/transactions` supports `?filter=`, new `/transactions` route with reusable TransactionTable component showing account column, filter bar works cross-account, nav item + command palette entry                                                |
-| ~~Link schedules from transactions~~      | ✅ Transactions have `schedule_id` FK, ↻ badge on scheduled txns, 📅 "Create schedule" action button                                                                                                 |
+| ~~Link schedules from transactions~~      | ✅ Transactions have `schedule_id` FK, ↻ badge on scheduled txns, 📅 "Create schedule" action button                                                                                                                                                          |
 | Payee learn categories                    | Not implemented                                                                                                                                                                                                                                               |
 
 ## Budget
@@ -70,7 +71,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Handlebars template helpers in actions                           | Not implemented                                                                                                         |
 | ~~Enable/disable toggle~~                                        | ✅ ON/OFF toggle per rule, `active` column added to schema                                                              |
 | Payee-specific rules (learn_categories)                          | Not implemented                                                                                                         |
-| Tombstone (soft-delete)                                          | Rules are hard-deleted; no tombstone                                                                                    |
+| ~~Tombstone (soft-delete)~~                                      | ✅ Rules set `deleted = 1` instead of hard-delete; filtered from API, import runner, and sync                           |
 
 ## Categories
 
@@ -103,7 +104,7 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | Currency formatting (46+ currencies)                                              | Only USD and IDR supported                                                       |
 | Number format locale                                                              | Not implemented                                                                  |
 | ~~Date format selection~~                                                         | ✅ ISO/US/EU selectable in settings, applied to all date displays                |
-| First day of week                                                                 | Not implemented                                                                  |
+| ~~First day of week~~                                                             | ✅ Sunday/Monday selectable in settings, applied to calendar heatmap day labels  |
 | ~~Privacy mode (hide amounts)~~                                                   | ✅ Toggle in settings blurs all amounts via CSS filter; applied across all pages |
 | Light / Midnight themes                                                           | Dark theme only                                                                  |
 | Custom themes & CSS override                                                      | Not implemented                                                                  |
@@ -132,4 +133,4 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 | ~~Offline indicator in header~~            | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header |
 | Goal templates category editor             | `goal_def` JSON stored but no inline editor on categories page                                            |
 | ~~Schedule edit page~~                     | ✅ `/schedules/:id` route with detail view and inline editing form                                        |
-| Report color scheme per report             | Not implemented                                                                                           |
+| ~~Report color scheme per report~~         | ✅ Color scheme picker in report create/edit modal, applied to charts                                     |

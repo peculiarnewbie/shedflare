@@ -36,7 +36,7 @@ export function handleImportCommands(
 
   // Load all rules for auto-categorization
   const rules = access.queryAll<Record<string, unknown>>(
-    `SELECT * FROM rules WHERE stage = 'pre' ORDER BY created_at`,
+    `SELECT * FROM rules WHERE stage = 'pre' AND deleted = 0 ORDER BY created_at`,
   );
 
   txLoop: for (const txInput of transactions) {

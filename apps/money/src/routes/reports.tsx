@@ -78,6 +78,12 @@ export default function ReportsPage() {
   const [formGraphType, setFormGraphType] = createSignal("area");
   const [formStartDate, setFormStartDate] = createSignal("");
   const [formEndDate, setFormEndDate] = createSignal("");
+  const [formColorScheme, setFormColorScheme] = createSignal({
+    income: "#4ade80",
+    expense: "#f87171",
+    balance: "#60a5fa",
+    background: "#1a1a2e",
+  });
 
   // Custom report data (lazy loaded per-report)
   const [customReportData, _setCustomReportData] = createSignal<Record<string, any>>({});
@@ -186,6 +192,12 @@ export default function ReportsPage() {
     setFormGraphType("area");
     setFormStartDate("");
     setFormEndDate("");
+    setFormColorScheme({
+      income: "#4ade80",
+      expense: "#f87171",
+      balance: "#60a5fa",
+      background: "#1a1a2e",
+    });
     setShowCreateModal(true);
   }
 
@@ -195,6 +207,31 @@ export default function ReportsPage() {
     setFormGraphType(report.graph_type ?? "area");
     setFormStartDate(report.start_date ?? "");
     setFormEndDate(report.end_date ?? "");
+    try {
+      const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
+      if (meta?.colors) {
+        setFormColorScheme({
+          income: meta.colors.income ?? "#4ade80",
+          expense: meta.colors.expense ?? "#f87171",
+          balance: meta.colors.balance ?? "#60a5fa",
+          background: meta.colors.background ?? "#1a1a2e",
+        });
+      } else {
+        setFormColorScheme({
+          income: "#4ade80",
+          expense: "#f87171",
+          balance: "#60a5fa",
+          background: "#1a1a2e",
+        });
+      }
+    } catch {
+      setFormColorScheme({
+        income: "#4ade80",
+        expense: "#f87171",
+        balance: "#60a5fa",
+        background: "#1a1a2e",
+      });
+    }
     setShowCreateModal(true);
   }
 
@@ -210,6 +247,7 @@ export default function ReportsPage() {
           graphType: formGraphType(),
           startDate: formStartDate() || null,
           endDate: formEndDate() || null,
+          metadata: JSON.stringify({ colors: formColorScheme() }),
         },
       });
     } else {
@@ -220,6 +258,7 @@ export default function ReportsPage() {
           startDate: formStartDate() || null,
           endDate: formEndDate() || null,
           conditions: [],
+          metadata: JSON.stringify({ colors: formColorScheme() }),
         },
       });
     }
@@ -236,6 +275,13 @@ export default function ReportsPage() {
   function renderCustomReport(report: CustomReport) {
     const graphType = report.graph_type ?? "area";
     const data = customReportData()[report.id] ?? [];
+    let colors: Record<string, string> | undefined;
+    try {
+      const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
+      colors = meta?.colors;
+    } catch {
+      /* ignore */
+    }
     if (data.length === 0) {
       return <div class="chart-placeholder">Load report data to view</div>;
     }
@@ -244,6 +290,8 @@ export default function ReportsPage() {
         <AreaChart
           data={data.map((t: any) => ({ date: t.date, value: t.amount }))}
           dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+          fillColor={colors?.balance ?? colors?.expense}
+          strokeColor={colors?.balance ?? colors?.expense}
         />
       </Show>
     );
@@ -469,6 +517,65 @@ export default function ReportsPage() {
                     value={formEndDate()}
                     onInput={(e) => setFormEndDate(e.currentTarget.value)}
                   />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Income Color</label>
+                  <div class="form-color">
+                    <input
+                      type="color"
+                      value={formColorScheme().income}
+                      onInput={(e) =>
+                        setFormColorScheme({ ...formColorScheme(), income: e.currentTarget.value })
+                      }
+                    />
+                    <code>{formColorScheme().income}</code>
+                  </div>
+                </div>
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Expense Color</label>
+                  <div class="form-color">
+                    <input
+                      type="color"
+                      value={formColorScheme().expense}
+                      onInput={(e) =>
+                        setFormColorScheme({ ...formColorScheme(), expense: e.currentTarget.value })
+                      }
+                    />
+                    <code>{formColorScheme().expense}</code>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Balance Color</label>
+                  <div class="form-color">
+                    <input
+                      type="color"
+                      value={formColorScheme().balance}
+                      onInput={(e) =>
+                        setFormColorScheme({ ...formColorScheme(), balance: e.currentTarget.value })
+                      }
+                    />
+                    <code>{formColorScheme().balance}</code>
+                  </div>
+                </div>
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Background Color</label>
+                  <div class="form-color">
+                    <input
+                      type="color"
+                      value={formColorScheme().background}
+                      onInput={(e) =>
+                        setFormColorScheme({
+                          ...formColorScheme(),
+                          background: e.currentTarget.value,
+                        })
+                      }
+                    />
+                    <code>{formColorScheme().background}</code>
+                  </div>
                 </div>
               </div>
               <div class="form-actions">
