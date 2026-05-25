@@ -380,12 +380,140 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     return json({ reports: rows });
   }
 
+  // Execute a custom report
+  const customReportExecMatch = pathname.match(/^\/api\/reports\/custom\/([^/]+)\/execute$/);
+  if (customReportExecMatch && method === "GET") {
+    const reportRow = access.queryOne<Record<string, unknown>>(
+      "SELECT * FROM custom_reports WHERE id = ?",
+      customReportExecMatch[1],
+    );
+    if (!reportRow) return json({ error: "Report not found" }, 404);
+
+    const conditions = JSON.parse((reportRow.conditions as string) ?? "[]") as FilterCondition[];
+    const conditionsOp = ((reportRow.conditions_op as string) ?? "and") as "and" | "or";
+    const groupBy = (reportRow.group_by as string) ?? null;
+    const startDate = (reportRow.start_date as string) ?? null;
+    const endDate = (reportRow.end_date as string) ?? null;
+
+    let whereExtra = "";
+    const allParams: unknown[] = [];
+
+    // Date range filtering
+    if (startDate) {
+      whereExtra += " AND t.date >= ?";
+      allParams.push(startDate);
+    }
+    if (endDate) {
+      whereExtra += " AND t.date <= ?";
+      allParams.push(endDate);
+    }
+
+    // Custom conditions
+    if (conditions.length > 0) {
+      const { whereClause, params: filterParams } = buildFilterWhereSql(conditions, conditionsOp);
+      if (whereClause) {
+        whereExtra += ` AND (${whereClause})`;
+        allParams.push(...filterParams);
+      }
+    }
+
+    // Always filter out child transactions
+    whereExtra += " AND t.is_child = 0";
+
+    if (groupBy === "month") {
+      const rows = access.queryAll<Record<string, unknown>>(
+        `SELECT strftime('%Y-%m', t.date) as month,
+                SUM(t.amount) as total,
+                COUNT(*) as count
+         FROM transactions t
+         LEFT JOIN categories c ON t.category_id = c.id
+         LEFT JOIN accounts a ON t.account_id = a.id
+         WHERE 1=1${whereExtra}
+         GROUP BY strftime('%Y-%m', t.date)
+         ORDER BY month`,
+        ...allParams,
+      );
+      return json({
+        rows: rows.map((r) => ({
+          month: r.month,
+          total: Number(r.total ?? 0),
+          count: Number(r.count ?? 0),
+        })),
+        groupBy: "month",
+      });
+    }
+
+    if (groupBy === "category") {
+      const rows = access.queryAll<Record<string, unknown>>(
+        `SELECT c.name as category, cg.name as group_name,
+                SUM(t.amount) as total, COUNT(*) as count
+         FROM transactions t
+         LEFT JOIN categories c ON t.category_id = c.id
+         LEFT JOIN category_groups cg ON c.group_id = cg.id
+         LEFT JOIN accounts a ON t.account_id = a.id
+         WHERE 1=1${whereExtra}
+         GROUP BY t.category_id
+         ORDER BY total`,
+        ...allParams,
+      );
+      return json({
+        rows: rows.map((r) => ({
+          category: r.category ?? "Uncategorized",
+          groupName: r.group_name ?? null,
+          total: Number(r.total ?? 0),
+          count: Number(r.count ?? 0),
+        })),
+        groupBy: "category",
+      });
+    }
+
+    // Default: return individual transactions
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT t.id, t.date, t.amount, t.payee, t.notes, t.cleared, t.reconciled,
+              c.name as category_name, a.name as account_name
+       FROM transactions t
+       LEFT JOIN categories c ON t.category_id = c.id
+       LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE 1=1${whereExtra}
+       ORDER BY t.date DESC
+       LIMIT 500`,
+      ...allParams,
+    );
+    return json({
+      rows: rows.map((r) => ({
+        id: String(r.id),
+        date: r.date,
+        amount: Number(r.amount ?? 0),
+        payee: r.payee ?? null,
+        notes: r.notes ?? null,
+        cleared: Number(r.cleared ?? 0) === 1,
+        reconciled: Number(r.reconciled ?? 0) === 1,
+        category: r.category_name ?? null,
+        account: r.account_name ?? null,
+      })),
+      groupBy: null,
+    });
+  }
+
   // Dashboard widgets
   if (pathname === "/api/dashboard/widgets" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>(
       "SELECT * FROM dashboard_widgets ORDER BY y, x",
     );
     return json({ widgets: rows.map(mapDashboardWidgetRow) });
+  }
+
+  // Dashboard export (JSON backup)
+  if (pathname === "/api/dashboard/export" && method === "GET") {
+    const rows = access.queryAll<Record<string, unknown>>(
+      "SELECT * FROM dashboard_widgets ORDER BY y, x",
+    );
+    const widgets = rows.map(mapDashboardWidgetRow);
+    return json({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      widgets,
+    });
   }
 
   // CSV export

@@ -10,6 +10,7 @@ import { dispatch } from "../lib/pending-ops";
 import { createId } from "../domain/types";
 import { settingsCollection } from "../lib/collections";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
+import { PageState } from "../components/PageState";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 
 // ---------------------------------------------------------------------------
@@ -909,6 +910,51 @@ export default function Dashboard() {
     setMarkdownDraft("");
   }
 
+  async function exportDashboard() {
+    try {
+      const res = await fetch("/api/dashboard/export");
+      if (!res.ok) return;
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "shedflare-dashboard.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function importDashboard(e: Event & { currentTarget: HTMLInputElement }) {
+    const file = e.currentTarget.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.widgets || !Array.isArray(data.widgets)) {
+        alert("Invalid dashboard file: missing widgets array");
+        return;
+      }
+      dispatch("update_dashboard", {
+        widgets: data.widgets.map((w: any) => ({
+          id: w.id,
+          type: w.type,
+          x: w.x,
+          y: w.y,
+          width: w.width,
+          height: w.height,
+          meta: w.meta ?? null,
+        })),
+      });
+      setTimeout(() => loadAll(), 300);
+    } catch (err) {
+      alert(`Failed to import dashboard: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    e.currentTarget.value = "";
+  }
+
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
@@ -942,71 +988,70 @@ export default function Dashboard() {
           <button class="btn btn-secondary btn-sm" onClick={() => setShowAddModal(true)}>
             + Add Widget
           </button>
+          <button class="btn btn-ghost btn-sm" onClick={exportDashboard} title="Export dashboard">
+            📤
+          </button>
+          <label class="btn btn-ghost btn-sm" title="Import dashboard">
+            📥
+            <input type="file" accept=".json" style="display:none" onChange={importDashboard} />
+          </label>
           <button class="btn btn-ghost btn-sm" onClick={loadAll} title="Refresh">
             &#x21bb;
           </button>
         </div>
       </div>
 
-      <Show when={!loading()} fallback={<div class="loading">Loading dashboard...</div>}>
+      <PageState
+        loading={loading()}
+        error={error()}
+        onRetry={loadAll}
+        loadingMessage="Loading dashboard data..."
+      >
         <Show
-          when={!error()}
+          when={loaded() || seeding()}
           fallback={
             <div class="empty-state">
-              <p>Could not load dashboard data.</p>
-              <p style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>{error()}</p>
-              <button class="btn btn-primary btn-sm" onClick={loadAll} style="margin-top:12px">
-                Retry
+              <p>No dashboard widgets configured.</p>
+              <button class="btn btn-primary btn-sm" onClick={() => addWidget("summary-card")}>
+                Add your first widget
               </button>
             </div>
           }
         >
-          <Show
-            when={loaded() || seeding()}
-            fallback={
-              <div class="empty-state">
-                <p>No dashboard widgets configured.</p>
-                <button class="btn btn-primary btn-sm" onClick={() => addWidget("summary-card")}>
-                  Add your first widget
-                </button>
-              </div>
-            }
-          >
-            <Show when={seeding()} fallback={null}>
-              <div class="loading" style="margin-bottom:12px">
-                Setting up your dashboard...
-              </div>
-            </Show>
-
-            <div class="widget-grid" style={gridStyle()}>
-              <For each={widgets()}>
-                {(def) => (
-                  <div class="widget-card" style={widgetStyle(def)}>
-                    <button
-                      class="widget-close"
-                      onClick={() => removeWidget(def.id)}
-                      title="Remove widget"
-                    >
-                      &times;
-                    </button>
-                    {renderWidgetContent(def)}
-                  </div>
-                )}
-              </For>
-            </div>
-
-            {/* Quick actions below grid */}
-            <div class="quick-actions" style="margin-top:16px">
-              <button class="btn btn-primary" onClick={() => navigate("/accounts")}>
-                + Add Transaction
-              </button>
-              <button class="btn btn-secondary" onClick={() => navigate("/budget")}>
-                Go to Budget
-              </button>
+          <Show when={seeding()} fallback={null}>
+            <div class="loading" style="margin-bottom:12px">
+              Setting up your dashboard...
             </div>
           </Show>
+
+          <div class="widget-grid" style={gridStyle()}>
+            <For each={widgets()}>
+              {(def) => (
+                <div class="widget-card" style={widgetStyle(def)}>
+                  <button
+                    class="widget-close"
+                    onClick={() => removeWidget(def.id)}
+                    title="Remove widget"
+                  >
+                    &times;
+                  </button>
+                  {renderWidgetContent(def)}
+                </div>
+              )}
+            </For>
+          </div>
+
+          {/* Quick actions below grid */}
+          <div class="quick-actions" style="margin-top:16px">
+            <button class="btn btn-primary" onClick={() => navigate("/accounts")}>
+              + Add Transaction
+            </button>
+            <button class="btn btn-secondary" onClick={() => navigate("/budget")}>
+              Go to Budget
+            </button>
+          </div>
         </Show>
-      </Show>
+      </PageState>
 
       {/* Add Widget Modal */}
       <Show when={showAddModal()}>

@@ -2099,6 +2099,44 @@ button {
   min-height: 100px;
 }
 
+/* Report table mode */
+.report-table-wrap {
+  overflow-x: auto;
+  max-height: 400px;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.report-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: capitalize;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+}
+
+.report-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+
+.report-table tr:hover td {
+  background: var(--hover);
+}
+
+.report-table td:first-child {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============================================================
    Command Palette (Cmd+K)
    ============================================================ */

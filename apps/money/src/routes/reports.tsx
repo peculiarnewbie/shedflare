@@ -78,6 +78,7 @@ export default function ReportsPage() {
   const [formGraphType, setFormGraphType] = createSignal("area");
   const [formStartDate, setFormStartDate] = createSignal("");
   const [formEndDate, setFormEndDate] = createSignal("");
+  const [formGroupBy, setFormGroupBy] = createSignal("");
   const [formColorScheme, setFormColorScheme] = createSignal({
     income: "#4ade80",
     expense: "#f87171",
@@ -192,6 +193,7 @@ export default function ReportsPage() {
     setFormGraphType("area");
     setFormStartDate("");
     setFormEndDate("");
+    setFormGroupBy("");
     setFormColorScheme({
       income: "#4ade80",
       expense: "#f87171",
@@ -207,6 +209,7 @@ export default function ReportsPage() {
     setFormGraphType(report.graph_type ?? "area");
     setFormStartDate(report.start_date ?? "");
     setFormEndDate(report.end_date ?? "");
+    setFormGroupBy(report.group_by ?? "");
     try {
       const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
       if (meta?.colors) {
@@ -247,6 +250,7 @@ export default function ReportsPage() {
           graphType: formGraphType(),
           startDate: formStartDate() || null,
           endDate: formEndDate() || null,
+          groupBy: formGroupBy() || null,
           metadata: JSON.stringify({ colors: formColorScheme() }),
         },
       });
@@ -257,6 +261,7 @@ export default function ReportsPage() {
           graphType: formGraphType(),
           startDate: formStartDate() || null,
           endDate: formEndDate() || null,
+          groupBy: formGroupBy() || null,
           conditions: [],
           metadata: JSON.stringify({ colors: formColorScheme() }),
         },
@@ -272,9 +277,88 @@ export default function ReportsPage() {
     setTimeout(() => loadCustomReports(), 300);
   }
 
+  async function loadCustomReportData(reportId: string) {
+    try {
+      const res = await fetch(`/api/reports/custom/${reportId}/execute`);
+      if (res.ok) {
+        const data = await res.json();
+        _setCustomReportData((prev) => ({ ...prev, [reportId]: data }));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function renderCustomReportTable(
+    rows: Array<Record<string, unknown>>,
+    colors: Record<string, string> | undefined,
+  ) {
+    if (rows.length === 0) return <div class="chart-placeholder">No data</div>;
+
+    const keys = Object.keys(rows[0]);
+    const bg = colors?.background ?? "var(--surface)";
+
+    return (
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              {keys.map((key) => (
+                <th>{key}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <For each={rows}>
+              {(row) => {
+                const amount = Number(row.total ?? row.amount ?? 0);
+                const isIncome = amount > 0;
+                const isExpense = amount < 0;
+                const cellStyle = isIncome
+                  ? { color: colors?.income ?? "var(--positive)" }
+                  : isExpense
+                    ? { color: colors?.expense ?? "var(--negative)" }
+                    : {};
+                return (
+                  <tr>
+                    <For each={keys}>
+                      {(key) => (
+                        <td
+                          style={
+                            (key === "total" || key === "amount") && (isIncome || isExpense)
+                              ? cellStyle
+                              : {}
+                          }
+                        >
+                          {(key === "total" || key === "amount") && row[key] !== undefined
+                            ? formatCents(row[key] as number)
+                            : key === "cleared"
+                              ? row[key]
+                                ? "✓"
+                                : ""
+                              : key === "reconciled"
+                                ? row[key]
+                                  ? "🔒"
+                                  : ""
+                                : String(row[key] ?? "")}
+                        </td>
+                      )}
+                    </For>
+                  </tr>
+                );
+              }}
+            </For>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   function renderCustomReport(report: CustomReport) {
     const graphType = report.graph_type ?? "area";
-    const data = customReportData()[report.id] ?? [];
+    const result = customReportData()[report.id] as any;
+    const rows = result?.rows ?? [];
+    const groupBy = result?.groupBy ?? null;
     let colors: Record<string, string> | undefined;
     try {
       const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
@@ -282,19 +366,129 @@ export default function ReportsPage() {
     } catch {
       /* ignore */
     }
-    if (data.length === 0) {
-      return <div class="chart-placeholder">Load report data to view</div>;
+
+    if (!result) {
+      return (
+        <div class="chart-placeholder">
+          <button class="btn btn-secondary btn-sm" onClick={() => loadCustomReportData(report.id)}>
+            Load Data
+          </button>
+        </div>
+      );
     }
-    return (
-      <Show when={graphType === "area"}>
+    if (rows.length === 0) {
+      return <div class="chart-placeholder">No matching transactions</div>;
+    }
+
+    // Table mode
+    if (graphType === "table") {
+      return <Show when={true}>{renderCustomReportTable(rows, colors)}</Show>;
+    }
+
+    // Area chart (time series from grouped data or individual txns)
+    if (graphType === "area") {
+      let points: TimeSeriesPoint[];
+      if (groupBy === "month") {
+        points = rows.map((r: any) => ({ date: r.month, value: r.total }));
+      } else if (groupBy === "category") {
+        points = rows.map((r: any) => ({
+          date: r.category,
+          value: r.total,
+          label: r.category,
+        }));
+      } else {
+        points = rows.map((r: any) => ({ date: r.date, value: r.amount }));
+      }
+      return (
         <AreaChart
-          data={data.map((t: any) => ({ date: t.date, value: t.amount }))}
+          data={points}
           dimensions={{ width: 700, height: 300, marginBottom: 40 }}
           fillColor={colors?.balance ?? colors?.expense}
           strokeColor={colors?.balance ?? colors?.expense}
         />
-      </Show>
-    );
+      );
+    }
+
+    // Bar chart
+    if (graphType === "bar") {
+      let groups: BarGroup[];
+      if (groupBy === "month") {
+        groups = rows.map((r: any) => ({
+          category: r.month,
+          values: [{ label: "Total", value: r.total, color: colors?.balance ?? "var(--primary)" }],
+        }));
+      } else if (groupBy === "category") {
+        groups = rows.map((r: any) => ({
+          category: r.category,
+          values: [{ label: "Total", value: r.total, color: colors?.balance ?? "var(--primary)" }],
+        }));
+      } else {
+        const dateGroups: Record<string, number> = {};
+        for (const r of rows) {
+          dateGroups[r.date ?? "?"] = (dateGroups[r.date ?? "?"] ?? 0) + (r.amount ?? 0);
+        }
+        groups = Object.entries(dateGroups).map(([date, val]) => ({
+          category: date,
+          values: [{ label: "Total", value: val, color: colors?.balance ?? "var(--primary)" }],
+        }));
+      }
+      return (
+        <BarChart
+          groups={groups}
+          stacked={false}
+          dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+          formatX={formatMonth}
+        />
+      );
+    }
+
+    // Donut chart (categories only)
+    if (graphType === "donut") {
+      let slices: PieSlice[];
+      if (groupBy === "category") {
+        slices = rows.map((r: any, i: number) => ({
+          label: r.category,
+          value: Math.abs(r.total),
+          color: categoryColor(i),
+        }));
+      } else {
+        const catMap: Record<string, number> = {};
+        for (const r of rows) {
+          const cat = (r.category ?? "Uncategorized") as string;
+          catMap[cat] = (catMap[cat] ?? 0) + Math.abs(r.amount ?? 0);
+        }
+        let i = 0;
+        slices = Object.entries(catMap).map(([label, value]) => ({
+          label,
+          value,
+          color: categoryColor(i++),
+        }));
+      }
+      return <DonutChart slices={slices} dimensions={{ width: 500, height: 350 }} />;
+    }
+
+    return <div class="chart-placeholder">Unsupported graph type</div>;
+  }
+
+  function categoryColor(index: number): string {
+    const palette = [
+      "#6366f1",
+      "#22c55e",
+      "#f59e0b",
+      "#ef4444",
+      "#a78bfa",
+      "#06b6d4",
+      "#f97316",
+      "#84cc16",
+      "#ec4899",
+      "#14b8a6",
+    ];
+    return palette[index % palette.length];
+  }
+
+  function formatCents(cents: number): string {
+    const sign = cents < 0 ? "-" : "";
+    return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
   }
 
   return (
@@ -498,6 +692,17 @@ export default function ReportsPage() {
                     <For each={GRAPH_TYPES}>
                       {(gt) => <option value={gt.value}>{gt.label}</option>}
                     </For>
+                  </select>
+                </div>
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Group By</label>
+                  <select
+                    value={formGroupBy()}
+                    onChange={(e) => setFormGroupBy(e.currentTarget.value)}
+                  >
+                    <option value="">None (individual txns)</option>
+                    <option value="month">Month</option>
+                    <option value="category">Category</option>
                   </select>
                 </div>
               </div>

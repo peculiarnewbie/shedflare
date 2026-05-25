@@ -8,23 +8,23 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## Reports & Dashboards
 
-| Gap                                 | Notes                                                                                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type                        |
-| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove                    |
-| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)                       |
-| ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats               |
-| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                                    |
-| Sankey flow diagram card            | Not implemented                                                                                                                            |
-| Markdown card                       | Not implemented                                                                                                                            |
-| Formula card                        | Not implemented                                                                                                                            |
-| ~~Summary card~~                    | ✅ Overview summary card shows 4 key stats (Net Worth, On Budget, Income, Expenses) in one card                                            |
-| Multiple dashboard pages            | Not implemented                                                                                                                            |
-| Dashboard import/export (JSON)      | Not implemented                                                                                                                            |
-| Report color scheme config          | Not implemented                                                                                                                            |
-| ~~Report color scheme per report~~  | ✅ Color scheme picker in report create/edit modal (income, expense, balance, background); stored in `metadata` JSON and applied to charts |
-| Report cond_format / locale options | Not implemented                                                                                                                            |
-| Report table mode coloring          | Not implemented                                                                                                                            |
+| Gap                                 | Notes                                                                                                                                                                                                            |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type                                                                                              |
+| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove                                                                                          |
+| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)                                                                                             |
+| ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats                                                                                     |
+| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                                                                                                          |
+| Sankey flow diagram card            | Not implemented                                                                                                                                                                                                  |
+| Markdown card                       | Not implemented                                                                                                                                                                                                  |
+| Formula card                        | Not implemented                                                                                                                                                                                                  |
+| ~~Summary card~~                    | ✅ Overview summary card shows 4 key stats (Net Worth, On Budget, Income, Expenses) in one card                                                                                                                  |
+| Multiple dashboard pages            | Not implemented                                                                                                                                                                                                  |
+| Dashboard import/export (JSON)      | ~~Not implemented~~ → ✅ Export/import buttons on dashboard, `/api/dashboard/export` endpoint, file download/upload, dispatches `update_dashboard` for import                                                    |
+| Report color scheme config          | Not implemented                                                                                                                                                                                                  |
+| ~~Report color scheme per report~~  | ✅ Color scheme picker in report create/edit modal (income, expense, balance, background); stored in `metadata` JSON and applied to charts                                                                       |
+| Report cond_format / locale options | Not implemented                                                                                                                                                                                                  |
+| ~~Report table mode coloring~~      | ~~Not implemented~~ → ✅ Table graph type renders results as HTML table with color coding on amount columns (green/red per income/expense), group_by select in modal, `/api/reports/custom/:id/execute` endpoint |
 
 ## Transactions
 
@@ -125,12 +125,12 @@ Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync
 
 ## UI / Polish
 
-| Gap                                        | Notes                                                                                                     |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| ~~Keyboard shortcuts (Cmd+K command bar)~~ | ✅ Mod+K opens command palette: fuzzy search pages, accounts, payees, categories, schedules; keyboard nav |
-| Loading states on pages                    | Some pages lack proper loading/error states                                                               |
-| Input validation errors displayed to user  | Effect/Schema errors may cause unhandled rejections                                                       |
-| ~~Offline indicator in header~~            | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header |
-| Goal templates category editor             | `goal_def` JSON stored but no inline editor on categories page                                            |
-| ~~Schedule edit page~~                     | ✅ `/schedules/:id` route with detail view and inline editing form                                        |
-| ~~Report color scheme per report~~         | ✅ Color scheme picker in report create/edit modal, applied to charts                                     |
+| Gap                                        | Notes                                                                                                                                                                                                                              |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Keyboard shortcuts (Cmd+K command bar)~~ | ✅ Mod+K opens command palette: fuzzy search pages, accounts, payees, categories, schedules; keyboard nav                                                                                                                          |
+| Loading states on pages                    | ~~Some pages lack proper loading/error states~~ → ✅ Dashboard now uses PageState (loading spinner + error retry); reports, settings, schedules, payees, rules, accounts, transactions, budget, categories, tags all use PageState |
+| Input validation errors displayed to user  | Effect/Schema errors may cause unhandled rejections                                                                                                                                                                                |
+| ~~Offline indicator in header~~            | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header                                                                                                                          |
+| Goal templates category editor             | `goal_def` JSON stored but no inline editor on categories page                                                                                                                                                                     |
+| ~~Schedule edit page~~                     | ✅ `/schedules/:id` route with detail view and inline editing form                                                                                                                                                                 |
+| ~~Report color scheme per report~~         | ✅ Color scheme picker in report create/edit modal, applied to charts                                                                                                                                                              |
