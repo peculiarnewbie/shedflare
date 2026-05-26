@@ -1,66 +1,30 @@
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
 import { createTransactionFilter } from "../../domain/factories";
-import { decodeCommand } from "../../domain/commands";
 
-export function handleFilterCommands(
-  opId: string,
-  payload: any,
-  access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
+type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
-  switch (payload.commandType ?? "create_filter") {
+export function handleFilterCommands(c: string, p: any, a: DataAccess): CR {
+  switch (c) {
     case "create_filter": {
-      const valid = decodeCommand("create_filter", payload);
-      const row = createTransactionFilter({
-        name: valid.filter.name,
-        conditions: valid.filter.conditions,
-        conditionsOp: valid.filter.conditionsOp,
-      });
-      events.push(eventStore.insertEvent(opId, "filter_created", { row }) as SyncServerEvent);
-      break;
+      const r = createTransactionFilter(p.filter);
+      a.exec("INSERT INTO transaction_filters (id, name, conditions, conditions_op, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        r.id, r.name, r.conditions, r.conditionsOp, r.createdAt, r.updatedAt);
+      return { ok: true, data: { id: r.id } };
     }
-
     case "update_filter": {
-      const valid = decodeCommand("update_filter", payload);
-      const existing = access.queryOne<Record<string, unknown>>(
-        `SELECT * FROM transaction_filters WHERE id = ?`,
-        valid.id,
-      );
-      if (existing) {
-        const f = valid.fields;
-        const now = new Date().toISOString();
-        access.exec(
-          `UPDATE transaction_filters SET name = ?, conditions = ?, conditions_op = ?, updated_at = ? WHERE id = ?`,
-          f.name ?? existing.name,
-          f.conditions ?? existing.conditions,
-          f.conditionsOp ?? existing.conditions_op,
-          now,
-          valid.id,
-        );
-        const updated = access.queryOne<Record<string, unknown>>(
-          `SELECT * FROM transaction_filters WHERE id = ?`,
-          valid.id,
-        );
-        if (updated) {
-          events.push(
-            eventStore.insertEvent(opId, "filter_updated", {
-              row: updated as any,
-            }) as SyncServerEvent,
-          );
-        }
-      }
-      break;
+      const now = new Date().toISOString();
+      const fs: string[] = ["updated_at = ?"], ps: unknown[] = [now];
+      if (p.fields.name !== undefined) { fs.push("name = ?"); ps.push(p.fields.name); }
+      if (p.fields.conditions !== undefined) { fs.push("conditions = ?"); ps.push(p.fields.conditions); }
+      if (p.fields.conditionsOp !== undefined) { fs.push("conditions_op = ?"); ps.push(p.fields.conditionsOp); }
+      ps.push(p.id);
+      a.exec(`UPDATE transaction_filters SET ${fs.join(", ")} WHERE id = ?`, ...ps);
+      return { ok: true, data: { id: p.id } };
     }
-
     case "delete_filter": {
-      access.exec(`DELETE FROM transaction_filters WHERE id = ?`, payload.id);
-      break;
+      a.exec("DELETE FROM transaction_filters WHERE id = ?", p.id);
+      return { ok: true, data: { id: p.id } };
     }
+    default: return { ok: false, error: `Unknown filter command: ${c}` };
   }
-
-  return { events };
 }

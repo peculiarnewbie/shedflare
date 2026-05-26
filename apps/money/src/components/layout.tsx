@@ -1,7 +1,6 @@
 import { createSignal, Show, For } from "solid-js";
 import { A, useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
 import { createHotkey } from "@tanstack/solid-hotkeys";
-import { isConnected, reconnectAttempt, reconnectDelay } from "../lib/ws-connection";
 import CommandBar from "./CommandBar";
 
 // ---------------------------------------------------------------------------
@@ -46,7 +45,6 @@ export default function Layout(props: RouteSectionProps) {
   const [showMobileMenu, setShowMobileMenu] = createSignal(false);
   const [showCmdBar, setShowCmdBar] = createSignal(false);
   createHotkey("Mod+K", () => setShowCmdBar(true));
-
   const isActive = (path: string) => location.pathname === path;
 
   // Current month for header
@@ -74,21 +72,6 @@ export default function Layout(props: RouteSectionProps) {
           </For>
         </nav>
         <div class="sidebar-footer">
-          <div
-            class="sync-indicator"
-            classList={{
-              connected: isConnected(),
-              reconnecting: !isConnected() && reconnectAttempt() > 0,
-            }}
-          >
-            <span
-              class="sync-dot"
-              classList={{ reconnecting: !isConnected() && reconnectAttempt() > 0 }}
-            />
-            <span class="sync-text">
-              {isConnected() ? "Synced" : reconnectAttempt() > 0 ? `Reconnecting...` : "Offline"}
-            </span>
-          </div>
           <button
             class="btn btn-ghost btn-sm"
             style="width:100%;justify-content:flex-start;gap:8px;font-size:0.75rem;color:var(--text-muted)"
@@ -132,18 +115,6 @@ export default function Layout(props: RouteSectionProps) {
           </svg>
         </button>
         <span class="mobile-title">Shedflare Money</span>
-        <div
-          class="sync-indicator"
-          classList={{
-            connected: isConnected(),
-            reconnecting: !isConnected() && reconnectAttempt() > 0,
-          }}
-        >
-          <span
-            class="sync-dot"
-            classList={{ reconnecting: !isConnected() && reconnectAttempt() > 0 }}
-          />
-        </div>
       </header>
 
       {/* Mobile dropdown menu */}
@@ -171,19 +142,7 @@ export default function Layout(props: RouteSectionProps) {
 
       {/* Main content */}
       <main class="main-content">
-        <Show when={!isConnected()}>
-          <div
-            class="offline-banner"
-            classList={{
-              reconnecting: reconnectAttempt() > 0,
-              offline: reconnectAttempt() === 0,
-            }}
-          >
-            {reconnectAttempt() > 0
-              ? `Reconnecting... (attempt ${reconnectAttempt()}, ${(reconnectDelay() / 1000).toFixed(0)}s)`
-              : "Connection lost. Retrying..."}
-          </div>
-        </Show>
+
         {props.children as any}
       </main>
 

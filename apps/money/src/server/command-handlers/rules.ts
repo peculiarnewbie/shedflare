@@ -1,82 +1,33 @@
-/**
- * Rule command handlers — create, update, delete.
- */
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
 import { createRule } from "../../domain/factories";
-import { decodeCommand } from "../../domain/commands";
 
-export function handleRuleCommands(
-  opId: string,
-  payload: any,
-  access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
+type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
-  switch (payload.commandType ?? "create_rule") {
+export function handleRuleCommands(c: string, p: any, a: DataAccess): CR {
+  switch (c) {
     case "create_rule": {
-      const valid = decodeCommand("create_rule", payload);
-      const row = createRule({
-        stage: valid.rule?.stage,
-        conditionsOp: valid.rule?.conditionsOp,
-        conditions: valid.rule?.conditions ?? "[]",
-        actions: valid.rule?.actions ?? "[]",
-      });
-      events.push(eventStore.insertEvent(opId, "rule_created", { row }) as SyncServerEvent);
-      break;
+      const r = createRule(p.rule);
+      a.exec(`INSERT INTO rules (id, stage, conditions_op, conditions, actions, active, deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        r.id, r.stage, r.conditionsOp, r.conditions, r.actions, r.active ? 1 : 0, r.createdAt, r.updatedAt);
+      return { ok: true, data: { id: r.id } };
     }
-
     case "update_rule": {
-      const valid = decodeCommand("update_rule", payload);
-      const existing = access.queryOne<Record<string, unknown>>(
-        `SELECT * FROM rules WHERE id = ?`,
-        valid.id,
-      );
-      if (existing) {
-        const fields = valid.fields;
-        const now = new Date().toISOString();
-        access.exec(
-          `UPDATE rules SET stage = ?, conditions_op = ?, conditions = ?, actions = ?, active = ?, updated_at = ? WHERE id = ?`,
-          fields.stage ?? existing.stage,
-          fields.conditionsOp ?? existing.conditions_op,
-          fields.conditions ?? existing.conditions,
-          fields.actions ?? existing.actions,
-          fields.active !== undefined ? (fields.active ? 1 : 0) : existing.active,
-          now,
-          valid.id,
-        );
-        const updated = access.queryOne<Record<string, unknown>>(
-          `SELECT * FROM rules WHERE id = ?`,
-          valid.id,
-        );
-        if (updated) {
-          events.push(
-            eventStore.insertEvent(opId, "rule_updated", {
-              row: updated as any,
-            }) as SyncServerEvent,
-          );
-        }
-      }
-      break;
-    }
-
-    case "delete_rule": {
       const now = new Date().toISOString();
-      access.exec(`UPDATE rules SET deleted = 1, updated_at = ? WHERE id = ?`, now, payload.id);
-      const updated = access.queryOne<Record<string, unknown>>(
-        `SELECT * FROM rules WHERE id = ?`,
-        payload.id,
-      );
-      if (updated) {
-        events.push(
-          eventStore.insertEvent(opId, "rule_updated", { row: updated as any }) as SyncServerEvent,
-        );
-      }
-      break;
+      const fs: string[] = ["updated_at = ?"];
+      const ps: unknown[] = [now];
+      if (p.fields.stage !== undefined) { fs.push("stage = ?"); ps.push(p.fields.stage); }
+      if (p.fields.conditionsOp !== undefined) { fs.push("conditions_op = ?"); ps.push(p.fields.conditionsOp); }
+      if (p.fields.conditions !== undefined) { fs.push("conditions = ?"); ps.push(p.fields.conditions); }
+      if (p.fields.actions !== undefined) { fs.push("actions = ?"); ps.push(p.fields.actions); }
+      if (p.fields.active !== undefined) { fs.push("active = ?"); ps.push(p.fields.active ? 1 : 0); }
+      ps.push(p.id);
+      a.exec(`UPDATE rules SET ${fs.join(", ")} WHERE id = ?`, ...ps);
+      return { ok: true, data: { id: p.id } };
     }
+    case "delete_rule": {
+      a.exec("UPDATE rules SET deleted = 1, updated_at = ? WHERE id = ?", new Date().toISOString(), p.id);
+      return { ok: true, data: { id: p.id } };
+    }
+    default: return { ok: false, error: `Unknown rule command: ${c}` };
   }
-
-  return { events };
 }

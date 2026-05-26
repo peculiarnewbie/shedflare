@@ -1542,6 +1542,68 @@ describe("server helpers", () => {
     }
   });
 
+  it("fails streaming chat when the upstream stream goes idle after output starts", async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+
+    globalThis.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+      const failStream = (reason: unknown) => {
+        controllerRef?.error(reason);
+      };
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controllerRef = controller;
+          controller.enqueue(
+            encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'),
+          );
+        },
+      });
+
+      if (signal) {
+        if (signal.aborted) {
+          failStream(signal.reason);
+        } else {
+          signal.addEventListener("abort", () => failStream(signal.reason), { once: true });
+        }
+      }
+
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    try {
+      const adapter = createChatCompletionsAdapter(
+        {
+          baseUrl: "https://api.example.com",
+          apiKey: "test-key",
+          firstByteTimeout: 50,
+          idleTimeout: 20,
+          overallTimeout: 200,
+        },
+        "openai/gpt-4.1",
+      );
+
+      const chunks = [];
+      for await (const chunk of chat({
+        adapter,
+        messages: [{ role: "user", content: "say hi" }],
+      })) {
+        chunks.push(chunk);
+      }
+
+      const errorChunk = chunks.find((chunk: any) => chunk.type === "RUN_ERROR") as any;
+      expect(errorChunk).toBeTruthy();
+      expect(errorChunk?.error?.message).toContain("stream was idle");
+      expect(chunks.some((chunk: any) => chunk.type === "RUN_FINISHED")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("clamps exa result counts", () => {
     expect(clampExaResults(1)).toBe(3);
     expect(clampExaResults(5)).toBe(5);

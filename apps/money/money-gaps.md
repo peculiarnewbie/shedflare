@@ -1,142 +1,120 @@
 # Money App — Feature Gaps vs Actual Budget
 
-Comparison target: [Actual Budget](https://actualbudget.org) — source at `/home/bolt/git/other/actual`. Reference its code/docs when implementing gaps below.
+Comparison target: [Actual Budget](https://actualbudget.org) — source at `/home/bolt/git/other/actual`.
 
-Excluded by design: additional import formats (OFX/QFX/QIF/CAMT/YNAB), bank sync (GoCardless/SimpleFIN/PluggyAI), multi-user, desktop app, plugins.
+**Note:** Many "gaps" below are intentional design decisions, not missing features. See the explicit "Not Doing" section at the bottom.
 
 ---
 
-## Deferred to Charting Library
+## Not Doing (Intentional Boundaries)
 
-- Graph/diagram visualizations (Sankey flow diagrams, formula cards, etc.)
-- Will be implemented in a separate charting library project
-- Not included in this implementation scope
+These are deliberate exclusions — confirmed as out of scope:
 
-## Reports ## Reports & Dashboards Dashboards
+| Feature | Reason |
+|---------|--------|
+| AQL query language | Conditions use JSON arrays with standard operators. No DSL needed. |
+| PEG parser for natural-language goals | Goal templates use JSON definitions with 5 fixed types. LLM-based approach planned for the future. |
+| Spreadsheet engine (reactive cell graph) | SQL-computed derived values are sufficient. Simpler, faster, no reactive dependency graph. |
+| Formula actions in rules | No HyperFormula, no balance-of queries, no spreadsheet formulas. |
+| Handlebars template helpers in rules | Rule actions are simple set/prepend/append/delete. No string interpolation. |
+| Payee-specific rules / learn_categories | Rules are manually created. LLM-based categorization planned for the future. |
+| Multi-user | Self-hosted, single-user. Auth protects from public access only. |
+| OFX/QFX/QIF/CAMT import | Indonesian banks use CSV exports. No desktop bank sync tools. |
+| Bank sync (GoCardless, SimpleFIN, PluggyAI) | No free Indonesia aggregator available. |
+| Tracking budget mode | Envelope budgeting is the core interaction model. |
+| Desktop app | Web-only PWA. |
+| CRDT conflict resolution | Event sourcing + idempotent commands handle sync without CRDTs. |
+| Multi-currency (42+ currencies) | Only USD and IDR — the owner's currencies. |
+| i18n / language selection | English only. |
+| Light/Midnight themes | Dark theme only. |
+| Custom CSS override | Fixed visual style, no theming system. |
+| Backups / restore | Users use CSV export and dashboard JSON export. |
+| End-to-end encryption | Data at rest in DO SQLite is unencrypted. |
+| Experimental feature flags | No feature flag infrastructure. |
 
-| Gap                                 | Notes                                                                                                                                                                                                            |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ~~Custom report builder UI~~        | ✅ Reports page has "Custom Reports" tab with create/edit/delete modals, lists saved reports, renders by graph type                                                                                              |
-| ~~Dashboard widget grid~~           | ✅ Dynamic widget grid reads from `dashboard_widgets`, renders 7 widget types, auto-seeds defaults, supports add/remove                                                                                          |
-| ~~Markdown card~~                   | ✅ Inline-editable markdown note card on dashboard, content stored in `meta`, basic rendering (headers, bold, lists)                                                                                             |
-| ~~Crossover/FI-RE projection card~~ | ✅ Dashboard widget computes FI-RE projection using 4% rule, monthly savings rate, 5% growth, SVG line chart + summary stats                                                                                     |
-| ~~Calendar heatmap card~~           | ✅ Monthly calendar grid with per-day spending intensity color, fetches daily totals from budget engine                                                                                                          |
-| Sankey flow diagram card            | ~~Deferred to charting library~~ → ✅ Deferred to separate charting library project                                                                                                                              |
-| Markdown card                       | Not implemented                                                                                                                                                                                                  |
-| Formula card                        | ~~Deferred to charting library~~ → ✅ Deferred to separate charting library project                                                                                                                              |
-| ~~Summary card~~                    | ✅ Overview summary card shows 4 key stats (Net Worth, On Budget, Income, Expenses) in one card                                                                                                                  |
-| Multiple dashboard pages            | Not implemented                                                                                                                                                                                                  |
-| Dashboard import/export (JSON)      | ~~Not implemented~~ → ✅ Export/import buttons on dashboard, `/api/dashboard/export` endpoint, file download/upload, dispatches `update_dashboard` for import                                                    |
-| Report color scheme config          | Not implemented                                                                                                                                                                                                  |
-| ~~Report color scheme per report~~  | ✅ Color scheme picker in report create/edit modal (income, expense, balance, background); stored in `metadata` JSON and applied to charts                                                                       |
-| Report cond_format / locale options | Not implemented                                                                                                                                                                                                  |
-| ~~Report table mode coloring~~      | ~~Not implemented~~ → ✅ Table graph type renders results as HTML table with color coding on amount columns (green/red per income/expense), group_by select in modal, `/api/reports/custom/:id/execute` endpoint |
+---
 
-## Transactions
+## What's Fully Implemented ✅
 
-| Gap                                       | Notes                                                                                                                                                                                                                                                         |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ~~Split transaction UI~~                  | ✅ Inline split form with child inputs, dispatches `split_transaction`                                                                                                                                                                                        |
-| ~~Reconciliation workflow~~               | ✅ Reconcile button + modal on account page: enter statement balance, shows difference, marks cleared txns as reconciled, creates adjustment txn if needed, updates `last_reconciled`                                                                         |
-| ~~Reconciled flag on transactions~~       | ✅ `reconciled` column + lock-icon toggle button in transaction table                                                                                                                                                                                         |
-| ~~Tag assignment per transaction~~        | ✅ Tag picker in tx table rows, colored chips, add/remove via commands                                                                                                                                                                                        |
-| Undo/redo                                 | Not implemented                                                                                                                                                                                                                                               |
-| ~~Notes entity~~                          | ✅ Generic key-value note store wired end-to-end: `notes` table (noteable_type + noteable_id + body), CRUD commands, events, projections, sync, client-side TanStack DB collection                                                                            |
-| ~~Transaction filters (saved searches)~~  | ✅ Inline filter bar on account page: condition builder (account/category/amount/date/notes/cleared/reconciled), save/load/delete filters, server-side SQL on saved filters, client-side fallback for ad-hoc. `?filter=` query param on transactions endpoint |
-| ~~All transactions (global filter view)~~ | ✅ Server `/api/transactions` supports `?filter=`, new `/transactions` route with reusable TransactionTable component showing account column, filter bar works cross-account, nav item + command palette entry                                                |
-| ~~Link schedules from transactions~~      | ✅ Transactions have `schedule_id` FK, ↻ badge on scheduled txns, 📅 "Create schedule" action button                                                                                                                                                          |
-| Payee learn categories                    | Not implemented                                                                                                                                                                                                                                               |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Envelope budgeting | ✅ | Full: carryover, buffer, overspending detection, transfer, cover |
+| Goal templates | ✅ | 5 types: monthly, byDate, refill, periodic, percentage. UI editor on categories page |
+| Budget actions | ✅ | copy_previous_month, set_3month_avg, set_nmonth_avg, set_zero, cover_overspending, transfer, hold_for_next_month |
+| Multi-account management | ✅ | Create, update, close/reopen, reorder, off-budget flag |
+| Transaction CRUD | ✅ | Create, update, delete, split transactions |
+| Reconciliation | ✅ | Statement balance comparison, mark cleared/adjusted, creates adjustment txns |
+| Tags | ✅ | Create, assign to transactions, color-coded |
+| Payees | ✅ | CRUD, merge, favorites, autocomplete |
+| Transaction filters | ✅ | Saved searches with condition builder, server-side SQL |
+| Schedules | ✅ | Recurring templates with frequency, weekend handling, end conditions |
+| Schedule discovery | ✅ | Detects recurring patterns from transaction history with confidence scores |
+| Rules engine | ✅ | 12 condition operators, 7 action types, test UI, enable/disable toggle |
+| CSV import | ✅ | Upload to R2, parse, run rules, insert/update transactions |
+| Custom reports | ✅ | CRUD with filter conditions, grouping, sorting, graph types |
+| Dashboard widgets | ✅ | 10 widget types, dynamic grid, add/remove, export/import JSON |
+| Note entity | ✅ | Generic key-value notes for any entity type |
+| Sync protocol | ✅ | WebSocket hello/ack/reject/event, snapshot sync, offline cache |
+| Command palette | ✅ | Cmd+K fuzzy search for pages, accounts, payees, categories, schedules |
+| Offline support | ✅ | IndexedDB cache, pending ops, disconnect/reconnect banners |
+| Undo/redo | ✅ | Keyboard-only (Ctrl+Z/Ctrl+Y), covers 20+ command types, no UI affordance |
+| Privacy mode | ✅ | Blurs all monetary amounts via CSS filter |
+| Currency formatting | ✅ | USD/IDR with configurable exchange rate |
+| Number format | ✅ | Comma-dot, dot-comma, space-dot selectable in settings |
+| Date format | ✅ | ISO/US/EU selectable, applied across all pages |
+| First day of week | ✅ | Sunday/Monday, applied to calendar heatmap |
+| Dark theme | ✅ | Fixed dark theme |
+| Reconciliation | ✅ | On account page with adjustment transaction support |
+| Account display options | ✅ | Hide closed accounts toggle |
+| CSV export | ✅ | All transactions as CSV file download |
+| Category group rename/edit | ✅ | Inline rename, toggle hidden, toggle isIncome |
+| Category group delete with transfer | ✅ | Transfer categories to another group or delete them |
+| Category delete with transfer | ✅ | Transfer transactions/budgets to another category |
+| Category hide/unhide | ✅ | Eye toggle, visual opacity dim |
+| Income/expense visual distinction | ✅ | Green left border on income groups, dot indicators |
+| Drag-and-drop reorder | ✅ | HTML5 drag handles on categories |
+| Goal progress tracking | ✅ | Progress bar with funded/partial/under status |
+| Rules tombstone | ✅ | Soft-delete (`deleted = 1`), separate from active toggle |
+| Schedule detail page | ✅ | `/schedules/:id` with read-only view and inline editing |
+| Report color scheme per report | ✅ | Stored in metadata JSON, applied to charts |
+| Report cond_format / locale | ✅ | Per-report conditional formatting + number format override |
+| Loading states | ✅ | All pages use PageState with loading/error/retry |
+| Input validation | ✅ | TanStack Form with inline error display |
 
-## Budget
+---
 
-| Gap                                     | Notes                                                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| ~~Goal template UI editor~~             | ✅ Inline editor on categories page: select monthly/byDate, set amount/target date, saves to `goal_def` JSON |
-| Notes-based DSL for goals               | Not implemented                                                                                              |
-| Spreadsheet engine (reactive dep graph) | Shedflare uses SQL-computed values instead; no reactive cell graph                                           |
-| AQL query language                      | Not implemented                                                                                              |
+## What's Partially Implemented ⚠️
 
-## Schedules
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Undo/redo | ⚠️ | Keyboard-only, no UI affordance, no grouping/merging of related mutations. Dashboard changes not undoable. Covers 20+ command types but no visible undo button in the UI. |
+| Payee learn categories | ⚠️ | Category suggestions via payee API, but no auto-rule-creation from user behavior (3+ repeated actions). |
+| Import pipeline | ⚠️ | CSV-only, no OFX/QFX. Single-transaction commands (no batch operations for large imports). |
+| Calendar heatmap | ⚠️ | Spending only, not clearly distinguishing income vs expense days in the data pipeline. |
 
-| Gap                                               | Notes                                                                                                                                 |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| ~~Edit existing schedule UI~~                     | ✅ Edit button opens pre-populated modal, updates via `update_schedule` command                                                       |
-| ~~End conditions (after N occurrences, on date)~~ | ✅ UI select for never/after N/on date, server-side end-condition check on post/skip                                                  |
-| ~~Weekend handling config (skip/before/after)~~   | ✅ Checkbox toggle + before/after select, server-side weekend adjustment on post/skip                                                 |
-| ~~Schedule discovery (detect recurring txns)~~    | ✅ Analyzes transaction history by payee, detects consistent intervals + amounts, suggests schedule candidates with confidence scores |
-| Link schedule via rules                           | Not implemented                                                                                                                       |
+---
 
-## Rules
+## Feature Comparison: Money vs Actual Budget
 
-| Gap                                                              | Notes                                                                                                                   |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| ~~Additional conditions (account, amount, date, cleared)~~       | ✅ account/amount/date/cleared fields + number/date ops (gt, gte, lt, lte, isapprox, isbetween) in UI and import runner |
-| ~~Additional actions (prepend-notes, append-notes, delete-txn)~~ | ✅ Added prepend-notes, append-notes, delete-transaction. set-split-amount and link-schedule not yet implemented        |
-| ~~Rule test UI~~                                                 | ✅ "Test" button + modal shows which existing transactions match a rule's conditions                                    |
-| Formula actions (balance-of queries)                             | Not implemented                                                                                                         |
-| Handlebars template helpers in actions                           | Not implemented                                                                                                         |
-| ~~Enable/disable toggle~~                                        | ✅ ON/OFF toggle per rule, `active` column added to schema                                                              |
-| Payee-specific rules (learn_categories)                          | Not implemented                                                                                                         |
-| ~~Tombstone (soft-delete)~~                                      | ✅ Rules set `deleted = 1` instead of hard-delete; filtered from API, import runner, and sync                           |
-
-## Categories
-
-| Gap                                            | Notes                                                                                                                    |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| ~~Category group rename/edit in UI~~           | ✅ Inline rename on click, toggle hidden (eye icon), toggle isIncome                                                     |
-| ~~Category group delete with transfer~~        | ✅ Confirm dialog with option to transfer categories to another group or delete them inside                              |
-| ~~Category delete with transfer~~              | ✅ Confirm dialog with option to transfer transactions/budgets to another category                                       |
-| ~~Category hide/unhide toggle~~                | ✅ Eye toggle button on each category row, visual opacity dim for hidden                                                 |
-| ~~Category group hide/unhide toggle~~          | ✅ Eye toggle button on each group header, hidden groups list at bottom                                                  |
-| ~~Category income/expense visual distinction~~ | ✅ Green left border on income groups, green/purple dot indicator, `section-income` class                                |
-| ~~Drag-and-drop reorder~~                      | ✅ HTML5 drag-and-drop in categories page, drag handles on each category row, uses existing `reorder_categories` handler |
-| ~~Goal progress tracking~~                     | ✅ Progress bar + label in categories page: funded/partial/under status with amounts                                     |
-| Additional goal types (refill, periodic, %)    | Only monthly and byDate supported                                                                                        |
-| Note-based templates                           | Not implemented                                                                                                          |
-| Template priority system                       | Not implemented                                                                                                          |
-
-## Payees
-
-| Gap                                          | Notes                                                                         |
-| -------------------------------------------- | ----------------------------------------------------------------------------- |
-| Learn categories from transaction history    | Not implemented                                                               |
-| Payee locations (geolocation)                | Not implemented                                                               |
-| ~~Payee autocomplete dropdown in txn table~~ | ✅ HTML datalist suggests existing payee names in add-tx form and inline edit |
-
-## Settings & Configuration
-
-| Gap                                                                               | Notes                                                                            |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Currency formatting (46+ currencies)                                              | Only USD and IDR supported                                                       |
-| Number format locale                                                              | Not implemented                                                                  |
-| ~~Date format selection~~                                                         | ✅ ISO/US/EU selectable in settings, applied to all date displays                |
-| ~~First day of week~~                                                             | ✅ Sunday/Monday selectable in settings, applied to calendar heatmap day labels  |
-| ~~Privacy mode (hide amounts)~~                                                   | ✅ Toggle in settings blurs all amounts via CSS filter; applied across all pages |
-| Light / Midnight themes                                                           | Dark theme only                                                                  |
-| Custom themes & CSS override                                                      | Not implemented                                                                  |
-| Language / i18n                                                                   | Not implemented                                                                  |
-| Backups list / restore                                                            | Not implemented                                                                  |
-| Encryption enable/disable                                                         | Not implemented                                                                  |
-| Experimental feature flags                                                        | Not implemented                                                                  |
-| ~~Account display options (hide closed, show balances, hide cleared/reconciled)~~ | ✅ Hide closed accounts toggle in settings filters the accounts list             |
-
-## Infrastructure
-
-| Gap                      | Notes                                                                |
-| ------------------------ | -------------------------------------------------------------------- |
-| CRDT conflict resolution | Shedflare uses event sourcing + idempotent commands instead          |
-| End-to-end encryption    | Not implemented                                                      |
-| Node.js API library      | Not implemented                                                      |
-| CLI tool                 | `packages/cli/` exists but is deprecated, no money-specific commands |
-
-## UI / Polish
-
-| Gap                                        | Notes                                                                                                                                                                                                                              |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ~~Keyboard shortcuts (Cmd+K command bar)~~ | ✅ Mod+K opens command palette: fuzzy search pages, accounts, payees, categories, schedules; keyboard nav                                                                                                                          |
-| Loading states on pages                    | ~~Some pages lack proper loading/error states~~ → ✅ Dashboard now uses PageState (loading spinner + error retry); reports, settings, schedules, payees, rules, accounts, transactions, budget, categories, tags all use PageState |
-| Input validation errors displayed to user  | ✅ Implemented with TanStack Form for SolidJS — error displays inline on invalid inputs                                                                                                                                            |
-| ~~Offline indicator in header~~            | ✅ Sticky banner on disconnect + reconnecting state with attempt count/delay in sidebar and mobile header                                                                                                                          |
-| Goal templates category editor             | `goal_def` JSON stored but no inline editor on categories page                                                                                                                                                                     |
-| ~~Schedule edit page~~                     | ✅ `/schedules/:id` route with detail view and inline editing form                                                                                                                                                                 |
-| ~~Report color scheme per report~~         | ✅ Color scheme picker in report create/edit modal, applied to charts                                                                                                                                                              |
+| Feature | Money App | Actual Budget | Gap Size |
+|---------|-----------|---------------|----------|
+| Envelope budgeting | ✅ SQL-computed | ✅ Spreadsheet engine | Parity |
+| Tracking budget | ❌ | ✅ | **Not doing** |
+| Goal templates | ✅ 5 types | ✅ 12+ with PEG parser | **Not doing** |
+| Budget actions | ✅ 11 actions | ✅ 15+ actions | Small |
+| Schedules | ✅ Full CRUD + discovery | ✅ Same + sync advancement | Small |
+| Rules engine | ✅ 12 ops, 7 actions | ✅ 20+ ops, formula, Handlebars | **Not doing** (formula/Handlebars) |
+| Import | ✅ CSV only | ✅ CSV + OFX/QFX/QIF/CAMT | **Not doing** (non-CSV) |
+| Transactions | ✅ CRUD + split | ✅ CRUD + split + batch | Small (no batch ops) |
+| Reports | ✅ 8 built-in + custom | ✅ Same + formula cards | Parity |
+| Dashboard | ✅ 10 widgets, grid | ✅ 10+ widgets, multi-page, drag-to-reorder | Small (no multi-page, no drag-to-reorder) |
+| Tags | ✅ CRUD + assign | ✅ CRUD + auto-discovery from notes | Small (no auto-discovery) |
+| Payees | ✅ CRUD + merge + favorites | ✅ Same + locations + orphan detection | Small (no locations) |
+| Notes | ✅ Generic key-value | ✅ Per-entity notes | Parity |
+| Sync | ✅ WebSocket + snapshot | ✅ CRDT-based | Different approach (not a gap) |
+| Undo/redo | ✅ Keyboard-only | ✅ Full UI + grouping | Partial (no UI, no grouping) |
+| Reconciliation | ✅ Basic | ✅ Full flow with statement import | Small |
+| Multi-currency | ❌ USD/IDR only | ✅ 42 currencies | **Not doing** |
+| i18n | ❌ English only | ✅ Dutch/English | **Not doing** |
+| Themes | ❌ Dark only | ✅ Light/Midnight/Dark | **Not doing** |
+| Backup/restore | ❌ | ✅ Export all data | **Not doing** |

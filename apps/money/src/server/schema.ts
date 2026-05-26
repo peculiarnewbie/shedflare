@@ -212,17 +212,6 @@ const CREATE_TABLES = [
     updated_at TEXT NOT NULL
   )`,
 
-  // events (event store)
-  `CREATE TABLE IF NOT EXISTS events (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id TEXT NOT NULL UNIQUE,
-    op_id TEXT,
-    type TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_events_op_id ON events(op_id)`,
-
   // notes (generic key-value notes for any entity)
   `CREATE TABLE IF NOT EXISTS notes (
     id TEXT PRIMARY KEY,
@@ -243,16 +232,6 @@ const CREATE_TABLES = [
     updated_at TEXT NOT NULL
   )`,
 
-  // commands (idempotent command tracking)
-  `CREATE TABLE IF NOT EXISTS commands (
-    op_id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    response_json TEXT,
-    acked_seq INTEGER,
-    created_at TEXT NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_commands_acked_seq ON commands(acked_seq)`,
 ];
 
 export function initializeStorage(
@@ -260,27 +239,11 @@ export function initializeStorage(
   queryOne: SqlQueryOneFn,
   log: (message: string) => void,
 ) {
-  // Check if already initialized
-  const existing = queryOne<{ name: string }>(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='events'",
-  );
-  if (existing) {
-    log("storage already initialized: ensuring schema");
-    for (const sql of CREATE_TABLES) {
-      exec(sql);
-    }
-    runMigrations(exec, log);
-    return;
-  }
-
   log("initializing storage: creating tables...");
   for (const sql of CREATE_TABLES) {
     exec(sql);
   }
   log("storage initialized successfully");
-
-  // Run migrations for existing deployments
-  runMigrations(exec, log);
 
   // Insert default exchange rate
   exec(
@@ -289,13 +252,4 @@ export function initializeStorage(
     16000,
     new Date().toISOString(),
   );
-}
-
-function runMigrations(exec: SqlExecFn, log: (msg: string) => void) {
-  try {
-    exec("ALTER TABLE rules ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0");
-    log("migration: added deleted column to rules");
-  } catch {
-    // Column already exists — safe to ignore
-  }
 }

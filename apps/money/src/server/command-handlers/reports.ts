@@ -1,100 +1,34 @@
-/**
- * Report & dashboard command handlers — create, update, delete reports, update dashboard.
- */
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
-import { createCustomReport, createDashboardWidget } from "../../domain/factories";
-import { decodeCommand } from "../../domain/commands";
+import { createCustomReport } from "../../domain/factories";
 
-export function handleReportCommands(
-  opId: string,
-  payload: any,
-  access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
+type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
-  switch (payload.commandType ?? "create_report") {
+export function handleReportCommands(c: string, p: any, a: DataAccess): CR {
+  switch (c) {
     case "create_report": {
-      const valid = decodeCommand("create_report", payload);
-      const row = createCustomReport({
-        name: valid.report?.name,
-        startDate: valid.report?.startDate,
-        endDate: valid.report?.endDate,
-        metadata: valid.report?.metadata,
-        conditions: valid.report?.conditions,
-        graphType: valid.report?.graphType,
-        mode: valid.report?.mode,
-        groupBy: valid.report?.groupBy,
-        interval: valid.report?.interval,
-      });
-      events.push(eventStore.insertEvent(opId, "report_created", { row }) as SyncServerEvent);
-      break;
+      const r = createCustomReport(p.report);
+      a.exec(`INSERT INTO custom_reports (id, name, start_date, end_date, conditions, graph_type, mode, group_by, sort_by, interval, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'desc', ?, ?, ?)`,
+        r.id, r.name, r.startDate, r.endDate, r.conditions, r.graphType, r.mode, r.groupBy, r.interval, r.createdAt, r.updatedAt);
+      return { ok: true, data: { id: r.id } };
     }
-
     case "update_report": {
-      const valid = decodeCommand("update_report", payload);
-      const existing = access.queryOne<Record<string, unknown>>(
-        `SELECT * FROM custom_reports WHERE id = ?`,
-        valid.id,
-      );
-      if (existing) {
-        const fields = valid.fields;
-        const now = new Date().toISOString();
-        access.exec(
-          `UPDATE custom_reports SET name = ?, start_date = ?, end_date = ?, mode = ?, group_by = ?,
-           graph_type = ?, conditions = ?, metadata = ?, updated_at = ? WHERE id = ?`,
-          fields.name ?? existing.name,
-          fields.startDate !== undefined ? fields.startDate : existing.start_date,
-          fields.endDate !== undefined ? fields.endDate : existing.end_date,
-          fields.mode !== undefined ? fields.mode : existing.mode,
-          fields.groupBy !== undefined ? fields.groupBy : existing.group_by,
-          fields.graphType !== undefined ? fields.graphType : existing.graph_type,
-          fields.conditions ?? existing.conditions,
-          fields.metadata !== undefined ? fields.metadata : existing.metadata,
-          now,
-          valid.id,
-        );
-        const updated = access.queryOne<Record<string, unknown>>(
-          `SELECT * FROM custom_reports WHERE id = ?`,
-          valid.id,
-        );
-        if (updated) {
-          events.push(
-            eventStore.insertEvent(opId, "report_updated", {
-              row: updated as any,
-            }) as SyncServerEvent,
-          );
-        }
-      }
-      break;
+      const now = new Date().toISOString();
+      const fs: string[] = ["updated_at = ?"], ps: unknown[] = [now];
+      const f = p.fields;
+      if (f.name !== undefined) { fs.push("name = ?"); ps.push(f.name); }
+      if (f.startDate !== undefined) { fs.push("start_date = ?"); ps.push(f.startDate); }
+      if (f.endDate !== undefined) { fs.push("end_date = ?"); ps.push(f.endDate); }
+      if (f.conditions !== undefined) { fs.push("conditions = ?"); ps.push(f.conditions); }
+      if (f.graphType !== undefined) { fs.push("graph_type = ?"); ps.push(f.graphType); }
+      ps.push(p.id);
+      a.exec(`UPDATE custom_reports SET ${fs.join(", ")} WHERE id = ?`, ...ps);
+      return { ok: true, data: { id: p.id } };
     }
-
     case "delete_report": {
-      access.exec(`DELETE FROM custom_reports WHERE id = ?`, payload.id);
-      break;
+      a.exec("DELETE FROM custom_reports WHERE id = ?", p.id);
+      return { ok: true, data: { id: p.id } };
     }
-
-    case "update_dashboard": {
-      const valid = decodeCommand("update_dashboard", payload);
-      const widgets = valid.widgets.map((w: any) => ({
-        ...createDashboardWidget({
-          type: w.type,
-          x: w.x,
-          y: w.y,
-          width: w.width,
-          height: w.height,
-          meta: w.meta ?? null,
-        }),
-        id: w.id,
-      }));
-      events.push(
-        eventStore.insertEvent(opId, "dashboard_updated", { widgets }) as SyncServerEvent,
-      );
-      break;
-    }
+    default: return { ok: false, error: `Unknown report command: ${c}` };
   }
-
-  return { events };
 }

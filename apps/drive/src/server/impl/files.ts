@@ -65,10 +65,16 @@ async function getFile(db: Db, id: string) {
     .get();
 }
 
-function parseUpdateBody(value: unknown): any | null {
+type UpdateFileBody = {
+  name?: string;
+  description?: string;
+  tags?: string[];
+};
+
+function parseUpdateBody(value: unknown): UpdateFileBody | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
-  const body: Record<string, unknown> = {};
+  const body: UpdateFileBody = {};
   if (input.name !== undefined) {
     if (typeof input.name !== "string") return null;
     body.name = input.name;

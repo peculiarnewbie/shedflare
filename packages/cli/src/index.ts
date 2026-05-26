@@ -57,12 +57,28 @@ cli
   });
 
 cli
-  .command("deploy [app]", "Build and deploy apps to Cloudflare")
+  .command("deploy [app]", "Build and deploy apps to Cloudflare via Alchemy")
   .option("--verify", "Verify each app URL is reachable after deploy")
   .option("--yes", "Skip confirmation prompts")
+  .option("--secret <pair>", "Set secret for deploy: NAME=value (repeatable)")
   .action(async (options) => {
     const { deployCommand } = await import("./commands/deploy.js");
     await deployCommand(options);
+  });
+
+cli
+  .command("secret set <app> <name>", "Set an operator secret on a deployed Worker")
+  .option("--value <value>", "Secret value (otherwise prompted)")
+  .action(async (app: string, name: string, options: { value?: string }) => {
+    const { secretSetCommand } = await import("./commands/secret.js");
+    await secretSetCommand({ app, name, value: options.value });
+  });
+
+cli
+  .command("secret list <app>", "List declared secrets and whether they are set on Cloudflare")
+  .action(async (app: string) => {
+    const { secretListCommand } = await import("./commands/secret.js");
+    await secretListCommand({ app });
   });
 
 cli.command("youtube", "YouTube integration commands").action(async (options) => {

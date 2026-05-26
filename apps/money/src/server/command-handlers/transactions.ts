@@ -1,155 +1,71 @@
-/**
- * Transaction command handlers — create, update, delete, split.
- */
-import * as Schema from "effect/Schema";
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
 import { createTransaction } from "../../domain/factories";
-import { TransactionInput } from "../../domain/schemas";
-import { decodeCommand } from "../../domain/commands";
-import { computeMonthBudget } from "../budget-engine";
-import { toMonthInt, castId, type TransactionId } from "../../domain/types";
+
+export type CommandResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string };
 
 export function handleTransactionCommands(
-  opId: string,
+  commandType: string,
   payload: any,
   access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
-
-  switch (payload.commandType ?? "create_transaction") {
+): CommandResult {
+  switch (commandType) {
     case "create_transaction": {
-      const valid = decodeCommand("create_transaction", payload);
-      const parsed = Schema.decodeUnknownSync(TransactionInput as any)(valid.row) as any;
-      const row = createTransaction(parsed);
-      events.push(eventStore.insertEvent(opId, "transaction_created", { row }) as SyncServerEvent);
-
-      const month = toMonthInt(row.date.slice(0, 7));
-      appendBudgetRecalculation(events, opId, access, eventStore, month);
-      break;
+      const row = createTransaction(payload.row);
+      access.exec(
+        `INSERT INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        row.id, row.accountId, row.categoryId, row.amount, row.payee, row.notes,
+        row.date, row.cleared ? 1 : 0, row.importedDescription, row.startingBalanceFlag ? 1 : 0,
+        row.sortOrder, row.isParent ? 1 : 0, row.isChild ? 1 : 0, row.parentId,
+        row.transferId, row.scheduleId, row.createdAt, row.updatedAt,
+      );
+      return { ok: true, data: { id: row.id } };
     }
 
     case "update_transaction": {
-      const valid = decodeCommand("update_transaction", payload);
-      const existing = access.getTransaction(castId<TransactionId>(valid.id));
-      if (existing) {
-        const updated = {
-          ...existing,
-          accountId: valid.fields.accountId ?? existing.accountId,
-          categoryId:
-            valid.fields.categoryId !== undefined ? valid.fields.categoryId : existing.categoryId,
-          amount: valid.fields.amount ?? existing.amount,
-          payee: valid.fields.payee !== undefined ? valid.fields.payee : existing.payee,
-          notes: valid.fields.notes !== undefined ? valid.fields.notes : existing.notes,
-          date: valid.fields.date ?? existing.date,
-          cleared: valid.fields.cleared ?? existing.cleared,
-          reconciled: valid.fields.reconciled ?? existing.reconciled,
-          importedDescription:
-            valid.fields.importedDescription !== undefined
-              ? valid.fields.importedDescription
-              : existing.importedDescription,
-          sortOrder: valid.fields.sortOrder ?? existing.sortOrder,
-          updatedAt: new Date().toISOString(),
-        };
-        events.push(
-          eventStore.insertEvent(opId, "transaction_updated", { row: updated }) as SyncServerEvent,
-        );
+      const now = new Date().toISOString();
+      const fields: string[] = ["updated_at = ?"];
+      const params: unknown[] = [now];
+      const f = payload.fields;
+      if (f.accountId) { fields.push("account_id = ?"); params.push(f.accountId); }
+      if (f.categoryId !== undefined) { fields.push("category_id = ?"); params.push(f.categoryId); }
+      if (f.amount !== undefined) { fields.push("amount = ?"); params.push(f.amount); }
+      if (f.payee !== undefined) { fields.push("payee = ?"); params.push(f.payee); }
+      if (f.notes !== undefined) { fields.push("notes = ?"); params.push(f.notes); }
+      if (f.date) { fields.push("date = ?"); params.push(f.date); }
+      if (f.cleared !== undefined) { fields.push("cleared = ?"); params.push(f.cleared ? 1 : 0); }
 
-        const oldMonth = toMonthInt(existing.date.slice(0, 7));
-        const newMonth = valid.fields.date ? toMonthInt(valid.fields.date.slice(0, 7)) : oldMonth;
-        if (oldMonth !== newMonth) {
-          appendBudgetRecalculation(events, opId, access, eventStore, oldMonth);
-        }
-        appendBudgetRecalculation(events, opId, access, eventStore, newMonth);
-      }
-      break;
+      params.push(payload.id);
+      access.exec(`UPDATE transactions SET ${fields.join(", ")} WHERE id = ?`, ...params);
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "delete_transaction": {
-      const valid = decodeCommand("delete_transaction", payload);
-      const existing = access.getTransaction(castId<TransactionId>(valid.id));
-      if (existing) {
-        events.push(
-          eventStore.insertEvent(opId, "transaction_deleted", {
-            id: valid.id,
-          }) as SyncServerEvent,
-        );
-
-        const month = toMonthInt(existing.date.slice(0, 7));
-        appendBudgetRecalculation(events, opId, access, eventStore, month);
-      }
-      break;
+      access.exec("DELETE FROM transactions WHERE id = ?", payload.id);
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "split_transaction": {
-      const valid = decodeCommand("split_transaction", payload);
-      const parent = access.getTransaction(castId<TransactionId>(valid.parentId));
-      if (parent) {
-        const updatedParent = {
-          ...parent,
-          isParent: true,
-          updatedAt: new Date().toISOString(),
-        };
-        events.push(
-          eventStore.insertEvent(opId, "transaction_updated", {
-            row: updatedParent,
-          }) as SyncServerEvent,
+      access.exec("DELETE FROM transactions WHERE parent_id = ?", payload.parentId);
+      const results: string[] = [];
+      for (const child of payload.children) {
+        const row = createTransaction({ ...child, parentId: payload.parentId, isChild: true });
+        access.exec(
+          `INSERT INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          row.id, row.accountId, row.categoryId, row.amount, row.payee, row.notes,
+          row.date, row.cleared ? 1 : 0, row.importedDescription, row.startingBalanceFlag ? 1 : 0,
+          row.sortOrder, row.isParent ? 1 : 0, row.isChild ? 1 : 0, row.parentId,
+          row.transferId, row.scheduleId, row.createdAt, row.updatedAt,
         );
-
-        for (const childInput of valid.children) {
-          const child = createTransaction({
-            ...childInput,
-            accountId: parent.accountId,
-            date: parent.date,
-            isChild: true,
-            parentId: parent.id,
-          });
-          events.push(
-            eventStore.insertEvent(opId, "transaction_created", { row: child }) as SyncServerEvent,
-          );
-        }
-
-        const month = toMonthInt(parent.date.slice(0, 7));
-        appendBudgetRecalculation(events, opId, access, eventStore, month);
+        results.push(row.id);
       }
-      break;
+      return { ok: true, data: { childIds: results } };
     }
-  }
 
-  return { events };
-}
-
-/** Helper: compute budget recalc events for a month and append to events array. */
-function appendBudgetRecalculation(
-  events: SyncServerEvent[],
-  opId: string,
-  access: DataAccess,
-  eventStore: EventStore,
-  month: number,
-) {
-  const result = computeMonthBudget(access, month);
-  if (!result) return;
-
-  events.push(
-    eventStore.insertEvent(opId, "budget_recalculated", {
-      month: result.month,
-      toBudget: result.toBudget,
-      buffered: result.buffered,
-    }) as SyncServerEvent,
-  );
-
-  for (const cl of result.categoryLeftovers) {
-    events.push(
-      eventStore.insertEvent(opId, "category_leftover_changed", {
-        month: result.month,
-        categoryId: cl.categoryId,
-        leftover: cl.leftover,
-        leftoverPos: cl.leftoverPos,
-        budgeted: cl.budgeted,
-        spent: cl.spent,
-      }) as SyncServerEvent,
-    );
+    default:
+      return { ok: false, error: `Unknown transaction command: ${commandType}` };
   }
 }

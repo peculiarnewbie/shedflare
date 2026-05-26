@@ -1,133 +1,88 @@
-/**
- * Account command handlers — create, update, close, reopen, reorder,
- * and exchange rate updates.
- */
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
 import { createAccount } from "../../domain/factories";
-import { decodeCommand } from "../../domain/commands";
-import { castId, type AccountId } from "../../domain/types";
+
+export type CommandResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string };
 
 export function handleAccountCommands(
-  opId: string,
+  commandType: string,
   payload: any,
   access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
-
-  switch (payload.commandType ?? "create_account") {
+): CommandResult {
+  switch (commandType) {
     case "create_account": {
-      const valid = decodeCommand("create_account", payload);
       const row = createAccount({
-        name: valid.name,
-        offBudget: valid.offBudget,
-        balance: valid.balance,
+        name: payload.name,
+        offBudget: payload.offBudget,
+        balance: payload.balance,
       });
-      events.push(eventStore.insertEvent(opId, "account_created", { row }) as SyncServerEvent);
-      break;
+      access.exec(
+        `INSERT INTO accounts (id, name, offbudget, closed, sort_order, balance_current, last_reconciled, created_at, updated_at)
+         VALUES (?, ?, ?, 0, 0, ?, NULL, ?, ?)`,
+        row.id, row.name, row.offbudget ? 1 : 0, row.balanceCurrent, row.createdAt, row.updatedAt,
+      );
+      return { ok: true, data: { id: row.id } };
     }
 
     case "update_account": {
-      const valid = decodeCommand("update_account", payload);
-      const existing = access.getAccount(castId<AccountId>(valid.id));
-      if (existing) {
-        const updated = {
-          ...existing,
-          name: valid.name ?? existing.name,
-          offbudget: valid.offBudget ?? existing.offbudget,
-          lastReconciled:
-            valid.lastReconciled !== undefined ? valid.lastReconciled : existing.lastReconciled,
-          updatedAt: new Date().toISOString(),
-        };
-        events.push(
-          eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
-        );
-      }
-      break;
+      const existing = access.queryOne<Record<string, unknown>>(
+        "SELECT * FROM accounts WHERE id = ?", payload.id,
+      );
+      if (!existing) return { ok: false, error: "Account not found" };
+
+      const name = payload.name ?? existing.name;
+      const offbudget = payload.offBudget !== undefined ? (payload.offBudget ? 1 : 0) : existing.offbudget;
+      const now = new Date().toISOString();
+      access.exec(
+        `UPDATE accounts SET name = ?, offbudget = ?, updated_at = ? WHERE id = ?`,
+        name, offbudget, now, payload.id,
+      );
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "delete_account": {
-      const valid = decodeCommand("delete_account", payload);
-      const existing = access.getAccount(castId<AccountId>(valid.id));
-      if (existing) {
-        events.push(
-          eventStore.insertEvent(opId, "account_deleted", { id: valid.id }) as SyncServerEvent,
-        );
-      }
-      break;
+      access.exec("DELETE FROM accounts WHERE id = ?", payload.id);
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "close_account": {
-      const valid = decodeCommand("close_account", payload);
-      const existing = access.getAccount(castId<AccountId>(valid.id));
-      if (existing && !existing.closed) {
-        const updated = {
-          ...existing,
-          closed: true,
-          lastReconciled: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        events.push(
-          eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
-        );
-        events.push(
-          eventStore.insertEvent(opId, "account_closed", {
-            id: valid.id,
-            closedAt: new Date().toISOString(),
-          }) as SyncServerEvent,
-        );
-      }
-      break;
+      const now = new Date().toISOString();
+      access.exec(
+        "UPDATE accounts SET closed = 1, updated_at = ? WHERE id = ?", now, payload.id,
+      );
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "reopen_account": {
-      const valid = decodeCommand("reopen_account", payload);
-      const existing = access.getAccount(castId<AccountId>(valid.id));
-      if (existing && existing.closed) {
-        const updated = {
-          ...existing,
-          closed: false,
-          updatedAt: new Date().toISOString(),
-        };
-        events.push(
-          eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
-        );
-      }
-      break;
+      const now = new Date().toISOString();
+      access.exec(
+        "UPDATE accounts SET closed = 0, updated_at = ? WHERE id = ?", now, payload.id,
+      );
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "reorder_accounts": {
-      const valid = decodeCommand("reorder_accounts", payload);
-      for (let i = 0; i < valid.ids.length; i++) {
-        const existing = access.getAccount(castId<AccountId>(valid.ids[i]));
-        if (existing) {
-          const updated = {
-            ...existing,
-            sortOrder: i,
-            updatedAt: new Date().toISOString(),
-          };
-          events.push(
-            eventStore.insertEvent(opId, "account_updated", { row: updated }) as SyncServerEvent,
-          );
-        }
+      const now = new Date().toISOString();
+      for (let i = 0; i < payload.ids.length; i++) {
+        access.exec(
+          "UPDATE accounts SET sort_order = ?, updated_at = ? WHERE id = ?",
+          i, now, payload.ids[i],
+        );
       }
-      break;
+      return { ok: true, data: { count: payload.ids.length } };
     }
 
     case "update_exchange_rate": {
-      const valid = decodeCommand("update_exchange_rate", payload);
       const now = new Date().toISOString();
-      events.push(
-        eventStore.insertEvent(opId, "exchange_rate_updated", {
-          usdToIdr: valid.usdToIdr,
-          updatedAt: now,
-        }) as SyncServerEvent,
+      access.exec(
+        `INSERT OR REPLACE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES (?, ?, ?)`,
+        "latest", payload.usdToIdr, now,
       );
-      break;
+      return { ok: true, data: {} };
     }
-  }
 
-  return { events };
+    default:
+      return { ok: false, error: `Unknown account command: ${commandType}` };
+  }
 }

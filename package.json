@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",
+    "@shedflare/alchemy": "workspace:*",
     "@types/node": "catalog:",
     "alchemy": "catalog:",
     "effect": "catalog:",

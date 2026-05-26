@@ -19,11 +19,8 @@
   },
   "dependencies": {
     "@shedflare/auth-client": "workspace:*",
-    "@shedflare/sync-protocol": "workspace:*",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
-    "@tanstack/db": "catalog:",
-    "@tanstack/solid-db": "catalog:",
     "@tanstack/solid-form": "catalog:",
     "@tanstack/solid-hotkeys": "catalog:",
     "d3": "^7.9.0",

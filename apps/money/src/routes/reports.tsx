@@ -2,6 +2,7 @@ import { createSignal, createEffect, For, Show } from "solid-js";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 import { dispatch } from "../lib/pending-ops";
+import { useCurrency, formatCentsValue, type NumberFormat } from "../lib/currency";
 import { PageState } from "../components/PageState";
 
 type ReportId =
@@ -23,6 +24,20 @@ interface CustomReport {
   conditions: string | null;
   metadata: string | null;
   created_at: string;
+}
+
+function formatReportCell(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  return JSON.stringify(value);
 }
 
 const REPORTS: Array<{ id: ReportId; label: string; icon: string; description: string }> = [
@@ -58,6 +73,7 @@ const GRAPH_TYPES = [
 
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = createSignal<ReportId>("net-worth");
+  const fmt = useCurrency();
 
   // Lazy-load report data
   const [netWorthData, setNetWorthData] = createSignal<TimeSeriesPoint[]>([]);
@@ -85,6 +101,10 @@ export default function ReportsPage() {
     balance: "#60a5fa",
     background: "#1a1a2e",
   });
+  const [formCondFormat, setFormCondFormat] = createSignal<
+    Array<{ field: string; op: string; value: string; color: string }>
+  >([]);
+  const [formNumberFormat, setFormNumberFormat] = createSignal("");
 
   // Custom report data (lazy loaded per-report)
   const [customReportData, _setCustomReportData] = createSignal<Record<string, any>>({});
@@ -200,6 +220,8 @@ export default function ReportsPage() {
       balance: "#60a5fa",
       background: "#1a1a2e",
     });
+    setFormCondFormat([]);
+    setFormNumberFormat("");
     setShowCreateModal(true);
   }
 
@@ -227,6 +249,8 @@ export default function ReportsPage() {
           background: "#1a1a2e",
         });
       }
+      setFormCondFormat(Array.isArray(meta?.condFormat) ? meta.condFormat : []);
+      setFormNumberFormat((meta?.numberFormat as string) ?? "");
     } catch {
       setFormColorScheme({
         income: "#4ade80",
@@ -234,8 +258,17 @@ export default function ReportsPage() {
         balance: "#60a5fa",
         background: "#1a1a2e",
       });
+      setFormCondFormat([]);
+      setFormNumberFormat("");
     }
     setShowCreateModal(true);
+  }
+
+  function buildMetadata(): string {
+    const meta: any = { colors: formColorScheme() };
+    if (formCondFormat().length > 0) meta.condFormat = formCondFormat();
+    if (formNumberFormat()) meta.numberFormat = formNumberFormat();
+    return JSON.stringify(meta);
   }
 
   function handleSaveReport() {
@@ -251,7 +284,7 @@ export default function ReportsPage() {
           startDate: formStartDate() || null,
           endDate: formEndDate() || null,
           groupBy: formGroupBy() || null,
-          metadata: JSON.stringify({ colors: formColorScheme() }),
+          metadata: buildMetadata(),
         },
       });
     } else {
@@ -263,7 +296,7 @@ export default function ReportsPage() {
           endDate: formEndDate() || null,
           groupBy: formGroupBy() || null,
           conditions: [],
-          metadata: JSON.stringify({ colors: formColorScheme() }),
+          metadata: buildMetadata(),
         },
       });
     }
@@ -289,14 +322,67 @@ export default function ReportsPage() {
     }
   }
 
+  function applyCondFormat(
+    value: number,
+    row: Record<string, unknown>,
+    condFormat: Array<{ field: string; op: string; value: string; color: string }>,
+  ): string | null {
+    for (const rule of condFormat) {
+      const raw =
+        rule.field === "amount" || rule.field === "total"
+          ? value
+          : rule.field
+            ? Number(row[rule.field]) || formatReportCell(row[rule.field])
+            : "";
+      const matchValue = Number(rule.value);
+      const strRaw = String(raw).toLowerCase();
+      const strVal = (rule.value ?? "").toLowerCase();
+
+      let match = false;
+      switch (rule.op) {
+        case "gt":
+          match = Number(raw) > matchValue;
+          break;
+        case "lt":
+          match = Number(raw) < matchValue;
+          break;
+        case "gte":
+          match = Number(raw) >= matchValue;
+          break;
+        case "lte":
+          match = Number(raw) <= matchValue;
+          break;
+        case "eq":
+          match = !isNaN(Number(raw)) ? Number(raw) === matchValue : strRaw === strVal;
+          break;
+        case "neq":
+          match = !isNaN(Number(raw)) ? Number(raw) !== matchValue : strRaw !== strVal;
+          break;
+        case "contains":
+          match = strRaw.includes(strVal);
+          break;
+      }
+      if (match) return rule.color;
+    }
+    return null;
+  }
+
   function renderCustomReportTable(
     rows: Array<Record<string, unknown>>,
     colors: Record<string, string> | undefined,
+    condFormat: Array<{ field: string; op: string; value: string; color: string }> | undefined,
+    numberFormatOverride: string | undefined,
   ) {
     if (rows.length === 0) return <div class="chart-placeholder">No data</div>;
 
     const keys = Object.keys(rows[0]);
-    const bg = colors?.background ?? "var(--surface)";
+    const _bg = colors?.background ?? "var(--surface)";
+    const cur = fmt();
+    const nf = (numberFormatOverride as NumberFormat) || cur.numberFormat;
+
+    function fmtAmount(cents: number): string {
+      return formatCentsValue(cents, cur.code, nf);
+    }
 
     return (
       <div class="report-table-wrap">
@@ -314,11 +400,14 @@ export default function ReportsPage() {
                 const amount = Number(row.total ?? row.amount ?? 0);
                 const isIncome = amount > 0;
                 const isExpense = amount < 0;
-                const cellStyle = isIncome
-                  ? { color: colors?.income ?? "var(--positive)" }
-                  : isExpense
-                    ? { color: colors?.expense ?? "var(--negative)" }
-                    : {};
+                const condColor = condFormat ? applyCondFormat(amount, row, condFormat) : null;
+                const cellStyle = condColor
+                  ? { color: condColor }
+                  : isIncome
+                    ? { color: colors?.income ?? "var(--positive)" }
+                    : isExpense
+                      ? { color: colors?.expense ?? "var(--negative)" }
+                      : {};
                 return (
                   <tr>
                     <For each={keys}>
@@ -331,7 +420,7 @@ export default function ReportsPage() {
                           }
                         >
                           {(key === "total" || key === "amount") && row[key] !== undefined
-                            ? formatCents(row[key] as number)
+                            ? fmtAmount(row[key] as number)
                             : key === "cleared"
                               ? row[key]
                                 ? "✓"
@@ -340,7 +429,7 @@ export default function ReportsPage() {
                                 ? row[key]
                                   ? "🔒"
                                   : ""
-                                : String(row[key] ?? "")}
+                                : formatReportCell(row[key])}
                         </td>
                       )}
                     </For>
@@ -360,9 +449,13 @@ export default function ReportsPage() {
     const rows = result?.rows ?? [];
     const groupBy = result?.groupBy ?? null;
     let colors: Record<string, string> | undefined;
+    let condFormat: Array<{ field: string; op: string; value: string; color: string }> | undefined;
+    let numberFormat: string | undefined;
     try {
       const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
       colors = meta?.colors;
+      condFormat = meta?.condFormat;
+      numberFormat = meta?.numberFormat;
     } catch {
       /* ignore */
     }
@@ -382,7 +475,9 @@ export default function ReportsPage() {
 
     // Table mode
     if (graphType === "table") {
-      return <Show when={true}>{renderCustomReportTable(rows, colors)}</Show>;
+      return (
+        <Show when={true}>{renderCustomReportTable(rows, colors, condFormat, numberFormat)}</Show>
+      );
     }
 
     // Area chart (time series from grouped data or individual txns)
@@ -484,11 +579,6 @@ export default function ReportsPage() {
       "#14b8a6",
     ];
     return palette[index % palette.length];
-  }
-
-  function formatCents(cents: number): string {
-    const sign = cents < 0 ? "-" : "";
-    return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
   }
 
   return (
@@ -780,6 +870,109 @@ export default function ReportsPage() {
                       }
                     />
                     <code>{formColorScheme().background}</code>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Number Format</label>
+                  <select
+                    value={formNumberFormat()}
+                    onChange={(e) => setFormNumberFormat(e.currentTarget.value)}
+                  >
+                    <option value="">Use global setting</option>
+                    <option value="comma-dot">1,234.56</option>
+                    <option value="dot-comma">1.234,56</option>
+                    <option value="space-dot">1 234.56</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Conditional Formatting</label>
+                  <div class="cond-format-list">
+                    <For each={formCondFormat()}>
+                      {(rule, index) => (
+                        <div class="cond-format-row">
+                          <select
+                            value={rule.field}
+                            onChange={(e) => {
+                              const next = formCondFormat().map((r, i) =>
+                                i === index() ? { ...r, field: e.currentTarget.value } : r,
+                              );
+                              setFormCondFormat(next);
+                            }}
+                          >
+                            <option value="">Field</option>
+                            <option value="amount">Amount</option>
+                            <option value="total">Total</option>
+                            <option value="category">Category</option>
+                            <option value="payee">Payee</option>
+                            <option value="notes">Notes</option>
+                          </select>
+                          <select
+                            value={rule.op}
+                            onChange={(e) => {
+                              const next = formCondFormat().map((r, i) =>
+                                i === index() ? { ...r, op: e.currentTarget.value } : r,
+                              );
+                              setFormCondFormat(next);
+                            }}
+                          >
+                            <option value="">Op</option>
+                            <option value="gt">{">"}</option>
+                            <option value="lt">{"<"}</option>
+                            <option value="gte">{">="}</option>
+                            <option value="lte">{"<="}</option>
+                            <option value="eq">=</option>
+                            <option value="neq">≠</option>
+                            <option value="contains">contains</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Value"
+                            value={rule.value}
+                            onInput={(e) => {
+                              const next = formCondFormat().map((r, i) =>
+                                i === index() ? { ...r, value: e.currentTarget.value } : r,
+                              );
+                              setFormCondFormat(next);
+                            }}
+                            style="width:100px"
+                          />
+                          <input
+                            type="color"
+                            value={rule.color}
+                            onInput={(e) => {
+                              const next = formCondFormat().map((r, i) =>
+                                i === index() ? { ...r, color: e.currentTarget.value } : r,
+                              );
+                              setFormCondFormat(next);
+                            }}
+                            style="width:36px;height:36px;padding:0"
+                          />
+                          <button
+                            class="btn btn-ghost btn-sm"
+                            onClick={() =>
+                              setFormCondFormat(formCondFormat().filter((_, i) => i !== index()))
+                            }
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </For>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      onClick={() =>
+                        setFormCondFormat([
+                          ...formCondFormat(),
+                          { field: "amount", op: "gt", value: "0", color: "#4ade80" },
+                        ])
+                      }
+                    >
+                      + Add Rule
+                    </button>
                   </div>
                 </div>
               </div>

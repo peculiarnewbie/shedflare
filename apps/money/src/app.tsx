@@ -1,8 +1,6 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Route, Router } from "@solidjs/router";
-import { createResource, createEffect, Show } from "solid-js";
-import { init } from "./lib/sync-adapter";
-import { start } from "./lib/ws-connection";
+import { createResource, Show } from "solid-js";
 import "./app.css";
 
 // Lazy-load route components
@@ -89,18 +87,6 @@ function LoginScreen() {
 
 export default function App() {
   const [session] = createResource(fetchSession);
-
-  let syncStarted = false;
-  createEffect(() => {
-    if (!session()?.user || syncStarted) return;
-    syncStarted = true;
-    void init()
-      .then(() => start())
-      .catch((err) => {
-        console.error("[sync] init failed, starting anyway", err);
-        start();
-      });
-  });
 
   return (
     <MetaProvider>

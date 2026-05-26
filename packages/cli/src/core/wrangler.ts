@@ -59,9 +59,11 @@ export async function createR2(name: string): Promise<void> {
 export async function putSecret(
   name: string,
   value: string,
-  options?: { cwd?: string },
+  options?: { cwd?: string; workerName?: string },
 ): Promise<void> {
-  const proc = spawn("wrangler", ["secret", "put", name], options);
+  const args = ["secret", "put", name];
+  if (options?.workerName) args.push("--name", options.workerName);
+  const proc = spawn("wrangler", args, options);
   const childProc = await proc.nodeChildProcess;
   if (childProc.stdin) {
     childProc.stdin.write(value + "\n");
@@ -102,9 +104,14 @@ export async function deploy(options?: { cwd?: string }): Promise<DeployResult> 
   return { url, version, warnings };
 }
 
-export async function listSecrets(options?: { cwd?: string }): Promise<string[]> {
+export async function listSecrets(options?: {
+  cwd?: string;
+  workerName?: string;
+}): Promise<string[]> {
   try {
-    const result = await wrangler(["secret", "list", "--format", "json"], options);
+    const args = ["secret", "list", "--format", "json"];
+    if (options?.workerName) args.push("--name", options.workerName);
+    const result = await wrangler(args, options);
     const parsed = JSON.parse(result.stdout) as {
       result?: { secrets?: Array<{ name: string }> };
     };

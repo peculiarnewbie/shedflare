@@ -191,6 +191,25 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     return json({ payees: rows });
   }
 
+  // Payee category suggestions
+  const payeeCatSuggestionMatch = pathname.match(/^\/api\/payees\/category-suggestions$/);
+  if (payeeCatSuggestionMatch && method === "GET") {
+    const payeeName = url.searchParams.get("payee");
+    if (!payeeName) return json({ suggestions: [] });
+    const rows = access.queryAll<Record<string, unknown>>(
+      `SELECT t.category_id, c.name AS category_name, cg.name AS group_name, COUNT(*) AS count
+       FROM transactions t
+       LEFT JOIN categories c ON t.category_id = c.id
+       LEFT JOIN category_groups cg ON c.group_id = cg.id
+       WHERE t.payee = ? AND t.category_id IS NOT NULL AND t.is_child = 0
+       GROUP BY t.category_id
+       ORDER BY count DESC
+       LIMIT 5`,
+      payeeName,
+    );
+    return json({ suggestions: rows });
+  }
+
   // Schedules
   if (pathname === "/api/schedules" && method === "GET") {
     const rows = access.queryAll<Record<string, unknown>>("SELECT * FROM schedules ORDER BY name");

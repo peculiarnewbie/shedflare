@@ -1,25 +1,27 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import { appConfig, authIssuerUrl, physicalName, secretEnv } from "../../infra/alchemy-env.ts";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 export const YouTubeStack = Alchemy.Stack(
   "ShedflareYouTube",
   {
-    providers: Cloudflare.providers(),
+    providers: Layer.mergeAll(Cloudflare.providers(), Shedflare.providers()),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("youtube");
+    const config = yield* Shedflare.appConfig("youtube");
 
     const db = yield* Cloudflare.D1Database("DB", {
-      name: physicalName(stage, "youtube"),
+      name: Shedflare.physicalName(stage, "youtube"),
       migrationsDir: "apps/youtube/src/migrations",
     });
 
     const worker = yield* Cloudflare.Worker("YouTubeWorker", {
-      name: physicalName(stage, "youtube"),
+      name: Shedflare.physicalName(stage, "youtube"),
       main: "apps/youtube/src/worker.ts",
       assets: "apps/youtube/dist",
       compatibility: {
@@ -31,12 +33,20 @@ export const YouTubeStack = Alchemy.Stack(
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: yield* authIssuerUrl(),
+        AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-youtube`,
         OWNER_EMAIL: config.ownerEmail,
-        SYNC_SECRET: yield* secretEnv("SYNC_SECRET"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
+    });
+
+    const syncSecret = yield* Alchemy.Random("SYNC_SECRET");
+    const syncFromEnv = yield* Shedflare.optionalSecretConfig("SYNC_SECRET");
+
+    yield* Shedflare.WorkerSecret("SyncSecret", {
+      workerName: worker.workerName,
+      binding: "SYNC_SECRET",
+      value: Option.isSome(syncFromEnv) ? syncFromEnv.value : syncSecret.text,
     });
 
     return {

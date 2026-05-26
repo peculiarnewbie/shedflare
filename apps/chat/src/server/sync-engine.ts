@@ -93,7 +93,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     this.eventStore = new EventStore(this.chatAccess);
     this.registerChatHandlers();
 
-    const raw = env as unknown as Record<string, unknown>;
+    const _raw = env as unknown as Record<string, unknown>;
     void ctx.blockConcurrencyWhile(async () => {
       initializeStorage(
         (query, ...params) => {

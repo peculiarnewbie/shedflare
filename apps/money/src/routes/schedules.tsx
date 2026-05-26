@@ -212,6 +212,7 @@ function ScheduleForm(props: {
   schedule?: any;
   onSaved?: (saved: any) => void;
 }) {
+  const fmt = useCurrency();
   const isEdit = () => !!props.schedule;
   const existing = () => props.schedule;
 
@@ -229,7 +230,7 @@ function ScheduleForm(props: {
 
   const [name, setName] = createSignal(existing()?.name ?? "");
   const [amount, setAmount] = createSignal(
-    existing()?.amount ? (existing().amount / 100).toFixed(2) : "",
+    existing()?.amount ? fmt().formatCentsInput(existing().amount) : "",
   );
   const [recurrence, setRecurrence] = createSignal(config().type ?? "weekly");
   const [skipWeekend, setSkipWeekend] = createSignal(config().skipWeekend ?? false);

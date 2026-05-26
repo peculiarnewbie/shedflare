@@ -1,27 +1,23 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import {
-  appConfig,
-  authIssuerUrl,
-  optionalEnv,
-  physicalName,
-  requireEnv,
-  secretEnv,
-} from "../../infra/alchemy-env.ts";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import { requireEnv } from "../../infra/alchemy-env.ts";
 
 export const CfBillStack = Alchemy.Stack(
   "ShedflareCfBill",
   {
-    providers: Cloudflare.providers(),
+    providers: Layer.mergeAll(Cloudflare.providers(), Shedflare.providers()),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("cf-bill");
+    const config = yield* Shedflare.appConfig("cf-bill");
 
     const worker = yield* Cloudflare.Worker("CfBillWorker", {
-      name: physicalName(stage, "cf-bill"),
+      name: Shedflare.physicalName(stage, "cf-bill"),
       main: "apps/cf-bill/src/worker.ts",
       assets: "apps/cf-bill/dist/client",
       compatibility: {
@@ -30,14 +26,22 @@ export const CfBillStack = Alchemy.Stack(
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: yield* authIssuerUrl(),
+        AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-cf-bill`,
         OWNER_EMAIL: config.ownerEmail,
         CLOUDFLARE_ACCOUNT_ID: yield* requireEnv("CLOUDFLARE_ACCOUNT_ID"),
-        CLOUDFLARE_ZONE_ID: yield* optionalEnv("CLOUDFLARE_ZONE_ID"),
-        CF_API_TOKEN: yield* secretEnv("CF_API_TOKEN"),
+        CLOUDFLARE_ZONE_ID: process.env.CLOUDFLARE_ZONE_ID ?? "",
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
+    });
+
+    const cfToken = yield* Shedflare.optionalSecretConfig("CF_API_TOKEN");
+
+    yield* Shedflare.WorkerSecret("CfApiToken", {
+      workerName: worker.workerName,
+      binding: "CF_API_TOKEN",
+      ...(Option.isSome(cfToken) ? { value: cfToken.value } : {}),
+      required: true,
     });
 
     return {

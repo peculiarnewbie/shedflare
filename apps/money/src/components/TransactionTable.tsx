@@ -123,6 +123,9 @@ export default function TransactionTable(props: TransactionTableProps) {
     } else if (field === "payee") {
       if (value !== (tx.payee ?? "")) {
         dispatch("update_transaction", { id: tx.id, fields: { payee: value || undefined } });
+        if (value.trim() && !tx.categoryId) {
+          void fetchCategorySuggestion(tx.id, value.trim());
+        }
       }
     } else if (field === "notes") {
       if (value !== (tx.notes ?? "")) {
@@ -135,6 +138,26 @@ export default function TransactionTable(props: TransactionTableProps) {
       }
     }
     cancelEdit();
+  }
+
+  async function fetchCategorySuggestion(txId: string, payee: string) {
+    try {
+      const res = await fetch(
+        `/api/payees/category-suggestions?payee=${encodeURIComponent(payee)}`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        const suggestions = data.suggestions ?? [];
+        if (suggestions.length > 0) {
+          dispatch("update_transaction", {
+            id: txId,
+            fields: { categoryId: suggestions[0].category_id },
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   function handleDelete(txId: string) {

@@ -16,7 +16,8 @@ Shedflare is a **self-hosted suite of personal productivity tools** meant to be 
 
 ```
 alchemy.run.ts          # Root suite stack — composes all app stacks
-infra/alchemy-config.ts # Shared Alchemy helpers (config loading, physical naming)
+packages/shedflare-alchemy/ # WorkerSecret provider, config loading, physical naming
+infra/alchemy-env.ts # Deprecated re-exports; use @shedflare/alchemy
 apps/*/
   alchemy.run.ts        # Per-app Alchemy stack (resource lifecycle + Worker deploy)
   alchemy.test.ts       # Live smoke tests (guarded by SHEDFLARE_LIVE_ALCHEMY_TESTS)
@@ -40,7 +41,7 @@ packages/cli/           # Shedflare CLI (init, configure, doctor — deprecated)
 - **App manifests** (`apps/*/shedflare.app.jsonc`) declare what vars, secrets, and resources each app needs. Keep in sync with `alchemy.run.ts`.
 - **Alchemy stacks** (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If you modify a stack, run `pnpm deploy:<app>` to apply.
 - **Root `alchemy.run.ts`** wires auth URL into all child apps. Update when adding a new app.
-- **Secret values** go in `shedflare.config.jsonc` as `vars.<app>.<NAME>`. Use `requireVar()` in the Alchemy stack to pull them in.
+- **Non-secret config** (domain, vars like `DEFAULT_MODEL_ID`) goes in gitignored `shedflare.config.jsonc`. **Operator secrets** use `Shedflare.WorkerSecret` in Alchemy stacks (Cloudflare Worker is source of truth; set via `shedflare secret set` or env at deploy time). See `docs/operator-secrets.md`.
 - **Every interactive prompt must have a non-interactive flag equivalent** for CI and scripting.
 - **Run `shedflare doctor` to validate config** (deprecated CLI, but still works for validation).
 

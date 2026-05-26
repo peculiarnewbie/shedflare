@@ -17,8 +17,8 @@ export const MoneyStack = Alchemy.Stack(
       name: physicalName(stage, "money", "uploads"),
     });
 
-    const budgetDO = Cloudflare.DurableObjectNamespace("BUDGET_DO", {
-      className: "MoneyBudgetDO",
+    const moneyDb = Cloudflare.D1Database("MONEY_DB", {
+      name: physicalName(stage, "money", "db"),
     });
 
     const worker = yield* Cloudflare.Worker("MoneyWorker", {
@@ -31,7 +31,7 @@ export const MoneyStack = Alchemy.Stack(
       },
       bindings: {
         UPLOADS: uploads,
-        BUDGET_DO: budgetDO,
+        MONEY_DB: moneyDb,
       },
       env: {
         APP_PUBLIC_URL: config.url,

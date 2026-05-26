@@ -10,11 +10,13 @@ import { PageState } from "../components/PageState";
 type BudgetType = "envelope" | "tracking";
 type Currency = "USD" | "IDR";
 type DateFormat = "iso" | "us" | "eu";
+type NumberFormat = "comma-dot" | "dot-comma" | "space-dot";
 
 export default function SettingsPage() {
   const [exchangeRate, setExchangeRate] = createSignal(16000);
   const [budgetType, setBudgetType] = createSignal<BudgetType>("envelope");
   const [currency, setCurrency] = createSignal<Currency>("USD");
+  const [numberFormat, setNumberFormat] = createSignal<NumberFormat>("comma-dot");
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const privacy = usePrivacyMode();
@@ -60,6 +62,9 @@ export default function SettingsPage() {
 
     const fdw = settingsCollection.state.get("first_day_of_week")?.value;
     if (fdw === "sunday" || fdw === "monday") setFirstDayOfWeek(fdw);
+
+    const nf = settingsCollection.state.get("number_format")?.value;
+    if (nf === "comma-dot" || nf === "dot-comma" || nf === "space-dot") setNumberFormat(nf);
   }
 
   async function loadSettings() {
@@ -111,6 +116,11 @@ export default function SettingsPage() {
   function updateFirstDayOfWeek(value: "sunday" | "monday") {
     setFirstDayOfWeek(value);
     dispatch("update_setting", { key: "first_day_of_week", value });
+  }
+
+  function updateNumberFormat(value: NumberFormat) {
+    setNumberFormat(value);
+    dispatch("update_setting", { key: "number_format", value });
   }
 
   function handleExport() {
@@ -237,6 +247,23 @@ export default function SettingsPage() {
           >
             <option value="sunday">Sunday</option>
             <option value="monday">Monday</option>
+          </select>
+        </div>
+
+        {/* Number Format */}
+        <div class="settings-section">
+          <h2>Number Format</h2>
+          <p class="settings-description">
+            Choose how numbers are formatted (thousands/decimal separators).
+          </p>
+          <select
+            value={numberFormat()}
+            onChange={(e) => updateNumberFormat(e.currentTarget.value as NumberFormat)}
+            style="max-width:200px"
+          >
+            <option value="comma-dot">1,234.56 (US/UK/Asia)</option>
+            <option value="dot-comma">1.234,56 (Europe)</option>
+            <option value="space-dot">1 234.56 (ISO)</option>
           </select>
         </div>
 

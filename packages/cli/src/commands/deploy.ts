@@ -5,14 +5,29 @@ import type { AppManifest } from "../core/manifests.js";
 import { buildPlanFromConfig } from "../core/init-draft.js";
 import { writeAppFiles } from "../core/generate.js";
 import { checkDrift } from "../core/validate.js";
-import { whoami, login, listSecrets } from "../core/wrangler.js";
+import { whoami, login } from "../core/wrangler.js";
+import { collectRequiredSecretNames, findMissingOperatorSecrets } from "../core/deploy-secrets.js";
 import { askConfirm } from "../headless/prompts.js";
+import {
+  applySecretsToEnv,
+  clearSecretsFromEnv,
+  parseSecretFlags,
+  promptMissingSecrets,
+} from "./secret.js";
 
 export interface DeployOptions {
   app?: string;
   verify?: boolean;
   yes?: boolean;
 }
+
+const ALCHEMY_STACKS: Record<string, { stack: string; buildClient?: string }> = {
+  auth: { stack: "apps/auth/alchemy.run.ts" },
+  chat: { stack: "apps/chat/alchemy.run.ts", buildClient: "apps/chat" },
+  drive: { stack: "apps/drive/alchemy.run.ts", buildClient: "apps/drive" },
+  money: { stack: "apps/money/alchemy.run.ts", buildClient: "apps/money" },
+  youtube: { stack: "apps/youtube/alchemy.run.ts", buildClient: "apps/youtube" },
+};
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
   const config = loadConfig();
@@ -60,16 +75,14 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   }
 
   const appNames = plan.apps.map((a) => a.id).join(", ");
+  const appIds = plan.apps.map((a) => a.id);
 
-  // Auto-configure: regenerate wrangler.jsonc for all planned apps
   console.log("Regenerating wrangler configs...");
   for (const app of plan.apps) {
     writeAppFiles(app.id, app, validConfig, manifests, validConfig.resources);
   }
 
-  // Pre-flight checks (skip if --yes)
   if (!options.yes) {
-    // Wrangler login
     const user = await whoami();
     if (!user) {
       const shouldLogin = await askConfirm("Not logged in to Wrangler. Run `wrangler login`?");
@@ -81,60 +94,80 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       }
     }
 
-    // Config drift
     const drift = await checkDrift(validConfig);
     if (drift.hasDrift) {
       console.warn(`Warning: ${drift.diffs.length} app(s) have config drift.`);
     }
 
-    // Secret check
-    for (const app of plan.apps) {
-      const requiredSecrets = Object.entries(app.secrets)
-        .filter(([_, d]) => d.required)
-        .map(([name]) => name);
-      if (requiredSecrets.length === 0) continue;
-
-      const setSecrets = await listSecrets({ cwd: `apps/${app.id}` });
-      const missing = requiredSecrets.filter((s) => !setSecrets.includes(s));
-      if (missing.length > 0) {
-        console.warn(`Warning: ${app.id} is missing required secrets: ${missing.join(", ")}`);
+    const missingOnCf = await findMissingOperatorSecrets(appIds);
+    if (missingOnCf.length > 0) {
+      for (const { appId, names } of missingOnCf) {
+        console.warn(`Warning: ${appId} is missing secrets on Cloudflare: ${names.join(", ")}`);
       }
     }
 
-    // Confirm
     const shouldDeploy = await askConfirm(`Deploy ${appNames} to ${validConfig.domain}?`);
     if (!shouldDeploy) {
       process.exit(0);
     }
   }
 
-  // D1 migrations
-  for (const app of plan.apps) {
-    if (!hasD1Resource(app)) continue;
-    const dbName = getD1DatabaseName(app);
-    console.log(`Running D1 migrations for ${app.id} (${dbName})...`);
-    try {
-      await spawn("npm", ["run", "db:migrate"], { cwd: `apps/${app.id}` });
-    } catch (error) {
-      console.error(`D1 migration failed for ${app.id}:`, error);
-      process.exit(1);
-    }
+  const flagSecrets = parseSecretFlags(process.argv.slice(2));
+  const missingOnCf = await findMissingOperatorSecrets(appIds);
+  const stillMissing: Array<{ appId: string; names: string[] }> = [];
+
+  for (const entry of missingOnCf) {
+    const names = entry.names.filter((name) => !process.env[name] && !flagSecrets[name]);
+    if (names.length > 0) stillMissing.push({ appId: entry.appId, names });
   }
 
-  // Deploy each app in dependency order
-  const deployedApps: string[] = [];
-  for (const app of plan.apps) {
-    console.log(`Deploying ${app.id}...`);
-    try {
-      await spawn("npm", ["run", "deploy"], { cwd: `apps/${app.id}` });
-      deployedApps.push(app.id);
-    } catch (error) {
-      console.error(`Deploy failed for ${app.id}:`, error);
+  let prompted: Record<string, string> = {};
+  if (stillMissing.length > 0) {
+    if (process.env.CI === "true" || process.env.CI === "1") {
+      const flat = stillMissing.flatMap((e) => e.names.map((n) => `${e.appId}:${n}`));
+      console.error(
+        `Missing required secrets (set env vars or pass --secret=NAME=value): ${flat.join(", ")}`,
+      );
       process.exit(1);
     }
+    console.log("Provide values for secrets not yet on Cloudflare:");
+    prompted = await promptMissingSecrets(stillMissing);
   }
 
-  // Verify URLs if requested
+  const injectedNames = collectRequiredSecretNames(appIds);
+  applySecretsToEnv({ ...flagSecrets, ...prompted });
+
+  try {
+    for (const app of plan.apps) {
+      if (!ALCHEMY_STACKS[app.id]) {
+        console.error(`No Alchemy stack registered for app "${app.id}".`);
+        process.exit(1);
+      }
+
+      if (hasD1Resource(app)) {
+        const dbName = getD1DatabaseName(app);
+        console.log(`Running D1 migrations for ${app.id} (${dbName})...`);
+        try {
+          await spawn("npm", ["run", "db:migrate"], { cwd: `apps/${app.id}` });
+        } catch (error) {
+          console.error(`D1 migration failed for ${app.id}:`, error);
+          process.exit(1);
+        }
+      }
+
+      const target = ALCHEMY_STACKS[app.id];
+      if (target.buildClient) {
+        console.log(`Building ${app.id} client...`);
+        await spawn("vp", ["build", target.buildClient]);
+      }
+
+      console.log(`Deploying ${app.id} via Alchemy...`);
+      await spawn("vp", ["exec", "alchemy", "deploy", target.stack, "--yes"]);
+    }
+  } finally {
+    clearSecretsFromEnv(injectedNames);
+  }
+
   if (options.verify) {
     console.log("\nVerifying URLs...");
     for (const app of plan.apps) {
@@ -150,14 +183,10 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     }
   }
 
-  // Summary
   console.log("\nDeployed:");
-  for (const appId of deployedApps) {
-    const appUrl = plan.urls[appId] ?? "";
-    console.log(`  ${appId}: ${appUrl}`);
+  for (const app of plan.apps) {
+    console.log(`  ${app.id}: ${plan.urls[app.id] ?? ""}`);
   }
 
-  console.log("\nNext steps:");
-  console.log("  - Verify each app is accessible at its URL");
-  console.log("  - Set any missing secrets via `wrangler secret put <NAME>` in the app directory");
+  console.log("\nRotate a secret without redeploying: shedflare secret set <app> <NAME>");
 }

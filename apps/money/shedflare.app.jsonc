@@ -27,8 +27,8 @@
   "secrets": {},
   "resources": [
     {
-      "type": "durable_object",
-      "binding": "BUDGET_DO",
+      "type": "d1",
+      "binding": "MONEY_DB",
     },
     {
       "type": "r2",

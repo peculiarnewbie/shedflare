@@ -13,6 +13,7 @@ export type ChatCompletionsAdapterConfig = {
   apiKey: string;
   headers?: Record<string, string>;
   firstByteTimeout?: number;
+  idleTimeout?: number;
   overallTimeout?: number;
   timeout?: number;
   trace?: <A>(
@@ -55,18 +56,22 @@ const DISABLE_FURTHER_TOOL_CALLS_SYSTEM_PROMPT = [
 export type { ModelMessage, ContentPart, StreamChunk };
 
 const DEFAULT_FIRST_BYTE_TIMEOUT_MS = 60_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
 const DEFAULT_OVERALL_REQUEST_TIMEOUT_MS = 300_000;
 
 function createRequestLifecycle(input: {
   externalSignal?: AbortSignal;
   overallTimeoutMs?: number;
   firstByteTimeoutMs?: number;
+  idleTimeoutMs?: number;
 }) {
   const controller = new AbortController();
   const overallTimeoutMs = input.overallTimeoutMs ?? DEFAULT_OVERALL_REQUEST_TIMEOUT_MS;
   const firstByteTimeoutMs = input.firstByteTimeoutMs ?? DEFAULT_FIRST_BYTE_TIMEOUT_MS;
+  const idleTimeoutMs = input.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   let overallTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let firstByteTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let abortListener: (() => void) | null = null;
 
   const abort = (reason?: unknown) => {
@@ -102,6 +107,17 @@ function createRequestLifecycle(input: {
     }, firstByteTimeoutMs);
   }
 
+  const resetIdleTimer = () => {
+    if (idleTimeoutHandle) {
+      clearTimeout(idleTimeoutHandle);
+      idleTimeoutHandle = null;
+    }
+    if (idleTimeoutMs <= 0 || controller.signal.aborted) return;
+    idleTimeoutHandle = setTimeout(() => {
+      abort(new Error(`Upstream chat completion stream was idle for ${idleTimeoutMs}ms`));
+    }, idleTimeoutMs);
+  };
+
   return {
     signal: controller.signal,
     markFirstByteReceived() {
@@ -109,6 +125,10 @@ function createRequestLifecycle(input: {
         clearTimeout(firstByteTimeoutHandle);
         firstByteTimeoutHandle = null;
       }
+      resetIdleTimer();
+    },
+    markStreamChunkReceived() {
+      resetIdleTimer();
     },
     cleanup() {
       if (overallTimeoutHandle) {
@@ -116,6 +136,9 @@ function createRequestLifecycle(input: {
       }
       if (firstByteTimeoutHandle) {
         clearTimeout(firstByteTimeoutHandle);
+      }
+      if (idleTimeoutHandle) {
+        clearTimeout(idleTimeoutHandle);
       }
       if (input.externalSignal && abortListener) {
         input.externalSignal.removeEventListener("abort", abortListener);
@@ -501,6 +524,7 @@ export class ChatCompletionsAdapter {
       externalSignal: options.abortController?.signal,
       overallTimeoutMs: this.config.overallTimeout ?? this.config.timeout,
       firstByteTimeoutMs: this.config.firstByteTimeout,
+      idleTimeoutMs: this.config.idleTimeout,
     });
 
     // Emit RUN_STARTED
@@ -522,6 +546,10 @@ export class ChatCompletionsAdapter {
           messageCount: messages.length,
           toolCount: tools?.length ?? 0,
           toolsDisabled: disableFurtherToolCalls,
+          firstByteTimeoutMs: this.config.firstByteTimeout ?? DEFAULT_FIRST_BYTE_TIMEOUT_MS,
+          idleTimeoutMs: this.config.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_MS,
+          overallTimeoutMs:
+            this.config.overallTimeout ?? this.config.timeout ?? DEFAULT_OVERALL_REQUEST_TIMEOUT_MS,
         },
         () =>
           fetch(url, {
@@ -588,6 +616,7 @@ export class ChatCompletionsAdapter {
         const { done, value } = await reader.read();
         if (value && value.byteLength > 0) {
           request.markFirstByteReceived();
+          request.markStreamChunkReceived();
         }
         if (done) break;
 

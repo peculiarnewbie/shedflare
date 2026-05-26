@@ -1,47 +1,30 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import {
-  appConfig,
-  authIssuerUrl,
-  optionalEnv,
-  optionalSecretEnv,
-  physicalName,
-  secretEnv,
-} from "../../infra/alchemy-env.ts";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 export const ChatStack = Alchemy.Stack(
   "ShedflareChat",
   {
-    providers: Cloudflare.providers(),
+    providers: Layer.mergeAll(Cloudflare.providers(), Shedflare.providers()),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("chat");
+    const config = yield* Shedflare.appConfig("chat");
 
     const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
-      name: physicalName(stage, "chat", "uploads"),
+      name: Shedflare.physicalName(stage, "chat", "uploads"),
     });
 
-    // Durable Object declared as a binding reference.
-    // The actual class (SyncEngineDurableObject) is exported from src/worker.ts
-    // and Alchemy bundles it as part of the Worker deploy.
     const syncEngine = Cloudflare.DurableObjectNamespace("SYNC_ENGINE", {
       className: "SyncEngineDurableObject",
     });
 
-    // Durable Object declared as a binding reference.
-    // The actual class (SyncEngineDurableObject) is exported from src/worker.ts
-    // and Alchemy bundles it as part of the Worker deploy.
-    // NOTE: Browser Rendering binding (BROWSER) is not yet supported as an
-    // Alchemy resource type. After deploying, manually add the binding:
-    //   wrangler secret put BROWSER  (or via Cloudflare Dashboard)
-    // Or add it to the Worker's wrangler.jsonc after generation:
-    //   "browser": { "binding": "BROWSER" }
-
     const worker = yield* Cloudflare.Worker("ChatWorker", {
-      name: physicalName(stage, "chat"),
+      name: Shedflare.physicalName(stage, "chat"),
       main: "apps/chat/src/worker.ts",
       assets: "apps/chat/dist/client",
       compatibility: {
@@ -54,15 +37,36 @@ export const ChatStack = Alchemy.Stack(
       },
       env: {
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: yield* authIssuerUrl(),
+        AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-chat`,
         OWNER_EMAIL: config.ownerEmail,
-        DEFAULT_MODEL_ID: yield* optionalEnv("DEFAULT_MODEL_ID", "auto"),
-        OPENCODE_GO_API_KEY: yield* secretEnv("OPENCODE_GO_API_KEY"),
-        UPLOAD_TOKEN_SECRET: yield* secretEnv("UPLOAD_TOKEN_SECRET"),
-        EXA_API_KEY: yield* optionalSecretEnv("EXA_API_KEY"),
+        DEFAULT_MODEL_ID: Shedflare.optionalVar(config, "DEFAULT_MODEL_ID", "auto"),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
+    });
+
+    const uploadToken = yield* Alchemy.Random("UPLOAD_TOKEN_SECRET");
+    const opencodeKey = yield* Shedflare.optionalSecretConfig("OPENCODE_GO_API_KEY");
+    const exaKey = yield* Shedflare.optionalSecretConfig("EXA_API_KEY");
+
+    yield* Shedflare.WorkerSecret("OpencodeKey", {
+      workerName: worker.workerName,
+      binding: "OPENCODE_GO_API_KEY",
+      ...(Option.isSome(opencodeKey) ? { value: opencodeKey.value } : {}),
+      required: true,
+    });
+
+    yield* Shedflare.WorkerSecret("UploadToken", {
+      workerName: worker.workerName,
+      binding: "UPLOAD_TOKEN_SECRET",
+      value: uploadToken.text,
+    });
+
+    yield* Shedflare.WorkerSecret("ExaKey", {
+      workerName: worker.workerName,
+      binding: "EXA_API_KEY",
+      ...(Option.isSome(exaKey) ? { value: exaKey.value } : {}),
+      required: false,
     });
 
     return {

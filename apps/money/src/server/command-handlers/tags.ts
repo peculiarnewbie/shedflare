@@ -1,80 +1,28 @@
-/**
- * Tag command handlers — create, delete, assign to transactions.
- */
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
 import { createTag } from "../../domain/factories";
-import { decodeCommand } from "../../domain/commands";
 
-export function handleTagCommands(
-  opId: string,
-  payload: any,
-  access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
+type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
-  switch (payload.commandType ?? "create_tag") {
+export function handleTagCommands(c: string, p: any, a: DataAccess): CR {
+  switch (c) {
     case "create_tag": {
-      const valid = decodeCommand("create_tag", payload);
-      const row = createTag({ name: valid.name, color: valid.color });
-      events.push(eventStore.insertEvent(opId, "tag_created", { row }) as SyncServerEvent);
-      break;
+      const r = createTag(p);
+      a.exec("INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)", r.id, r.name, r.color, r.createdAt);
+      return { ok: true, data: { id: r.id } };
     }
-
     case "delete_tag": {
-      access.exec(`DELETE FROM transaction_tags WHERE tag_id = ?`, payload.id);
-      events.push(
-        eventStore.insertEvent(opId, "tag_deleted", { id: payload.id }) as SyncServerEvent,
-      );
-      break;
+      a.exec("DELETE FROM transaction_tags WHERE tag_id = ?", p.id);
+      a.exec("DELETE FROM tags WHERE id = ?", p.id);
+      return { ok: true, data: { id: p.id } };
     }
-
     case "add_transaction_tag": {
-      const valid = decodeCommand("add_transaction_tag", payload);
-      const existing = access.queryOne<Record<string, unknown>>(
-        `SELECT 1 FROM transaction_tags WHERE transaction_id = ? AND tag_id = ?`,
-        valid.transactionId,
-        valid.tagId,
-      );
-      if (!existing) {
-        const tag = access.queryOne<{ name: string }>(
-          `SELECT name FROM tags WHERE id = ?`,
-          valid.tagId,
-        );
-        access.exec(
-          `INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)`,
-          valid.transactionId,
-          valid.tagId,
-        );
-        events.push(
-          eventStore.insertEvent(opId, "transaction_tag_added", {
-            transactionId: valid.transactionId,
-            tagId: valid.tagId,
-            tagName: tag?.name ?? "",
-          }) as SyncServerEvent,
-        );
-      }
-      break;
+      a.exec("INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)", p.transactionId, p.tagId);
+      return { ok: true, data: { transactionId: p.transactionId, tagId: p.tagId } };
     }
-
     case "remove_transaction_tag": {
-      const valid = decodeCommand("remove_transaction_tag", payload);
-      access.exec(
-        `DELETE FROM transaction_tags WHERE transaction_id = ? AND tag_id = ?`,
-        valid.transactionId,
-        valid.tagId,
-      );
-      events.push(
-        eventStore.insertEvent(opId, "transaction_tag_removed", {
-          transactionId: valid.transactionId,
-          tagId: valid.tagId,
-        }) as SyncServerEvent,
-      );
-      break;
+      a.exec("DELETE FROM transaction_tags WHERE transaction_id = ? AND tag_id = ?", p.transactionId, p.tagId);
+      return { ok: true, data: { transactionId: p.transactionId, tagId: p.tagId } };
     }
+    default: return { ok: false, error: `Unknown tag command: ${c}` };
   }
-
-  return { events };
 }

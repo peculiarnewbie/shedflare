@@ -1,11 +1,9 @@
 import { createRouter } from "./server/router";
 import type { AuthEnv } from "@shedflare/auth-client/consumer";
 
-export { MoneyBudgetDO } from "./server/sync-engine";
-
 type Env = AuthEnv & {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  BUDGET_DO: DurableObjectNamespace;
+  MONEY_DB: D1Database;
   UPLOADS: R2Bucket;
 };
 

@@ -261,22 +261,6 @@ export const settings = sqliteTable("settings", {
 });
 
 // ---------------------------------------------------------------------------
-// events (event store for sync protocol)
-// ---------------------------------------------------------------------------
-export const events = sqliteTable(
-  "events",
-  {
-    seq: integer("seq").primaryKey({ autoIncrement: true }),
-    eventId: text("event_id").notNull().unique(),
-    opId: text("op_id"),
-    type: text("type").notNull(),
-    payloadJson: text("payload_json").notNull(),
-    createdAt: text("created_at").notNull(),
-  },
-  (table) => [index("idx_events_op_id").on(table.opId)],
-);
-
-// ---------------------------------------------------------------------------
 // notes (generic key-value notes for any entity)
 // ---------------------------------------------------------------------------
 export const notes = sqliteTable("notes", {
@@ -299,22 +283,6 @@ export const transactionFilters = sqliteTable("transaction_filters", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
-
-// ---------------------------------------------------------------------------
-// commands (idempotent command tracking)
-// ---------------------------------------------------------------------------
-export const commands = sqliteTable(
-  "commands",
-  {
-    opId: text("op_id").primaryKey(),
-    type: text("type").notNull(),
-    status: text("status").notNull(), // "accepted" | "rejected"
-    responseJson: text("response_json"),
-    ackedSeq: integer("acked_seq"),
-    createdAt: text("created_at").notNull(),
-  },
-  (table) => [index("idx_commands_acked_seq").on(table.ackedSeq)],
-);
 
 // ---------------------------------------------------------------------------
 // Type exports
@@ -350,5 +318,3 @@ export type TransactionFilter = typeof transactionFilters.$inferSelect;
 export type NewTransactionFilter = typeof transactionFilters.$inferInsert;
 export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
-export type SyncEvent = typeof events.$inferSelect;
-export type Command = typeof commands.$inferSelect;

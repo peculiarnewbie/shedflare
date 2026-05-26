@@ -6,6 +6,7 @@ import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
+import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
 
 interface CategoryBudgetRow {
@@ -31,6 +32,7 @@ export default function BudgetPage() {
   const navigate = useNavigate();
   const privacyBlur = usePrivacyMode();
   const df = useDateFormat();
+  const fmt = useCurrency();
   const now = new Date();
   const [monthKey, setMonthKey] = createSignal(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
@@ -108,11 +110,6 @@ export default function BudgetPage() {
     );
   }
 
-  function formatCents(cents: number): string {
-    const abs = Math.abs(cents);
-    return `${cents < 0 ? "-" : ""}$${(abs / 100).toFixed(2)}`;
-  }
-
   return (
     <div class="page">
       <div class="page-header">
@@ -135,7 +132,7 @@ export default function BudgetPage() {
             class={`summary-value ${privacyBlur().blurClass()}`}
             classList={{ positive: toBudget() >= 0, negative: toBudget() < 0 }}
           >
-            {formatCents(toBudget())}
+            {fmt().formatCents(toBudget())}
           </span>
         </div>
       </div>
@@ -188,7 +185,7 @@ export default function BudgetPage() {
                           />
                         </span>
                         <span class={`col-spent ${privacyBlur().blurClass()}`}>
-                          {formatCents(cat.spent)}
+                          {fmt().formatCents(cat.spent)}
                         </span>
                         <span
                           class={`col-leftover ${privacyBlur().blurClass()}`}
@@ -197,7 +194,7 @@ export default function BudgetPage() {
                             negative: cat.leftover < 0,
                           }}
                         >
-                          {formatCents(cat.leftover)}
+                          {fmt().formatCents(cat.leftover)}
                         </span>
                       </div>
                     )}
@@ -207,13 +204,13 @@ export default function BudgetPage() {
                       <strong>Group Total</strong>
                     </span>
                     <span class={`col-budgeted ${privacyBlur().blurClass()}`}>
-                      <strong>{formatCents(group.groupBudgeted)}</strong>
+                      <strong>{fmt().formatCents(group.groupBudgeted)}</strong>
                     </span>
                     <span class={`col-spent ${privacyBlur().blurClass()}`}>
-                      <strong>{formatCents(group.groupSpent)}</strong>
+                      <strong>{fmt().formatCents(group.groupSpent)}</strong>
                     </span>
                     <span class={`col-leftover ${privacyBlur().blurClass()}`}>
-                      <strong>{formatCents(group.groupLeftover)}</strong>
+                      <strong>{fmt().formatCents(group.groupLeftover)}</strong>
                     </span>
                   </div>
                 </div>

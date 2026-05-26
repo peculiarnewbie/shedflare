@@ -49,6 +49,50 @@ export default function AccountPage() {
   const [txAmount, setTxAmount] = createSignal("");
   const [txCategory, setTxCategory] = createSignal("");
   const [txNotes, setTxNotes] = createSignal("");
+  const [autoCategory, setAutoCategory] = createSignal<string | null>(null);
+
+  let payeeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onCleanup(() => {
+    if (payeeDebounceTimer) clearTimeout(payeeDebounceTimer);
+  });
+
+  function handlePayeeInput(value: string) {
+    setTxPayee(value);
+
+    if (payeeDebounceTimer) clearTimeout(payeeDebounceTimer);
+
+    if (!value.trim()) {
+      setAutoCategory(null);
+      return;
+    }
+
+    payeeDebounceTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/payees/category-suggestions?payee=${encodeURIComponent(value.trim())}`,
+        );
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          const suggestions = data.suggestions ?? [];
+          if (suggestions.length > 0) {
+            setAutoCategory(suggestions[0].category_id);
+          } else {
+            setAutoCategory(null);
+          }
+        }
+      } catch {
+        setAutoCategory(null);
+      }
+    }, 300);
+  }
+
+  createEffect(() => {
+    const autoCat = autoCategory();
+    if (autoCat && (!txCategory() || txCategory() === "")) {
+      setTxCategory(autoCat);
+    }
+  });
 
   function handleFilterChange(
     conditions: Condition[],
@@ -243,7 +287,7 @@ export default function AccountPage() {
                   list="tx-payee-list"
                   placeholder="e.g. Grocery Store"
                   value={txPayee()}
-                  onInput={(e) => setTxPayee(e.currentTarget.value)}
+                  onInput={(e) => handlePayeeInput(e.currentTarget.value)}
                 />
               </div>
               <div class="form-group" style={{ flex: "0 0 160px" }}>

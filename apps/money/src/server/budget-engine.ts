@@ -8,7 +8,9 @@
 import type { DataAccess } from "./data-access";
 import { monthBoundaries, prevMonthKey, fromMonthInt, toMonthInt, castId } from "../domain/types";
 import type { CategoryBudgetRow, CategoryId, CategoryGroupId } from "../domain/types";
-import { startSpanWithStack, endSpanWithStack } from "./tracer";
+// tracer removed in D1 migration
+const startSpanWithStack = (..._args: any[]) => "";
+const endSpanWithStack = (..._args: any[]) => {};
 
 export interface BudgetRecalculationResult {
   month: number;
@@ -75,7 +77,7 @@ export function computeMonthBudget(
 
   // Get buffered amount
   const budgetMonth = access.getBudgetMonth(mk);
-  const buffered = budgetMonth?.buffered ?? 0;
+  const buffered = Number(budgetMonth?.buffered ?? 0);
 
   // Compute per-category leftovers
   const categoryRows: CategoryBudgetRow[] = [];

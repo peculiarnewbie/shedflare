@@ -357,6 +357,7 @@ function summarizeActions(actionsJson: string): string {
         if (a.op === "delete-transaction") return "Delete transaction";
         if (a.op === "prepend-notes") return `Prepend notes: "${(a.value ?? "").slice(0, 30)}"`;
         if (a.op === "append-notes") return `Append notes: "${(a.value ?? "").slice(0, 30)}"`;
+        if (a.op === "link-schedule") return `Link to schedule`;
         if (a.op === "set") return `Set ${a.field} to "${(a.value ?? "").slice(0, 30)}"`;
         return `${a.op}: ${(a.value ?? "").slice(0, 30)}`;
       })
@@ -412,6 +413,7 @@ const ACTION_OP_LABELS: Record<string, string> = {
   "prepend-notes": "Prepend notes",
   "append-notes": "Append notes",
   "delete-transaction": "Delete transaction",
+  "link-schedule": "Link schedule",
 };
 
 function RuleForm(props: { onClose: () => void }) {
@@ -422,6 +424,8 @@ function RuleForm(props: { onClose: () => void }) {
   const [actionOp, setActionOp] = createSignal("set");
   const [actionField, setActionField] = createSignal("category");
   const [actionValue, setActionValue] = createSignal("");
+  const [scheduleId, setScheduleId] = createSignal("");
+  const [schedules, setSchedules] = createSignal<any[]>([]);
   const [saving, setSaving] = createSignal(false);
 
   const fieldMeta = () => CONDITION_FIELD_META[conditionField()] ?? CONDITION_FIELD_META.payee;
@@ -435,6 +439,25 @@ function RuleForm(props: { onClose: () => void }) {
       setConditionOp(ops[0]);
     }
   });
+
+  // Load schedules when action is link-schedule
+  createEffect(() => {
+    if (actionOp() === "link-schedule") {
+      void loadSchedules();
+    }
+  });
+
+  async function loadSchedules() {
+    try {
+      const res = await fetch("/api/schedules");
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        setSchedules(data.schedules ?? []);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -461,6 +484,8 @@ function RuleForm(props: { onClose: () => void }) {
 
     if (actionOp() === "delete-transaction") {
       actions = [{ op: "delete-transaction" }];
+    } else if (actionOp() === "link-schedule") {
+      actions = [{ op: "link-schedule", scheduleId: scheduleId() }];
     } else if (actionOp() === "set") {
       actions = [{ op: "set", field: actionField(), value: actionValue().trim() }];
     } else {
@@ -599,6 +624,19 @@ function RuleForm(props: { onClose: () => void }) {
               <span style={{ color: "var(--text-muted)", "font-size": "0.85rem" }}>
                 Transaction will be deleted
               </span>
+            </Show>
+
+            <Show when={actionOp() === "link-schedule"}>
+              <select
+                value={scheduleId()}
+                onChange={(e) => setScheduleId(e.currentTarget.value)}
+                required
+              >
+                <option value="">Select schedule...</option>
+                <For each={schedules()}>
+                  {(s) => <option value={s.id}>{s.name ?? s.id}</option>}
+                </For>
+              </select>
             </Show>
           </div>
 

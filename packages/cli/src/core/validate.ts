@@ -7,6 +7,7 @@ import { loadConfig, validateConfig } from "./config.js";
 import { mergeWranglerConfig } from "./template.js";
 import { loadBaseConfig } from "./generate.js";
 import * as wrangler from "./wrangler.js";
+import { physicalWorkerName } from "./worker-names.js";
 
 export interface CheckResult {
   name: string;
@@ -117,7 +118,7 @@ export async function runDoctor(): Promise<CheckResult[]> {
       checks.push({
         name: "missing-secrets",
         status: "warn",
-        message: `Apps with required secrets that need to be set via 'wrangler secret put': ${missingSecrets.join(", ")}`,
+        message: `Apps with required secrets missing on Cloudflare Workers: ${missingSecrets.join(", ")}. Use shedflare secret set <app> <NAME>.`,
       });
     } else {
       checks.push({
@@ -192,7 +193,7 @@ async function getMissingSecrets(config: import("./config.js").ShedflareConfig):
       if (requiredSecrets.length === 0) continue;
 
       const setSecrets = await wrangler.listSecrets({
-        cwd: join(getWorkspaceRoot(), "apps", appId),
+        workerName: physicalWorkerName(appId),
       });
       const missing = requiredSecrets.filter((s) => !setSecrets.includes(s));
       if (missing.length > 0) {

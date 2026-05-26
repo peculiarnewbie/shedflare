@@ -3,7 +3,7 @@
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  BUDGET_DO: DurableObjectNamespace;
+  MONEY_DB: D1Database;
   UPLOADS: R2Bucket;
   APP_PUBLIC_URL: string;
   AUTH_ISSUER_URL: string;

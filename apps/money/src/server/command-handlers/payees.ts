@@ -1,70 +1,46 @@
-/**
- * Payee command handlers — create, update, merge.
- */
-import type { SyncServerEvent } from "../../domain/events";
 import type { DataAccess } from "../data-access";
-import type { EventStore } from "../event-store";
 import { createPayee } from "../../domain/factories";
-import { decodeCommand } from "../../domain/commands";
-import { castId, type PayeeId } from "../../domain/types";
+
+export type CommandResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string };
 
 export function handlePayeeCommands(
-  opId: string,
+  commandType: string,
   payload: any,
   access: DataAccess,
-  eventStore: EventStore,
-): { events: SyncServerEvent[] } {
-  const events: SyncServerEvent[] = [];
-
-  switch (payload.commandType ?? "create_payee") {
+): CommandResult {
+  switch (commandType) {
     case "create_payee": {
-      const valid = decodeCommand("create_payee", payload);
-      const row = createPayee({ name: valid.name });
-      events.push(eventStore.insertEvent(opId, "payee_created", { row }) as SyncServerEvent);
-      break;
+      const row = createPayee(payload);
+      access.exec(
+        `INSERT INTO payees (id, name, transfer_account_id, favorite, created_at, updated_at)
+         VALUES (?, ?, NULL, 0, ?, ?)`,
+        row.id, row.name, row.createdAt, row.updatedAt,
+      );
+      return { ok: true, data: { id: row.id } };
     }
 
     case "update_payee": {
-      const valid = decodeCommand("update_payee", payload);
-      const existing = access.getPayee(castId<PayeeId>(valid.id));
-      if (existing) {
-        const updated = {
-          ...existing,
-          name: valid.name ?? existing.name,
-          favorite: valid.favorite ?? existing.favorite,
-          updatedAt: new Date().toISOString(),
-        };
-        events.push(
-          eventStore.insertEvent(opId, "payee_updated", { row: updated }) as SyncServerEvent,
-        );
-      }
-      break;
+      const now = new Date().toISOString();
+      const fields: string[] = ["updated_at = ?"];
+      const params: unknown[] = [now];
+      if (payload.name !== undefined) { fields.push("name = ?"); params.push(payload.name); }
+      if (payload.favorite !== undefined) { fields.push("favorite = ?"); params.push(payload.favorite ? 1 : 0); }
+      params.push(payload.id);
+      access.exec(`UPDATE payees SET ${fields.join(", ")} WHERE id = ?`, ...params);
+      return { ok: true, data: { id: payload.id } };
     }
 
     case "merge_payees": {
-      const valid = decodeCommand("merge_payees", payload);
-      const target = access.getPayee(castId<PayeeId>(valid.targetId));
-      if (target) {
-        for (const sourceId of valid.sourceIds) {
-          const source = access.getPayee(castId<PayeeId>(sourceId));
-          if (source) {
-            access.exec(
-              `UPDATE transactions SET payee = ? WHERE payee = ?`,
-              target.name,
-              source.name,
-            );
-          }
-        }
-        events.push(
-          eventStore.insertEvent(opId, "payees_merged", {
-            targetId: valid.targetId,
-            sourceIds: valid.sourceIds,
-          }) as SyncServerEvent,
-        );
+      for (const sourceId of payload.sourceIds) {
+        access.exec("UPDATE transactions SET payee = ? WHERE payee = ?", payload.targetId, sourceId);
+        access.exec("DELETE FROM payees WHERE id = ?", sourceId);
       }
-      break;
+      return { ok: true, data: { targetId: payload.targetId } };
     }
-  }
 
-  return { events };
+    default:
+      return { ok: false, error: `Unknown payee command: ${commandType}` };
+  }
 }

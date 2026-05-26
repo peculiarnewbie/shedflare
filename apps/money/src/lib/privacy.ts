@@ -1,5 +1,5 @@
 import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
-import { settingsCollection } from "./collections";
+import { settingsCollection } from "./settings-store";
 
 export function usePrivacyMode() {
   const [enabled, setEnabled] = createSignal(false);

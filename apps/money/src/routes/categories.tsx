@@ -1,6 +1,7 @@
 import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { usePrivacyMode } from "../lib/privacy";
+import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
 import { useCategoryForm, useCategoryGroupForm } from "../lib/forms/categories";
 
@@ -23,15 +24,19 @@ interface Category {
   hidden: boolean;
 }
 
+type GoalType = "monthly" | "byDate" | "refill" | "periodic" | "percentage";
+
 interface GoalConfig {
-  type: "monthly" | "byDate";
-  amount: number;
+  type: GoalType;
+  amount?: number;
   targetDate?: string;
+  frequency?: string;
+  percentage?: number;
 }
 
 interface GoalProgress {
   categoryId: string;
-  goalType: "monthly" | "byDate";
+  goalType: GoalType;
   goalAmount: number;
   currentAmount: number;
   targetDate: string | null;
@@ -39,6 +44,7 @@ interface GoalProgress {
 
 export default function CategoriesPage() {
   const privacyBlur = usePrivacyMode();
+  const fmt = useCurrency();
   const [groups, setGroups] = createSignal<CategoryGroup[]>([]);
   const [categories, setCategories] = createSignal<Category[]>([]);
   const [loading, setLoading] = createSignal(true);
@@ -52,9 +58,11 @@ export default function CategoriesPage() {
 
   // Goal editing
   const [editingGoalCatId, setEditingGoalCatId] = createSignal<string | null>(null);
-  const [goalType, setGoalType] = createSignal<"monthly" | "byDate">("monthly");
+  const [goalType, setGoalType] = createSignal<GoalType>("monthly");
   const [goalAmount, setGoalAmount] = createSignal("");
   const [goalTargetDate, setGoalTargetDate] = createSignal("");
+  const [goalFrequency, setGoalFrequency] = createSignal("quarterly");
+  const [goalPercentage, setGoalPercentage] = createSignal("10");
   const [goalProgress, setGoalProgress] = createSignal<GoalProgress[]>([]);
 
   const goalProgressMap = createMemo(() => {
@@ -246,8 +254,10 @@ export default function CategoriesPage() {
   function startEditGoal(cat: Category) {
     const goal = parseGoal(cat.goalDef);
     setGoalType(goal?.type ?? "monthly");
-    setGoalAmount(goal ? String(goal.amount / 100) : "");
+    setGoalAmount(goal?.amount ? String(goal.amount / 100) : "");
     setGoalTargetDate(goal?.targetDate ?? "");
+    setGoalFrequency(goal?.frequency ?? "quarterly");
+    setGoalPercentage(goal?.percentage ? String(goal.percentage) : "10");
     setEditingGoalCatId(cat.id);
   }
 
@@ -255,37 +265,70 @@ export default function CategoriesPage() {
     setEditingGoalCatId(null);
     setGoalAmount("");
     setGoalTargetDate("");
+    setGoalFrequency("quarterly");
+    setGoalPercentage("10");
   }
 
   function saveGoal(catId: string) {
-    const amount = Math.round(parseFloat(goalAmount() || "0") * 100);
-    if (amount <= 0) {
-      dispatch("update_category", { id: catId, goalDef: null });
-    } else {
-      const goal: GoalConfig = { type: goalType(), amount };
-      if (goalType() === "byDate" && goalTargetDate()) {
-        goal.targetDate = goalTargetDate();
+    if (goalType() === "percentage") {
+      const pct = parseFloat(goalPercentage() || "0");
+      if (pct <= 0 || pct > 100) {
+        dispatch("update_category", { id: catId, goalDef: null });
+      } else {
+        dispatch("update_category", {
+          id: catId,
+          goalDef: JSON.stringify({ type: "percentage", percentage: pct }),
+        });
       }
-      dispatch("update_category", { id: catId, goalDef: JSON.stringify(goal) });
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === catId
+            ? {
+                ...c,
+                goalDef: pct > 0 ? JSON.stringify({ type: "percentage", percentage: pct }) : null,
+              }
+            : c,
+        ),
+      );
+    } else {
+      const amount = Math.round(parseFloat(goalAmount() || "0") * 100);
+      if (amount <= 0) {
+        dispatch("update_category", { id: catId, goalDef: null });
+      } else {
+        const goal: Record<string, unknown> = { type: goalType(), amount };
+        if ((goalType() === "byDate" || goalType() === "refill") && goalTargetDate()) {
+          goal.targetDate = goalTargetDate();
+        }
+        if (goalType() === "periodic") {
+          goal.frequency = goalFrequency();
+        }
+        dispatch("update_category", { id: catId, goalDef: JSON.stringify(goal) });
+      }
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === catId
+            ? {
+                ...c,
+                goalDef: amount > 0 ? JSON.stringify(buildGoalJson()) : null,
+              }
+            : c,
+        ),
+      );
     }
-    setCategories((prev) =>
-      prev.map((c) =>
-        c.id === catId
-          ? {
-              ...c,
-              goalDef:
-                amount > 0
-                  ? JSON.stringify(
-                      goalType() === "byDate"
-                        ? { type: goalType(), amount, targetDate: goalTargetDate() || undefined }
-                        : { type: goalType(), amount },
-                    )
-                  : null,
-            }
-          : c,
-      ),
-    );
     cancelEditGoal();
+  }
+
+  function buildGoalJson(): Record<string, unknown> {
+    const t = goalType();
+    const amt = Math.round(parseFloat(goalAmount() || "0") * 100);
+    const goal: Record<string, unknown> = { type: t, amount: amt };
+    if ((t === "byDate" || t === "refill") && goalTargetDate()) {
+      goal.targetDate = goalTargetDate();
+    }
+    if (t === "periodic") {
+      goal.frequency = goalFrequency();
+    }
+    return goal;
   }
 
   function parseGoal(goalDef: string | null): GoalConfig | null {
@@ -300,9 +343,21 @@ export default function CategoriesPage() {
   function formatGoal(goalDef: string | null): string {
     const goal = parseGoal(goalDef);
     if (!goal) return "";
-    const amt = `$${(goal.amount / 100).toFixed(2)}`;
+    const amt = goal.amount ? fmt().formatCents(goal.amount) : "";
     if (goal.type === "byDate" && goal.targetDate) {
       return `Save ${amt} by ${goal.targetDate}`;
+    }
+    if (goal.type === "refill") {
+      const byDate = goal.targetDate ? ` by ${goal.targetDate}` : "";
+      return `Refill to ${amt}${byDate}`;
+    }
+    if (goal.type === "periodic") {
+      const freq = goal.frequency ?? "quarterly";
+      return `Budget ${amt} ${freq}`;
+    }
+    if (goal.type === "percentage") {
+      const pct = goal.percentage ?? 0;
+      return `Budget ${pct}% of income`;
     }
     return `Set ${amt} monthly`;
   }
@@ -685,11 +740,17 @@ export default function CategoriesPage() {
                                             class={`goal-progress-label goal-progress-${status} ${privacyBlur().blurClass()}`}
                                           >
                                             {p.goalType === "monthly"
-                                              ? `${(Math.abs(p.currentAmount) / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`
-                                              : `${(p.currentAmount / 100).toFixed(2)} / ${(p.goalAmount / 100).toFixed(2)}`}
+                                              ? `${fmt().formatCents(Math.abs(p.currentAmount))} / ${fmt().formatCents(p.goalAmount)}`
+                                              : p.goalType === "percentage"
+                                                ? `${(p.currentAmount / 100).toFixed(2)}% / ${p.goalAmount}%`
+                                                : `${fmt().formatCents(Math.abs(p.currentAmount))} / ${fmt().formatCents(p.goalAmount)}`}
                                             <Show when={p.goalType === "byDate" && p.targetDate}>
                                               {" "}
                                               by {p.targetDate}
+                                            </Show>
+                                            <Show when={p.goalType === "refill"}>
+                                              {" "}
+                                              <Show when={p.targetDate}>by {p.targetDate}</Show>
                                             </Show>
                                           </span>
                                         </div>
@@ -757,26 +818,59 @@ export default function CategoriesPage() {
                                 <div class="form-row">
                                   <select
                                     value={goalType()}
-                                    onChange={(e) =>
-                                      setGoalType(e.currentTarget.value as "monthly" | "byDate")
-                                    }
+                                    onChange={(e) => setGoalType(e.currentTarget.value as GoalType)}
                                   >
                                     <option value="monthly">Monthly amount</option>
                                     <option value="byDate">Save up by date</option>
+                                    <option value="refill">Refill target balance</option>
+                                    <option value="periodic">Periodic allocation</option>
+                                    <option value="percentage">% of income</option>
                                   </select>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Amount"
-                                    value={goalAmount()}
-                                    onInput={(e) => setGoalAmount(e.currentTarget.value)}
-                                  />
-                                  <Show when={goalType() === "byDate"}>
+                                  <Show when={goalType() !== "percentage"}>
                                     <input
-                                      type="date"
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="Amount"
+                                      value={goalAmount()}
+                                      onInput={(e) => setGoalAmount(e.currentTarget.value)}
+                                    />
+                                  </Show>
+                                  <Show when={goalType() === "percentage"}>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0.1"
+                                      max="100"
+                                      placeholder="Percent"
+                                      value={goalPercentage()}
+                                      onInput={(e) => setGoalPercentage(e.currentTarget.value)}
+                                    />
+                                    <span
+                                      style={{
+                                        "align-self": "center",
+                                        color: "var(--text-muted)",
+                                        "font-size": "0.85rem",
+                                      }}
+                                    >
+                                      %
+                                    </span>
+                                  </Show>
+                                  <Show when={goalType() === "byDate" || goalType() === "refill"}>
+                                    <input
+                                      type="month"
                                       value={goalTargetDate()}
                                       onInput={(e) => setGoalTargetDate(e.currentTarget.value)}
                                     />
+                                  </Show>
+                                  <Show when={goalType() === "periodic"}>
+                                    <select
+                                      value={goalFrequency()}
+                                      onChange={(e) => setGoalFrequency(e.currentTarget.value)}
+                                    >
+                                      <option value="quarterly">Every 3 months</option>
+                                      <option value="biannual">Every 6 months</option>
+                                      <option value="yearly">Every 12 months</option>
+                                    </select>
                                   </Show>
                                   <button
                                     class="btn btn-primary btn-sm"
