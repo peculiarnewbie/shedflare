@@ -112,6 +112,21 @@ export function handleCategoryCommands(
       return { ok: true, data: { count: payload.ids.length } };
     }
 
+    case "delete_category_group": {
+      const id = payload.id;
+      if (payload.transferToGroupId) {
+        access.exec(
+          "UPDATE categories SET group_id = ? WHERE group_id = ?",
+          payload.transferToGroupId,
+          id,
+        );
+      } else {
+        access.exec("UPDATE categories SET group_id = NULL WHERE group_id = ?", id);
+      }
+      access.exec("DELETE FROM category_groups WHERE id = ?", id);
+      return { ok: true, data: { id } };
+    }
+
     default:
       return { ok: false, error: `Unknown category command: ${commandType}` };
   }

@@ -1,5 +1,4 @@
-import { createSignal, createEffect, Show, onCleanup } from "solid-js";
-import { transactionsCollection, categoriesCollection } from "../lib/collections";
+import { createSignal, createEffect, Show } from "solid-js";
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
@@ -39,19 +38,6 @@ export default function AllTransactionsPage() {
     void loadCategories();
     void loadTags();
     void loadAccounts();
-  });
-
-  createEffect(() => {
-    const unsub1 = transactionsCollection.subscribeChanges(() => {
-      void loadData();
-    });
-    const unsub2 = categoriesCollection.subscribeChanges(() => {
-      void loadCategories();
-    });
-    onCleanup(() => {
-      unsub1.unsubscribe();
-      unsub2.unsubscribe();
-    });
   });
 
   async function loadData() {

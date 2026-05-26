@@ -14,6 +14,7 @@ import { handleFilterCommands } from "./filters";
 import { handleReportCommands } from "./reports";
 import { handleSettingCommands } from "./settings";
 import { handleNotesCommands } from "./notes";
+import { handleDashboardCommands } from "./dashboard";
 export type CommandResult =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string };
@@ -61,6 +62,7 @@ function routeCommand(commandType: string, payload: any, access: DataAccess): Co
     case "delete_category":
     case "create_category_group":
     case "update_category_group":
+    case "delete_category_group":
     case "reorder_categories":
       return handleCategoryCommands(commandType, payload, access);
 
@@ -121,6 +123,9 @@ function routeCommand(commandType: string, payload: any, access: DataAccess): Co
     case "delete_note":
     case "list_notes":
       return handleNotesCommands(commandType, payload, access);
+
+    case "update_dashboard":
+      return handleDashboardCommands(commandType, payload, access);
 
     default:
       return { ok: false, error: `Unhandled command: ${commandType}` };

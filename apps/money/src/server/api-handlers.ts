@@ -1,6 +1,6 @@
 /**
- * REST API handlers for the DO — provides read endpoints for initial data loading.
- * These are convenience endpoints; the real-time data path is through WebSocket sync.
+ * REST API handlers — provides read endpoints for data loading.
+ * Commands go through POST /api/command; reads use GET endpoints.
  */
 import type { DataAccess } from "./data-access";
 import {

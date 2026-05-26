@@ -1,7 +1,7 @@
 import { createSignal, createMemo, createEffect, For, Show, onCleanup } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
-import { transactionsCollection, categoriesCollection } from "../lib/collections";
+import { execute } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import TransactionFilters from "../components/TransactionFilters";
@@ -112,19 +112,6 @@ export default function AccountPage() {
       void loadCategories();
       void loadTags();
     }
-  });
-
-  createEffect(() => {
-    const unsub1 = transactionsCollection.subscribeChanges(() => {
-      void loadAccount();
-    });
-    const unsub2 = categoriesCollection.subscribeChanges(() => {
-      void loadCategories();
-    });
-    onCleanup(() => {
-      unsub1.unsubscribe();
-      unsub2.unsubscribe();
-    });
   });
 
   async function loadAccount() {
@@ -399,22 +386,15 @@ function ImportModal(props: { accountId: string; onClose: () => void }) {
     setImporting(true);
 
     try {
-      const res = await fetch("/api/sync/command", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          opId: crypto.randomUUID(),
-          commandType: "import_transactions",
-          payload: {
-            accountId: props.accountId,
-            transactions: [{ date: new Date().toISOString().slice(0, 10), amount: 0 }],
-            isPreview: false,
-          },
-        }),
+      const result = await execute("import_transactions", {
+        accountId: props.accountId,
+        transactions: [{ date: new Date().toISOString().slice(0, 10), amount: 0 }],
+        isPreview: false,
       });
-
-      if (res.ok) {
+      if (result.ok) {
         setResult({ added: 0, errors: [] });
+      } else {
+        setResult({ added: 0, errors: [result.error] });
       }
     } catch (err) {
       setResult({ added: 0, errors: [err instanceof Error ? err.message : "Import failed"] });

@@ -1,11 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Index, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import {
-  accountsCollection,
-  payeesCollection,
-  categoriesCollection,
-  schedulesCollection,
-} from "../lib/collections";
+import { fetchApi } from "../lib/api";
 
 interface CmdResult {
   id: string;
@@ -46,6 +41,10 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   const navigate = useNavigate();
   const [inputEl, setInputEl] = createSignal<HTMLInputElement>();
   const [query, setQuery] = createSignal("");
+  const [accounts, setAccounts] = createSignal<any[]>([]);
+  const [payees, setPayees] = createSignal<any[]>([]);
+  const [categories, setCategories] = createSignal<any[]>([]);
+  const [schedules, setSchedules] = createSignal<any[]>([]);
 
   const pages: CmdResult[] = [
     { id: "/", label: "Dashboard", icon: "📊", action: () => navigate("/") },
@@ -66,12 +65,28 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
     { id: "/settings", label: "Settings", icon: "🔧", action: () => navigate("/settings") },
   ];
 
+  createEffect(() => {
+    if (props.open) {
+      setQuery("");
+      void fetchApi<{ accounts: any[] }>("/api/accounts").then((d) =>
+        setAccounts(d.accounts ?? []),
+      );
+      void fetchApi<{ payees: any[] }>("/api/payees").then((d) => setPayees(d.payees ?? []));
+      void fetchApi<{ categories: any[] }>("/api/categories").then((d) =>
+        setCategories(d.categories ?? []),
+      );
+      void fetchApi<{ schedules: any[] }>("/api/schedules").then((d) =>
+        setSchedules(d.schedules ?? []),
+      );
+    }
+  });
+
   function readAccounts(): CmdResult[] {
-    return accountsCollection.toArray.map(
+    return accounts().map(
       (a): CmdResult => ({
         id: a.id,
         label: a.name,
-        description: `Account`,
+        description: "Account",
         icon: "🏦",
         action: () => navigate(`/accounts/${a.id}`),
       }),
@@ -79,11 +94,11 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   }
 
   function readPayees(): CmdResult[] {
-    return payeesCollection.toArray.map(
+    return payees().map(
       (p): CmdResult => ({
         id: p.id,
         label: p.name,
-        description: `Payee`,
+        description: "Payee",
         icon: "👤",
         action: () => navigate(`/payees`),
       }),
@@ -91,11 +106,11 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   }
 
   function readCategories(): CmdResult[] {
-    return categoriesCollection.toArray.map(
+    return categories().map(
       (c): CmdResult => ({
         id: c.id,
         label: c.name,
-        description: `Category`,
+        description: "Category",
         icon: "📁",
         action: () => navigate(`/categories`),
       }),
@@ -103,11 +118,11 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   }
 
   function readSchedules(): CmdResult[] {
-    return schedulesCollection.toArray.map(
+    return schedules().map(
       (s): CmdResult => ({
         id: s.id,
         label: s.name ?? "Untitled Schedule",
-        description: `Schedule`,
+        description: "Schedule",
         icon: "🔄",
         action: () => navigate(`/schedules/${s.id}`),
       }),
