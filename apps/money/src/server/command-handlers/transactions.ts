@@ -16,10 +16,24 @@ export function handleTransactionCommands(
       access.exec(
         `INSERT INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        row.id, row.accountId, row.categoryId, row.amount, row.payee, row.notes,
-        row.date, row.cleared ? 1 : 0, row.importedDescription, row.startingBalanceFlag ? 1 : 0,
-        row.sortOrder, row.isParent ? 1 : 0, row.isChild ? 1 : 0, row.parentId,
-        row.transferId, row.scheduleId, row.createdAt, row.updatedAt,
+        row.id,
+        row.accountId,
+        row.categoryId,
+        row.amount,
+        row.payee,
+        row.notes,
+        row.date,
+        row.cleared ? 1 : 0,
+        row.importedDescription,
+        row.startingBalanceFlag ? 1 : 0,
+        row.sortOrder,
+        row.isParent ? 1 : 0,
+        row.isChild ? 1 : 0,
+        row.parentId,
+        row.transferId,
+        row.scheduleId,
+        row.createdAt,
+        row.updatedAt,
       );
       return { ok: true, data: { id: row.id } };
     }
@@ -29,13 +43,34 @@ export function handleTransactionCommands(
       const fields: string[] = ["updated_at = ?"];
       const params: unknown[] = [now];
       const f = payload.fields;
-      if (f.accountId) { fields.push("account_id = ?"); params.push(f.accountId); }
-      if (f.categoryId !== undefined) { fields.push("category_id = ?"); params.push(f.categoryId); }
-      if (f.amount !== undefined) { fields.push("amount = ?"); params.push(f.amount); }
-      if (f.payee !== undefined) { fields.push("payee = ?"); params.push(f.payee); }
-      if (f.notes !== undefined) { fields.push("notes = ?"); params.push(f.notes); }
-      if (f.date) { fields.push("date = ?"); params.push(f.date); }
-      if (f.cleared !== undefined) { fields.push("cleared = ?"); params.push(f.cleared ? 1 : 0); }
+      if (f.accountId) {
+        fields.push("account_id = ?");
+        params.push(f.accountId);
+      }
+      if (f.categoryId !== undefined) {
+        fields.push("category_id = ?");
+        params.push(f.categoryId);
+      }
+      if (f.amount !== undefined) {
+        fields.push("amount = ?");
+        params.push(f.amount);
+      }
+      if (f.payee !== undefined) {
+        fields.push("payee = ?");
+        params.push(f.payee);
+      }
+      if (f.notes !== undefined) {
+        fields.push("notes = ?");
+        params.push(f.notes);
+      }
+      if (f.date) {
+        fields.push("date = ?");
+        params.push(f.date);
+      }
+      if (f.cleared !== undefined) {
+        fields.push("cleared = ?");
+        params.push(f.cleared ? 1 : 0);
+      }
 
       params.push(payload.id);
       access.exec(`UPDATE transactions SET ${fields.join(", ")} WHERE id = ?`, ...params);
@@ -55,10 +90,24 @@ export function handleTransactionCommands(
         access.exec(
           `INSERT INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          row.id, row.accountId, row.categoryId, row.amount, row.payee, row.notes,
-          row.date, row.cleared ? 1 : 0, row.importedDescription, row.startingBalanceFlag ? 1 : 0,
-          row.sortOrder, row.isParent ? 1 : 0, row.isChild ? 1 : 0, row.parentId,
-          row.transferId, row.scheduleId, row.createdAt, row.updatedAt,
+          row.id,
+          row.accountId,
+          row.categoryId,
+          row.amount,
+          row.payee,
+          row.notes,
+          row.date,
+          row.cleared ? 1 : 0,
+          row.importedDescription,
+          row.startingBalanceFlag ? 1 : 0,
+          row.sortOrder,
+          row.isParent ? 1 : 0,
+          row.isChild ? 1 : 0,
+          row.parentId,
+          row.transferId,
+          row.scheduleId,
+          row.createdAt,
+          row.updatedAt,
         );
         results.push(row.id);
       }

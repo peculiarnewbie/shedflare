@@ -16,7 +16,10 @@ export function handlePayeeCommands(
       access.exec(
         `INSERT INTO payees (id, name, transfer_account_id, favorite, created_at, updated_at)
          VALUES (?, ?, NULL, 0, ?, ?)`,
-        row.id, row.name, row.createdAt, row.updatedAt,
+        row.id,
+        row.name,
+        row.createdAt,
+        row.updatedAt,
       );
       return { ok: true, data: { id: row.id } };
     }
@@ -25,8 +28,14 @@ export function handlePayeeCommands(
       const now = new Date().toISOString();
       const fields: string[] = ["updated_at = ?"];
       const params: unknown[] = [now];
-      if (payload.name !== undefined) { fields.push("name = ?"); params.push(payload.name); }
-      if (payload.favorite !== undefined) { fields.push("favorite = ?"); params.push(payload.favorite ? 1 : 0); }
+      if (payload.name !== undefined) {
+        fields.push("name = ?");
+        params.push(payload.name);
+      }
+      if (payload.favorite !== undefined) {
+        fields.push("favorite = ?");
+        params.push(payload.favorite ? 1 : 0);
+      }
       params.push(payload.id);
       access.exec(`UPDATE payees SET ${fields.join(", ")} WHERE id = ?`, ...params);
       return { ok: true, data: { id: payload.id } };
@@ -34,7 +43,11 @@ export function handlePayeeCommands(
 
     case "merge_payees": {
       for (const sourceId of payload.sourceIds) {
-        access.exec("UPDATE transactions SET payee = ? WHERE payee = ?", payload.targetId, sourceId);
+        access.exec(
+          "UPDATE transactions SET payee = ? WHERE payee = ?",
+          payload.targetId,
+          sourceId,
+        );
         access.exec("DELETE FROM payees WHERE id = ?", sourceId);
       }
       return { ok: true, data: { targetId: payload.targetId } };

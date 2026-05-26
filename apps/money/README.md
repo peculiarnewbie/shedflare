@@ -137,26 +137,26 @@ Page load (offline-first):
 
 ### Database Schema (32 tables)
 
-| Table | Purpose |
-|-------|---------|
-| `accounts` | Checking, savings, credit cards, off-budget |
-| `category_groups` | Income/expense groupings |
-| `categories` | Spending categories with goal definitions |
-| `transactions` | All transactions (parent/child splits, schedules) |
-| `budgets` | Per-month, per-category budget amounts |
-| `budget_months` | Monthly metadata (buffered money) |
-| `payees` | Merchant/recipient names with favorites |
-| `schedules` | Recurring transaction templates |
-| `rules` | Auto-categorization (conditions + actions) |
-| `tags` + `transaction_tags` | User-defined tags on transactions |
-| `custom_reports` | Saved report configurations |
-| `dashboard_widgets` | User's dashboard grid layout |
-| `exchange_rates` | USD ↔ IDR conversion rates |
-| `settings` | User preferences (format, privacy, etc.) |
-| `events` | Audit trail (event sourcing) |
-| `notes` | Generic key-value notes for any entity |
-| `transaction_filters` | Saved search queries |
-| `commands` | Idempotent command tracking |
+| Table                       | Purpose                                           |
+| --------------------------- | ------------------------------------------------- |
+| `accounts`                  | Checking, savings, credit cards, off-budget       |
+| `category_groups`           | Income/expense groupings                          |
+| `categories`                | Spending categories with goal definitions         |
+| `transactions`              | All transactions (parent/child splits, schedules) |
+| `budgets`                   | Per-month, per-category budget amounts            |
+| `budget_months`             | Monthly metadata (buffered money)                 |
+| `payees`                    | Merchant/recipient names with favorites           |
+| `schedules`                 | Recurring transaction templates                   |
+| `rules`                     | Auto-categorization (conditions + actions)        |
+| `tags` + `transaction_tags` | User-defined tags on transactions                 |
+| `custom_reports`            | Saved report configurations                       |
+| `dashboard_widgets`         | User's dashboard grid layout                      |
+| `exchange_rates`            | USD ↔ IDR conversion rates                        |
+| `settings`                  | User preferences (format, privacy, etc.)          |
+| `events`                    | Audit trail (event sourcing)                      |
+| `notes`                     | Generic key-value notes for any entity            |
+| `transaction_filters`       | Saved search queries                              |
+| `commands`                  | Idempotent command tracking                       |
 
 ### Command/Event Model
 

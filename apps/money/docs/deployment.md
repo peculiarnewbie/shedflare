@@ -39,9 +39,9 @@ Add the Money section:
     "money": {
       "AUTH_ISSUER_URL": "${appUrl}",
       "AUTH_CLIENT_ID": "shedflare-money",
-      "OWNER_EMAIL": "${ownerEmail}"
-    }
-  }
+      "OWNER_EMAIL": "${ownerEmail}",
+    },
+  },
 }
 ```
 
@@ -64,12 +64,12 @@ App manifest declaring resources. Already configured for Money:
     "APP_PUBLIC_URL": { "from": "appUrl" },
     "AUTH_ISSUER_URL": { "from": "appUrl", "app": "auth" },
     "AUTH_CLIENT_ID": { "from": "appId" },
-    "OWNER_EMAIL": { "from": "ownerEmail" }
+    "OWNER_EMAIL": { "from": "ownerEmail" },
   },
   "resources": [
     { "type": "durable_object", "binding": "BUDGET_DO", "class": "MoneyBudgetDO" },
-    { "type": "r2", "binding": "UPLOADS", "name": "shedflare-money-uploads" }
-  ]
+    { "type": "r2", "binding": "UPLOADS", "name": "shedflare-money-uploads" },
+  ],
 }
 ```
 
@@ -101,6 +101,7 @@ The schema is initialized on DO cold start. No separate migration step is needed
 The schema includes 32 tables covering accounts, categories, transactions, budgets, schedules, rules, tags, reports, dashboard widgets, settings, notes, events, and commands.
 
 On DO boot:
+
 1. Checks if `events` table exists
 2. Creates/ensures all tables
 3. Applies any pending migrations (e.g., `deleted` column on rules)

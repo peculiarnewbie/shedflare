@@ -20,23 +20,33 @@ export function handleAccountCommands(
       access.exec(
         `INSERT INTO accounts (id, name, offbudget, closed, sort_order, balance_current, last_reconciled, created_at, updated_at)
          VALUES (?, ?, ?, 0, 0, ?, NULL, ?, ?)`,
-        row.id, row.name, row.offbudget ? 1 : 0, row.balanceCurrent, row.createdAt, row.updatedAt,
+        row.id,
+        row.name,
+        row.offbudget ? 1 : 0,
+        row.balanceCurrent,
+        row.createdAt,
+        row.updatedAt,
       );
       return { ok: true, data: { id: row.id } };
     }
 
     case "update_account": {
       const existing = access.queryOne<Record<string, unknown>>(
-        "SELECT * FROM accounts WHERE id = ?", payload.id,
+        "SELECT * FROM accounts WHERE id = ?",
+        payload.id,
       );
       if (!existing) return { ok: false, error: "Account not found" };
 
       const name = payload.name ?? existing.name;
-      const offbudget = payload.offBudget !== undefined ? (payload.offBudget ? 1 : 0) : existing.offbudget;
+      const offbudget =
+        payload.offBudget !== undefined ? (payload.offBudget ? 1 : 0) : existing.offbudget;
       const now = new Date().toISOString();
       access.exec(
         `UPDATE accounts SET name = ?, offbudget = ?, updated_at = ? WHERE id = ?`,
-        name, offbudget, now, payload.id,
+        name,
+        offbudget,
+        now,
+        payload.id,
       );
       return { ok: true, data: { id: payload.id } };
     }
@@ -48,17 +58,13 @@ export function handleAccountCommands(
 
     case "close_account": {
       const now = new Date().toISOString();
-      access.exec(
-        "UPDATE accounts SET closed = 1, updated_at = ? WHERE id = ?", now, payload.id,
-      );
+      access.exec("UPDATE accounts SET closed = 1, updated_at = ? WHERE id = ?", now, payload.id);
       return { ok: true, data: { id: payload.id } };
     }
 
     case "reopen_account": {
       const now = new Date().toISOString();
-      access.exec(
-        "UPDATE accounts SET closed = 0, updated_at = ? WHERE id = ?", now, payload.id,
-      );
+      access.exec("UPDATE accounts SET closed = 0, updated_at = ? WHERE id = ?", now, payload.id);
       return { ok: true, data: { id: payload.id } };
     }
 
@@ -67,7 +73,9 @@ export function handleAccountCommands(
       for (let i = 0; i < payload.ids.length; i++) {
         access.exec(
           "UPDATE accounts SET sort_order = ?, updated_at = ? WHERE id = ?",
-          i, now, payload.ids[i],
+          i,
+          now,
+          payload.ids[i],
         );
       }
       return { ok: true, data: { count: payload.ids.length } };
@@ -77,7 +85,9 @@ export function handleAccountCommands(
       const now = new Date().toISOString();
       access.exec(
         `INSERT OR REPLACE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES (?, ?, ?)`,
-        "latest", payload.usdToIdr, now,
+        "latest",
+        payload.usdToIdr,
+        now,
       );
       return { ok: true, data: {} };
     }

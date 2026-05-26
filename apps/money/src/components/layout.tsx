@@ -141,10 +141,7 @@ export default function Layout(props: RouteSectionProps) {
       </Show>
 
       {/* Main content */}
-      <main class="main-content">
-
-        {props.children as any}
-      </main>
+      <main class="main-content">{props.children as any}</main>
 
       {/* Mobile bottom tab bar */}
       <nav class="bottom-tab-bar">
