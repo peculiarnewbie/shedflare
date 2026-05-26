@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { parse } from "jsonc-parser";
 import { BUILTIN_MANIFESTS } from "./manifests-data.js";
 
-export type AppId = "auth" | "chat" | "drive" | "money" | "youtube";
+export type AppId = "auth" | "cf-bill" | "chat" | "drive" | "money" | "youtube";
 
-export const APP_IDS: AppId[] = ["auth", "chat", "drive", "money", "youtube"];
+export const APP_IDS: AppId[] = ["auth", "cf-bill", "chat", "drive", "money", "youtube"];
 
 export interface AppManifest {
   id: AppId;

@@ -2,45 +2,66 @@
  * Tests for budget-engine.ts — the core envelope budget computation.
  * Uses Node's built-in node:sqlite (available in Node 22.12+) — no mocks.
  */
+/// <reference types="node" />
+/// <reference types="@cloudflare/workers-types" />
 import { DatabaseSync } from "node:sqlite";
 import { drizzle } from "drizzle-orm/node-sqlite";
-import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { describe, expect, test } from "vite-plus/test";
 import * as schema from "../db/schema";
 import { DataAccess } from "../server/data-access";
 import { computeMonthBudget, computeNetWorth, computeAgeOfMoney } from "../server/budget-engine";
 import { initializeStorage } from "../server/schema";
-import { describe, expect, test } from "vitest";
+
+function sqliteD1(sqlite: DatabaseSync): D1Database {
+  return {
+    prepare(query: string) {
+      const stmt = sqlite.prepare(query);
+      return {
+        bind: (...params: unknown[]) => ({
+          first: async () => stmt.get(...(params as never[])) ?? null,
+          all: async () => ({ results: stmt.all(...(params as never[])) }),
+          run: async () => {
+            stmt.run(...(params as never[]));
+            return { success: true, meta: {} };
+          },
+        }),
+      };
+    },
+    batch: () => {
+      throw new Error("batch not implemented in test D1");
+    },
+    exec: async () => {},
+  } as unknown as D1Database;
+}
 
 function createTestDb() {
   const sqlite = new DatabaseSync(":memory:");
-  const db = drizzle({ client: sqlite, schema });
-  const exec = (query: string, ...params: any[]) => {
+  const drizzleDb = drizzle({ client: sqlite, schema });
+  const d1 = sqliteD1(sqlite);
+  const access = new DataAccess(d1, drizzleDb as unknown as DrizzleD1Database<typeof schema>);
+
+  const exec = (query: string, ...params: unknown[]) => {
     if (params.length > 0) {
-      const stmt = sqlite.prepare(query);
-      stmt.run(...params);
+      sqlite.prepare(query).run(...(params as never[]));
     } else {
       sqlite.exec(query);
     }
   };
-  const queryOne = <T>(query: string, ...params: any[]): T | null => {
-    const stmt = sqlite.prepare(query);
-    const rows = stmt.all(...params) as T[];
+  const queryOne = <T extends Record<string, unknown>>(
+    query: string,
+    ...params: unknown[]
+  ): T | null => {
+    const rows = sqlite.prepare(query).all(...(params as never[])) as T[];
     return rows[0] ?? null;
   };
-  const queryAll = <T>(query: string, ...params: any[]): T[] => {
-    const stmt = sqlite.prepare(query);
-    return stmt.all(...params) as T[];
-  };
-  const syncAccess = new SyncDataAccess(exec, queryOne, queryAll);
-  const access = new DataAccess(syncAccess, db);
   initializeStorage(exec, queryOne, () => {});
   sqlite.exec("PRAGMA foreign_keys = OFF");
-  return { sqlite, db, access };
+  return { sqlite, access };
 }
 
-function run(sqlite: DatabaseSync, sql: string, ...params: any[]) {
-  const stmt = sqlite.prepare(sql);
-  stmt.run(...params);
+function run(sqlite: DatabaseSync, sql: string, ...params: unknown[]) {
+  sqlite.prepare(sql).run(...(params as never[]));
 }
 
 describe("computeMonthBudget", () => {

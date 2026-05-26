@@ -11,7 +11,7 @@
     "build": "vp build",
     "preview": "vp preview",
     "test": "vp test",
-    "check": "vp check",
+    "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "npx wrangler deploy --env production",
     "db:generate": "drizzle-kit generate",

@@ -22,6 +22,34 @@ export const BUILTIN_MANIFESTS: Record<string, AppManifest> = {
       },
     ],
   },
+  "cf-bill": {
+    id: "cf-bill",
+    name: "Shedflare CF Usage",
+    description: "Cloudflare estimated usage vs plan limits dashboard",
+    dependsOn: ["auth"],
+    defaultSubdomain: "cf-bill",
+    vars: {
+      APP_PUBLIC_URL: { from: "appUrl", description: "Public URL of this app" },
+      AUTH_ISSUER_URL: { from: "appUrl", app: "auth", description: "Auth issuer URL" },
+      AUTH_CLIENT_ID: { from: "appId", description: "OAuth client ID for this app" },
+      OWNER_EMAIL: { from: "ownerEmail", description: "Deployment owner email" },
+      CLOUDFLARE_ACCOUNT_ID: {
+        from: "user",
+        description: "Cloudflare account ID (from dashboard URL)",
+      },
+      CLOUDFLARE_ZONE_ID: {
+        from: "user",
+        description: "Cloudflare zone ID for HTTP analytics (optional)",
+      },
+    },
+    secrets: {
+      CF_API_TOKEN: {
+        description: "API token with Account Analytics: Read permission",
+        required: true,
+      },
+    },
+    resources: [],
+  },
   chat: {
     id: "chat",
     name: "Shedflare Chat",
@@ -59,7 +87,7 @@ export const BUILTIN_MANIFESTS: Record<string, AppManifest> = {
     },
     secrets: {},
     resources: [
-      { type: "durable_object", binding: "BUDGET_DO" },
+      { type: "d1", binding: "MONEY_DB", name: "shedflare-money-db", idField: "MONEY_DB_ID" },
       { type: "r2", binding: "UPLOADS", name: "shedflare-money-uploads" },
     ],
   },

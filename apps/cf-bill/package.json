@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "check": "vp check",
+    "check": "vp check src alchemy.run.ts vite.config.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "vp exec alchemy deploy alchemy.run.ts",
     "destroy": "vp exec alchemy destroy alchemy.run.ts",

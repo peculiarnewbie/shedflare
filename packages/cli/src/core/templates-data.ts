@@ -54,6 +54,23 @@ export const BASE_CONFIGS: Record<string, Record<string, unknown>> = {
       },
     ],
   },
+  "cf-bill": {
+    $schema: "node_modules/wrangler/config-schema.json",
+    name: "shedflare-cf-bill",
+    main: "src/worker.ts",
+    compatibility_date: "2026-03-22",
+    compatibility_flags: ["nodejs_compat"],
+    observability: {
+      enabled: true,
+      head_sampling_rate: 1,
+    },
+    assets: {
+      directory: "dist/client",
+      binding: "ASSETS",
+      html_handling: "none",
+      not_found_handling: "none",
+    },
+  },
   money: {
     $schema: "node_modules/wrangler/config-schema.json",
     name: "shedflare-money",
@@ -70,18 +87,9 @@ export const BASE_CONFIGS: Record<string, Record<string, unknown>> = {
       html_handling: "none",
       not_found_handling: "none",
     },
-    durable_objects: {
-      bindings: [
-        {
-          name: "BUDGET_DO",
-          class_name: "MoneyBudgetDO",
-        },
-      ],
-    },
-    migrations: [
+    d1_databases: [
       {
-        tag: "v1",
-        new_sqlite_classes: ["MoneyBudgetDO"],
+        binding: "MONEY_DB",
       },
     ],
     r2_buckets: [

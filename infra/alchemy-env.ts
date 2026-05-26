@@ -17,7 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
 /** @deprecated Use WorkerSecret resources instead of Worker env secrets. */
-export function secretEnv(name: string): Effect.Effect<Redacted.Redacted<string>> {
+export function secretEnv(name: string): Effect.Effect<Redacted.Redacted<string>, Error> {
   return Config.redacted(name).pipe(
     Effect.mapError(() => new Error(`Missing secret ${name}. Set it in the environment for deploy.`)),
   );
@@ -27,17 +27,17 @@ export function secretEnv(name: string): Effect.Effect<Redacted.Redacted<string>
 export function optionalSecretEnv(
   name: string,
   fallback = "",
-): Effect.Effect<Redacted.Redacted<string>> {
+): Config.Config<Redacted.Redacted<string>> {
   return Config.redacted(name).pipe(Config.withDefault(Redacted.make(fallback)));
 }
 
 /** @deprecated Use optionalVar from config file. */
-export function optionalEnv(name: string, fallback = ""): Effect.Effect<string> {
+export function optionalEnv(name: string, fallback = ""): Config.Config<string> {
   return Config.string(name).pipe(Config.withDefault(fallback));
 }
 
 /** @deprecated Use requireVar with appConfig. */
-export function requireEnv(name: string): Effect.Effect<string> {
+export function requireEnv(name: string): Effect.Effect<string, Error> {
   return Config.string(name).pipe(
     Effect.mapError(() => new Error(`Missing env var ${name}. Set it for deploy or in shedflare.config.jsonc.`)),
   );

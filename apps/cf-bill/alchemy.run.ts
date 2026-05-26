@@ -4,7 +4,6 @@ import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { requireEnv } from "../../infra/alchemy-env.ts";
 
 export const CfBillStack = Alchemy.Stack(
   "ShedflareCfBill",
@@ -29,7 +28,7 @@ export const CfBillStack = Alchemy.Stack(
         AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-cf-bill`,
         OWNER_EMAIL: config.ownerEmail,
-        CLOUDFLARE_ACCOUNT_ID: yield* requireEnv("CLOUDFLARE_ACCOUNT_ID"),
+        CLOUDFLARE_ACCOUNT_ID: Shedflare.requireVar(config, "CLOUDFLARE_ACCOUNT_ID"),
         CLOUDFLARE_ZONE_ID: process.env.CLOUDFLARE_ZONE_ID ?? "",
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
