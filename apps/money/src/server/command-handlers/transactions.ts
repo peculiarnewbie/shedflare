@@ -1,114 +1,58 @@
-import type { DataAccess } from "../data-access";
+import { eq } from "drizzle-orm";
+import type { Db } from "../d1-access";
+import * as s from "../../db/schema";
 import { createTransaction } from "../../domain/factories";
+import { nowIso } from "../../domain/types";
 
 export type CommandResult =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string };
 
-export function handleTransactionCommands(
+export async function handleTransactionCommands(
   commandType: string,
   payload: any,
-  access: DataAccess,
-): CommandResult {
+  db: Db,
+): Promise<CommandResult> {
   switch (commandType) {
     case "create_transaction": {
       const row = createTransaction(payload.row);
-      access.exec(
-        `INSERT INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        row.id,
-        row.accountId,
-        row.categoryId,
-        row.amount,
-        row.payee,
-        row.notes,
-        row.date,
-        row.cleared ? 1 : 0,
-        row.importedDescription,
-        row.startingBalanceFlag ? 1 : 0,
-        row.sortOrder,
-        row.isParent ? 1 : 0,
-        row.isChild ? 1 : 0,
-        row.parentId,
-        row.transferId,
-        row.scheduleId,
-        row.createdAt,
-        row.updatedAt,
-      );
+      await db.insert(s.transactions).values(row);
       return { ok: true, data: { id: row.id } };
     }
 
     case "update_transaction": {
-      const now = new Date().toISOString();
-      const fields: string[] = ["updated_at = ?"];
-      const params: unknown[] = [now];
+      const set: Record<string, unknown> = { updatedAt: nowIso() };
       const f = payload.fields;
-      if (f.accountId) {
-        fields.push("account_id = ?");
-        params.push(f.accountId);
-      }
-      if (f.categoryId !== undefined) {
-        fields.push("category_id = ?");
-        params.push(f.categoryId);
-      }
-      if (f.amount !== undefined) {
-        fields.push("amount = ?");
-        params.push(f.amount);
-      }
-      if (f.payee !== undefined) {
-        fields.push("payee = ?");
-        params.push(f.payee);
-      }
-      if (f.notes !== undefined) {
-        fields.push("notes = ?");
-        params.push(f.notes);
-      }
-      if (f.date) {
-        fields.push("date = ?");
-        params.push(f.date);
-      }
-      if (f.cleared !== undefined) {
-        fields.push("cleared = ?");
-        params.push(f.cleared ? 1 : 0);
-      }
+      if (f.accountId !== undefined) set.accountId = f.accountId;
+      if (f.categoryId !== undefined) set.categoryId = f.categoryId;
+      if (f.amount !== undefined) set.amount = f.amount;
+      if (f.payee !== undefined) set.payee = f.payee;
+      if (f.notes !== undefined) set.notes = f.notes;
+      if (f.date !== undefined) set.date = f.date;
+      if (f.cleared !== undefined) set.cleared = f.cleared;
+      if (f.reconciled !== undefined) set.reconciled = f.reconciled;
+      if (f.importedDescription !== undefined) set.importedDescription = f.importedDescription;
+      if (f.sortOrder !== undefined) set.sortOrder = f.sortOrder;
 
-      params.push(payload.id);
-      access.exec(`UPDATE transactions SET ${fields.join(", ")} WHERE id = ?`, ...params);
+      await db.update(s.transactions).set(set).where(eq(s.transactions.id, payload.id));
       return { ok: true, data: { id: payload.id } };
     }
 
     case "delete_transaction": {
-      access.exec("DELETE FROM transactions WHERE id = ?", payload.id);
+      await db.delete(s.transactions).where(eq(s.transactions.id, payload.id));
       return { ok: true, data: { id: payload.id } };
     }
 
     case "split_transaction": {
-      access.exec("DELETE FROM transactions WHERE parent_id = ?", payload.parentId);
+      await db.delete(s.transactions).where(eq(s.transactions.parentId, payload.parentId));
       const results: string[] = [];
       for (const child of payload.children) {
-        const row = createTransaction({ ...child, parentId: payload.parentId, isChild: true });
-        access.exec(
-          `INSERT INTO transactions (id, account_id, category_id, amount, payee, notes, date, cleared, imported_description, starting_balance_flag, sort_order, is_parent, is_child, parent_id, transfer_id, schedule_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          row.id,
-          row.accountId,
-          row.categoryId,
-          row.amount,
-          row.payee,
-          row.notes,
-          row.date,
-          row.cleared ? 1 : 0,
-          row.importedDescription,
-          row.startingBalanceFlag ? 1 : 0,
-          row.sortOrder,
-          row.isParent ? 1 : 0,
-          row.isChild ? 1 : 0,
-          row.parentId,
-          row.transferId,
-          row.scheduleId,
-          row.createdAt,
-          row.updatedAt,
-        );
+        const row = createTransaction({
+          ...child,
+          parentId: payload.parentId,
+          isChild: true,
+        });
+        await db.insert(s.transactions).values(row);
         results.push(row.id);
       }
       return { ok: true, data: { childIds: results } };

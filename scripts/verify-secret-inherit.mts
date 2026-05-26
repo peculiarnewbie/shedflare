@@ -14,7 +14,8 @@ interface CfOAuth {
 function loadAccessToken(): string {
   const path = join(homedir(), ".alchemy/credentials/default/cf-oauth.json");
   const parsed = JSON.parse(readFileSync(path, "utf8")) as CfOAuth;
-  if (!parsed.access) throw new Error("Missing Cloudflare OAuth access token in alchemy credentials");
+  if (!parsed.access)
+    throw new Error("Missing Cloudflare OAuth access token in alchemy credentials");
   return parsed.access;
 }
 
@@ -55,7 +56,7 @@ async function probeWorker(url: string): Promise<{ hasSecret: boolean; plain: st
 
 async function deploy(includeSecret: boolean): Promise<{ workerName: string; url?: string }> {
   const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
+    ...(process.env as Record<string, string>),
     ALCHEMY_STAGE: STAGE,
     SHEDFLARE_DOMAIN: "example.com",
     OWNER_EMAIL: "verify@example.com",

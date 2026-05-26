@@ -8,12 +8,12 @@ Persisted before implementation — see also [`alchemy-plan.md`](../alchemy-plan
 Shedflare is mid-migration to Alchemy. Config and secrets are split across several
 systems that disagree:
 
-| System | File / mechanism | Used by |
-|--------|------------------|---------|
-| CLI init | `shedflare.config.jsonc` | `shedflare init`, `doctor`, `configure` |
-| Alchemy stacks (actual) | `.env` / `process.env` | `apps/*/alchemy.run.ts` via `infra/alchemy-env.ts` |
-| App manifests | `apps/*/shedflare.app.jsonc` | CLI only — not read by Alchemy stacks |
-| Per-app deployment docs | `apps/*/docs/deployment.md` | Stale — still describe manual Wrangler setup |
+| System                  | File / mechanism             | Used by                                            |
+| ----------------------- | ---------------------------- | -------------------------------------------------- |
+| CLI init                | `shedflare.config.jsonc`     | `shedflare init`, `doctor`, `configure`            |
+| Alchemy stacks (actual) | `.env` / `process.env`       | `apps/*/alchemy.run.ts` via `infra/alchemy-env.ts` |
+| App manifests           | `apps/*/shedflare.app.jsonc` | CLI only — not read by Alchemy stacks              |
+| Per-app deployment docs | `apps/*/docs/deployment.md`  | Stale — still describe manual Wrangler setup       |
 
 Additionally:
 
@@ -48,10 +48,10 @@ Additionally:
 Script: [`scripts/verify-secret-inherit.mts`](../scripts/verify-secret-inherit.mts)  
 Fixture: [`scripts/secret-inherit-verify/`](../scripts/secret-inherit-verify/)
 
-| Step | Action | Result |
-|------|--------|--------|
-| Deploy #1 | Include `TEST_SECRET` in Worker `env` as `Redacted` | Secret on CF ✓, runtime works ✓ |
-| Deploy #2 | Omit `TEST_SECRET` from Worker `env` entirely | Secret still on CF ✓, runtime works ✓ |
+| Step      | Action                                              | Result                                |
+| --------- | --------------------------------------------------- | ------------------------------------- |
+| Deploy #1 | Include `TEST_SECRET` in Worker `env` as `Redacted` | Secret on CF ✓, runtime works ✓       |
+| Deploy #2 | Omit `TEST_SECRET` from Worker `env` entirely       | Secret still on CF ✓, runtime works ✓ |
 
 **Conclusion:** Omitting operator secrets from the Worker `env` block does **not** remove
 bindings already on Cloudflare. Pattern B (CF as authority, omit on redeploy) is viable.
@@ -64,11 +64,11 @@ for operator secrets.
 
 ## Three kinds of values
 
-| Kind | Examples | Mechanism | On disk? |
-|------|----------|-----------|----------|
-| **Config** | `domain`, `ownerEmail`, `DEFAULT_MODEL_ID`, `GOOGLE_CLIENT_ID` | `shedflare.config.jsonc` → `Alchemy.Variable` on Worker | Gitignored config only; no secrets |
-| **Operator secret** | `OPENCODE_GO_API_KEY`, `CF_API_TOKEN` | `Shedflare.WorkerSecret` → CF Worker secrets API | Never |
-| **Auto secret** | `UPLOAD_TOKEN_SECRET`, `SYNC_SECRET` | `Alchemy.Random` → `WorkerSecret` (push once) | Never (value in Alchemy state) |
+| Kind                | Examples                                                       | Mechanism                                               | On disk?                           |
+| ------------------- | -------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------- |
+| **Config**          | `domain`, `ownerEmail`, `DEFAULT_MODEL_ID`, `GOOGLE_CLIENT_ID` | `shedflare.config.jsonc` → `Alchemy.Variable` on Worker | Gitignored config only; no secrets |
+| **Operator secret** | `OPENCODE_GO_API_KEY`, `CF_API_TOKEN`                          | `Shedflare.WorkerSecret` → CF Worker secrets API        | Never                              |
+| **Auto secret**     | `UPLOAD_TOKEN_SECRET`, `SYNC_SECRET`                           | `Alchemy.Random` → `WorkerSecret` (push once)           | Never (value in Alchemy state)     |
 
 ---
 
@@ -125,30 +125,34 @@ export type WorkerSecret = Resource<
 ### Stack usage (sketch)
 
 ```typescript
-const worker = yield* Cloudflare.Worker("ChatWorker", {
-  name: physicalName(stage, "chat"),
-  main: "apps/chat/src/worker.ts",
-  env: {
-    APP_PUBLIC_URL: config.url,
-    OWNER_EMAIL: config.ownerEmail,
-    DEFAULT_MODEL_ID: config.defaultModelId,
-    // no operator secrets here
-  },
-  // ...
-});
+const worker =
+  yield *
+  Cloudflare.Worker("ChatWorker", {
+    name: physicalName(stage, "chat"),
+    main: "apps/chat/src/worker.ts",
+    env: {
+      APP_PUBLIC_URL: config.url,
+      OWNER_EMAIL: config.ownerEmail,
+      DEFAULT_MODEL_ID: config.defaultModelId,
+      // no operator secrets here
+    },
+    // ...
+  });
 
-yield* WorkerSecret("OpencodeKey", {
-  workerName: worker.workerName,
-  binding: "OPENCODE_GO_API_KEY",
-  value: yield* optionalSecretConfig("OPENCODE_GO_API_KEY"),
-  required: true,
-});
+yield *
+  WorkerSecret("OpencodeKey", {
+    workerName: worker.workerName,
+    binding: "OPENCODE_GO_API_KEY",
+    value: yield * optionalSecretConfig("OPENCODE_GO_API_KEY"),
+    required: true,
+  });
 
-yield* WorkerSecret("UploadToken", {
-  workerName: worker.workerName,
-  binding: "UPLOAD_TOKEN_SECRET",
-  value: (yield* Alchemy.Random("UPLOAD_TOKEN_SECRET")).text,
-});
+yield *
+  WorkerSecret("UploadToken", {
+    workerName: worker.workerName,
+    binding: "UPLOAD_TOKEN_SECRET",
+    value: (yield * Alchemy.Random("UPLOAD_TOKEN_SECRET")).text,
+  });
 ```
 
 Dependency graph:
@@ -162,11 +166,11 @@ ChatWorker ──► WorkerSecret(OpencodeKey)
 
 ## Why Resource, not Action or custom state store
 
-| Primitive | Verdict | Reason |
-|-----------|---------|--------|
-| **Custom Resource + provider** | ✓ Use | Secrets on a Worker are cloud entities with observe/create/update lifecycle |
-| **Action** | ✗ Primary model | Hash-based skip; no `read`; no delete lifecycle; wrong for "already on CF" |
-| **Custom state store** | ✗ | Stores Alchemy's deployment graph, not CF secret values |
+| Primitive                      | Verdict         | Reason                                                                      |
+| ------------------------------ | --------------- | --------------------------------------------------------------------------- |
+| **Custom Resource + provider** | ✓ Use           | Secrets on a Worker are cloud entities with observe/create/update lifecycle |
+| **Action**                     | ✗ Primary model | Hash-based skip; no `read`; no delete lifecycle; wrong for "already on CF"  |
+| **Custom state store**         | ✗               | Stores Alchemy's deployment graph, not CF secret values                     |
 
 Actions remain appropriate for one-off deploy hooks (smoke tests, notifications), not
 secret lifecycle.
@@ -215,10 +219,10 @@ names (not values). Target worker name from `physicalName(stage, appId)`.
 
 Deploy and dev differ:
 
-| | Deploy | Local dev |
-|--|--------|-----------|
+|         | Deploy             | Local dev                           |
+| ------- | ------------------ | ----------------------------------- |
 | Secrets | CF Worker bindings | `apps/<app>/.dev.vars` (gitignored) |
-| Command | `shedflare deploy` | `shedflare dev` / `pnpm dev:<app>` |
+| Command | `shedflare deploy` | `shedflare dev` / `pnpm dev:<app>`  |
 
 ---
 
@@ -232,13 +236,13 @@ Deploy and dev differ:
   "ownerEmail": "you@example.com",
   "apps": {
     "auth": { "enabled": true, "subdomain": "auth" },
-    "chat": { "enabled": true, "subdomain": "chat" }
+    "chat": { "enabled": true, "subdomain": "chat" },
   },
   "vars": {
     "chat": {
-      "DEFAULT_MODEL_ID": "auto"
-    }
-  }
+      "DEFAULT_MODEL_ID": "auto",
+    },
+  },
 }
 ```
 
@@ -339,13 +343,13 @@ Per-app `docs/deployment.md` files should be rewritten or replaced by a single
 
 ## Summary
 
-| Do | Don't |
-|----|-------|
-| `Shedflare.WorkerSecret` custom Resource | Secrets in `shedflare.config.jsonc` |
-| `Alchemy.Variable` for config vars | `secretEnv()` requiring `.env` every deploy |
-| `Alchemy.Random` for auto secrets | Custom Alchemy state store for secret values |
-| CLI prompts → `process.env` → deploy → clear | Temp `.env` create/delete |
-| CF Worker as authority for "already set" | Secrets Store in v1 |
+| Do                                           | Don't                                        |
+| -------------------------------------------- | -------------------------------------------- |
+| `Shedflare.WorkerSecret` custom Resource     | Secrets in `shedflare.config.jsonc`          |
+| `Alchemy.Variable` for config vars           | `secretEnv()` requiring `.env` every deploy  |
+| `Alchemy.Random` for auto secrets            | Custom Alchemy state store for secret values |
+| CLI prompts → `process.env` → deploy → clear | Temp `.env` create/delete                    |
+| CF Worker as authority for "already set"     | Secrets Store in v1                          |
 
 **One line:** A version of `Alchemy.Secret` that treats the deployed Worker as the
 authority for operator secrets, and local env as "new value to push."

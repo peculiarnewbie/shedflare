@@ -1,59 +1,36 @@
-import type { DataAccess } from "../data-access";
+import { eq } from "drizzle-orm";
+import type { Db } from "../d1-access";
+import * as s from "../../db/schema";
 import { createPayee } from "../../domain/factories";
+import { nowIso } from "../../domain/types";
 
-export type CommandResult =
-  | { ok: true; data: Record<string, unknown> }
-  | { ok: false; error: string };
+type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
-export function handlePayeeCommands(
-  commandType: string,
-  payload: any,
-  access: DataAccess,
-): CommandResult {
-  switch (commandType) {
+export async function handlePayeeCommands(c: string, p: any, db: Db): Promise<CR> {
+  switch (c) {
     case "create_payee": {
-      const row = createPayee(payload);
-      access.exec(
-        `INSERT INTO payees (id, name, transfer_account_id, favorite, created_at, updated_at)
-         VALUES (?, ?, NULL, 0, ?, ?)`,
-        row.id,
-        row.name,
-        row.createdAt,
-        row.updatedAt,
-      );
+      const row = createPayee(p);
+      await db.insert(s.payees).values(row);
       return { ok: true, data: { id: row.id } };
     }
-
     case "update_payee": {
-      const now = new Date().toISOString();
-      const fields: string[] = ["updated_at = ?"];
-      const params: unknown[] = [now];
-      if (payload.name !== undefined) {
-        fields.push("name = ?");
-        params.push(payload.name);
-      }
-      if (payload.favorite !== undefined) {
-        fields.push("favorite = ?");
-        params.push(payload.favorite ? 1 : 0);
-      }
-      params.push(payload.id);
-      access.exec(`UPDATE payees SET ${fields.join(", ")} WHERE id = ?`, ...params);
-      return { ok: true, data: { id: payload.id } };
+      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      if (p.name !== undefined) set.name = p.name;
+      if (p.favorite !== undefined) set.favorite = p.favorite;
+      await db.update(s.payees).set(set).where(eq(s.payees.id, p.id));
+      return { ok: true, data: { id: p.id } };
     }
-
     case "merge_payees": {
-      for (const sourceId of payload.sourceIds) {
-        access.exec(
-          "UPDATE transactions SET payee = ? WHERE payee = ?",
-          payload.targetId,
-          sourceId,
-        );
-        access.exec("DELETE FROM payees WHERE id = ?", sourceId);
+      for (const sourceId of p.sourceIds) {
+        await db
+          .update(s.transactions)
+          .set({ payee: p.targetId })
+          .where(eq(s.transactions.payee, sourceId));
+        await db.delete(s.payees).where(eq(s.payees.id, sourceId));
       }
-      return { ok: true, data: { targetId: payload.targetId } };
+      return { ok: true, data: { targetId: p.targetId } };
     }
-
     default:
-      return { ok: false, error: `Unknown payee command: ${commandType}` };
+      return { ok: false, error: `Unknown payee command: ${c}` };
   }
 }

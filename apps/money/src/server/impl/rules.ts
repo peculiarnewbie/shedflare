@@ -1,7 +1,6 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi } from "../definitions";
-import { DataAccess } from "../data-access";
-import { createDrizzleDb } from "../d1-access";
+import { createDb } from "../d1-access";
 import { handleApiRequest } from "../api-handlers";
 import { wrapHandler } from "./wrap-handler";
 
@@ -12,18 +11,19 @@ export function createRulesGroup(env: Env) {
   return (HttpApiBuilder.group as any)(moneyApi, "rules", (handlers: any) => {
     const handler = wrapHandler(async (req: Request): Promise<Response> => {
       const url = new URL(req.url);
-      const drizzle = createDrizzleDb(env.MONEY_DB);
-      const access = new DataAccess(env.MONEY_DB, drizzle);
+      const db = createDb(env.MONEY_DB);
       return (
-        handleApiRequest(url, req.method, access) ?? new Response("Not found", { status: 404 })
+        (await handleApiRequest(url, req.method, db)) ?? new Response("Not found", { status: 404 })
       );
     });
-    handlers.handlers.set("list", {
-      endpoint: endpoints["list"],
-      handler,
-      isRaw: true,
-      uninterruptible: false,
-    });
+    for (const name of Object.keys(endpoints)) {
+      handlers.handlers.set(name, {
+        endpoint: endpoints[name],
+        handler,
+        isRaw: true,
+        uninterruptible: false,
+      });
+    }
     return handlers;
   });
 }

@@ -19,7 +19,9 @@ import * as Redacted from "effect/Redacted";
 /** @deprecated Use WorkerSecret resources instead of Worker env secrets. */
 export function secretEnv(name: string): Effect.Effect<Redacted.Redacted<string>, Error> {
   return Config.redacted(name).pipe(
-    Effect.mapError(() => new Error(`Missing secret ${name}. Set it in the environment for deploy.`)),
+    Effect.mapError(
+      () => new Error(`Missing secret ${name}. Set it in the environment for deploy.`),
+    ),
   );
 }
 
@@ -39,6 +41,8 @@ export function optionalEnv(name: string, fallback = ""): Config.Config<string> 
 /** @deprecated Use requireVar with appConfig. */
 export function requireEnv(name: string): Effect.Effect<string, Error> {
   return Config.string(name).pipe(
-    Effect.mapError(() => new Error(`Missing env var ${name}. Set it for deploy or in shedflare.config.jsonc.`)),
+    Effect.mapError(
+      () => new Error(`Missing env var ${name}. Set it for deploy or in shedflare.config.jsonc.`),
+    ),
   );
 }

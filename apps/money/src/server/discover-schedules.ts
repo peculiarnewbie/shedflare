@@ -1,4 +1,5 @@
-import type { DataAccess } from "./data-access";
+import { sql } from "drizzle-orm";
+import type { Db } from "./d1-access";
 
 interface GroupedTransaction {
   payee: string;
@@ -34,13 +35,8 @@ export interface DiscoveredSchedule {
   matchedTransactionCount: number;
 }
 
-// Minimum transactions needed to detect a pattern
 const MIN_TRANSACTIONS = 3;
-
-// Amount threshold as fraction of the amount
 const AMOUNT_THRESHOLD_FRAC = 0.15;
-
-// Maximum allowed std-dev / median ratio for "consistent" interval
 const MAX_INTERVAL_CV = 0.25;
 
 function daysBetween(a: string, b: string): number {
@@ -72,7 +68,6 @@ function computeIntervalStats(intervals: number[]): IntervalStats | null {
 }
 
 function classifyRecurrence(intervalDays: number): string {
-  // Find the closest known frequency
   const targets: [number, string][] = [
     [7, "weekly"],
     [14, "biweekly"],
@@ -80,7 +75,6 @@ function classifyRecurrence(intervalDays: number): string {
     [91, "quarterly"],
     [365, "yearly"],
   ];
-
   let best = "monthly";
   let bestDiff = Infinity;
   for (const [days, label] of targets) {
@@ -100,16 +94,12 @@ function classifyInterval(intervals: number[]): {
 } | null {
   const stats = computeIntervalStats(intervals);
   if (!stats || stats.count < 2) return null;
-
-  // Check if intervals are consistent (low coefficient of variation)
   const cv = stats.mean !== 0 ? stats.stdDev / stats.mean : 0;
   if (cv > MAX_INTERVAL_CV) return null;
-
   const type = classifyRecurrence(stats.median);
   const matchedCount = intervals.filter(
     (i) => Math.abs(i - stats.median) <= Math.max(stats.median * AMOUNT_THRESHOLD_FRAC, 2),
   ).length;
-
   return { type, intervalDays: Math.round(stats.median), matchedCount };
 }
 
@@ -117,15 +107,13 @@ function amountConsistent(amounts: number[]): boolean {
   if (amounts.length < 2) return true;
   const avg = mean(amounts);
   if (avg === 0) return false;
-  const threshold = Math.max(Math.abs(avg * AMOUNT_THRESHOLD_FRAC), 50); // at least 50 cents
+  const threshold = Math.max(Math.abs(avg * AMOUNT_THRESHOLD_FRAC), 50);
   return amounts.every((a) => Math.abs(a - avg) <= threshold);
 }
 
 function getAmountMode(amounts: number[]): number {
   const freq = new Map<number, number>();
-  for (const a of amounts) {
-    freq.set(a, (freq.get(a) ?? 0) + 1);
-  }
+  for (const a of amounts) freq.set(a, (freq.get(a) ?? 0) + 1);
   let best = amounts[0];
   let bestCount = 0;
   for (const [amt, count] of freq) {
@@ -172,10 +160,6 @@ function analyzeGroup(group: TransactionGroup): DiscoveredSchedule | null {
       ? (Math.max(...amounts) - Math.min(...amounts)) / Math.max(Math.abs(dominantAmount), 1)
       : 0;
 
-  // Confidence: 0-1 scale
-  // - More transactions = higher confidence
-  // - Lower interval variance = higher confidence
-  // - Lower amount spread = higher confidence
   const txnScore = Math.min(transactions.length / 10, 1);
   const intervalScore = Math.max(1 - intervalCv * 2, 0);
   const amountScore = Math.max(1 - amountSpread * 3, 0);
@@ -199,10 +183,15 @@ function analyzeGroup(group: TransactionGroup): DiscoveredSchedule | null {
   };
 }
 
-export function discoverSchedules(access: DataAccess): DiscoveredSchedule[] {
-  // Get all regular transactions (not child/split, not transfers, with payee)
-  const rows = access.queryAll<Record<string, unknown>>(
-    `SELECT t.payee, t.account_id, t.amount, t.date, t.category_id
+export async function discoverSchedules(db: Db): Promise<DiscoveredSchedule[]> {
+  const rows = await db.all<{
+    payee: string | null;
+    account_id: string;
+    amount: number;
+    date: string;
+    category_id: string | null;
+  }>(
+    sql`SELECT t.payee, t.account_id, t.amount, t.date, t.category_id
      FROM transactions t
      WHERE t.is_child = 0
        AND t.transfer_id IS NULL
@@ -211,9 +200,11 @@ export function discoverSchedules(access: DataAccess): DiscoveredSchedule[] {
      ORDER BY t.payee, t.account_id, t.date ASC`,
   );
 
-  // Get existing schedules to exclude already-scheduled payees
-  const existingSchedules = access.queryAll<{ payee_id: string | null; payee_name: string | null }>(
-    `SELECT s.payee_id, p.name as payee_name
+  const existingSchedules = await db.all<{
+    payee_id: string | null;
+    payee_name: string | null;
+  }>(
+    sql`SELECT s.payee_id, p.name as payee_name
      FROM schedules s
      LEFT JOIN payees p ON s.payee_id = p.id
      WHERE s.active = 1 AND s.completed = 0`,
@@ -223,27 +214,18 @@ export function discoverSchedules(access: DataAccess): DiscoveredSchedule[] {
     if (sched.payee_name) excludedPayees.add(sched.payee_name);
   }
 
-  // Get account names
   const accountNames = new Map<string, string>();
-  const acctRows = access.queryAll<{ id: string; name: string }>(
-    "SELECT id, name FROM accounts WHERE closed = 0",
+  const acctRows = await db.all<{ id: string; name: string }>(
+    sql`SELECT id, name FROM accounts WHERE closed = 0`,
   );
   for (const r of acctRows) {
     accountNames.set(r.id, r.name);
   }
 
-  // Group by (payee, account_id)
   const groups = new Map<string, TransactionGroup>();
-  for (const raw of rows) {
-    const r = raw as {
-      payee?: string;
-      account_id?: string;
-      amount?: number;
-      date?: string;
-      category_id?: string | null;
-    };
+  for (const r of rows) {
     const payee = r.payee ?? "";
-    const accountId = r.account_id ?? "";
+    const accountId = r.account_id;
     if (excludedPayees.has(payee)) continue;
     const key = `${payee}||${accountId}`;
     let group = groups.get(key);
@@ -254,14 +236,13 @@ export function discoverSchedules(access: DataAccess): DiscoveredSchedule[] {
     group.transactions.push({
       payee,
       accountId,
-      amount: r.amount ?? 0,
-      date: r.date ?? "",
-      categoryId: r.category_id ?? null,
+      amount: r.amount,
+      date: r.date,
+      categoryId: r.category_id,
     });
   }
 
   const discovered: DiscoveredSchedule[] = [];
-
   for (const group of groups.values()) {
     const result = analyzeGroup(group);
     if (result && result.confidence >= 40) {
@@ -270,8 +251,6 @@ export function discoverSchedules(access: DataAccess): DiscoveredSchedule[] {
     }
   }
 
-  // Sort by confidence descending
   discovered.sort((a, b) => b.confidence - a.confidence);
-
   return discovered;
 }

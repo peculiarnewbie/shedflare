@@ -66,17 +66,24 @@ function conditionToSql(cond: FilterCondition): SQL | null {
   }
 }
 
+/** Build a Drizzle SQL object for use within typed query builders. */
+export function buildFilterSql(
+  conditions: FilterCondition[],
+  conditionsOp: "and" | "or",
+): SQL | null {
+  if (conditions.length === 0) return null;
+  const fragments = conditions.map(conditionToSql).filter((x): x is SQL => x !== null);
+  if (fragments.length === 0) return null;
+  return (conditionsOp === "or" ? or(...fragments) : and(...fragments)) as SQL<unknown>;
+}
+
+/** Build raw SQL string + params for use with db.all/get/run. */
 export function buildFilterWhereSql(
   conditions: FilterCondition[],
   conditionsOp: "and" | "or",
 ): { whereClause: string; params: unknown[] } {
-  if (conditions.length === 0) return { whereClause: "", params: [] };
-
-  const fragments = conditions.map(conditionToSql).filter((x): x is SQL => x !== null);
-  if (fragments.length === 0) return { whereClause: "", params: [] };
-
-  const combined = conditionsOp === "or" ? or(...fragments) : and(...fragments);
-  const built = (combined as any).toSQL();
-
+  const sqlObj = buildFilterSql(conditions, conditionsOp);
+  if (!sqlObj) return { whereClause: "", params: [] };
+  const built = (sqlObj as any).toSQL();
   return { whereClause: built.sql, params: built.params };
 }

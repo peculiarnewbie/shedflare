@@ -1,59 +1,33 @@
-import type { DataAccess } from "../data-access";
+import { eq } from "drizzle-orm";
+import type { Db } from "../d1-access";
+import * as s from "../../db/schema";
 import { createRule } from "../../domain/factories";
+import { nowIso } from "../../domain/types";
 
 type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
-export function handleRuleCommands(c: string, p: any, a: DataAccess): CR {
+export async function handleRuleCommands(c: string, p: any, db: Db): Promise<CR> {
   switch (c) {
     case "create_rule": {
       const r = createRule(p.rule);
-      a.exec(
-        `INSERT INTO rules (id, stage, conditions_op, conditions, actions, active, deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-        r.id,
-        r.stage,
-        r.conditionsOp,
-        r.conditions,
-        r.actions,
-        r.active ? 1 : 0,
-        r.createdAt,
-        r.updatedAt,
-      );
+      await db.insert(s.rules).values(r);
       return { ok: true, data: { id: r.id } };
     }
     case "update_rule": {
-      const now = new Date().toISOString();
-      const fs: string[] = ["updated_at = ?"];
-      const ps: unknown[] = [now];
-      if (p.fields.stage !== undefined) {
-        fs.push("stage = ?");
-        ps.push(p.fields.stage);
-      }
-      if (p.fields.conditionsOp !== undefined) {
-        fs.push("conditions_op = ?");
-        ps.push(p.fields.conditionsOp);
-      }
-      if (p.fields.conditions !== undefined) {
-        fs.push("conditions = ?");
-        ps.push(p.fields.conditions);
-      }
-      if (p.fields.actions !== undefined) {
-        fs.push("actions = ?");
-        ps.push(p.fields.actions);
-      }
-      if (p.fields.active !== undefined) {
-        fs.push("active = ?");
-        ps.push(p.fields.active ? 1 : 0);
-      }
-      ps.push(p.id);
-      a.exec(`UPDATE rules SET ${fs.join(", ")} WHERE id = ?`, ...ps);
+      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      if (p.fields.stage !== undefined) set.stage = p.fields.stage;
+      if (p.fields.conditionsOp !== undefined) set.conditionsOp = p.fields.conditionsOp;
+      if (p.fields.conditions !== undefined) set.conditions = p.fields.conditions;
+      if (p.fields.actions !== undefined) set.actions = p.fields.actions;
+      if (p.fields.active !== undefined) set.active = p.fields.active;
+      await db.update(s.rules).set(set).where(eq(s.rules.id, p.id));
       return { ok: true, data: { id: p.id } };
     }
     case "delete_rule": {
-      a.exec(
-        "UPDATE rules SET deleted = 1, updated_at = ? WHERE id = ?",
-        new Date().toISOString(),
-        p.id,
-      );
+      await db
+        .update(s.rules)
+        .set({ deleted: true, updatedAt: nowIso() })
+        .where(eq(s.rules.id, p.id));
       return { ok: true, data: { id: p.id } };
     }
     default:

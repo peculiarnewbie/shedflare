@@ -1,64 +1,55 @@
-/**
- * Budget command handlers — direct D1 SQL to avoid Drizzle 1.0 API issues.
- */
-import type { DataAccess } from "../data-access";
+import { eq, sql } from "drizzle-orm";
+import type { Db } from "../d1-access";
+import * as s from "../../db/schema";
 import { computeMonthBudget } from "../budget-engine";
-import { toMonthInt } from "../../domain/types";
+import { toMonthInt, nowIso, budgetId } from "../../domain/types";
 
 export type CommandResult =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string };
 
-export function handleBudgetCommands(
+export async function handleBudgetCommands(
   commandType: string,
   payload: any,
-  access: DataAccess,
-): CommandResult {
+  db: Db,
+): Promise<CommandResult> {
   switch (commandType) {
     case "set_budget_amount": {
       const { month, categoryId, amount } = payload;
-      const id = `${month}-${categoryId}`;
-      const now = new Date().toISOString();
-      access.exec(
-        `INSERT OR REPLACE INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 0, ?, ?)`,
-        id,
-        month,
-        categoryId,
-        amount,
-        now,
-        now,
-      );
-      const result = computeMonthBudget(access, month);
+      const id = budgetId(month, categoryId);
+      const now = nowIso();
+      await db
+        .insert(s.budgets)
+        .values({ id, month, categoryId, amount, carryover: false, createdAt: now, updatedAt: now })
+        .onConflictDoUpdate({
+          target: s.budgets.id,
+          set: { amount, updatedAt: now },
+        });
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "set_budget_carryover": {
       const { month, categoryId, carryover } = payload;
-      const now = new Date().toISOString();
-      access.exec(
-        `UPDATE budgets SET carryover = ?, updated_at = ? WHERE month = ? AND category_id = ?`,
-        carryover ? 1 : 0,
-        now,
-        month,
-        categoryId,
-      );
-      const result = computeMonthBudget(access, month);
+      await db
+        .update(s.budgets)
+        .set({ carryover, updatedAt: nowIso() })
+        .where(sql`${s.budgets.month} = ${month} AND ${s.budgets.categoryId} = ${categoryId}`);
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "set_buffer": {
       const month = toMonthInt(payload.month);
-      const now = new Date().toISOString();
-      access.exec(
-        `INSERT OR REPLACE INTO budget_months (id, buffered, created_at, updated_at)
-        VALUES (?, ?, ?, ?)`,
-        payload.month,
-        payload.amount,
-        now,
-        now,
-      );
-      const result = computeMonthBudget(access, month);
+      const now = nowIso();
+      await db
+        .insert(s.budgetMonths)
+        .values({ id: payload.month, buffered: payload.amount, createdAt: now, updatedAt: now })
+        .onConflictDoUpdate({
+          target: s.budgetMonths.id,
+          set: { buffered: payload.amount, updatedAt: now },
+        });
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
@@ -69,189 +60,226 @@ export function handleBudgetCommands(
       const prev = new Date(y, m - 2, 1);
       const prevMk = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
       const prevMonth = toMonthInt(prevMk);
-      const prevBudgets = access.queryAll<{
-        category_id: string;
-        amount: number;
-        carryover: number | null;
-      }>("SELECT * FROM budgets WHERE month = ?", prevMonth);
-      const now = new Date().toISOString();
+
+      const prevBudgets = await db
+        .select()
+        .from(s.budgets)
+        .where(eq(s.budgets.month, prevMonth))
+        .all();
+
+      const now = nowIso();
       for (const pb of prevBudgets) {
-        const existing = access.queryOne(
-          "SELECT 1 FROM budgets WHERE month = ? AND category_id = ?",
-          month,
-          pb.category_id,
-        );
+        const [existing] = await db
+          .select({ id: s.budgets.id })
+          .from(s.budgets)
+          .where(sql`${s.budgets.month} = ${month} AND ${s.budgets.categoryId} = ${pb.categoryId}`)
+          .all();
         if (!existing) {
-          access.exec(
-            `INSERT INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            `${month}-${pb.category_id}`,
+          await db.insert(s.budgets).values({
+            id: budgetId(month, pb.categoryId),
             month,
-            pb.category_id,
-            pb.amount,
-            pb.carryover ?? 0,
-            now,
-            now,
-          );
+            categoryId: pb.categoryId,
+            amount: pb.amount,
+            carryover: pb.carryover,
+            createdAt: now,
+            updatedAt: now,
+          });
         }
       }
-      const result = computeMonthBudget(access, month);
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "set_3month_avg": {
       const month = toMonthInt(payload.month);
-      const cats = access.queryAll<{ id: string }>("SELECT id FROM categories WHERE hidden = 0");
-      const now = new Date().toISOString();
+      const cats = await db
+        .select({ id: s.categories.id })
+        .from(s.categories)
+        .where(eq(s.categories.hidden, false))
+        .all();
+
+      const now = nowIso();
       for (const cat of cats) {
         const amounts: number[] = [];
         for (let i = 1; i <= 3; i++) {
           let m = month - i;
           if (m % 100 === 0) m = Math.floor(m / 100 - 1) * 100 + 12;
-          const b = access.queryOne<{ amount: number }>(
-            "SELECT amount FROM budgets WHERE month = ? AND category_id = ?",
-            m,
-            cat.id,
-          );
-          if (b?.amount != null) amounts.push(b.amount);
+          const [b] = await db
+            .select({ amount: s.budgets.amount })
+            .from(s.budgets)
+            .where(sql`${s.budgets.month} = ${m} AND ${s.budgets.categoryId} = ${cat.id}`)
+            .all();
+          if (b) amounts.push(b.amount);
         }
         if (amounts.length > 0) {
           const avg = Math.round(amounts.reduce((a, b) => a + b, 0) / amounts.length);
-          const id = `${month}-${cat.id}`;
-          access.exec(
-            `INSERT OR REPLACE INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 0, ?, ?)`,
-            id,
-            month,
-            cat.id,
-            avg,
-            now,
-            now,
-          );
+          const id = budgetId(month, cat.id);
+          await db
+            .insert(s.budgets)
+            .values({
+              id,
+              month,
+              categoryId: cat.id,
+              amount: avg,
+              carryover: false,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: s.budgets.id,
+              set: { amount: avg, updatedAt: now },
+            });
         }
       }
-      const result = computeMonthBudget(access, month);
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "set_nmonth_avg": {
       const month = toMonthInt(payload.month);
       const n = payload.months;
-      const cats = access.queryAll<{ id: string }>("SELECT id FROM categories WHERE hidden = 0");
-      const now = new Date().toISOString();
+      const cats = await db
+        .select({ id: s.categories.id })
+        .from(s.categories)
+        .where(eq(s.categories.hidden, false))
+        .all();
+
+      const now = nowIso();
       for (const cat of cats) {
         const amounts: number[] = [];
         for (let i = 1; i <= n; i++) {
           let m = month - i;
           if (m % 100 === 0) m = Math.floor(m / 100 - 1) * 100 + 12;
-          const b = access.queryOne<{ amount: number }>(
-            "SELECT amount FROM budgets WHERE month = ? AND category_id = ?",
-            m,
-            cat.id,
-          );
-          if (b?.amount != null) amounts.push(b.amount);
+          const [b] = await db
+            .select({ amount: s.budgets.amount })
+            .from(s.budgets)
+            .where(sql`${s.budgets.month} = ${m} AND ${s.budgets.categoryId} = ${cat.id}`)
+            .all();
+          if (b) amounts.push(b.amount);
         }
         if (amounts.length > 0) {
           const avg = Math.round(amounts.reduce((a, b) => a + b, 0) / amounts.length);
-          const id = `${month}-${cat.id}`;
-          access.exec(
-            `INSERT OR REPLACE INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 0, ?, ?)`,
-            id,
-            month,
-            cat.id,
-            avg,
-            now,
-            now,
-          );
+          const id = budgetId(month, cat.id);
+          await db
+            .insert(s.budgets)
+            .values({
+              id,
+              month,
+              categoryId: cat.id,
+              amount: avg,
+              carryover: false,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: s.budgets.id,
+              set: { amount: avg, updatedAt: now },
+            });
         }
       }
-      const result = computeMonthBudget(access, month);
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "set_zero": {
       const month = toMonthInt(payload.month);
-      access.exec("DELETE FROM budgets WHERE month = ?", month);
-      const now = new Date().toISOString();
-      const cats = access.queryAll<{ id: string }>("SELECT id FROM categories WHERE hidden = 0");
+      await db.delete(s.budgets).where(eq(s.budgets.month, month));
+      const now = nowIso();
+      const cats = await db
+        .select({ id: s.categories.id })
+        .from(s.categories)
+        .where(eq(s.categories.hidden, false))
+        .all();
       for (const cat of cats) {
-        const id = `${month}-${cat.id}`;
-        access.exec(
-          `INSERT OR REPLACE INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-          VALUES (?, ?, ?, 0, 0, ?, ?)`,
+        const id = budgetId(month, cat.id);
+        await db.insert(s.budgets).values({
           id,
           month,
-          cat.id,
-          now,
-          now,
-        );
+          categoryId: cat.id,
+          amount: 0,
+          carryover: false,
+          createdAt: now,
+          updatedAt: now,
+        });
       }
-      const result = computeMonthBudget(access, month);
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "apply_goal_templates": {
       const month = toMonthInt(payload.month);
-      const cats = access.queryAll<{ id: string; goal_def: string | null }>(
-        "SELECT id, goal_def FROM categories WHERE goal_def IS NOT NULL AND hidden = 0",
-      );
-      const now = new Date().toISOString();
+      const cats = await db
+        .select({ id: s.categories.id, goalDef: s.categories.goalDef })
+        .from(s.categories)
+        .where(sql`${s.categories.goalDef} IS NOT NULL AND ${s.categories.hidden} = 0`)
+        .all();
+
+      const now = nowIso();
       for (const cat of cats) {
-        const goalDef = cat.goal_def ? JSON.parse(cat.goal_def) : null;
+        const goalDef = cat.goalDef ? JSON.parse(cat.goalDef) : null;
         if (!goalDef) continue;
         let amount = 0;
         if (goalDef.type === "monthly") amount = goalDef.amount ?? 0;
         else if (goalDef.type === "percentage")
           amount = goalDef.percentage ? Math.round((100000 * goalDef.percentage) / 100) : 0;
         if (amount > 0) {
-          const id = `${month}-${cat.id}`;
-          access.exec(
-            `INSERT OR REPLACE INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 0, ?, ?)`,
-            id,
-            month,
-            cat.id,
-            amount,
-            now,
-            now,
-          );
+          const id = budgetId(month, cat.id);
+          await db
+            .insert(s.budgets)
+            .values({
+              id,
+              month,
+              categoryId: cat.id,
+              amount,
+              carryover: false,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: s.budgets.id,
+              set: { amount, updatedAt: now },
+            });
         }
       }
-      const result = computeMonthBudget(access, month);
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "cover_overspending":
     case "transfer_budget": {
       const month = toMonthInt(payload.month);
-      const now = new Date().toISOString();
-      access.exec(
-        `INSERT OR REPLACE INTO budgets (id, month, category_id, amount, carryover, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 0, ?, ?)`,
-        `${month}-${payload.to}`,
-        month,
-        payload.to,
-        payload.amount,
-        now,
-        now,
-      );
-      const result = computeMonthBudget(access, month);
+      const now = nowIso();
+      const id = budgetId(month, payload.to);
+      await db
+        .insert(s.budgets)
+        .values({
+          id,
+          month,
+          categoryId: payload.to,
+          amount: payload.amount,
+          carryover: false,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: s.budgets.id,
+          set: { amount: payload.amount, updatedAt: now },
+        });
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "hold_for_next_month": {
       const month = toMonthInt(payload.month);
-      const now = new Date().toISOString();
-      access.exec(
-        `INSERT OR REPLACE INTO budget_months (id, buffered, created_at, updated_at)
-        VALUES (?, ?, ?, ?)`,
-        payload.month,
-        payload.amount,
-        now,
-        now,
-      );
-      const result = computeMonthBudget(access, month);
+      const now = nowIso();
+      await db
+        .insert(s.budgetMonths)
+        .values({ id: payload.month, buffered: payload.amount, createdAt: now, updatedAt: now })
+        .onConflictDoUpdate({
+          target: s.budgetMonths.id,
+          set: { buffered: payload.amount, updatedAt: now },
+        });
+      const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 

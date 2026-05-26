@@ -1,8 +1,7 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi } from "../definitions";
-import { createDrizzleDb } from "../d1-access";
+import { createDb } from "../d1-access";
 import { wrapHandler } from "./wrap-handler";
-import * as schema from "../../db/schema";
 
 type Env = { MONEY_DB: D1Database };
 
@@ -19,22 +18,42 @@ export function createDataGroup(env: Env) {
     handlers.handlers.set("dump", {
       endpoint: endpoints["dump"],
       handler: wrapHandler(async (_req: Request): Promise<Response> => {
-        const drizzle = createDrizzleDb(env.MONEY_DB);
-        const tableNames = Object.keys(schema);
+        const db = createDb(env.MONEY_DB);
         const data: Record<string, Record<string, unknown>> = {};
 
-        for (const name of tableNames) {
-          const tableDef = (schema as any)[name];
-          if (!tableDef || !tableDef._meta) continue;
+        const tables = [
+          "accounts",
+          "transactions",
+          "categories",
+          "category_groups",
+          "payees",
+          "schedules",
+          "rules",
+          "tags",
+          "transaction_tags",
+          "budgets",
+          "budget_months",
+          "custom_reports",
+          "dashboard_widgets",
+          "exchange_rates",
+          "settings",
+          "notes",
+          "transaction_filters",
+        ];
+
+        for (const name of tables) {
           try {
-            const rows = (await drizzle.select().from(tableDef).all()) as Record<string, unknown>[];
+            const rows = await db.all<{ id?: string; key?: string } & Record<string, unknown>>({
+              sql: `SELECT * FROM ${name}`,
+              params: [],
+            } as any);
             data[name] = {};
             for (const row of rows) {
-              const id = (row as any).id ?? (row as any).key ?? null;
+              const id = row.id ?? row.key ?? null;
               if (id) data[name][String(id)] = row;
             }
           } catch {
-            // Skip tables that don't exist or can't be queried
+            // Skip tables that error
           }
         }
 

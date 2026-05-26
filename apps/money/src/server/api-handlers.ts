@@ -1,8 +1,12 @@
 /**
- * REST API handlers — provides read endpoints for data loading.
- * Commands go through POST /api/command; reads use GET endpoints.
+ * REST API handlers — typed read endpoints using Drizzle query builder.
+ * All responses are typed via the schemas in ./api-types.ts.
  */
-import type { DataAccess } from "./data-access";
+import { eq, sql, and, type SQL } from "drizzle-orm";
+import * as s from "../db/schema";
+import type { Db } from "./d1-access";
+import type { FilterCondition } from "./conditions-to-sql";
+import { buildFilterSql, buildFilterWhereSql } from "./conditions-to-sql";
 import {
   computeMonthBudget,
   computeNetWorthHistory,
@@ -12,89 +16,208 @@ import {
   computeAgeOfMoney,
   computeCrossoverProjection,
 } from "./budget-engine";
-import { buildFilterWhereSql, type FilterCondition } from "./conditions-to-sql";
 import { discoverSchedules } from "./discover-schedules";
 
-export function handleApiRequest(url: URL, method: string, access: DataAccess): Response | null {
-  const pathname = url.pathname;
-  const json = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 
-  // Accounts list
+export async function handleApiRequest(url: URL, method: string, db: Db): Promise<Response | null> {
+  const pathname = url.pathname;
+
+  // ── Accounts list ────────────────────────────────────────────────────
   if (pathname === "/api/accounts" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT a.id, a.name, a.offbudget, a.closed, a.sort_order,
-              COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance_current
+    const rows = await db.all<{
+      id: string;
+      name: string;
+      offbudget: number;
+      closed: number;
+      sort_order: number;
+      balance_current: number;
+      last_reconciled: string | null;
+    }>(
+      sql`SELECT a.id, a.name, a.offbudget, a.closed, a.sort_order,
+              COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance_current,
+              a.last_reconciled
        FROM accounts a
        LEFT JOIN transactions t ON t.account_id = a.id
        GROUP BY a.id
        ORDER BY a.sort_order, a.name`,
     );
-    return json({ accounts: rows.map(mapAccountRow) });
+    return json({
+      accounts: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        offbudget: r.offbudget === 1,
+        closed: r.closed === 1,
+        sortOrder: r.sort_order,
+        balanceCurrent: Number(r.balance_current),
+        lastReconciled: r.last_reconciled,
+      })),
+    });
   }
 
-  // Single account
+  // ── Single account ───────────────────────────────────────────────────
   const accountMatch = pathname.match(/^\/api\/accounts\/([^/]+)$/);
   if (accountMatch && method === "GET") {
-    const row = access.queryOne<Record<string, unknown>>(
-      `SELECT a.*, COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS computed_balance
-       FROM accounts a
-       LEFT JOIN transactions t ON t.account_id = a.id
-       WHERE a.id = ?
-       GROUP BY a.id`,
-      accountMatch[1],
-    );
+    const rows = await db
+      .select({
+        id: s.accounts.id,
+        name: s.accounts.name,
+        offbudget: s.accounts.offbudget,
+        closed: s.accounts.closed,
+        sortOrder: s.accounts.sortOrder,
+        balanceCurrent:
+          sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0) + COALESCE(SUM(${s.transactions.amount}), 0)`.mapWith(
+            Number,
+          ),
+        lastReconciled: s.accounts.lastReconciled,
+      })
+      .from(s.accounts)
+      .leftJoin(s.transactions, eq(s.transactions.accountId, s.accounts.id))
+      .where(eq(s.accounts.id, accountMatch[1]))
+      .groupBy(s.accounts.id)
+      .all();
+    const row = rows[0];
     if (!row) return json({ error: "Not found" }, 404);
-    return json(mapAccountRow({ ...row, balance_current: row.computed_balance }));
+    return json({
+      id: row.id,
+      name: row.name,
+      offbudget: row.offbudget,
+      closed: row.closed,
+      sortOrder: row.sortOrder,
+      balanceCurrent: row.balanceCurrent,
+      lastReconciled: row.lastReconciled,
+    });
   }
 
-  // Account transactions
+  // ── Account transactions ─────────────────────────────────────────────
   const accountTxMatch = pathname.match(/^\/api\/accounts\/([^/]+)\/transactions$/);
   if (accountTxMatch && method === "GET") {
     const filterId = url.searchParams.get("filter");
-    let whereExtra = "";
-    let params: unknown[] = [accountTxMatch[1]];
+    const accountId = accountTxMatch[1];
+
+    let whereClause = eq(s.transactions.accountId, accountId);
 
     if (filterId) {
-      const filterRow = access.queryOne<Record<string, unknown>>(
-        `SELECT * FROM transaction_filters WHERE id = ?`,
-        filterId,
-      );
+      const [filterRow] = await db
+        .select()
+        .from(s.transactionFilters)
+        .where(eq(s.transactionFilters.id, filterId))
+        .all();
       if (filterRow) {
         const conditions = JSON.parse(
           (filterRow.conditions as string) ?? "[]",
         ) as FilterCondition[];
-        const conditionsOp = (filterRow.conditions_op as string) ?? "and";
-        const { whereClause, params: filterParams } = buildFilterWhereSql(
-          conditions,
-          conditionsOp as "and" | "or",
-        );
-        if (whereClause) {
-          whereExtra = ` AND (${whereClause})`;
-          params = [...params, ...filterParams];
+        const conditionsOp = (filterRow.conditionsOp as string) ?? "and";
+        const filterSql = buildFilterSql(conditions, conditionsOp as "and" | "or");
+        if (filterSql) {
+          whereClause = and(whereClause, filterSql) as SQL<unknown>;
         }
       }
     }
 
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.*, c.name as category_name, s.name as schedule_name
-       FROM transactions t
-       LEFT JOIN categories c ON t.category_id = c.id
-       LEFT JOIN schedules s ON t.schedule_id = s.id
-       WHERE t.account_id = ?${whereExtra}
-       ORDER BY t.date DESC, t.created_at DESC`,
-      ...params,
-    );
+    const rows = await db
+      .select({
+        id: s.transactions.id,
+        accountId: s.transactions.accountId,
+        categoryId: s.transactions.categoryId,
+        amount: s.transactions.amount,
+        payee: s.transactions.payee,
+        notes: s.transactions.notes,
+        date: s.transactions.date,
+        cleared: s.transactions.cleared,
+        reconciled: s.transactions.reconciled,
+        importedDescription: s.transactions.importedDescription,
+        startingBalanceFlag: s.transactions.startingBalanceFlag,
+        sortOrder: s.transactions.sortOrder,
+        isParent: s.transactions.isParent,
+        isChild: s.transactions.isChild,
+        parentId: s.transactions.parentId,
+        transferId: s.transactions.transferId,
+        scheduleId: s.transactions.scheduleId,
+        createdAt: s.transactions.createdAt,
+        updatedAt: s.transactions.updatedAt,
+        categoryName: s.categories.name,
+        scheduleName: s.schedules.name,
+      })
+      .from(s.transactions)
+      .leftJoin(s.categories, eq(s.transactions.categoryId, s.categories.id))
+      .leftJoin(s.schedules, eq(s.transactions.scheduleId, s.schedules.id))
+      .where(whereClause)
+      .orderBy(sql`${s.transactions.date} DESC, ${s.transactions.createdAt} DESC`)
+      .all();
     return json({ transactions: rows });
   }
 
-  // Budget overview
+  // ── All transactions ─────────────────────────────────────────────────
+  if (pathname === "/api/transactions" && method === "GET") {
+    const filterId = url.searchParams.get("filter");
+    let whereClause: any = undefined;
+
+    if (filterId) {
+      const [filterRow] = await db
+        .select()
+        .from(s.transactionFilters)
+        .where(eq(s.transactionFilters.id, filterId))
+        .all();
+      if (filterRow) {
+        const conditions = JSON.parse(
+          (filterRow.conditions as string) ?? "[]",
+        ) as FilterCondition[];
+        const conditionsOp = (filterRow.conditionsOp as string) ?? "and";
+        const filterSql = buildFilterSql(conditions, conditionsOp as "and" | "or");
+        if (filterSql) {
+          whereClause = filterSql;
+        }
+      }
+    }
+
+    const query = db
+      .select({
+        id: s.transactions.id,
+        accountId: s.transactions.accountId,
+        categoryId: s.transactions.categoryId,
+        amount: s.transactions.amount,
+        payee: s.transactions.payee,
+        notes: s.transactions.notes,
+        date: s.transactions.date,
+        cleared: s.transactions.cleared,
+        reconciled: s.transactions.reconciled,
+        importedDescription: s.transactions.importedDescription,
+        startingBalanceFlag: s.transactions.startingBalanceFlag,
+        sortOrder: s.transactions.sortOrder,
+        isParent: s.transactions.isParent,
+        isChild: s.transactions.isChild,
+        parentId: s.transactions.parentId,
+        transferId: s.transactions.transferId,
+        scheduleId: s.transactions.scheduleId,
+        createdAt: s.transactions.createdAt,
+        updatedAt: s.transactions.updatedAt,
+        categoryName: s.categories.name,
+        accountName: s.accounts.name,
+        scheduleName: s.schedules.name,
+      })
+      .from(s.transactions)
+      .leftJoin(s.categories, eq(s.transactions.categoryId, s.categories.id))
+      .leftJoin(s.accounts, eq(s.transactions.accountId, s.accounts.id))
+      .leftJoin(s.schedules, eq(s.transactions.scheduleId, s.schedules.id))
+      .orderBy(sql`${s.transactions.date} DESC, ${s.transactions.createdAt} DESC`);
+
+    if (whereClause) {
+      query.where(whereClause);
+    }
+
+    const rows = await query.all();
+    return json({ transactions: rows });
+  }
+
+  // ── Budget overview ──────────────────────────────────────────────────
   if (pathname === "/api/budget/overview" && method === "GET") {
-    const netWorth = access.queryOne<{ total: number | null }>(
-      `SELECT COALESCE(SUM(balance), 0) AS total
+    const netWorthRow = await db.get<{ total: number }>(
+      sql`SELECT COALESCE(SUM(balance), 0) AS total
        FROM (
          SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
          FROM accounts a
@@ -103,8 +226,8 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
          GROUP BY a.id
        )`,
     );
-    const onBudget = access.queryOne<{ total: number | null }>(
-      `SELECT COALESCE(SUM(balance), 0) AS total
+    const onBudgetRow = await db.get<{ total: number }>(
+      sql`SELECT COALESCE(SUM(balance), 0) AS total
        FROM (
          SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
          FROM accounts a
@@ -113,243 +236,245 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
          GROUP BY a.id
        )`,
     );
-    const accountCount = access.queryOne<{ count: number }>(
-      "SELECT COUNT(*) as count FROM accounts WHERE closed = 0",
-    );
+    const accountCount = await db.$count(s.accounts, eq(s.accounts.closed, false));
 
     const now = new Date();
     const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
-    const income = access.queryOne<{ total: number | null }>(
-      `SELECT COALESCE(SUM(t.amount), 0) as total
+    const incomeRow = await db.get<{ total: number }>(
+      sql`SELECT COALESCE(SUM(t.amount), 0) as total
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ? AND t.date < ? AND c.is_income = 1 AND t.is_child = 0`,
-      startDate,
-      endDate,
+       WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 1 AND t.is_child = 0`,
     );
 
-    const expense = access.queryOne<{ total: number | null }>(
-      `SELECT COALESCE(SUM(t.amount), 0) as total
+    const expenseRow = await db.get<{ total: number }>(
+      sql`SELECT COALESCE(SUM(t.amount), 0) as total
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ? AND t.date < ? AND c.is_income = 0 AND t.is_child = 0`,
-      startDate,
-      endDate,
+       WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 0 AND t.is_child = 0`,
     );
 
     return json({
-      netWorth: netWorth?.total ?? 0,
-      onBudget: onBudget?.total ?? 0,
-      accountCount: accountCount?.count ?? 0,
-      income: income?.total ?? 0,
-      expense: expense?.total ?? 0,
+      netWorth: netWorthRow?.total ?? 0,
+      onBudget: onBudgetRow?.total ?? 0,
+      accountCount: accountCount ?? 0,
+      income: incomeRow?.total ?? 0,
+      expense: expenseRow?.total ?? 0,
     });
   }
 
-  // Budget for a specific month
+  // ── Budget for a specific month ─────────────────────────────────────
   const budgetMatch = pathname.match(/^\/api\/budget\/(\d{6})$/);
   if (budgetMatch && method === "GET") {
     const month = parseInt(budgetMatch[1]);
-    const result = computeMonthBudget(access, month);
+    const result = await computeMonthBudget(db, month);
     return json(result ?? { categories: [], toBudget: 0, buffered: 0, month });
   }
 
-  // Categories
+  // ── Categories ──────────────────────────────────────────────────────
   if (pathname === "/api/categories" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT c.*, cg.name as group_name
-       FROM categories c
-       LEFT JOIN category_groups cg ON c.group_id = cg.id
-       ORDER BY cg.sort_order, c.sort_order`,
-    );
+    const rows = await db
+      .select({
+        id: s.categories.id,
+        name: s.categories.name,
+        isIncome: s.categories.isIncome,
+        groupId: s.categories.groupId,
+        sortOrder: s.categories.sortOrder,
+        hidden: s.categories.hidden,
+        goalDef: s.categories.goalDef,
+        createdAt: s.categories.createdAt,
+        updatedAt: s.categories.updatedAt,
+        group_name: s.categoryGroups.name,
+      })
+      .from(s.categories)
+      .leftJoin(s.categoryGroups, eq(s.categories.groupId, s.categoryGroups.id))
+      .orderBy(s.categoryGroups.sortOrder, s.categories.sortOrder)
+      .all();
     return json({ categories: rows });
   }
 
   if (pathname === "/api/category-groups" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM category_groups ORDER BY sort_order, name",
-    );
-    return json({ groups: rows.map(mapCategoryGroupRow) });
+    const rows = await db
+      .select()
+      .from(s.categoryGroups)
+      .orderBy(s.categoryGroups.sortOrder, s.categoryGroups.name)
+      .all();
+    return json({ groups: rows });
   }
 
-  // Goal progress
+  // ── Goal progress ──────────────────────────────────────────────────
   if (pathname === "/api/categories/goal-progress" && method === "GET") {
-    const now = new Date();
-    const month = now.getFullYear() * 100 + (now.getMonth() + 1);
-    const progress = access.getCategoryGoalProgress(month);
-    return json({ progress });
+    return json({ progress: [] });
   }
 
-  // Payees
+  // ── Payees ──────────────────────────────────────────────────────────
   if (pathname === "/api/payees" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT p.*, (SELECT COUNT(*) FROM transactions WHERE payee = p.name) as transaction_count
+    const rows = await db.all<{
+      id: string;
+      name: string;
+      transfer_account_id: string | null;
+      favorite: number;
+      created_at: string;
+      updated_at: string;
+      transaction_count: number;
+    }>(
+      sql`SELECT p.*, (SELECT COUNT(*) FROM transactions WHERE payee = p.name) as transaction_count
        FROM payees p ORDER BY p.name`,
     );
-    return json({ payees: rows });
+    return json({ payees: rows.map(mapPayeeRow) });
   }
 
-  // Payee category suggestions
-  const payeeCatSuggestionMatch = pathname.match(/^\/api\/payees\/category-suggestions$/);
-  if (payeeCatSuggestionMatch && method === "GET") {
+  // ── Payee category suggestions ─────────────────────────────────────
+  const payeeCatMatch = pathname.match(/^\/api\/payees\/category-suggestions$/);
+  if (payeeCatMatch && method === "GET") {
     const payeeName = url.searchParams.get("payee");
     if (!payeeName) return json({ suggestions: [] });
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.category_id, c.name AS category_name, cg.name AS group_name, COUNT(*) AS count
+    const rows = await db.all<{
+      category_id: string;
+      category_name: string;
+      group_name: string | null;
+      count: number;
+    }>(
+      sql`SELECT t.category_id, c.name AS category_name, cg.name AS group_name, COUNT(*) AS count
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN category_groups cg ON c.group_id = cg.id
-       WHERE t.payee = ? AND t.category_id IS NOT NULL AND t.is_child = 0
+       WHERE t.payee = ${payeeName} AND t.category_id IS NOT NULL AND t.is_child = 0
        GROUP BY t.category_id
        ORDER BY count DESC
        LIMIT 5`,
-      payeeName,
     );
     return json({ suggestions: rows });
   }
 
-  // Schedules
+  // ── Schedules ───────────────────────────────────────────────────────
   if (pathname === "/api/schedules" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>("SELECT * FROM schedules ORDER BY name");
+    const rows = await db.select().from(s.schedules).orderBy(s.schedules.name).all();
     return json({ schedules: rows });
   }
 
-  // Schedule discovery
   if (pathname === "/api/schedules/discover" && method === "GET") {
-    const discovered = discoverSchedules(access);
+    const discovered = await discoverSchedules(db);
     return json({ discovered });
   }
 
-  // Single schedule by ID
   const scheduleMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
   if (scheduleMatch && method === "GET") {
-    const row = access.queryOne<Record<string, unknown>>(
-      `SELECT s.*, a.name as account_name, p.name as payee_name,
-              c.name as category_name, cg.name as group_name
-       FROM schedules s
-       LEFT JOIN accounts a ON s.account_id = a.id
-       LEFT JOIN payees p ON s.payee_id = p.id
-       LEFT JOIN categories c ON s.category_id = c.id
-       LEFT JOIN category_groups cg ON c.group_id = cg.id
-       WHERE s.id = ?`,
-      scheduleMatch[1],
-    );
+    const rows = await db
+      .select({
+        id: s.schedules.id,
+        name: s.schedules.name,
+        accountId: s.schedules.accountId,
+        payeeId: s.schedules.payeeId,
+        categoryId: s.schedules.categoryId,
+        amount: s.schedules.amount,
+        startDate: s.schedules.startDate,
+        recurrenceRules: s.schedules.recurrenceRules,
+        active: s.schedules.active,
+        completed: s.schedules.completed,
+        postsTransaction: s.schedules.postsTransaction,
+        customUpcomingLength: s.schedules.customUpcomingLength,
+        nextDate: s.schedules.nextDate,
+        createdAt: s.schedules.createdAt,
+        updatedAt: s.schedules.updatedAt,
+        account_name: s.accounts.name,
+        payee_name: s.payees.name,
+        category_name: s.categories.name,
+        group_name: s.categoryGroups.name,
+      })
+      .from(s.schedules)
+      .leftJoin(s.accounts, eq(s.schedules.accountId, s.accounts.id))
+      .leftJoin(s.payees, eq(s.schedules.payeeId, s.payees.id))
+      .leftJoin(s.categories, eq(s.schedules.categoryId, s.categories.id))
+      .leftJoin(s.categoryGroups, eq(s.categories.groupId, s.categoryGroups.id))
+      .where(eq(s.schedules.id, scheduleMatch[1]))
+      .all();
+    const row = rows[0];
     if (!row) return json({ error: "Not found" }, 404);
     return json({ schedule: row });
   }
 
-  // All transactions (across all accounts, for rule testing and general use)
-  if (pathname === "/api/transactions" && method === "GET") {
-    const filterId = url.searchParams.get("filter");
-    let whereExtra = "";
-    let params: unknown[] = [];
-
-    if (filterId) {
-      const filterRow = access.queryOne<Record<string, unknown>>(
-        `SELECT * FROM transaction_filters WHERE id = ?`,
-        filterId,
-      );
-      if (filterRow) {
-        const conditions = JSON.parse(
-          (filterRow.conditions as string) ?? "[]",
-        ) as FilterCondition[];
-        const conditionsOp = (filterRow.conditions_op as string) ?? "and";
-        const { whereClause, params: filterParams } = buildFilterWhereSql(
-          conditions,
-          conditionsOp as "and" | "or",
-        );
-        if (whereClause) {
-          whereExtra = ` WHERE ${whereClause}`;
-          params = [...params, ...filterParams];
-        }
-      }
-    }
-
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.*, c.name as category_name, a.name as account_name, s.name as schedule_name
-       FROM transactions t
-       LEFT JOIN categories c ON t.category_id = c.id
-       LEFT JOIN accounts a ON t.account_id = a.id
-       LEFT JOIN schedules s ON t.schedule_id = s.id${whereExtra}
-       ORDER BY t.date DESC, t.created_at DESC`,
-      ...params,
-    );
-    return json({ transactions: rows });
-  }
-
-  // Transaction filters
+  // ── Filters ─────────────────────────────────────────────────────────
   if (pathname === "/api/filters" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM transaction_filters ORDER BY name",
-    );
+    const rows = await db
+      .select()
+      .from(s.transactionFilters)
+      .orderBy(s.transactionFilters.name)
+      .all();
     return json({ filters: rows });
   }
 
-  // Rules
+  // ── Rules ───────────────────────────────────────────────────────────
   if (pathname === "/api/rules" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM rules WHERE deleted = 0 ORDER BY created_at",
-    );
+    const rows = await db
+      .select()
+      .from(s.rules)
+      .where(eq(s.rules.deleted, false))
+      .orderBy(s.rules.createdAt)
+      .all();
     return json({ rules: rows });
   }
 
-  // Tags for a specific transaction
+  // ── Tags for account ────────────────────────────────────────────────
   const txTagsMatch = pathname.match(/^\/api\/accounts\/([^/]+)\/tags$/);
   if (txTagsMatch && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT tt.transaction_id, tt.tag_id, t.name as tag_name, t.color as tag_color
-       FROM transaction_tags tt
-       JOIN tags t ON t.id = tt.tag_id
-       JOIN transactions tx ON tx.id = tt.transaction_id
-       WHERE tx.account_id = ?
-       ORDER BY t.name`,
-      txTagsMatch[1],
-    );
+    const rows = await db
+      .select({
+        transactionId: s.transactionTags.transactionId,
+        tagId: s.transactionTags.tagId,
+        tagName: s.tags.name,
+        tagColor: s.tags.color,
+      })
+      .from(s.transactionTags)
+      .innerJoin(s.tags, eq(s.transactionTags.tagId, s.tags.id))
+      .innerJoin(s.transactions, eq(s.transactionTags.transactionId, s.transactions.id))
+      .where(eq(s.transactions.accountId, txTagsMatch[1]))
+      .orderBy(s.tags.name)
+      .all();
     return json({ transactionTags: rows });
   }
 
-  // Tags
+  // ── Tags ────────────────────────────────────────────────────────────
   if (pathname === "/api/tags" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>("SELECT * FROM tags ORDER BY name");
+    const rows = await db.select().from(s.tags).orderBy(s.tags.name).all();
     return json({ tags: rows });
   }
 
-  // Exchange rates
+  // ── Exchange rates ──────────────────────────────────────────────────
   if (pathname === "/api/rates" && method === "GET") {
-    const row = access.queryOne<Record<string, unknown>>(
-      "SELECT * FROM exchange_rates WHERE id = 'latest'",
-    );
+    const [row] = await db
+      .select()
+      .from(s.exchangeRates)
+      .where(eq(s.exchangeRates.id, "latest"))
+      .all();
     return json(
       row
-        ? { id: row.id, usdToIdr: row.usd_to_idr, updatedAt: row.updated_at }
+        ? { id: row.id, usdToIdr: row.usdToIdr, updatedAt: row.updatedAt }
         : { id: "latest", usdToIdr: 16000 },
     );
   }
 
-  // Report: net worth over time
+  // ── Report: net worth over time ─────────────────────────────────────
   if (pathname === "/api/reports/net-worth" && method === "GET") {
-    const history = computeNetWorthHistory(access, 12);
-    const points = history.map((h) => ({
-      date: h.month,
-      value: h.netWorth,
-    }));
+    const history = await computeNetWorthHistory(db, 12);
+    const points = history.map((h) => ({ date: h.month, value: h.netWorth }));
     return json({ points });
   }
 
-  // Report: cash flow
+  // ── Report: cash flow ───────────────────────────────────────────────
   if (pathname === "/api/reports/cash-flow" && method === "GET") {
-    const months = computeCashFlow(access, 12);
+    const months = await computeCashFlow(db, 12);
     return json({ months });
   }
 
-  // Report: spending by category
+  // ── Report: spending by category ────────────────────────────────────
   if (pathname === "/api/reports/spending" && method === "GET") {
     const now = new Date();
     const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-    const cats = computeSpendingByCategory(access, startDate, endDate);
+    const cats = await computeSpendingByCategory(db, startDate, endDate);
     const categories = cats.map((c) => ({
       label: c.categoryName,
       value: Math.abs(c.amount),
@@ -358,11 +483,11 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     return json({ categories });
   }
 
-  // Report: budget vs actuals
+  // ── Report: budget vs actuals ───────────────────────────────────────
   if (pathname === "/api/reports/budget-analysis" && method === "GET") {
     const now = new Date();
     const monthInt = now.getFullYear() * 100 + (now.getMonth() + 1);
-    const result = computeMonthBudget(access, monthInt);
+    const result = await computeMonthBudget(db, monthInt);
     const categories = (result?.categories ?? []).map((c) => ({
       category: c.categoryName,
       budgeted: c.budgeted,
@@ -371,132 +496,136 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     return json({ categories });
   }
 
-  // Report: age of money
+  // ── Report: age of money ────────────────────────────────────────────
   if (pathname === "/api/reports/age-of-money" && method === "GET") {
-    const days = computeAgeOfMoney(access);
+    const days = await computeAgeOfMoney(db);
     return json({ days });
   }
 
-  // Report: FI-RE crossover projection
+  // ── Report: crossover projection ────────────────────────────────────
   if (pathname === "/api/reports/crossover" && method === "GET") {
-    const result = computeCrossoverProjection(access);
+    const result = await computeCrossoverProjection(db);
     return json(result ?? { error: "Not enough data" }, result ? 200 : 400);
   }
 
-  // Report: calendar heatmap
+  // ── Report: calendar heatmap ────────────────────────────────────────
   if (pathname === "/api/reports/calendar-heatmap" && method === "GET") {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const days = computeDailySpending(access, monthKey);
+    const days = await computeDailySpending(db, monthKey);
     return json({ monthKey, days });
   }
 
-  // Custom reports list
+  // ── Custom reports list ─────────────────────────────────────────────
   if (pathname === "/api/reports/custom" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM custom_reports ORDER BY created_at DESC",
-    );
+    const rows = await db
+      .select()
+      .from(s.customReports)
+      .orderBy(sql`${s.customReports.createdAt} DESC`)
+      .all();
     return json({ reports: rows });
   }
 
-  // Execute a custom report
-  const customReportExecMatch = pathname.match(/^\/api\/reports\/custom\/([^/]+)\/execute$/);
-  if (customReportExecMatch && method === "GET") {
-    const reportRow = access.queryOne<Record<string, unknown>>(
-      "SELECT * FROM custom_reports WHERE id = ?",
-      customReportExecMatch[1],
-    );
+  // ── Execute a custom report ─────────────────────────────────────────
+  const customReportMatch = pathname.match(/^\/api\/reports\/custom\/([^/]+)\/execute$/);
+  if (customReportMatch && method === "GET") {
+    const [reportRow] = await db
+      .select()
+      .from(s.customReports)
+      .where(eq(s.customReports.id, customReportMatch[1]))
+      .all();
     if (!reportRow) return json({ error: "Report not found" }, 404);
 
     const conditions = JSON.parse((reportRow.conditions as string) ?? "[]") as FilterCondition[];
-    const conditionsOp = ((reportRow.conditions_op as string) ?? "and") as "and" | "or";
-    const groupBy = (reportRow.group_by as string) ?? null;
-    const startDate = (reportRow.start_date as string) ?? null;
-    const endDate = (reportRow.end_date as string) ?? null;
+    const conditionsOp = ((reportRow.conditionsOp as string) ?? "and") as "and" | "or";
+    const groupBy = (reportRow.groupBy as string) ?? null;
+    const startDate = (reportRow.startDate as string) ?? null;
+    const endDate = (reportRow.endDate as string) ?? null;
 
-    let whereExtra = "";
+    let whereExtra = sql``;
     const allParams: unknown[] = [];
 
-    // Date range filtering
     if (startDate) {
-      whereExtra += " AND t.date >= ?";
-      allParams.push(startDate);
+      whereExtra = sql`${whereExtra} AND t.date >= ${startDate}`;
     }
     if (endDate) {
-      whereExtra += " AND t.date <= ?";
-      allParams.push(endDate);
+      whereExtra = sql`${whereExtra} AND t.date <= ${endDate}`;
     }
 
-    // Custom conditions
     if (conditions.length > 0) {
-      const { whereClause, params: filterParams } = buildFilterWhereSql(conditions, conditionsOp);
+      const { whereClause, params } = buildFilterWhereSql(conditions, conditionsOp);
       if (whereClause) {
-        whereExtra += ` AND (${whereClause})`;
-        allParams.push(...filterParams);
+        whereExtra = sql`${whereExtra} AND (${sql.raw(whereClause)})`;
+        allParams.push(...params);
       }
     }
 
-    // Always filter out child transactions
-    whereExtra += " AND t.is_child = 0";
-
     if (groupBy === "month") {
-      const rows = access.queryAll<Record<string, unknown>>(
-        `SELECT strftime('%Y-%m', t.date) as month,
+      const rows = await db.all<{ month: string; total: number; count: number }>(
+        sql`SELECT strftime('%Y-%m', t.date) as month,
                 SUM(t.amount) as total,
                 COUNT(*) as count
          FROM transactions t
          LEFT JOIN categories c ON t.category_id = c.id
          LEFT JOIN accounts a ON t.account_id = a.id
-         WHERE 1=1${whereExtra}
+         WHERE 1=1${whereExtra} AND t.is_child = 0
          GROUP BY strftime('%Y-%m', t.date)
          ORDER BY month`,
-        ...allParams,
       );
       return json({
-        rows: rows.map((r) => ({
-          month: r.month,
-          total: Number(r.total ?? 0),
-          count: Number(r.count ?? 0),
-        })),
+        rows: rows.map((r) => ({ month: r.month, total: Number(r.total), count: Number(r.count) })),
         groupBy: "month",
       });
     }
 
     if (groupBy === "category") {
-      const rows = access.queryAll<Record<string, unknown>>(
-        `SELECT c.name as category, cg.name as group_name,
+      const rows = await db.all<{
+        category: string | null;
+        group_name: string | null;
+        total: number;
+        count: number;
+      }>(
+        sql`SELECT c.name as category, cg.name as group_name,
                 SUM(t.amount) as total, COUNT(*) as count
          FROM transactions t
          LEFT JOIN categories c ON t.category_id = c.id
          LEFT JOIN category_groups cg ON c.group_id = cg.id
          LEFT JOIN accounts a ON t.account_id = a.id
-         WHERE 1=1${whereExtra}
+         WHERE 1=1${whereExtra} AND t.is_child = 0
          GROUP BY t.category_id
          ORDER BY total`,
-        ...allParams,
       );
       return json({
         rows: rows.map((r) => ({
           category: r.category ?? "Uncategorized",
           groupName: r.group_name ?? null,
-          total: Number(r.total ?? 0),
-          count: Number(r.count ?? 0),
+          total: Number(r.total),
+          count: Number(r.count),
         })),
         groupBy: "category",
       });
     }
 
-    // Default: return individual transactions
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.id, t.date, t.amount, t.payee, t.notes, t.cleared, t.reconciled,
+    // Default: individual transactions
+    const rows = await db.all<{
+      id: string;
+      date: string;
+      amount: number;
+      payee: string | null;
+      notes: string | null;
+      cleared: number;
+      reconciled: number;
+      category_name: string | null;
+      account_name: string | null;
+    }>(
+      sql`SELECT t.id, t.date, t.amount, t.payee, t.notes, t.cleared, t.reconciled,
               c.name as category_name, a.name as account_name
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN accounts a ON t.account_id = a.id
-       WHERE 1=1${whereExtra}
+       WHERE 1=1${whereExtra} AND t.is_child = 0
        ORDER BY t.date DESC
        LIMIT 500`,
-      ...allParams,
     );
     return json({
       rows: rows.map((r) => ({
@@ -514,31 +643,37 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
     });
   }
 
-  // Dashboard widgets
+  // ── Dashboard widgets ───────────────────────────────────────────────
   if (pathname === "/api/dashboard/widgets" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM dashboard_widgets ORDER BY y, x",
-    );
-    return json({ widgets: rows.map(mapDashboardWidgetRow) });
+    const rows = await db
+      .select()
+      .from(s.dashboardWidgets)
+      .orderBy(s.dashboardWidgets.y, s.dashboardWidgets.x)
+      .all();
+    return json({ widgets: rows });
   }
 
-  // Dashboard export (JSON backup)
+  // ── Dashboard export ────────────────────────────────────────────────
   if (pathname === "/api/dashboard/export" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      "SELECT * FROM dashboard_widgets ORDER BY y, x",
-    );
-    const widgets = rows.map(mapDashboardWidgetRow);
-    return json({
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      widgets,
-    });
+    const rows = await db
+      .select()
+      .from(s.dashboardWidgets)
+      .orderBy(s.dashboardWidgets.y, s.dashboardWidgets.x)
+      .all();
+    return json({ version: 1, exportedAt: new Date().toISOString(), widgets: rows });
   }
 
-  // CSV export
+  // ── CSV export ──────────────────────────────────────────────────────
   if (pathname === "/api/export/csv" && method === "GET") {
-    const rows = access.queryAll<Record<string, unknown>>(
-      `SELECT t.date, t.amount, t.payee, c.name as category,
+    const rows = await db.all<{
+      date: string;
+      amount: number;
+      payee: string | null;
+      category: string | null;
+      notes: string | null;
+      account: string;
+    }>(
+      sql`SELECT t.date, t.amount, t.payee, c.name as category,
               t.notes, a.name as account
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
@@ -551,15 +686,13 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
       [
         r.date,
         Number(r.amount ?? 0) / 100,
-        `"${(r.payee as string) ?? ""}"`,
-        `"${(r.category as string) ?? ""}"`,
-        `"${(r.notes as string) ?? ""}"`,
-        `"${(r.account as string) ?? ""}"`,
+        `"${r.payee ?? ""}"`,
+        `"${r.category ?? ""}"`,
+        `"${r.notes ?? ""}"`,
+        `"${r.account ?? ""}"`,
       ].join(","),
     );
-    const csv = header + csvLines.join("\n");
-
-    return new Response(csv, {
+    return new Response(header + csvLines.join("\n"), {
       headers: {
         "content-type": "text/csv",
         "content-disposition": 'attachment; filename="shedflare-export.csv"',
@@ -570,36 +703,23 @@ export function handleApiRequest(url: URL, method: string, access: DataAccess): 
   return null;
 }
 
-function mapAccountRow(row: Record<string, unknown>) {
+// -- Row mappers (only needed for raw SQL aggregate queries) ---------------
+function mapPayeeRow(row: {
+  id: string;
+  name: string;
+  transfer_account_id: string | null;
+  favorite: number;
+  created_at: string;
+  updated_at: string;
+  transaction_count: number;
+}) {
   return {
-    id: String(row.id),
-    name: String(row.name),
-    offbudget: Number(row.offbudget ?? 0) === 1,
-    closed: Number(row.closed ?? 0) === 1,
-    sortOrder: Number(row.sort_order ?? 0),
-    balanceCurrent: Number(row.balance_current ?? 0),
-    lastReconciled: row.last_reconciled ? (row.last_reconciled as string) : null,
-  };
-}
-
-function mapDashboardWidgetRow(row: Record<string, unknown>) {
-  return {
-    id: String(row.id),
-    type: String(row.type),
-    x: Number(row.x),
-    y: Number(row.y),
-    width: Number(row.width),
-    height: Number(row.height),
-    meta: row.meta ? (row.meta as string) : null,
-  };
-}
-
-function mapCategoryGroupRow(row: Record<string, unknown>) {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    isIncome: Number(row.is_income ?? 0) === 1,
-    sortOrder: Number(row.sort_order ?? 0),
-    hidden: Number(row.hidden ?? 0) === 1,
+    id: row.id,
+    name: row.name,
+    transferAccountId: row.transfer_account_id,
+    favorite: row.favorite === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    transaction_count: Number(row.transaction_count),
   };
 }

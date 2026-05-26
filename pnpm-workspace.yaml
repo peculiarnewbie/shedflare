@@ -16,8 +16,8 @@ catalog:
   alchemy: 2.0.0-beta.43
   better-sqlite3: ^12.9.0
   dompurify: ^3.4.0
-  drizzle-kit: 1.0.0-rc.3
-  drizzle-orm: 1.0.0-rc.3
+  drizzle-kit: 1.0.0-rc.4-5d5b77c
+  drizzle-orm: 1.0.0-rc.4-5d5b77c
   effect: 4.0.0-beta.70
   highlight.js: ^11.11.1
   jose: ^6.2.2

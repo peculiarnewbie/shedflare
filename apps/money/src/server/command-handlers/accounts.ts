@@ -1,15 +1,18 @@
-import type { DataAccess } from "../data-access";
+import { eq } from "drizzle-orm";
+import type { Db } from "../d1-access";
+import * as s from "../../db/schema";
 import { createAccount } from "../../domain/factories";
+import { nowIso } from "../../domain/types";
 
 export type CommandResult =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string };
 
-export function handleAccountCommands(
+export async function handleAccountCommands(
   commandType: string,
   payload: any,
-  access: DataAccess,
-): CommandResult {
+  db: Db,
+): Promise<CommandResult> {
   switch (commandType) {
     case "create_account": {
       const row = createAccount({
@@ -17,78 +20,70 @@ export function handleAccountCommands(
         offBudget: payload.offBudget,
         balance: payload.balance,
       });
-      access.exec(
-        `INSERT INTO accounts (id, name, offbudget, closed, sort_order, balance_current, last_reconciled, created_at, updated_at)
-         VALUES (?, ?, ?, 0, 0, ?, NULL, ?, ?)`,
-        row.id,
-        row.name,
-        row.offbudget ? 1 : 0,
-        row.balanceCurrent,
-        row.createdAt,
-        row.updatedAt,
-      );
+      await db.insert(s.accounts).values(row);
       return { ok: true, data: { id: row.id } };
     }
 
     case "update_account": {
-      const existing = access.queryOne<Record<string, unknown>>(
-        "SELECT * FROM accounts WHERE id = ?",
-        payload.id,
-      );
+      const [existing] = await db
+        .select()
+        .from(s.accounts)
+        .where(eq(s.accounts.id, payload.id))
+        .all();
       if (!existing) return { ok: false, error: "Account not found" };
 
-      const name = payload.name ?? existing.name;
-      const offbudget =
-        payload.offBudget !== undefined ? (payload.offBudget ? 1 : 0) : existing.offbudget;
-      const now = new Date().toISOString();
-      access.exec(
-        `UPDATE accounts SET name = ?, offbudget = ?, updated_at = ? WHERE id = ?`,
-        name,
-        offbudget,
-        now,
-        payload.id,
-      );
+      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      if (payload.name !== undefined) set.name = payload.name;
+      if (payload.offBudget !== undefined) set.offbudget = payload.offBudget;
+
+      await db.update(s.accounts).set(set).where(eq(s.accounts.id, payload.id));
       return { ok: true, data: { id: payload.id } };
     }
 
     case "delete_account": {
-      access.exec("DELETE FROM accounts WHERE id = ?", payload.id);
+      await db.delete(s.accounts).where(eq(s.accounts.id, payload.id));
       return { ok: true, data: { id: payload.id } };
     }
 
     case "close_account": {
-      const now = new Date().toISOString();
-      access.exec("UPDATE accounts SET closed = 1, updated_at = ? WHERE id = ?", now, payload.id);
+      await db
+        .update(s.accounts)
+        .set({ closed: true, updatedAt: nowIso() })
+        .where(eq(s.accounts.id, payload.id));
       return { ok: true, data: { id: payload.id } };
     }
 
     case "reopen_account": {
-      const now = new Date().toISOString();
-      access.exec("UPDATE accounts SET closed = 0, updated_at = ? WHERE id = ?", now, payload.id);
+      await db
+        .update(s.accounts)
+        .set({ closed: false, updatedAt: nowIso() })
+        .where(eq(s.accounts.id, payload.id));
       return { ok: true, data: { id: payload.id } };
     }
 
     case "reorder_accounts": {
-      const now = new Date().toISOString();
+      const now = nowIso();
       for (let i = 0; i < payload.ids.length; i++) {
-        access.exec(
-          "UPDATE accounts SET sort_order = ?, updated_at = ? WHERE id = ?",
-          i,
-          now,
-          payload.ids[i],
-        );
+        await db
+          .update(s.accounts)
+          .set({ sortOrder: i, updatedAt: now })
+          .where(eq(s.accounts.id, payload.ids[i]));
       }
       return { ok: true, data: { count: payload.ids.length } };
     }
 
     case "update_exchange_rate": {
-      const now = new Date().toISOString();
-      access.exec(
-        `INSERT OR REPLACE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES (?, ?, ?)`,
-        "latest",
-        payload.usdToIdr,
-        now,
-      );
+      await db
+        .insert(s.exchangeRates)
+        .values({
+          id: "latest",
+          usdToIdr: payload.usdToIdr,
+          updatedAt: nowIso(),
+        })
+        .onConflictDoUpdate({
+          target: s.exchangeRates.id,
+          set: { usdToIdr: payload.usdToIdr, updatedAt: nowIso() },
+        });
       return { ok: true, data: {} };
     }
 

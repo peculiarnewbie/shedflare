@@ -1,6 +1,6 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi } from "../definitions";
-import { createDrizzleDb } from "../d1-access";
+import { createDb } from "../d1-access";
 import { handleCommand } from "../command-handlers";
 import { wrapHandler } from "./wrap-handler";
 
@@ -12,9 +12,9 @@ export function createCommandGroup(env: Env) {
     handlers.handlers.set("execute", {
       endpoint: endpoints["execute"],
       handler: wrapHandler(async (req: Request): Promise<Response> => {
-        const drizzle = createDrizzleDb(env.MONEY_DB);
+        const db = createDb(env.MONEY_DB);
         const body = (await req.json()) as Record<string, unknown>;
-        const result = handleCommand(env.MONEY_DB, drizzle, body);
+        const result = await handleCommand(db, body);
         if ("error" in result) {
           return new Response(JSON.stringify({ error: result.error }), {
             status: 400,

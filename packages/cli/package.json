@@ -26,8 +26,8 @@
     "prepare": "vp config"
   },
   "dependencies": {
-    "@shedflare/alchemy": "workspace:*",
     "@clack/prompts": "^1.2",
+    "@shedflare/alchemy": "workspace:*",
     "cac": "^7",
     "jsonc-parser": "^3",
     "nano-spawn": "^2.1",
