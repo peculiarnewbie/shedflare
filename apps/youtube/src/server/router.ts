@@ -1,6 +1,4 @@
-import { Layer } from "effect";
-import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { HttpRouter } from "effect/unstable/http";
+import { createHttpApiWebHandler } from "@shedflare/alchemy";
 import { createHttpApiAuth } from "@shedflare/auth-client/http-api";
 import { youtubeApi } from "./definitions";
 import { createDashboardGroup } from "./impl/dashboard";
@@ -18,18 +16,12 @@ type Env = AuthEnv & {
 export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
 
-  const implLayer = Layer.mergeAll(
+  const wh = createHttpApiWebHandler(youtubeApi, [
     createDashboardGroup(env, auth),
     createWatchLaterGroup(env, auth),
     createNotificationsGroup(env, auth),
     createSyncGroup(env),
-  );
-
-  const combinedLayer = Layer.provide(
-    HttpApiBuilder.layer(youtubeApi as any) as any,
-    implLayer as any,
-  );
-  const wh = HttpRouter.toWebHandler(combinedLayer as any) as any;
+  ]);
 
   return {
     async fetch(request: Request): Promise<Response> {

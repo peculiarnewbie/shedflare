@@ -25,3 +25,4 @@ export {
   type WorkerSecretAttributes,
   type WorkerSecretProps,
 } from "./WorkerSecret.ts";
+export { createHttpApiWebHandler, wrapHttpHandler } from "./http-handler.ts";

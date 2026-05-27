@@ -1,6 +1,4 @@
-import { Layer } from "effect";
-import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { HttpRouter } from "effect/unstable/http";
+import { createHttpApiWebHandler } from "@shedflare/alchemy";
 import { createHttpApiAuth } from "@shedflare/auth-client/http-api";
 import { createAuthHandlers } from "@shedflare/auth-client/consumer";
 import { moneyApi } from "./definitions";
@@ -33,7 +31,7 @@ export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
   const rawAuth = createAuthHandlers(env);
 
-  const implLayer = Layer.mergeAll(
+  const wh = createHttpApiWebHandler(moneyApi, [
     createUploadsGroup(env),
     createAccountsGroup(env),
     createTransactionsGroup(env),
@@ -51,13 +49,7 @@ export function createRouter(env: Env) {
     createExportGroup(env),
     createRatesGroup(env),
     createSettingsGroup(env),
-  );
-
-  const combinedLayer = Layer.provide(
-    HttpApiBuilder.layer(moneyApi as any) as any,
-    implLayer as any,
-  );
-  const wh = HttpRouter.toWebHandler(combinedLayer as any) as any;
+  ]);
 
   return {
     async fetch(request: Request): Promise<Response> {

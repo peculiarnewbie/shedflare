@@ -1,6 +1,4 @@
-import { Layer } from "effect";
-import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { HttpRouter } from "effect/unstable/http";
+import { createHttpApiWebHandler } from "@shedflare/alchemy";
 import { createHttpApiAuth } from "@shedflare/auth-client/http-api";
 import { driveApi } from "./definitions";
 import { createFileHandlersGroup } from "./impl/files";
@@ -16,13 +14,10 @@ type Env = AuthEnv & {
 export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
 
-  const implLayer = Layer.mergeAll(createFileHandlersGroup(env, auth), createTagsGroup(env, auth));
-
-  const combinedLayer = Layer.provide(
-    HttpApiBuilder.layer(driveApi as any) as any,
-    implLayer as any,
-  );
-  const wh = HttpRouter.toWebHandler(combinedLayer as any) as any;
+  const wh = createHttpApiWebHandler(driveApi, [
+    createFileHandlersGroup(env, auth),
+    createTagsGroup(env, auth),
+  ]);
 
   return {
     async fetch(request: Request): Promise<Response> {

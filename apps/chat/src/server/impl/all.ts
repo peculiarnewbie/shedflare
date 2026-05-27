@@ -1,30 +1,14 @@
-import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { chatApi } from "../definitions";
 import { handleSession } from "../../api/session";
 import { handleBootstrap } from "../../api/bootstrap";
 import { handleModels } from "../../api/models";
 import { handleUploadPresign } from "../../api/uploads-presign";
 import { handleUploadComplete } from "../../api/uploads-complete";
+import { wrapHttpHandler } from "@shedflare/alchemy";
 
 function wrapHandler(fn: (req: Request) => Promise<Response>) {
-  return (ctx: { request: any }) =>
-    Effect.gen(function* () {
-      const webReq = yield* HttpServerRequest.toWeb(ctx.request);
-      const response = yield* Effect.tryPromise(() => fn(webReq));
-      return HttpServerResponse.fromWeb(response);
-    }).pipe(
-      Effect.catch((error: any) => {
-        const actual = error.cause ?? error;
-        if (actual instanceof Response) {
-          return Effect.succeed(HttpServerResponse.fromWeb(actual));
-        }
-        return Effect.succeed(
-          HttpServerResponse.fromWeb(new Response("Internal error", { status: 500 })),
-        );
-      }),
-    );
+  return wrapHttpHandler(fn);
 }
 
 export function createBootstrapGroup() {

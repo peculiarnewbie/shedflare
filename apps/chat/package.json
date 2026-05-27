@@ -20,6 +20,7 @@
   "dependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
     "@openauthjs/openauth": "^0.4.3",
+    "@shedflare/alchemy": "workspace:*",
     "@shedflare/auth-client": "workspace:*",
     "@shedflare/sync-protocol": "workspace:*",
     "@solidjs/meta": "^0.29.4",

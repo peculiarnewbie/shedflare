@@ -1,6 +1,4 @@
-import { Layer } from "effect";
-import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { HttpRouter } from "effect/unstable/http";
+import { createHttpApiWebHandler } from "@shedflare/alchemy";
 import { createClient } from "@openauthjs/openauth/client";
 import { decodeTokenResponse, setRuntimeEnv } from "#/runtime";
 import { chatApi } from "./definitions";
@@ -52,22 +50,16 @@ type RawEnv = {
 };
 
 export function createRouter(env: RawEnv) {
-  const implLayer = Layer.mergeAll(
+  const wh = createHttpApiWebHandler(chatApi, [
     createBootstrapGroup(),
     createModelsGroup(),
     createUploadsGroup(),
-  );
-
-  const combinedLayer = Layer.provide(
-    HttpApiBuilder.layer(chatApi as any) as any,
-    implLayer as any,
-  );
-  const wh = HttpRouter.toWebHandler(combinedLayer as any) as any;
+  ]);
 
   return {
     async fetch(request: Request): Promise<Response> {
       try {
-        const resolved: Record<string, unknown> = { ...(env as any) };
+        const resolved: Record<string, unknown> = { ...env };
         setRuntimeEnv(resolved);
 
         const url = new URL(request.url);

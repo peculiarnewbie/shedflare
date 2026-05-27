@@ -93,7 +93,18 @@ export function createSyncGroup(env: SyncSecretEnv) {
           }
 
           return { ok: true, syncedAt };
-        }),
+        }).pipe(
+          Effect.catch(() =>
+            Effect.succeed(
+              HttpServerResponse.fromWeb(
+                new Response(JSON.stringify({ error: "Sync failed" }), {
+                  status: 500,
+                  headers: { "content-type": "application/json" },
+                }),
+              ),
+            ),
+          ),
+        ),
       isRaw: false,
       uninterruptible: false,
     });

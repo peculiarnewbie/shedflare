@@ -136,7 +136,7 @@ importers:
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: ^1.0.0
-        version: 1.32.3(vite@8.0.10(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(workerd@1.20260415.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))
+        version: 1.32.3(vite@8.0.10(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(workerd@1.20260417.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))
       '@cloudflare/workers-types':
         specifier: ^4.20250401.0
         version: 4.20260415.1
@@ -158,6 +158,9 @@ importers:
       '@openauthjs/openauth':
         specifier: ^0.4.3
         version: 0.4.3(arctic@2.3.4)(hono@4.12.15)
+      '@shedflare/alchemy':
+        specifier: workspace:*
+        version: link:../../packages/shedflare-alchemy
       '@shedflare/auth-client':
         specifier: workspace:*
         version: link:../../packages/auth-client
@@ -277,6 +280,9 @@ importers:
 
   apps/money:
     dependencies:
+      '@shedflare/alchemy':
+        specifier: workspace:*
+        version: link:../../packages/shedflare-alchemy
       '@shedflare/auth-client':
         specifier: workspace:*
         version: link:../../packages/auth-client
@@ -6158,19 +6164,6 @@ snapshots:
       miniflare: 4.20260415.0
       unenv: 2.0.0-rc.24
       vite: '@voidzero-dev/vite-plus-core@0.1.20(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0)'
-      wrangler: 4.83.0(@cloudflare/workers-types@4.20260415.1)
-      ws: 8.18.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-      - workerd
-
-  '@cloudflare/vite-plugin@1.32.3(vite@8.0.10(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(workerd@1.20260415.1)(wrangler@4.83.0(@cloudflare/workers-types@4.20260415.1))':
-    dependencies:
-      '@cloudflare/unenv-preset': 2.16.0(unenv@2.0.0-rc.24)(workerd@1.20260415.1)
-      miniflare: 4.20260415.0
-      unenv: 2.0.0-rc.24
-      vite: 8.0.10(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0)
       wrangler: 4.83.0(@cloudflare/workers-types@4.20260415.1)
       ws: 8.18.0
     transitivePeerDependencies:

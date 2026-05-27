@@ -29,30 +29,42 @@ export async function runApiTrace<A>(input: {
     logger,
   });
 
-  await recorder.startTraceRun({
-    traceRunId: traceContext.traceRunId,
-    traceId: traceContext.traceId,
-    rootSpanId,
-    messageId: null,
-    threadId: null,
-    workspaceId: null,
-    modelId: null,
-    attrs: input.attrs ?? {},
-  });
-  await recorder.startSpan({
-    spanId: rootSpanId,
-    traceRunId: traceContext.traceRunId,
-    traceId: traceContext.traceId,
-    parentSpanId: null,
-    messageId: null,
-    name: `${input.scope}.request`,
-    kind: "root",
-    attrs: input.attrs ?? {},
-  });
+  // Cross-cutting concern: wrap the entire operation with span management
+  const traceEffectWithSpan = Effect.tryPromise(input.run).pipe(
+    Effect.andThen((result) => {
+      return Effect.gen(function* () {
+        yield* Effect.tryPromise(() =>
+          recorder.startTraceRun({
+            traceRunId: traceContext.traceRunId,
+            traceId: traceContext.traceId,
+            rootSpanId,
+            messageId: null,
+            threadId: null,
+            workspaceId: null,
+            modelId: null,
+            attrs: input.attrs ?? {},
+          }),
+        );
+        yield* Effect.tryPromise(() =>
+          recorder.startSpan({
+            spanId: rootSpanId,
+            traceRunId: traceContext.traceRunId,
+            traceId: traceContext.traceId,
+            parentSpanId: null,
+            messageId: null,
+            name: `${input.scope}.request`,
+            kind: "root",
+            attrs: input.attrs ?? {},
+          }),
+        );
+        return result;
+      });
+    }),
+  );
 
   try {
     const result = await runAppEffect(
-      traceEffect(input.name, input.kind, input.attrs ?? {}, Effect.tryPromise(input.run)),
+      traceEffect(input.name, input.kind, input.attrs ?? {}, traceEffectWithSpan),
       {
         env: input.env,
         traceRecorder: recorder,
