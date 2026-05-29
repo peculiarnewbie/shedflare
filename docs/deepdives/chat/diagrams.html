@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat App Architecture — Mermaid Diagrams</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem;
+    background: #fafafa; color: #1a1a1a;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1a1a1a; color: #e0e0e0; }
+  }
+  h1 { margin-bottom: 0.25em; }
+  .subtitle { margin-top: 0; opacity: 0.7; margin-bottom: 2rem; }
+  .diagram { margin: 2.5rem 0; }
+  .diagram h2 {
+    font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem;
+    padding-bottom: 0.25rem; border-bottom: 1px solid #ccc;
+  }
+  .diagram .desc { font-size: 0.9rem; opacity: 0.75; margin-bottom: 1rem; }
+  .mermaid { display: flex; justify-content: center; }
+  @media print {
+    .diagram { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Chat App Architecture</h1>
+<p class="subtitle">Mermaid diagrams of the full data flow &mdash; open offline, no server needed.</p>
+
+<div class="diagram">
+<h2>1. High-Level Architecture</h2>
+<div class="desc">Top-level deployment: Worker routes HTTP/S to REST endpoints and static assets; WebSocket upgrades hit the Durable Object which owns SQLite state.</div>
+<div class="mermaid">
+graph TB
+  subgraph Cloudflare["Cloudflare Workers"]
+    Worker["Worker<br/><small>worker.ts</small>"]
+    DO["Durable Object<br/><small>SyncEngineDO</small>"]
+    R2["R2 Bucket<br/><small>uploads</small>"]
+    Browser["Browser Rendering<br/><small>page extraction</small>"]
+
+    Worker -- "/api/sync/* → WS upgrade" --> DO
+    Worker -- "/api/uploads/*" --> R2
+    DO -- "streaming + tools" --> Browser
+  end
+
+  subgraph Client["Browser"]
+    SolidJS["SolidJS App<br/><small>app.tsx</small>"]
+    TanStackDB["TanStack DB<br/><small>11 collections</small>"]
+    WS["WebSocket<br/><small>ws-connection.ts</small>"]
+
+    SolidJS -- "reactive" --> TanStackDB
+    TanStackDB -- "sync" --> WS
+    WS -- "envelopes" --> SolidJS
+  end
+
+  Client -- "HTTP (REST)" --> Worker
+  Client -- "WebSocket (sync)" --> DO
+
+  subgraph Upstream["AI Providers"]
+    OpenAI["OpenAI-compatible API<br/><small>via opencode-go bridge</small>"]
+    Exa["Exa Search API"]
+  end
+
+  DO -- "chat completions" --> OpenAI
+  DO -- "web search" --> Exa
+</div>
+</div>
+
+<div class="diagram">
+<h2>2. Full Send-Message Flow</h2>
+<div class="desc">From pressing Enter to the assistant response streaming into the UI. This is the single most important flow in the app.</div>
+<div class="mermaid">
+sequenceDiagram
+  participant C as Composer (UI)
+  participant A as actions.ts
+  participant PO as pending-ops.ts
+  participant WS as WebSocket
+  participant DO as SyncEngineDO
+  participant CH as command-handlers.ts
+  participant ES as EventStore
+  participant SQL as SQLite (DO)
+  participant AT as assistant-turn.ts
+  participant SC as stream-consumer.ts
+  participant SA as sync-adapter.ts
+  participant DB as TanStack DB
+
+  C->>A: sendMessageAction(thread, text, modelId, ...)
+  A->>A: createMessage("user"), createMessage("assistant")
+  A->>DB: applyLocalInsert (optimistic)
+  A->>PO: dispatch("create_user_message", payload, {opId})
+  PO->>WS: JSON.stringify({type:"command", opId, ...})
+  WS->>DO: WebSocket message
+
+  DO->>DO: processChatCommand(opId, "create_user_message", payload)
+  DO->>DO: dedup check (getCommandAck)
+  DO->>DO: decodeCommand (Effect Schema validation)
+
+  DO->>CH: handleCreateUserMessage(opId, payload, ctx)
+  CH->>CH: normalizeThread, normalizeMessage ×2
+  CH->>ES: insertEvent("thread_upserted")
+  CH->>ES: insertEvent("message_upserted" ×2)
+  ES->>SQL: INSERT INTO events + INSERT OR REPLACE INTO threads/messages
+  SQL-->>ES: events with serverSeq
+  ES-->>CH: SyncServerEvent[]
+  CH-->>DO: {events, followUp: DeferredFollowUp}
+
+  DO->>SQL: INSERT INTO commands (ack)
+  DO->>WS: broadcast(ack) + broadcast(events)
+
+  WS->>SA: onmessage (envelopes)
+  SA->>SA: processEnvelopes()
+  SA->>DB: apply mutations (batched)
+
+  DO->>DO: saveTurnParams + setAlarm
+  DO->>AT: ctx.waitUntil(runAssistantTurn(...))
+
+  AT->>AT: setup TraceContext + TraceRecorder
+  AT->>SQL: load thread messages
+  AT->>AT: buildModelMessages (resolve attachments)
+  AT->>AT: create search/extract tools
+  AT->>Upstream: chat() → stream
+  Upstream-->>AT: AsyncIterable&lt;ExtendedStreamChunk&gt;
+  AT->>SC: consumeAssistantStream(stream, deps)
+
+  loop per chunk
+    SC->>ES: appendServerEvent("message_delta", {delta})
+    ES->>SQL: INSERT INTO events
+    ES->>SQL: UPDATE messages (append text, status=streaming)
+    ES-->>SC: SyncServerEvent
+    SC->>WS: broadcast(event)
+    WS->>SA: onmessage
+    SA->>DB: apply delta mutation
+    DB-->>C: reactive update (UI appends text)
+  end
+
+  SC->>ES: appendServerEvent("message_completed", {text, tokens, ...})
+  ES->>SQL: INSERT INTO events + UPDATE messages
+  ES-->>SC: SyncServerEvent
+  SC->>WS: broadcast(event)
+  WS->>SA: onmessage
+  SA->>DB: mark message completed
+  DB-->>C: UI shows completed response
+</div>
+</div>
+
+<div class="diagram">
+<h2>3. Command Processing Pipeline</h2>
+<div class="desc">Inside processChatCommand — the central command processor that every mutation goes through.</div>
+<div class="mermaid">
+flowchart TB
+  subgraph Input["Command Arrives"]
+    CMD["{opId, commandType, payload}"]
+  end
+
+  subgraph Pipeline["processChatCommand"]
+    DEDUP["Dedup<br/>getCommandAck(opId)"]
+    DEDUP_RESULT{"Found existing ack?"}
+    DEDUP_EXIT["Return existing ack (no-op)"]
+
+    VALIDATE["decodeCommand(commandType, payload)<br/>Effect Schema validation"]
+    VALIDATE_FAIL{"Valid?"}
+    VALIDATE_ERR["Throw error<br/>(caught by ws adapter)"]
+
+    TX["db.transaction()"]
+    HANDLER["Look up handler from chatHandlers Map<br/>Run handler(opId, payload, ctx)"]
+    HANDLER_RESULT["{events, followUp}"]
+    ACK["Insert ack into commands table"]
+    TX_RESULT["{ack, events, followUp}"]
+
+    BROADCAST["Broadcast ack + events<br/>to all WebSocket clients"]
+    FOLLOWUP{"has followUp?"}
+    SAVE_TURN["saveTurnParams()<br/>setAlarm()"]
+    WAIT_UNTIL["ctx.waitUntil(followUpPromise)"]
+    RUN_TURN["runAssistantTurn()"]
+    CLEAR_TURN["clearTurnParams()<br/>deleteAlarm()"]
+  end
+
+  CMD --> DEDUP
+  DEDUP --> DEDUP_RESULT
+  DEDUP_RESULT -- "yes" --> DEDUP_EXIT
+  DEDUP_RESULT -- "no" --> VALIDATE
+  VALIDATE --> VALIDATE_FAIL
+  VALIDATE_FAIL -- "no" --> VALIDATE_ERR
+  VALIDATE_FAIL -- "yes" --> TX
+  TX --> HANDLER
+  HANDLER --> HANDLER_RESULT
+  HANDLER_RESULT --> ACK
+  ACK --> TX_RESULT
+  TX_RESULT --> BROADCAST
+  BROADCAST --> FOLLOWUP
+  FOLLOWUP -- "yes (turn command)" --> SAVE_TURN
+  SAVE_TURN --> WAIT_UNTIL
+  WAIT_UNTIL --> RUN_TURN
+  RUN_TURN --> CLEAR_TURN
+  FOLLOWUP -- "no" --> EXIT["Done"]
+</div>
+</div>
+
+<div class="diagram">
+<h2>4. Event Sourcing: Write Path</h2>
+<div class="desc">How EventStore.insertEvent() writes to both the append-only event log and the materialized tables in a single SQLite transaction.</div>
+<div class="mermaid">
+flowchart LR
+  subgraph Handler["Command Handler"]
+    OP["handleCreateUserMessage()"]
+    EVENTS["[thread_upserted,<br/> message_upserted ×2,<br/> attachment_upserted ×N]"]
+  end
+
+  subgraph ES["EventStore"]
+    INSERT["insertEvent(opId, type, payload)"]
+    SYNC_ES["SyncEventStore (sync-protocol)"]
+    WRITE_EVENT["INSERT INTO events<br/>(event_id, type, payload_json, ...)"]
+    APPLY["applyEventToMaterializedState()"]
+    SWITCH{"eventType switch"}
+    MSG_UPS["message_upserted →<br/>INSERT OR REPLACE INTO messages"]
+    MSG_DELTA["message_delta →<br/>read + append + upsert"]
+    THREAD_UPS["thread_upserted →<br/>INSERT OR REPLACE INTO threads"]
+    SEARCH_REPL["search_runs_replaced →<br/>DELETE + INSERT ×N"]
+    ETC["... 15+ more cases"]
+  end
+
+  subgraph DB["SQLite (DO storage)"]
+    EVENTS_TABLE["events table<br/>append-only log"]
+    MATERIALIZED["materialized tables<br/>workspaces, threads,<br/>messages, attachments, ..."]
+  end
+
+  OP --> EVENTS
+  EVENTS --> INSERT
+  INSERT --> SYNC_ES
+
+  SYNC_ES --> WRITE_EVENT
+  SYNC_ES --> APPLY
+
+  WRITE_EVENT --> EVENTS_TABLE
+
+  APPLY --> SWITCH
+  SWITCH --> MSG_UPS
+  SWITCH --> MSG_DELTA
+  SWITCH --> THREAD_UPS
+  SWITCH --> SEARCH_REPL
+  SWITCH --> ETC
+
+  MSG_UPS --> MATERIALIZED
+  MSG_DELTA --> MATERIALIZED
+  THREAD_UPS --> MATERIALIZED
+  SEARCH_REPL --> MATERIALIZED
+  ETC --> MATERIALIZED
+</div>
+</div>
+
+<div class="diagram">
+<h2>5. Event Sourcing: Read Path (Snapshot)</h2>
+<div class="desc">When a client connects or a protocol mismatch occurs, the server builds and sends a full snapshot of all materialized tables.</div>
+<div class="mermaid">
+sequenceDiagram
+  participant Client as Browser Client
+  participant DO as SyncEngineDO
+  participant DA as DataAccess
+  participant SQL as SQLite
+
+  Client->>DO: WebSocket hello {protocolVersion, lastServerSeq}
+  DO->>DO: check protocol version
+
+  alt protocol mismatch
+    DO->>DO: protocolVersion !== SYNC_PROTOCOL_VERSION
+    DO->>DA: getSnapshot()
+    DA->>SQL: SELECT * FROM workspaces
+    DA->>SQL: SELECT * FROM threads
+    DA->>SQL: SELECT * FROM messages
+    DA->>SQL: SELECT * FROM message_parts
+    DA->>SQL: SELECT * FROM attachments
+    DA->>SQL: SELECT * FROM search_runs
+    DA->>SQL: SELECT * FROM search_results
+    DA->>SQL: SELECT * FROM extract_runs
+    DA->>SQL: SELECT * FROM trace_runs
+    DA->>SQL: SELECT * FROM trace_spans
+    SQL-->>DA: rows (inflated via inflateRow)
+    DA-->>DO: SyncSnapshot {serverSeq, tables}
+    DO->>Client: sync_reset {snapshot, protocolVersion}
+    Client->>Client: applySnapshot(tables)
+    Client->>Client: writeCachedSnapshot (IndexedDB)
+    Client->>Client: window.location.reload()
+  else normal connect
+    DO->>Client: hello_ack {protocolVersion, lastServerSeq}
+    Client->>Client: flushAll() — replay pending ops
+    DO->>Client: ack/replay events after lastServerSeq
+  end
+</div>
+</div>
+
+<div class="diagram">
+<h2>6. Client-Side State Management</h2>
+<div class="desc">How the browser manages state: TanStack DB collections, sync adapter, pending ops, offline cache, and optimistic updates.</div>
+<div class="mermaid">
+flowchart TB
+  subgraph Server["Server (DO)"]
+    EVENTS["events broadcast via WebSocket"]
+    SNAP["sync_reset snapshot"]
+  end
+
+  subgraph Network["WebSocket"]
+    WS["ws-connection.ts<br/>reconnect with backoff<br/>ping/pong keepalive"]
+  end
+
+  subgraph Sync["Sync Layer"]
+    SA["sync-adapter.ts<br/>processEnvelopes()"]
+    COALESCE["coalesceDeltas()<br/>merge consecutive message_delta"]
+    BATCH["batched writes<br/>(one tx per collection)"]
+    APPLY_EVENT["applyEvent()<br/>eventType → collection mutation"]
+    APPLY_SNAP["applySnapshot()<br/>truncate + insert all"]
+  end
+
+  subgraph State["Client State"]
+    COLLECTIONS["TanStack DB Collections<br/>workspaces, threads, messages,<br/>messageParts, attachments,<br/>searchRuns, results, extractRuns,<br/>traceRuns, traceSpans"]
+    ACTIONS["actions.ts<br/>sendMessageAction, retry,<br/>edit, fork, cancel"]
+    PENDING["pending-ops.ts<br/>localStorage queue<br/>replay on reconnect"]
+    DRAFT["draft-state.ts<br/>per-workspace composer<br/>localStorage"]
+    OFFLINE["offline-cache.ts<br/>IndexedDB snapshot<br/>page-load hydration"]
+    UI_STATE["ui-state.ts<br/>activeWorkspaceId<br/>activeThreadId<br/>localStorage"]
+    OPTIMISTIC["optimisticByOp Map<br/>rollback entries<br/>ack → confirm, reject → rollback"]
+  end
+
+  subgraph UI["SolidJS UI"]
+    MEMOS["createMemo chains<br/>derive view state"]
+    COMPOSER["Composer<br/>draft state + send"]
+    TIMELINE["Message Timeline<br/>sorted & filtered"]
+  end
+
+  EVENTS --> WS
+  SNAP --> WS
+  WS --> SA
+  SA --> COALESCE
+  COALESCE --> BATCH
+  BATCH --> APPLY_EVENT
+  SA --> APPLY_SNAP
+  APPLY_EVENT --> COLLECTIONS
+  APPLY_SNAP --> COLLECTIONS
+
+  COLLECTIONS --> MEMOS
+  MEMOS --> TIMELINE
+  COMPOSER --> ACTIONS
+  ACTIONS --> PENDING
+  PENDING --> WS
+  ACTIONS --> OPTIMISTIC
+  OPTIMISTIC --> COLLECTIONS
+  SA -- "ack → confirmOp" --> OPTIMISTIC
+  SA -- "reject → rollbackOp" --> OPTIMISTIC
+
+  OFFLINE -- "page load" --> COLLECTIONS
+  DRAFT -- "restore" --> COMPOSER
+  UI_STATE --> MEMOS
+</div>
+</div>
+
+<div class="diagram">
+<h2>7. Assistant Turn (Streaming)</h2>
+<div class="desc">How runAssistantTurn() orchestrates tool calls, streams the AI response, and broadcasts deltas back to the client.</div>
+<div class="mermaid">
+sequenceDiagram
+  participant DO as SyncEngineDO
+  participant AT as assistant-turn.ts
+  participant Rec as TraceRecorder
+  participant DA as DataAccess
+  participant Search as search.ts
+  participant Extract as extract.ts
+  participant Adapter as ChatCompletionsAdapter
+  participant TanStack as TanStack AI
+  participant Upstream as AI Provider
+  participant SC as stream-consumer.ts
+  participant ES as EventStore
+  participant WS as WebSocket
+
+  DO->>AT: runAssistantTurn(payload, ctx)
+  AT->>Rec: startTraceRun + startSpan (root)
+
+  AT->>DA: getThreadMessages()
+  DA-->>AT: Message[]
+  AT->>AT: buildModelMessages() — resolve attachments
+
+  AT->>Search: createExaSearchTool()
+  Search-->>AT: {tool, state, onSearchStateChange}
+  AT->>Extract: createBrowserExtractTool()
+  Extract-->>AT: {tool, state, onExtractStateChange}
+
+  AT->>AT: build system prompts (search instructions, date, extracts)
+
+  AT->>Adapter: createChatCompletionsAdapter({baseUrl, apiKey})
+  AT->>AT: getProviderModelOptions(modelId, reasoningLevel, ...)
+
+  AT->>TanStack: chat({adapter, messages, systemPrompts, tools, agentLoop, signal})
+  TanStack->>Upstream: HTTP POST with SSE
+  Upstream-->>TanStack: SSE stream (AG-UI format)
+  TanStack-->>AT: AsyncIterable&lt;ExtendedStreamChunk&gt;
+
+  AT->>SC: consumeAssistantStream(stream, deps)
+
+  loop per chunk
+    SC->>SC: process chunk type
+
+    alt TEXT_MESSAGE_CONTENT
+      SC->>SC: accumulate delta, flush at 96-char threshold
+      SC->>ES: appendServerEvent("message_delta", {messageId, delta})
+      ES-->>SC: SyncServerEvent
+      SC->>WS: broadcast(event)
+    else CUSTOM (reasoning)
+      SC->>SC: accumulate reasoning delta
+      SC->>ES: appendServerEvent("message_part_appended", {row})
+      ES-->>SC: SyncServerEvent
+      SC->>WS: broadcast(event)
+    else TOOL_CALL_START
+      SC->>Search: execute search tool
+      Search->>Exa: HTTP search API
+      Exa-->>Search: results
+      Search->>ES: search_runs_replaced + search_results_replaced
+      ES-->>SC: events
+      SC->>WS: broadcast(events)
+    else TOOL_CALL_START (extract)
+      SC->>Extract: execute extract tool
+      Extract->>Browser: Cloudflare Browser Rendering
+      Browser-->>Extract: page content
+      Extract->>ES: extract_runs_replaced
+      ES-->>SC: events
+      SC->>WS: broadcast(events)
+    else RUN_FINISHED
+      SC->>SC: flush final delta
+      SC->>ES: appendServerEvent("message_completed", {text, tokens, durationMs, ...})
+      ES-->>SC: SyncServerEvent
+      SC->>WS: broadcast(event)
+      SC-->>AT: StreamConsumerResult
+    else RUN_ERROR
+      SC->>ES: appendServerEvent("message_failed", {errorCode, errorMessage})
+      ES-->>SC: SyncServerEvent
+      SC->>WS: broadcast(event)
+    end
+  end
+
+  AT->>Rec: finishSpan (root) + finishTraceRun
+  AT-->>DO: return
+</div>
+</div>
+
+<div class="diagram">
+<h2>8. Retry vs Edit vs Fork</h2>
+<div class="desc">Three ways to create a new assistant response, each with a different data model.</div>
+<div class="mermaid">
+sequenceDiagram
+  participant U as User
+  participant A as actions.ts
+  participant DB as TanStack DB
+  participant WS as WebSocket
+  participant S as Server
+
+  Note over U,S: === RETRY ===
+  U->>A: retryMessageAction(thread, userMessage, ...)
+  A->>A: createMessage("assistant", status:"pending")
+  A->>DB: applyLocalInsert(newAssistant)
+  A->>WS: dispatch("retry_message", {userMessage.id, assistantMessage, ...})
+  WS->>S: command
+  S->>S: handler: upsert thread + insert assistant message
+  S->>S: runAssistantTurn (reuse existing user message)
+  S-->>WS: events (thread_upserted, message_upserted)
+  WS-->>DB: sync
+  Note over DB: Old assistant message stays,<br/>new one appears as child of same user message
+
+  Note over U,S: === EDIT ===
+  U->>A: editUserMessageAction(thread, sourceMessage, newText, ...)
+  A->>A: createMessage("user", sourceMessageId:source.id, status:"completed")
+  A->>A: createMessage("assistant", status:"pending")
+  A->>A: clone attachments
+  A->>DB: applyLocalInsert(newUser + newAssistant + clonedAttachments)
+  A->>WS: dispatch("edit_user_message", {sourceMessageId, userMessage, assistantMessage, attachments})
+  WS->>S: command
+  S->>S: handler: upsert thread + insert user+assistant+attachments
+  S->>S: runAssistantTurn
+  S-->>WS: events
+  WS-->>DB: sync
+  Note over DB: New branch created:<br/>original messages preserved,<br/>sourceMessageId links back
+
+  Note over U,S: === FORK ===
+  U->>A: forkThreadAction(sourceThreadId, sourceMessageId, workspaceId)
+  A->>A: walk message path to fork point
+  A->>A: create new thread (forkedFromThreadId, forkedFromMessageId)
+  A->>A: clone messages (sourceMessageId links) + clone attachments
+  A->>DB: applyLocalInsert(newThread + clonedMessages + clonedAttachments)
+  A->>WS: dispatch("fork_thread", {...})
+  WS->>S: command
+  S->>S: handler: validate source, insert thread+messages+attachments
+  S-->>WS: events
+  WS-->>DB: sync
+  Note over DB: Entirely new thread with<br/>copied history up to fork point
+</div>
+</div>
+
+<div class="diagram">
+<h2>9. Crash Recovery via Alarm</h2>
+<div class="desc">If the DO restarts mid-turn (eviction, migration), the alarm mechanism recovers interrupted assistant responses.</div>
+<div class="mermaid">
+sequenceDiagram
+  participant DO as SyncEngineDO (new instance)
+  participant SQL as SQLite
+  participant AT as assistant-turn.ts
+  participant WS as WebSocket
+
+  Note over DO: DO created after eviction/restart
+  DO->>SQL: initializeStorage() (DDL + protocol check)
+  DO->>DO: alarm() fires
+
+  DO->>SQL: loadAllTurnParams()
+  SQL-->>DO: Map&lt;messageId, SavedTurnParams&gt;
+
+  loop for each pending turn
+    DO->>DO: check activeTurnMessageIds
+    alt still active in this instance
+      DO->>DO: reschedule alarm
+    else stale (DO was restarted)
+      DO->>SQL: getMessage(staleMessageId)
+      alt message already completed/failed/gone
+        DO->>SQL: clearTurnParams(staleMessageId)
+      else still pending — needs recovery
+        DO->>DO: createMessage("assistant", new ID)
+        DO->>SQL: saveTurnParams(newMessageId)
+        DO->>SQL: insertEvent("message_failed", {staleMessageId, "interrupted"})
+        DO->>WS: broadcast(message_failed for stale message)
+        DO->>SQL: insertEvent("thread_upserted", {headMessageId: newMessageId})
+        DO->>WS: broadcast(thread_upserted)
+        DO->>SQL: insertEvent("message_upserted", {newMessage})
+        DO->>WS: broadcast(message_upserted for new message)
+        DO->>AT: runAssistantTurn(original params + new message)
+        AT-->>DO: turn completes
+        DO->>SQL: clearTurnParams + deleteAlarm()
+      end
+    end
+  end
+
+  Note over WS: Client sees: old message → "interrupted"<br/>new message appears → assistant starts responding
+</div>
+</div>
+
+<div class="diagram">
+<h2>10. Optimistic Update Lifecycle</h2>
+<div class="desc">The lifecycle of an optimistic update: from dispatch through ack/reject/rollback.</div>
+<div class="mermaid">
+stateDiagram-v2
+  [*] --> DISPATCHED: sendMessageAction()
+
+  DISPATCHED --> OPTIMISTIC_APPLIED: applyLocalInsert/Update (collections)
+  OPTIMISTIC_APPLIED --> AWAITING_ACK: dispatch via WebSocket
+  AWAITING_ACK --> REJECTED: server sends "reject"
+  AWAITING_ACK --> ACKNOWLEDGED: server sends "ack"
+
+  ACKNOWLEDGED --> [*]: confirmOp() — clean up tracking
+
+  REJECTED --> ROLLING_BACK: rollbackOp()
+  ROLLING_BACK --> [*]: restore previous state
+
+  state DISCONNECTED {
+    [*] --> PENDING_LOCAL: op saved to localStorage
+    PENDING_LOCAL --> REQUEUED: reconnect + flushAll()
+    REQUEUED --> AWAITING_ACK
+  }
+
+  AWAITING_ACK --> DISCONNECTED: WebSocket closes
+  DISCONNECTED --> AWAITING_ACK: reconnect + server dedup
+
+  note right of AWAITING_ACK
+    Server checks getCommandAck(opId)
+    Already committed → re-ack only
+    Not yet seen → process normally
+  end note
+</div>
+</div>
+
+<div class="diagram">
+<h2>11. WebSocket Protocol Envelopes</h2>
+<div class="desc">The message types exchanged between client and server over the sync WebSocket.</div>
+<div class="mermaid">
+sequenceDiagram
+  participant C as Client
+  participant S as Server (SyncEngineDO)
+
+  Note over C,S: === Connection ===
+  C->>S: hello {clientId, protocolVersion, lastServerSeq, unackedOpIds}
+  alt protocol mismatch
+    S->>C: sync_reset {reason:"protocol_mismatch", protocolVersion, snapshot}
+    C->>C: applySnapshot() + reload()
+  else normal
+    S->>C: hello_ack {protocolVersion, serverTime, lastServerSeq}
+    C->>C: flushAll() — replay unacked ops
+  end
+
+  Note over C,S: === Normal Operation ===
+  C->>S: command {opId, clientTs, commandType, payload}
+  S->>S: processChatCommand
+  S->>C: ack {opId, serverSeq, acceptedAt, commandType}
+  S->>C: event {serverSeq, eventId, eventType, payload}
+  S->>C: event {serverSeq, eventId, eventType, payload}
+  Note over S: ... more events
+
+  alt error
+    S->>C: reject {opId, reason, code, retriable}
+  end
+
+  Note over C,S: === Keepalive ===
+  C->>S: ping
+  S->>C: pong {at}
+
+  Note over C,S: === Reconnect ===
+  Note over C: WebSocket closes
+  C->>S: hello {lastServerSeq, unackedOpIds}
+  S->>C: ack (for committed ops)
+  S->>C: event ... (replayed events since lastServerSeq)
+</div>
+</div>
+
+<div class="diagram">
+<h2>12. Database Schema</h2>
+<div class="desc">All 14 SQLite tables and their relationships. Solid arrows are foreign-key-like relationships (SQLite enforces via application code, not FK constraints).</div>
+<div class="mermaid">
+erDiagram
+  metadata {
+    string key PK
+    string value
+  }
+
+  events {
+    int seq PK "auto-increment"
+    string event_id UK
+    string op_id
+    string type
+    string payload_json
+    string created_at
+  }
+
+  commands {
+    string op_id PK
+    string type
+    string status
+    string response_json
+    int acked_seq
+  }
+
+  workspaces {
+    string id PK
+    string name
+    string slug
+    string system_prompt
+    string default_model_id
+    string default_reasoning_level
+    bool default_search_mode
+    int default_search_limit
+    bool prefer_free_search
+    string created_at
+    string updated_at
+    string archived_at
+    int sort_key
+    bool optimistic
+    string op_id
+  }
+
+  account_settings {
+    string id PK
+    bool expand_reasoning_by_default
+    bool show_traces
+    string title_generation_model_id
+    string created_at
+    string updated_at
+    bool optimistic
+    string op_id
+  }
+
+  threads {
+    string id PK
+    string workspace_id FK
+    string title
+    bool pinned
+    string head_message_id
+    string model_id
+    string reasoning_level
+    bool search_enabled
+    int search_limit
+    string created_at
+    string updated_at
+    string last_message_at
+    string archived_at
+    string forked_from_thread_id
+    string forked_from_message_id
+    bool optimistic
+    string op_id
+  }
+
+  messages {
+    string id PK
+    string thread_id FK
+    string parent_message_id
+    string source_message_id
+    string role
+    string status
+    string model_id
+    string reasoning_level
+    string text
+    string created_at
+    string updated_at
+    string error_code
+    string error_message
+    bool search_enabled
+    int duration_ms
+    int ttft_ms
+    int prompt_tokens
+    int completion_tokens
+    bool optimistic
+    string op_id
+  }
+
+  message_parts {
+    string id PK
+    string message_id FK
+    int seq
+    string kind
+    string text
+    string json
+  }
+
+  attachments {
+    string id PK
+    string thread_id FK
+    string message_id FK
+    string object_key
+    string file_name
+    string mime_type
+    int size_bytes
+    string sha256
+    int width
+    int height
+    string status
+    string created_at
+    string updated_at
+    bool optimistic
+    string op_id
+  }
+
+  search_runs {
+    string id PK
+    string message_id FK
+    string query
+    string status
+    int step
+    int num_results
+    int result_count
+    string preview_text
+    string error_message
+    string mode
+    string created_at
+  }
+
+  search_results {
+    string id PK
+    string search_run_id FK
+    string message_id FK
+    string url
+    string title
+    string snippet
+    string published_at
+    string domain
+    int score
+  }
+
+  extract_runs {
+    string id PK
+    string message_id FK
+    string url
+    string status
+    int step
+    int char_count
+    int original_length
+    bool truncated
+    string error_message
+    string created_at
+  }
+
+  trace_runs {
+    string id PK
+    string message_id FK
+    string thread_id FK
+    string workspace_id FK
+    string trace_id
+    string root_span_id
+    string model_id
+    string status
+    string started_at
+    string ended_at
+    int duration_ms
+    string error_code
+    string error_message
+    string attrs_json
+  }
+
+  trace_spans {
+    string id PK
+    string trace_run_id FK
+    string trace_id
+    string parent_span_id
+    string message_id
+    string name
+    string kind
+    string status
+    string started_at
+    string ended_at
+    int duration_ms
+    string error_code
+    string error_message
+    string attrs_json
+    string events_json
+  }
+
+  pending_turns {
+    string message_id PK
+    string payload_json
+    string created_at
+  }
+
+  workspaces ||--o{ threads : "has"
+  threads ||--o{ messages : "contains"
+  messages ||--o{ message_parts : "has parts"
+  threads ||--o{ attachments : "has files"
+  messages ||--o{ attachments : "belongs to"
+  messages ||--o{ search_runs : "has searches"
+  search_runs ||--o{ search_results : "produces"
+  messages ||--o{ extract_runs : "has extracts"
+  messages ||--o{ trace_runs : "has traces"
+  trace_runs ||--o{ trace_spans : "contains"
+</div>
+</div>
+
+</body>
+</html>
