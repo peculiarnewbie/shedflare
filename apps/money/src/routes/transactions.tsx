@@ -67,7 +67,7 @@ export default function AllTransactionsPage() {
         setCategories(data.categories ?? []);
       }
     } catch {
-      // ignore
+      console.warn("[transactions] failed to load categories");
     }
   }
 
@@ -79,7 +79,7 @@ export default function AllTransactionsPage() {
         setTagList(data.tags ?? []);
       }
     } catch {
-      // ignore
+      console.warn("[transactions] failed to load tags");
     }
   }
 
@@ -95,7 +95,7 @@ export default function AllTransactionsPage() {
         setAccounts(map);
       }
     } catch {
-      // ignore
+      console.warn("[transactions] failed to load accounts");
     }
   }
 

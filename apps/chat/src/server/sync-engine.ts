@@ -188,6 +188,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     try {
       envelope = JSON.parse(text);
     } catch {
+      syncLog("ws_message_parse_error", { text: text.slice(0, 200) });
       return;
     }
 
@@ -212,6 +213,8 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
             true,
           );
           break;
+        default:
+          syncLog("ws_message_unknown_type", { type: envelope.type });
       }
     } catch (error) {
       syncLog("ws_message_error", {
@@ -378,7 +381,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         .then(() => {
           this.activeTurnMessageIds.delete(turnMessageId);
           this.clearTurnParams(turnMessageId);
-          void this.ctx.storage.deleteAlarm().catch(() => {});
+          void this.ctx.storage.deleteAlarm().catch(() => syncLog("alarm_delete_failed", { messageId: turnMessageId }));
           syncLog("turn_params_cleared", { messageId: turnMessageId });
           return undefined;
         })
@@ -539,7 +542,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       const refreshed = this.chatAccess.getMessage(newMessageId);
       if (refreshed && (refreshed.status === "completed" || refreshed.status === "failed")) {
         this.clearTurnParams(newMessageId);
-        void this.ctx.storage.deleteAlarm().catch(() => {});
+        void this.ctx.storage.deleteAlarm().catch(() => syncLog("alarm_delete_failed", { messageId: newMessageId }));
       }
     }
   }

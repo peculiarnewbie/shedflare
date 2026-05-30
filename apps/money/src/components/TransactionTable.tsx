@@ -156,7 +156,7 @@ export default function TransactionTable(props: TransactionTableProps) {
         }
       }
     } catch {
-      // ignore
+      console.warn("[TransactionTable] failed to fetch category suggestion");
     }
   }
 

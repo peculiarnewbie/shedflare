@@ -62,6 +62,7 @@ function conditionToSql(cond: FilterCondition): SQL | null {
     case "isbetween":
       return sql`${col} >= ${cond.value} AND ${col} <= ${cond.value2}`;
     default:
+      console.warn("[filters] unhandled filter operator", cond.op);
       return null;
   }
 }

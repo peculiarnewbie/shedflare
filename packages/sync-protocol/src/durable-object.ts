@@ -86,6 +86,7 @@ export abstract class SyncEngineDO<Env> {
     try {
       envelope = parseJson<SyncClientEnvelope>(text);
     } catch {
+      console.warn("[sync-protocol] Failed to parse WebSocket message envelope");
       return;
     }
 
@@ -265,7 +266,7 @@ export abstract class SyncEngineDO<Env> {
       try {
         socket.send(message);
       } catch {
-        // Socket may have closed; ignore
+        console.warn("[sync-protocol] Failed to send broadcast message to socket");
       }
     }
   }
@@ -273,7 +274,10 @@ export abstract class SyncEngineDO<Env> {
   // ─── Internal command ──────────────────────────────────────────
 
   private async handleInternalCommand(request: Request): Promise<Response> {
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const body = (await request.json().catch(() => {
+      console.warn("[sync-protocol] handleInternalCommand request.json() failed");
+      return null;
+    })) as Record<string, unknown> | null;
     if (!body || typeof body.opId !== "string" || typeof body.commandType !== "string") {
       return new Response("Invalid command body", { status: 400 });
     }

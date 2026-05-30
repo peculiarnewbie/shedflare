@@ -52,8 +52,8 @@ export function createDataGroup(env: Env) {
               const id = row.id ?? row.key ?? null;
               if (id) data[name][String(id)] = row;
             }
-          } catch {
-            // Skip tables that error
+          } catch (e) {
+            console.warn("[data] dump skipping table", name, e instanceof Error ? e.message : String(e));
           }
         }
 

@@ -252,6 +252,7 @@ export default function ReportsPage() {
       setFormCondFormat(Array.isArray(meta?.condFormat) ? meta.condFormat : []);
       setFormNumberFormat((meta?.numberFormat as string) ?? "");
     } catch {
+      console.warn("[reports] failed to parse report metadata");
       setFormColorScheme({
         income: "#4ade80",
         expense: "#f87171",
@@ -318,7 +319,7 @@ export default function ReportsPage() {
         _setCustomReportData((prev) => ({ ...prev, [reportId]: data }));
       }
     } catch {
-      /* ignore */
+      console.warn("[reports] failed to load custom report data");
     }
   }
 
@@ -457,7 +458,7 @@ export default function ReportsPage() {
       condFormat = meta?.condFormat;
       numberFormat = meta?.numberFormat;
     } catch {
-      /* ignore */
+      console.warn("[reports] failed to parse report metadata");
     }
 
     if (!result) {

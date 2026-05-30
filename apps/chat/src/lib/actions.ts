@@ -95,8 +95,8 @@ export function rollbackOp(opId: string) {
   for (const entry of entries) {
     try {
       entry.rollback();
-    } catch {
-      // The row may already have been replaced by server data.
+    } catch (e) {
+      console.warn("[actions] rollback failed for op", opId, e instanceof Error ? e.message : String(e));
     }
   }
   optimisticByOp.delete(opId);

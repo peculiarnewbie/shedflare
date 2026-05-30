@@ -88,8 +88,16 @@ export const WorkerSecretProvider = () =>
       const { accountId } = credentials;
       const existing = yield* Effect.tryPromise({
         try: () => listWorkerSecretNames(credentials, accountId, olds.workerName as string),
-        catch: () => [] as string[],
-      });
+        catch: (cause) => {
+          console.error("[WorkerSecret] read failed", cause instanceof Error ? cause.message : String(cause));
+          return cause instanceof Error ? cause : new Error("Failed to read worker secrets", { cause });
+        },
+      }).pipe(
+        Effect.match({
+          onSuccess: (names) => names,
+          onFailure: () => [] as string[],
+        }),
+      );
       if (!existing.includes(olds.binding)) return undefined;
       return { binding: olds.binding, present: true };
     }),

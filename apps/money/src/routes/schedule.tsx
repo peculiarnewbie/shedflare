@@ -66,6 +66,7 @@ export default function ScheduleDetailPage() {
       const parsed = JSON.parse(rules);
       return typeof parsed === "object" ? parsed : { type: parsed };
     } catch {
+      console.warn("[schedule] failed to parse recurrence config");
       return { type: "monthly" };
     }
   }

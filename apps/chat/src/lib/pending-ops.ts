@@ -16,6 +16,7 @@ function readJson<T>(key: string, fallback: T): T {
   try {
     return JSON.parse(raw) as T;
   } catch {
+    console.warn("[pending-ops] failed to parse localStorage value for", key);
     return fallback;
   }
 }

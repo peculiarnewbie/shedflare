@@ -7,6 +7,7 @@ export async function selectApps(): Promise<AppId[]> {
     try {
       return loadManifest(id);
     } catch {
+      console.warn(`[prompts] Failed to load manifest for ${id}`);
       return null;
     }
   });

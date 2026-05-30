@@ -25,6 +25,7 @@ export async function whoami(): Promise<WranglerUser | null> {
     const email = line.match(/['"]([^'"]+)['"]/)?.[1];
     return email ? { email } : null;
   } catch {
+    console.warn("[wrangler] Failed to check wrangler login status");
     return null;
   }
 }
@@ -118,9 +119,10 @@ export async function listSecrets(options?: {
     if (parsed.result?.secrets) {
       return parsed.result.secrets.map((s) => s.name);
     }
-  } catch {
-    // Fallback: try parsing table output (older wrangler versions)
-    try {
+    } catch {
+      console.warn("[wrangler] Failed to list secrets via JSON format, trying table format");
+      // Fallback: try parsing table output (older wrangler versions)
+      try {
       const result = await wrangler(["secret", "list"], options);
       const names: string[] = [];
       for (const line of result.stdout.split("\n")) {
@@ -132,6 +134,7 @@ export async function listSecrets(options?: {
       }
       return names;
     } catch {
+      console.warn("[wrangler] Failed to list secrets via table format");
       return [];
     }
   }

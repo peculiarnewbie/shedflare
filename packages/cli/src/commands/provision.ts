@@ -35,7 +35,7 @@ export async function provisionCommand(options: ProvisionOptions): Promise<void>
     try {
       manifests[id] = loadManifest(id);
     } catch {
-      // skip unregistered apps
+      console.warn(`[provision] Failed to load manifest for ${id}`);
     }
   }
 

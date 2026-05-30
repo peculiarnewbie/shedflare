@@ -456,6 +456,10 @@ export class EventStore {
         this.replaceSnapshot(payload.snapshot);
         break;
       }
+      default: {
+        const _exhaustive: never = eventType;
+        console.warn("[event-store] unhandled event type", _exhaustive);
+      }
     }
   }
 }

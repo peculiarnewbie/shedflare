@@ -327,6 +327,7 @@ export default function Dashboard() {
       const data = (await res.json()) as any;
       return (data.widgets ?? []) as WidgetDef[];
     } catch {
+      console.warn("[dashboard] failed to load widgets");
       return [];
     }
   }
@@ -859,6 +860,7 @@ export default function Dashboard() {
     try {
       return JSON.parse(s);
     } catch {
+      console.warn("[dashboard] failed to parse JSON");
       return null;
     }
   }
@@ -923,6 +925,7 @@ export default function Dashboard() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
+      console.warn("[dashboard] failed to export dashboard");
       /* ignore */
     }
   }

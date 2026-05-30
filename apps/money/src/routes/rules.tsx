@@ -207,6 +207,7 @@ function ruleMatchesTransaction(
     }
     return conditions.every((cond) => matchCondition(cond, tx));
   } catch {
+    console.warn("[rules] failed to parse conditions JSON");
     return false;
   }
 }
@@ -260,7 +261,7 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
       )
       .join(", ");
   } catch {
-    /* use raw string */
+    console.warn("[rules] failed to parse conditions for display");
   }
 
   return (
@@ -363,6 +364,7 @@ function summarizeActions(actionsJson: string): string {
       })
       .join("; ");
   } catch {
+    console.warn("[rules] failed to parse actions JSON");
     return actionsJson?.slice(0, 80) ?? "";
   }
 }
@@ -455,7 +457,7 @@ function RuleForm(props: { onClose: () => void }) {
         setSchedules(data.schedules ?? []);
       }
     } catch {
-      /* ignore */
+      console.warn("[rules] failed to load schedules");
     }
   }
 

@@ -366,7 +366,7 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
         const body = (await response.clone().json()) as unknown;
         if (isRecord(body) && typeof body.error === "string") errorCode = body.error;
       } catch {
-        // Token endpoint bodies are best-effort diagnostics only.
+        console.warn("[auth] failed to parse token endpoint error body");
       }
       logger.log(
         "auth_refresh_token_exchange_failed",
@@ -382,7 +382,8 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
       refresh: json.refresh_token,
       expiresIn: json.expires_in,
     };
-  } catch {
+  } catch (error) {
+    console.warn("[auth] refresh token exchange failed", error instanceof Error ? error.message : String(error));
     return null;
   } finally {
     clearTimeout(timer);
@@ -559,6 +560,7 @@ function parseEnvCapabilityOverrides(
   try {
     envOverrideCache = JSON.parse(raw) as Record<string, ModelCapabilitySource>;
   } catch {
+    console.warn("[env] failed to parse OPENCODE_GO_MODEL_CAPABILITIES", raw.slice(0, 200));
     envOverrideCache = {};
   }
   return envOverrideCache;
@@ -1086,6 +1088,7 @@ export function normalizeExtractUrl(input: string): URL | null {
     if (!url.hostname) return null;
     return url;
   } catch {
+    console.warn("[url] failed to parse", withScheme);
     return null;
   }
 }
@@ -1143,25 +1146,26 @@ function extractMarkdownInPage(): string {
       } else if (child.nodeType === Node.ELEMENT_NODE) {
         const el = child as Element;
         const tag = el.tagName.toLowerCase();
-        if (tag === "a") {
-          const href = (el as HTMLAnchorElement).href?.trim();
-          const label = renderInline(el).trim();
-          out += href && label && href !== label ? `[${label}](${href})` : label;
-        } else if (tag === "code") {
-          out += `\`${renderInline(el)}\``;
-        } else if (tag === "strong" || tag === "b") {
-          out += `**${renderInline(el)}**`;
-        } else if (tag === "em" || tag === "i") {
-          out += `*${renderInline(el)}*`;
-        } else if (tag === "br") {
-          out += "\n";
-        } else {
-          out += renderInline(el);
-        }
+        const renderer = INLINE_RENDERERS[tag];
+        out += renderer ? renderer(el, renderInline) : renderInline(el);
       }
     }
     return out;
   }
+
+  const INLINE_RENDERERS: Record<string, (el: Element, render: typeof renderInline) => string> = {
+    a: (el, render) => {
+      const href = (el as HTMLAnchorElement).href?.trim();
+      const label = render(el).trim();
+      return href && label && href !== label ? `[${label}](${href})` : label;
+    },
+    code: (el, render) => `\`${render(el)}\``,
+    b: (el, render) => `**${render(el)}**`,
+    strong: (el, render) => `**${render(el)}**`,
+    i: (el, render) => `*${render(el)}*`,
+    em: (el, render) => `*${render(el)}*`,
+    br: () => "\n",
+  };
   function walk(element: Element) {
     const tag = element.tagName.toLowerCase();
     if (tag === "pre") {
@@ -1365,8 +1369,7 @@ export async function cloudflareBrowserMarkdown(
         try {
           await browser.close();
         } catch {
-          // Closing a browser that's already gone is fine — session expired
-          // or the worker is shutting down.
+          console.warn("[browser] close failed (expected during shutdown)");
         }
       }
     }

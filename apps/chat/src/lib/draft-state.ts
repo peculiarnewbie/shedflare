@@ -50,6 +50,7 @@ function readJson<T>(key: string, fallback: T): T {
   try {
     return JSON.parse(raw) as T;
   } catch {
+    console.warn("[draft-state] failed to parse localStorage value for", key);
     return fallback;
   }
 }

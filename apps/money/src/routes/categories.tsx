@@ -336,6 +336,7 @@ export default function CategoriesPage() {
     try {
       return JSON.parse(goalDef) as GoalConfig;
     } catch {
+      console.warn("[categories] failed to parse goal definition");
       return null;
     }
   }

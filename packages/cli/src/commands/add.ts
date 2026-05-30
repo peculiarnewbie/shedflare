@@ -118,7 +118,7 @@ export async function addCommand(options: AddOptions): Promise<void> {
     try {
       manifests[id] = loadManifest(id);
     } catch {
-      // skip unregistered apps
+      console.warn(`[add] Failed to load manifest for ${id}`);
     }
   }
 

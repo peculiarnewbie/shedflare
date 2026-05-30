@@ -87,33 +87,22 @@ function coalesceDeltas(envelopes: EventEnvelope[]): EventEnvelope[] {
 // Helpers to push data through the sync writer (server-authoritative data)
 // ---------------------------------------------------------------------------
 
+const COLLECTION_MAP: Record<string, { get(key: string): unknown }> = {
+  workspaces,
+  accountSettings,
+  threads,
+  messages,
+  messageParts,
+  attachments,
+  searchRuns,
+  searchResults,
+  extractRuns,
+  traceRuns,
+  traceSpans,
+};
+
 function hasRow(collectionId: string, key: string) {
-  switch (collectionId) {
-    case "workspaces":
-      return Boolean(workspaces.get(key));
-    case "accountSettings":
-      return Boolean(accountSettings.get(key));
-    case "threads":
-      return Boolean(threads.get(key));
-    case "messages":
-      return Boolean(messages.get(key));
-    case "messageParts":
-      return Boolean(messageParts.get(key));
-    case "attachments":
-      return Boolean(attachments.get(key));
-    case "searchRuns":
-      return Boolean(searchRuns.get(key));
-    case "searchResults":
-      return Boolean(searchResults.get(key));
-    case "extractRuns":
-      return Boolean(extractRuns.get(key));
-    case "traceRuns":
-      return Boolean(traceRuns.get(key));
-    case "traceSpans":
-      return Boolean(traceSpans.get(key));
-    default:
-      return false;
-  }
+  return Boolean(COLLECTION_MAP[collectionId]?.get(key));
 }
 
 // ---------------------------------------------------------------------------

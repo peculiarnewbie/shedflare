@@ -102,7 +102,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
     try {
       manifests[id] = loadManifest(id);
     } catch {
-      // skip unregistered apps
+      console.warn(`[init] Failed to load manifest for ${id}`);
     }
   }
 

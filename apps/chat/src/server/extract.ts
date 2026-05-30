@@ -37,6 +37,52 @@ type ExtractToolResult =
       hint: string;
     };
 
+const RENDER_ERROR_CLASSIFICATIONS: Record<
+  string,
+  {
+    reason: Exclude<
+      (ExtractToolResult & { ok: false })["reason"],
+      "invalid_url" | "duplicate_url" | "max_extracts_reached"
+    >;
+    hint: string;
+  }
+> = {
+  not_configured: {
+    reason: "not_configured",
+    hint: "The extract tool is not configured in this deployment. Answer without extracting.",
+  },
+  timeout: {
+    reason: "extract_timeout",
+    hint: "The page took too long to render. Try one different URL, or answer with what you have from the search results.",
+  },
+  rate_limited: {
+    reason: "extract_rate_limited",
+    hint: "Rate limited by Browser Rendering. Do not retry; answer with existing context.",
+  },
+  auth: {
+    reason: "extract_auth",
+    hint: "Browser Rendering credentials rejected. Do not retry; answer without extracting.",
+  },
+  network: {
+    reason: "extract_network",
+    hint: "Transient network error. You may try one different URL.",
+  },
+  http: {
+    reason: "extract_http",
+    hint: "The target page returned an error status. Try a different URL, or answer with existing context.",
+  },
+  empty: {
+    reason: "extract_empty",
+    hint: "The page rendered to empty content. Try a different URL or fall back to search snippets.",
+  },
+  invalid_url: {
+    reason: "extract_http",
+    hint: "The URL is malformed. Pass a full http(s) URL.",
+  },
+};
+
+const RENDER_ERROR_UNKNOWN_HINT = "Unknown Browser Rendering error. Do not retry more than once.";
+
 function classifyRenderError(error: unknown): {
   reason: Exclude<
     (ExtractToolResult & { ok: false })["reason"],
@@ -46,62 +92,15 @@ function classifyRenderError(error: unknown): {
   hint: string;
 } {
   if (error instanceof BrowserRenderError) {
-    switch (error.reason) {
-      case "not_configured":
-        return {
-          reason: "not_configured",
-          message: error.message,
-          hint: "The extract tool is not configured in this deployment. Answer without extracting.",
-        };
-      case "timeout":
-        return {
-          reason: "extract_timeout",
-          message: error.message,
-          hint: "The page took too long to render. Try one different URL, or answer with what you have from the search results.",
-        };
-      case "rate_limited":
-        return {
-          reason: "extract_rate_limited",
-          message: error.message,
-          hint: "Rate limited by Browser Rendering. Do not retry; answer with existing context.",
-        };
-      case "auth":
-        return {
-          reason: "extract_auth",
-          message: error.message,
-          hint: "Browser Rendering credentials rejected. Do not retry; answer without extracting.",
-        };
-      case "network":
-        return {
-          reason: "extract_network",
-          message: error.message,
-          hint: "Transient network error. You may try one different URL.",
-        };
-      case "http":
-        return {
-          reason: "extract_http",
-          message: error.message,
-          hint: "The target page returned an error status. Try a different URL, or answer with existing context.",
-        };
-      case "empty":
-        return {
-          reason: "extract_empty",
-          message: error.message,
-          hint: "The page rendered to empty content. Try a different URL or fall back to search snippets.",
-        };
-      case "invalid_url":
-        return {
-          reason: "extract_http",
-          message: error.message,
-          hint: "The URL is malformed. Pass a full http(s) URL.",
-        };
-      default:
-        return {
-          reason: "extract_unknown",
-          message: error.message,
-          hint: "Unknown Browser Rendering error. Do not retry more than once.",
-        };
-    }
+    const classification = RENDER_ERROR_CLASSIFICATIONS[error.reason] ?? {
+      reason: "extract_unknown" as const,
+      hint: RENDER_ERROR_UNKNOWN_HINT,
+    };
+    return {
+      reason: classification.reason,
+      message: error.message,
+      hint: classification.hint,
+    };
   }
   const message = error instanceof Error ? error.message : String(error);
   return {

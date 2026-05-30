@@ -18,7 +18,7 @@ export type AssistantErrorExplanation = {
   providerMessage: string;
 };
 
-type AssistantErrorFacts = {
+export type AssistantErrorFacts = {
   rawMessage: string;
   providerMessage: string;
   statusCode: number | null;
@@ -61,7 +61,7 @@ function tryParseJsonCandidate(value: string) {
     try {
       return JSON.parse(candidate) as unknown;
     } catch {
-      // Try the next candidate.
+      console.warn("[assistant-errors] failed to parse candidate JSON", candidate.slice(0, 200));
     }
   }
 
@@ -175,136 +175,101 @@ export function extractAssistantErrorFacts(
   };
 }
 
+const ERROR_EXPLANATIONS: Array<{
+  check: (f: AssistantErrorFacts) => boolean;
+  summary: string;
+  explanation: string;
+  retryable: boolean;
+  category: AssistantErrorCategory;
+}> = [
+  {
+    check: (f) => f.isCancelled,
+    summary: "The request was cancelled.",
+    explanation: "The response stopped before the assistant finished generating an answer.",
+    retryable: true,
+    category: "cancelled",
+  },
+  {
+    check: (f) => f.isImageNotSupported,
+    summary: "This model doesn't support image uploads.",
+    explanation:
+      "The selected model received one or more images as part of the request, but this model only accepts text. Remove the images from the message or switch to a model that supports vision.",
+    retryable: false,
+    category: "invalid_request",
+  },
+  {
+    check: (f) => f.isReasoningIncompatible,
+    summary: "This model's thinking mode is incompatible with tool use in this flow.",
+    explanation:
+      "The provider rejected the tool continuation because it said the required hidden reasoning replay field was missing. This app does attempt to preserve that field now, so this usually points to a provider incompatibility or an unsupported response shape.",
+    retryable: false,
+    category: "invalid_request",
+  },
+  {
+    check: (f) => f.isTimeout,
+    summary: "The model backend took too long to respond.",
+    explanation:
+      "The upstream model service did not finish the request within the timeout window. Retrying usually works if the provider is healthy.",
+    retryable: true,
+    category: "timeout",
+  },
+  {
+    check: (f) => f.isInvalidRequest,
+    summary: "The model provider rejected this request.",
+    explanation:
+      "The provider reported that this request shape or option combination was invalid, unsupported, or incomplete.",
+    retryable: false,
+    category: "invalid_request",
+  },
+  {
+    check: (f) => f.isAuth,
+    summary: "The provider account could not complete this request.",
+    explanation:
+      "The configured provider credentials, billing state, or account permissions blocked the request.",
+    retryable: false,
+    category: "auth",
+  },
+  {
+    check: (f) => f.isRateLimited,
+    summary: "The provider is rate limited or temporarily overloaded.",
+    explanation:
+      "The upstream model service could not accept this request right now. Waiting and retrying usually resolves it.",
+    retryable: true,
+    category: "rate_limited",
+  },
+  {
+    check: (f) => f.isSearchFailure,
+    summary: "A tool or search step failed before the response could complete.",
+    explanation:
+      "The assistant started a tool-enabled turn, but one of the external steps failed and the response could not finish cleanly.",
+    retryable: true,
+    category: "search",
+  },
+  {
+    check: (f) => f.isNetworkFailure,
+    summary: "The app could not reach the model provider.",
+    explanation:
+      "The request appears to have failed in transit or during upstream connectivity, before the provider returned a normal response.",
+    retryable: true,
+    category: "network",
+  },
+];
+
 export function explainAssistantError(input: {
   errorCode: string | null | undefined;
   errorMessage: string | null | undefined;
 }): AssistantErrorExplanation {
   const facts = extractAssistantErrorFacts(input.errorCode, input.errorMessage);
-
-  if (facts.isCancelled) {
-    return {
-      title: "Response failed",
-      summary: "The request was cancelled.",
-      explanation: "The response stopped before the assistant finished generating an answer.",
-      details: facts.rawMessage,
-      retryable: true,
-      category: "cancelled",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isImageNotSupported) {
-    return {
-      title: "Response failed",
-      summary: "This model doesn't support image uploads.",
-      explanation:
-        "The selected model received one or more images as part of the request, but this model only accepts text. Remove the images from the message or switch to a model that supports vision.",
-      details: facts.rawMessage,
-      retryable: false,
-      category: "invalid_request",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isReasoningIncompatible) {
-    return {
-      title: "Response failed",
-      summary: "This model's thinking mode is incompatible with tool use in this flow.",
-      explanation:
-        "The provider rejected the tool continuation because it said the required hidden reasoning replay field was missing. This app does attempt to preserve that field now, so this usually points to a provider incompatibility or an unsupported response shape.",
-      details: facts.rawMessage,
-      retryable: false,
-      category: "invalid_request",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isTimeout) {
-    return {
-      title: "Response failed",
-      summary: "The model backend took too long to respond.",
-      explanation:
-        "The upstream model service did not finish the request within the timeout window. Retrying usually works if the provider is healthy.",
-      details: facts.rawMessage,
-      retryable: true,
-      category: "timeout",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isInvalidRequest) {
-    return {
-      title: "Response failed",
-      summary: "The model provider rejected this request.",
-      explanation:
-        "The provider reported that this request shape or option combination was invalid, unsupported, or incomplete.",
-      details: facts.rawMessage,
-      retryable: false,
-      category: "invalid_request",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isAuth) {
-    return {
-      title: "Response failed",
-      summary: "The provider account could not complete this request.",
-      explanation:
-        "The configured provider credentials, billing state, or account permissions blocked the request.",
-      details: facts.rawMessage,
-      retryable: false,
-      category: "auth",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isRateLimited) {
-    return {
-      title: "Response failed",
-      summary: "The provider is rate limited or temporarily overloaded.",
-      explanation:
-        "The upstream model service could not accept this request right now. Waiting and retrying usually resolves it.",
-      details: facts.rawMessage,
-      retryable: true,
-      category: "rate_limited",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isSearchFailure) {
-    return {
-      title: "Response failed",
-      summary: "A tool or search step failed before the response could complete.",
-      explanation:
-        "The assistant started a tool-enabled turn, but one of the external steps failed and the response could not finish cleanly.",
-      details: facts.rawMessage,
-      retryable: true,
-      category: "search",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
-  if (facts.isNetworkFailure) {
-    return {
-      title: "Response failed",
-      summary: "The app could not reach the model provider.",
-      explanation:
-        "The request appears to have failed in transit or during upstream connectivity, before the provider returned a normal response.",
-      details: facts.rawMessage,
-      retryable: true,
-      category: "network",
-      providerMessage: facts.providerMessage,
-    };
-  }
-
+  const match = ERROR_EXPLANATIONS.find((e) => e.check(facts));
   return {
     title: "Response failed",
-    summary: "The assistant ran into an unexpected error.",
+    summary: match?.summary ?? "The assistant ran into an unexpected error.",
     explanation:
+      match?.explanation ??
       "The request failed for a reason the app could not classify more specifically. The technical details below preserve the provider response for debugging.",
     details: facts.rawMessage,
-    retryable: true,
-    category: "unknown",
+    retryable: match?.retryable ?? true,
+    category: match?.category ?? "unknown",
     providerMessage: facts.providerMessage,
   };
 }

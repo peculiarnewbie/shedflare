@@ -305,6 +305,7 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
+    console.warn("[completions] parseJsonObject failed for", value.slice(0, 200));
     return null;
   }
 }
@@ -643,6 +644,7 @@ export class ChatCompletionsAdapter {
           try {
             parsed = JSON.parse(payloadJson);
           } catch {
+            console.warn("[completions] SSE parse failed for payload", (payloadJson as string).slice(0, 200));
             continue;
           }
 
@@ -783,6 +785,7 @@ export class ChatCompletionsAdapter {
           try {
             parsedInput = JSON.parse(toolCall.args);
           } catch {
+            console.warn("[completions] tool call args parse failed for", toolCall.toolName, (toolCall.args as string).slice(0, 200));
             parsedInput = undefined;
           }
         }

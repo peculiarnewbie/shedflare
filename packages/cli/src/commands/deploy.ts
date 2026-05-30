@@ -59,7 +59,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     try {
       manifests[id] = loadManifest(id);
     } catch {
-      // skip unregistered apps
+      console.warn(`[deploy] Failed to load manifest for ${id}`);
     }
   }
 

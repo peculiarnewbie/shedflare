@@ -82,6 +82,7 @@ export default function AccountPage() {
           }
         }
       } catch {
+        console.warn("[account] failed to fetch category suggestion");
         setAutoCategory(null);
       }
     }, 300);
@@ -158,7 +159,7 @@ export default function AccountPage() {
         setCategories(data.categories ?? []);
       }
     } catch {
-      // ignore
+      console.warn("[account] failed to load categories");
     }
   }
 
@@ -170,7 +171,7 @@ export default function AccountPage() {
         setTagList(data.tags ?? []);
       }
     } catch {
-      // ignore
+      console.warn("[account] failed to load tags");
     }
   }
 

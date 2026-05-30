@@ -69,6 +69,7 @@ export async function runDoctor(): Promise<CheckResult[]> {
         message: `apps/${appId}/shedflare.app.jsonc found`,
       });
     } catch {
+      console.warn(`[validate] Failed to load manifest for ${appId}`);
       checks.push({
         name: `manifest-${appId}`,
         status: "fail",
@@ -86,6 +87,7 @@ export async function runDoctor(): Promise<CheckResult[]> {
         status: "pass",
       });
     } catch {
+      console.warn(`[validate] Failed to load base config for ${appId}`);
       checks.push({
         name: `base-${appId}`,
         status: "fail",
@@ -172,6 +174,7 @@ export async function checkDrift(
         });
       }
     } catch {
+      console.warn(`[validate] Failed to compute drift for ${appId}`);
       diffs.push({ appId, expected: "(error computing)", actual: "(error reading)" });
     }
   }
@@ -200,7 +203,7 @@ async function getMissingSecrets(config: import("./config.js").ShedflareConfig):
         requireSecrets.push(appId);
       }
     } catch {
-      // skip
+      console.warn(`[validate] Failed to check missing secrets for ${appId}`);
     }
   }
 

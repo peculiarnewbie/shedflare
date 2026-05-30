@@ -22,6 +22,7 @@ function readJson<T>(key: string, fallback: T): T {
   try {
     return JSON.parse(raw) as T;
   } catch {
+    console.warn("[ws] failed to parse localStorage value for", key);
     return fallback;
   }
 }
@@ -137,7 +138,7 @@ function connect() {
       const envelope = decodeSyncServerEnvelope(JSON.parse(String(data)));
       if (envelope) enqueueEnvelope(envelope);
     } catch {
-      // Ignore malformed sync frames; reconnect/hello will recover state.
+      console.warn("[ws] malformed sync frame dropped");
     }
   });
 
@@ -158,7 +159,9 @@ function scheduleReconnect() {
   if (reconnectTimer) window.clearTimeout(reconnectTimer);
   const delay = Math.min(10_000, 500 * 2 ** reconnectAttempt++);
   reconnectTimer = window.setTimeout(() => {
-    void refreshAuthSession().finally(() => connect());
+    void refreshAuthSession().finally(() => connect()).catch(() => {
+      console.warn("[ws] refreshAuthSession failed, connecting anyway");
+    });
   }, delay);
 }
 

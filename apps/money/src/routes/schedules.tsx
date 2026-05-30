@@ -75,6 +75,7 @@ export default function SchedulesPage() {
       const parsed = JSON.parse(rules);
       return typeof parsed === "object" ? parsed : { type: parsed };
     } catch {
+      console.warn("[schedules] failed to parse recurrence config");
       return { type: rules || "monthly" };
     }
   }
@@ -221,6 +222,7 @@ function ScheduleForm(props: {
       const parsed = JSON.parse(rules);
       return typeof parsed === "object" ? parsed : { type: parsed };
     } catch {
+      console.warn("[schedules] failed to parse recurrence config");
       return { type: rules || "monthly" };
     }
   }

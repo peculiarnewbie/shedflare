@@ -39,7 +39,7 @@ async function runGenerate(config_: ShedflareConfig, appFilter?: string): Promis
     try {
       manifests[id] = loadManifest(id);
     } catch {
-      // skip unregistered apps
+      console.warn(`[configure] Failed to load manifest for ${id}`);
     }
   }
 

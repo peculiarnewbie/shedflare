@@ -18,7 +18,7 @@ export function loadSettings() {
       }
       setSettingsMap(map);
     })
-    .catch(() => {});
+    .catch(() => { console.warn("[settings-store] failed to load settings"); });
 }
 
 export function getSetting(key: string, fallback: string): string {

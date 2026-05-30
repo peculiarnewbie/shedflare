@@ -59,7 +59,8 @@ export async function readCachedSnapshot(): Promise<CachedSnapshot | null> {
       };
       request.onerror = () => reject(request.error);
     });
-  } catch {
+  } catch (e) {
+    console.warn("[offline-cache] read failed", e instanceof Error ? e.message : String(e));
     return null;
   }
 }
@@ -74,8 +75,8 @@ export async function writeCachedSnapshot(tables: SyncTables, lastServerSeq: num
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-  } catch {
-    // IndexedDB is best-effort; don't let cache failures break sync
+  } catch (e) {
+    console.warn("[offline-cache] write failed", e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -89,7 +90,7 @@ export async function clearCachedSnapshot() {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-  } catch {
-    // Best-effort
+  } catch (e) {
+    console.warn("[offline-cache] clear failed", e instanceof Error ? e.message : String(e));
   }
 }
