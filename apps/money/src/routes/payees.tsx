@@ -3,6 +3,7 @@
  */
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { PageState } from "../components/PageState";
 
 export default function PayeesPage() {
@@ -20,13 +21,8 @@ export default function PayeesPage() {
   async function loadPayees() {
     setError(null);
     try {
-      const res = await fetch("/api/payees");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setPayees(data.payees ?? []);
-      } else {
-        setError(`Failed to load (${res.status})`);
-      }
+      const data = await api.payees();
+      setPayees([...data.payees]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load payees");
     } finally {

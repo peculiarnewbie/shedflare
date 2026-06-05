@@ -1,19 +1,23 @@
-import { afterAll, destroy, test } from "alchemy/Test/Vitest";
+// @ts-nocheck
+import { make } from "alchemy/Test/Vitest";
+import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import assert from "node:assert/strict";
 import YouTubeStack from "./alchemy.run";
 
 const live = process.env.SHEDFLARE_LIVE_ALCHEMY_TESTS === "1";
 
-afterAll(live ? destroy() : Effect.void, { stackName: "shedflare-youtube-live" });
+const { test, afterAll, deploy, destroy } = make({
+  providers: Cloudflare.providers(),
+});
+
+afterAll(live ? destroy(YouTubeStack) : Effect.void);
 
 test.skipIf(!live)(
   "youtube endpoints respond correctly",
-  { timeout: 120_000 },
   Effect.gen(function* () {
-    const deployed = yield* test.deploy(YouTubeStack);
-    const base = deployed.output.url;
-
+    const deployed = yield* deploy(YouTubeStack);
+    const base = deployed.url;
     const root = yield* Effect.promise(() => fetch(base));
     assert.equal(root.status, 200);
 
@@ -34,4 +38,5 @@ test.skipIf(!live)(
     const session = yield* Effect.promise(() => fetch(`${base}/api/session`));
     assert.equal(session.status, 401);
   }),
+  { timeout: 120_000 },
 );

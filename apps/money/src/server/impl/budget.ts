@@ -1,29 +1,68 @@
+import { eq, sql } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { moneyApi } from "../definitions";
+import { moneyApi, budgetGroup as group } from "../definitions";
 import { createDb } from "../d1-access";
-import { handleApiRequest } from "../api-handlers";
-import { wrapHandler } from "./wrap-handler";
+import { wrapHandler, validatedJson } from "./wrap-handler";
+import { BudgetOverviewResponseSchema, MonthBudgetResponseSchema } from "../../domain/schemas";
+import * as s from "../../db/schema";
+import { computeMonthBudget } from "../budget-engine";
 
 type Env = { MONEY_DB: D1Database };
 
 export function createBudgetGroup(env: Env) {
-  const endpoints = (moneyApi as any).groups["budget"].endpoints;
+  const endpoints = group.endpoints;
   return (HttpApiBuilder.group as any)(moneyApi, "budget", (handlers: any) => {
-    const handler = wrapHandler(async (req: Request): Promise<Response> => {
-      const url = new URL(req.url);
-      const db = createDb(env.MONEY_DB);
-      return (
-        (await handleApiRequest(url, req.method, db)) ?? new Response("Not found", { status: 404 })
-      );
+    handlers.handlers.set("overview", {
+      endpoint: endpoints["overview"],
+      handler: wrapHandler(async (): Promise<Response> => {
+        const db = createDb(env.MONEY_DB);
+        const netWorthRow = await db.get<{ total: number }>(
+          sql`SELECT COALESCE(SUM(balance), 0) AS total
+           FROM (SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
+           FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id
+           WHERE a.closed = 0 GROUP BY a.id)`,
+        );
+        const onBudgetRow = await db.get<{ total: number }>(
+          sql`SELECT COALESCE(SUM(balance), 0) AS total
+           FROM (SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
+           FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id
+           WHERE a.offbudget = 0 AND a.closed = 0 GROUP BY a.id)`,
+        );
+        const accountCount = await db.$count(s.accounts, eq(s.accounts.closed, false));
+        const now = new Date();
+        const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+        const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+        const incomeRow = await db.get<{ total: number }>(
+          sql`SELECT COALESCE(SUM(t.amount), 0) as total FROM transactions t
+           JOIN categories c ON t.category_id = c.id
+           WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 1 AND t.is_child = 0`,
+        );
+        const expenseRow = await db.get<{ total: number }>(
+          sql`SELECT COALESCE(SUM(t.amount), 0) as total FROM transactions t
+           JOIN categories c ON t.category_id = c.id
+           WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 0 AND t.is_child = 0`,
+        );
+        return validatedJson(BudgetOverviewResponseSchema, {
+          netWorth: netWorthRow?.total ?? 0, onBudget: onBudgetRow?.total ?? 0,
+          accountCount: accountCount ?? 0, income: incomeRow?.total ?? 0, expense: expenseRow?.total ?? 0,
+        });
+      }),
+      isRaw: true,
+      uninterruptible: false,
     });
-    for (const name of Object.keys(endpoints)) {
-      handlers.handlers.set(name, {
-        endpoint: endpoints[name],
-        handler,
-        isRaw: true,
-        uninterruptible: false,
-      });
-    }
+
+    handlers.handlers.set("month", {
+      endpoint: endpoints["month"],
+      handler: wrapHandler(async (req: Request): Promise<Response> => {
+        const db = createDb(env.MONEY_DB);
+        const month = parseInt(new URL(req.url).pathname.match(/\/api\/budget\/(\d{6})$/)?.[1] ?? "0");
+        const result = await computeMonthBudget(db, month);
+        return validatedJson(MonthBudgetResponseSchema, result ?? { categories: [], toBudget: 0, buffered: 0, month });
+      }),
+      isRaw: true,
+      uninterruptible: false,
+    });
+
     return handlers;
   });
 }

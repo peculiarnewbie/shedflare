@@ -1,7 +1,7 @@
 import { createHttpApiWebHandler } from "@shedflare/alchemy";
 import { createHttpApiAuth } from "@shedflare/auth-client/http-api";
 import { driveApi } from "./definitions";
-import { createFileHandlersGroup } from "./impl/files";
+import { createFileHandlersGroup, listPublicFiles, servePublicFile } from "./impl/files";
 import { createTagsGroup } from "./impl/tags";
 import type { AuthEnv } from "@shedflare/auth-client/consumer";
 
@@ -26,14 +26,28 @@ export function createRouter(env: Env) {
       const method = request.method;
 
       try {
-        if (pathname === "/api/auth/login" && method === "GET") return auth.loginRedirect();
+        if (pathname === "/api/auth/login" && method === "GET") return await auth.loginRedirect();
         if (pathname === "/api/auth/callback" && method === "GET")
-          return auth.handleCallback(request);
+          return await auth.handleCallback(request);
         if (pathname === "/api/auth/logout" && method === "POST") return auth.logout();
-        if (pathname === "/api/session" && method === "GET") return auth.sessionEndpoint(request);
+        if (pathname === "/api/session" && method === "GET")
+          return await auth.sessionEndpoint(request);
+
+        if (pathname === "/api/public/files" && method === "GET") {
+          return await listPublicFiles(env, request);
+        }
+
+        const publicFileMatch = pathname.match(/^\/public\/files\/([^/]+)\/(preview|download)$/);
+        if (publicFileMatch && method === "GET") {
+          return await servePublicFile(
+            env,
+            decodeURIComponent(publicFileMatch[1]),
+            publicFileMatch[2] === "download" ? "download" : "inline",
+          );
+        }
 
         if (pathname.startsWith("/api/")) {
-          return wh.handler(request);
+          return await wh.handler(request);
         }
 
         const assetResponse = await env.ASSETS.fetch(request);

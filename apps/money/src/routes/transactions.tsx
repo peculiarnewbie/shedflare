@@ -3,6 +3,7 @@ import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import type { TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
 
@@ -44,14 +45,8 @@ export default function AllTransactionsPage() {
     setError(null);
     try {
       const fId = filterId();
-      const filterParam = fId ? `?filter=${encodeURIComponent(fId)}` : "";
-      const txRes = await fetch(`/api/transactions${filterParam}`);
-      if (txRes.ok) {
-        const data = (await txRes.json()) as any;
-        setTransactions(data.transactions ?? []);
-      } else {
-        setError(`Failed to load (${txRes.status})`);
-      }
+      const data = await api.transactions(fId ?? undefined);
+      setTransactions([...data.transactions] as any);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load transactions");
     } finally {
@@ -61,11 +56,8 @@ export default function AllTransactionsPage() {
 
   async function loadCategories() {
     try {
-      const res = await fetch("/api/categories");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setCategories(data.categories ?? []);
-      }
+      const data = await api.categories();
+      setCategories([...data.categories]);
     } catch {
       console.warn("[transactions] failed to load categories");
     }
@@ -73,11 +65,8 @@ export default function AllTransactionsPage() {
 
   async function loadTags() {
     try {
-      const res = await fetch("/api/tags");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setTagList(data.tags ?? []);
-      }
+      const data = await api.tags();
+      setTagList([...data.tags]);
     } catch {
       console.warn("[transactions] failed to load tags");
     }
@@ -85,15 +74,12 @@ export default function AllTransactionsPage() {
 
   async function loadAccounts() {
     try {
-      const res = await fetch("/api/accounts");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        const map: Record<string, string> = {};
-        for (const a of data.accounts ?? []) {
-          map[a.id] = a.name;
-        }
-        setAccounts(map);
+      const data = await api.accounts();
+      const map: Record<string, string> = {};
+      for (const a of data.accounts) {
+        map[a.id] = a.name;
       }
+      setAccounts(map);
     } catch {
       console.warn("[transactions] failed to load accounts");
     }

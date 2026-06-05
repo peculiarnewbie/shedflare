@@ -11,7 +11,6 @@ export function dispatch(
   options?: { opId?: string; undoInfo?: any },
 ): { opId: string; promise: Promise<void> } {
   const opId = options?.opId ?? `op_${crypto.randomUUID().slice(0, 8)}`;
-  // ignore undoInfo for now — undo is simplified in D1 migration
   const promise = execute(commandType, payload).then((result) => {
     if (!result.ok) throw new Error(result.error);
   });

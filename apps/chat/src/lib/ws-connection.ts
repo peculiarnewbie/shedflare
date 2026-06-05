@@ -12,8 +12,8 @@ import * as pendingOps from "./pending-ops";
 // Persistent client identity & sync cursor
 // ---------------------------------------------------------------------------
 
-const CLIENT_ID_KEY = "b3.clientId";
-const LAST_SERVER_SEQ_KEY = "b3.lastServerSeq";
+const CLIENT_ID_KEY = "shedflare.clientId";
+const LAST_SERVER_SEQ_KEY = "shedflare.lastServerSeq";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;
@@ -159,9 +159,11 @@ function scheduleReconnect() {
   if (reconnectTimer) window.clearTimeout(reconnectTimer);
   const delay = Math.min(10_000, 500 * 2 ** reconnectAttempt++);
   reconnectTimer = window.setTimeout(() => {
-    void refreshAuthSession().finally(() => connect()).catch(() => {
-      console.warn("[ws] refreshAuthSession failed, connecting anyway");
-    });
+    void refreshAuthSession()
+      .finally(() => connect())
+      .catch(() => {
+        console.warn("[ws] refreshAuthSession failed, connecting anyway");
+      });
   }, delay);
 }
 

@@ -23,14 +23,14 @@ export function createRouter(env: Env) {
       const method = request.method;
 
       try {
-        if (pathname === "/api/auth/login" && method === "GET") return auth.loginRedirect();
+        if (pathname === "/api/auth/login" && method === "GET") return await auth.loginRedirect();
         if (pathname === "/api/auth/callback" && method === "GET")
-          return auth.handleCallback(request);
+          return await auth.handleCallback(request);
         if (pathname === "/api/auth/logout" && method === "POST") return auth.logout();
-        if (pathname === "/api/session" && method === "GET") return auth.sessionEndpoint(request);
+        if (pathname === "/api/session" && method === "GET") return await auth.sessionEndpoint(request);
 
         if (pathname.startsWith("/api/")) {
-          return wh.handler(request);
+          return await wh.handler(request);
         }
 
         const assetResponse = await env.ASSETS.fetch(request);

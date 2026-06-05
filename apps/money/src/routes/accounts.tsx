@@ -4,6 +4,7 @@
 import { createSignal, createMemo, For, Show, createEffect, onCleanup } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { settingsCollection } from "../lib/collections";
@@ -48,13 +49,8 @@ export default function AccountsPage() {
   async function loadAccounts() {
     setError(null);
     try {
-      const res = await fetch("/api/accounts");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setAccounts(data.accounts ?? []);
-      } else {
-        setError(`Failed to load (${res.status})`);
-      }
+      const data = await api.accounts();
+      setAccounts([...data.accounts]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load accounts");
     } finally {

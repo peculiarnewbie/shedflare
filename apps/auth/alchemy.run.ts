@@ -24,10 +24,8 @@ export const AuthStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
-      bindings: {
-        OPENAUTH_STORAGE: storage,
-      },
       env: {
+        OPENAUTH_STORAGE: storage,
         APP_PUBLIC_URL: config.url,
         GOOGLE_CLIENT_ID: requireVar(config, "GOOGLE_CLIENT_ID"),
         OWNER_EMAIL: config.ownerEmail,

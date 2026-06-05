@@ -13,7 +13,6 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@distilled.cloud/cloudflare": "^0.21.3",
     "alchemy": "catalog:",
     "effect": "catalog:",
     "jsonc-parser": "catalog:"

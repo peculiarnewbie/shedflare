@@ -7,6 +7,7 @@ const FileSchema = Schema.Struct({
   mimeType: Schema.String,
   size: Schema.Number,
   description: Schema.String,
+  isPublic: Schema.Boolean,
   createdAt: Schema.String,
   updatedAt: Schema.String,
   tags: Schema.Array(Schema.String),

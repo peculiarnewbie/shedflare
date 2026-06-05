@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Index, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
-import { fetchApi } from "../lib/api";
+import { api } from "../lib/api";
 
 interface CmdResult {
   id: string;
@@ -68,16 +68,10 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   createEffect(() => {
     if (props.open) {
       setQuery("");
-      void fetchApi<{ accounts: any[] }>("/api/accounts").then((d) =>
-        setAccounts(d.accounts ?? []),
-      );
-      void fetchApi<{ payees: any[] }>("/api/payees").then((d) => setPayees(d.payees ?? []));
-      void fetchApi<{ categories: any[] }>("/api/categories").then((d) =>
-        setCategories(d.categories ?? []),
-      );
-      void fetchApi<{ schedules: any[] }>("/api/schedules").then((d) =>
-        setSchedules(d.schedules ?? []),
-      );
+      void api.accounts().then((d) => setAccounts([...d.accounts]));
+      void api.payees().then((d) => setPayees([...d.payees]));
+      void api.categories().then((d) => setCategories([...d.categories]));
+      void api.schedules().then((d) => setSchedules([...d.schedules]));
     }
   });
 

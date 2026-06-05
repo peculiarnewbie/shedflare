@@ -22,6 +22,9 @@ function DriveShell() {
         </div>
         <Show when={ctx.userEmail()}>
           <div class="top-bar-owner">
+            <a class="btn top-bar-signout" href="/public">
+              Public files
+            </a>
             <span class="top-bar-email">{ctx.userEmail()}</span>
             <form method="post" action="/api/auth/logout">
               <button class="btn top-bar-signout">Sign out</button>

@@ -1,5 +1,6 @@
 import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { usePrivacyMode } from "../lib/privacy";
 import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
@@ -111,45 +112,34 @@ export default function CategoriesPage() {
   async function loadData() {
     setError(null);
     try {
-      const [categoriesRes, groupsRes, goalProgressRes] = await Promise.all([
-        fetch("/api/categories"),
-        fetch("/api/category-groups"),
-        fetch("/api/categories/goal-progress"),
+      const [categoriesData, groupsData, goalProgressData] = await Promise.all([
+        api.categories(),
+        api.categoryGroups(),
+        api.goalProgress(),
       ]);
-      if (categoriesRes.ok) {
-        const data = (await categoriesRes.json()) as any;
-        const cats: Category[] = (data.categories ?? []).map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          groupId: c.group_id ?? null,
-          groupName: c.group_name ?? null,
-          isIncome: Boolean(c.is_income),
-          sortOrder: c.sort_order ?? 0,
-          goalDef: c.goal_def ?? null,
-          hidden: Boolean(c.hidden),
-        }));
-        setCategories(cats);
-      } else {
-        setError(`Failed to load categories (${categoriesRes.status})`);
-      }
+      const cats: Category[] = (categoriesData.categories ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        groupId: c.groupId ?? null,
+        groupName: c.group_name ?? null,
+        isIncome: Boolean(c.isIncome),
+        sortOrder: c.sortOrder ?? 0,
+        goalDef: c.goalDef ?? null,
+        hidden: Boolean(c.hidden),
+      }));
+      setCategories(cats);
 
-      if (groupsRes.ok) {
-        const data = (await groupsRes.json()) as any;
-        setGroups(
-          (data.groups ?? []).map((g: any) => ({
-            id: g.id,
-            name: g.name,
-            isIncome: Boolean(g.isIncome),
-            sortOrder: g.sortOrder ?? 0,
-            hidden: Boolean(g.hidden),
-          })),
-        );
-      }
+      setGroups(
+        (groupsData.groups ?? []).map((g) => ({
+          id: g.id,
+          name: g.name,
+          isIncome: Boolean(g.isIncome),
+          sortOrder: g.sortOrder ?? 0,
+          hidden: Boolean(g.hidden),
+        })),
+      );
 
-      if (goalProgressRes.ok) {
-        const data = (await goalProgressRes.json()) as any;
-        setGoalProgress(data.progress ?? []);
-      }
+      setGoalProgress([...goalProgressData.progress]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load categories");
     } finally {

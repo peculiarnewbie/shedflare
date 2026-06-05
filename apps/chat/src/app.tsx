@@ -8,7 +8,7 @@ import Forbidden from "./routes/forbidden";
 export default function App() {
   return (
     <MetaProvider>
-      <Title>b3 chat</Title>
+      <Title>shedflare chat</Title>
       <ErrorBoundary
         fallback={(error) => (
           <div
@@ -24,7 +24,7 @@ export default function App() {
               background: "var(--bg-page)",
             }}
           >
-            <h1 style={{ color: "var(--text-primary)" }}>b3 chat</h1>
+            <h1 style={{ color: "var(--text-primary)" }}>shedflare chat</h1>
             <p>Something went wrong. Reload to try again.</p>
             <pre
               style={{

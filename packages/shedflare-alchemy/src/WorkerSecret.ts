@@ -89,8 +89,13 @@ export const WorkerSecretProvider = () =>
       const existing = yield* Effect.tryPromise({
         try: () => listWorkerSecretNames(credentials, accountId, olds.workerName as string),
         catch: (cause) => {
-          console.error("[WorkerSecret] read failed", cause instanceof Error ? cause.message : String(cause));
-          return cause instanceof Error ? cause : new Error("Failed to read worker secrets", { cause });
+          console.error(
+            "[WorkerSecret] read failed",
+            cause instanceof Error ? cause.message : String(cause),
+          );
+          return cause instanceof Error
+            ? cause
+            : new Error("Failed to read worker secrets", { cause });
         },
       }).pipe(
         Effect.match({

@@ -1,0 +1,13 @@
+{
+  "name": "@shedflare/observability",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@shedflare/alchemy": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^0.1.8",
+    "@cloudflare/workers-types": "^4.20260415.1",
+    "wrangler": "^4.15.1"
+  }
+}

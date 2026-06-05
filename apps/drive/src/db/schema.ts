@@ -9,11 +9,13 @@ export const files = sqliteTable(
     mimeType: text("mime_type").notNull(),
     size: integer("size").notNull(),
     description: text("description"),
+    isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     index("idx_files_created_at").on(table.createdAt),
+    index("idx_files_is_public_created_at").on(table.isPublic, table.createdAt),
     index("idx_files_name").on(table.name),
   ],
 );

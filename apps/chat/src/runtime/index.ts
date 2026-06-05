@@ -383,7 +383,10 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
       expiresIn: json.expires_in,
     };
   } catch (error) {
-    console.warn("[auth] refresh token exchange failed", error instanceof Error ? error.message : String(error));
+    console.warn(
+      "[auth] refresh token exchange failed",
+      error instanceof Error ? error.message : String(error),
+    );
     return null;
   } finally {
     clearTimeout(timer);

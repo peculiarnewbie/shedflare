@@ -4,6 +4,7 @@ export type DriveFile = {
   mimeType: string;
   size: number;
   description: string;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
   tags: string[];

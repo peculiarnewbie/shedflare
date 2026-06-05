@@ -4,6 +4,7 @@
 import { createSignal, Show, createEffect } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
@@ -37,23 +38,18 @@ export default function ScheduleDetailPage() {
   async function loadSchedule() {
     setError(null);
     try {
-      const res = await fetch(`/api/schedules/${params.id}`);
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        const s = data.schedule;
-        setSchedule(s);
-        setName(s.name ?? "");
-        setAmount(s.amount ? fmt().formatCentsInput(s.amount) : "");
-        const config = parseConfig(s.recurrenceRules);
-        setRecurrence(config.type ?? "monthly");
-        setSkipWeekend(config.skipWeekend ?? false);
-        setWeekendSolveMode(config.weekendSolveMode ?? "after");
-        setEndMode(config.endMode ?? "never");
-        setEndOccurrences(config.endOccurrences ?? 10);
-        setEndDate(config.endDate ?? "");
-      } else {
-        setError(`Failed to load (${res.status})`);
-      }
+      const data = await api.schedule(params.id);
+      const s = data.schedule;
+      setSchedule(s);
+      setName(s.name ?? "");
+      setAmount(s.amount ? fmt().formatCentsInput(s.amount) : "");
+      const config = parseConfig(s.recurrenceRules);
+      setRecurrence(config.type ?? "monthly");
+      setSkipWeekend(config.skipWeekend ?? false);
+      setWeekendSolveMode(config.weekendSolveMode ?? "after");
+      setEndMode(config.endMode ?? "never");
+      setEndOccurrences(config.endOccurrences ?? 10);
+      setEndDate(config.endDate ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load schedule");
     } finally {

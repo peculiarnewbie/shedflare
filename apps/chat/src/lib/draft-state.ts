@@ -40,8 +40,8 @@ type PersistedDraftChatState = Omit<DraftChatState, "attachments"> & {
 };
 type DraftAttachmentCleanup = Pick<DraftAttachmentChip, "localId" | "attachmentId" | "previewUrl">;
 
-const DRAFTS_KEY = "b3.workspaceDrafts";
-const VIEWS_KEY = "b3.workspaceDraftViews";
+const DRAFTS_KEY = "shedflare.workspaceDrafts";
+const VIEWS_KEY = "shedflare.workspaceDraftViews";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;

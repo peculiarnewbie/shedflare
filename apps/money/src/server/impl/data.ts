@@ -1,5 +1,5 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { moneyApi } from "../definitions";
+import { moneyApi, dataGroup as group } from "../definitions";
 import { createDb } from "../d1-access";
 import { wrapHandler } from "./wrap-handler";
 
@@ -13,7 +13,7 @@ function json(data: unknown, status = 200) {
 }
 
 export function createDataGroup(env: Env) {
-  const endpoints = (moneyApi as any).groups["data"].endpoints;
+  const endpoints = group.endpoints;
   return (HttpApiBuilder.group as any)(moneyApi, "data", (handlers: any) => {
     handlers.handlers.set("dump", {
       endpoint: endpoints["dump"],
@@ -53,7 +53,11 @@ export function createDataGroup(env: Env) {
               if (id) data[name][String(id)] = row;
             }
           } catch (e) {
-            console.warn("[data] dump skipping table", name, e instanceof Error ? e.message : String(e));
+            console.warn(
+              "[data] dump skipping table",
+              name,
+              e instanceof Error ? e.message : String(e),
+            );
           }
         }
 

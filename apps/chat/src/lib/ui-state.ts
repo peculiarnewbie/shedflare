@@ -21,9 +21,12 @@ function createPersistedSignal(key: string, fallback = "") {
   return [value, set] as const;
 }
 
-export const [activeWorkspaceId, setActiveWorkspaceId] =
-  createPersistedSignal("b3.activeWorkspaceId");
-export const [activeThreadId, setActiveThreadId] = createPersistedSignal("b3.activeThreadId");
+export const [activeWorkspaceId, setActiveWorkspaceId] = createPersistedSignal(
+  "shedflare.activeWorkspaceId",
+);
+export const [activeThreadId, setActiveThreadId] = createPersistedSignal(
+  "shedflare.activeThreadId",
+);
 
 // ---------------------------------------------------------------------------
 // Selection validation

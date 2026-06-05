@@ -2,6 +2,7 @@ import { createSignal, createEffect, For, Show } from "solid-js";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { useCurrency, formatCentsValue, type NumberFormat } from "../lib/currency";
 import { PageState } from "../components/PageState";
 
@@ -124,50 +125,35 @@ export default function ReportsPage() {
     try {
       switch (report) {
         case "net-worth": {
-          const res = await fetch("/api/reports/net-worth");
-          if (res.ok) {
-            const data = ((await res.json()) as any).points ?? [];
-            setNetWorthData(data as TimeSeriesPoint[]);
-          }
+          const data = await api.reports.netWorth();
+          setNetWorthData(data.points as TimeSeriesPoint[]);
           break;
         }
         case "cash-flow": {
-          const res = await fetch("/api/reports/cash-flow");
-          if (res.ok) {
-            const data = ((await res.json()) as any).months ?? [];
-            const groups: BarGroup[] = data.map((m: any) => ({
-              category: m.month,
-              values: [
-                { label: "Income", value: m.income ?? 0, color: "var(--positive)" },
-                { label: "Expenses", value: m.expense ?? 0, color: "var(--negative)" },
-              ],
-            }));
-            setCashFlowData(groups);
-          }
+          const data = await api.reports.cashFlow();
+          const groups: BarGroup[] = data.months.map((m) => ({
+            category: m.month,
+            values: [
+              { label: "Income", value: m.income ?? 0, color: "var(--positive)" },
+              { label: "Expenses", value: m.expense ?? 0, color: "var(--negative)" },
+            ],
+          }));
+          setCashFlowData(groups);
           break;
         }
         case "spending": {
-          const res = await fetch("/api/reports/spending");
-          if (res.ok) {
-            const data = ((await res.json()) as any).categories ?? [];
-            setSpendingData(data as PieSlice[]);
-          }
+          const data = await api.reports.spending();
+          setSpendingData([...data.categories] as PieSlice[]);
           break;
         }
         case "budget-analysis": {
-          const res = await fetch("/api/reports/budget-analysis");
-          if (res.ok) {
-            const data = ((await res.json()) as any).categories ?? [];
-            setBudgetData(data as BudgetPair[]);
-          }
+          const data = await api.reports.budgetAnalysis();
+          setBudgetData(data.categories as BudgetPair[]);
           break;
         }
         case "age-of-money": {
-          const res = await fetch("/api/reports/age-of-money");
-          if (res.ok) {
-            const data = (await res.json()) as any;
-            setAgeOfMoney(data.days ?? null);
-          }
+          const data = await api.reports.ageOfMoney();
+          setAgeOfMoney(data.days ?? null);
           break;
         }
       }
@@ -193,13 +179,8 @@ export default function ReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/reports/custom");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setCustomReports(data.reports ?? []);
-      } else {
-        setError(`Failed to load custom reports (${res.status})`);
-      }
+      const data = await api.reports.custom();
+      setCustomReports([...data.reports] as any);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load custom reports");
     } finally {
@@ -313,11 +294,8 @@ export default function ReportsPage() {
 
   async function loadCustomReportData(reportId: string) {
     try {
-      const res = await fetch(`/api/reports/custom/${reportId}/execute`);
-      if (res.ok) {
-        const data = await res.json();
-        _setCustomReportData((prev) => ({ ...prev, [reportId]: data }));
-      }
+      const data = await api.reports.customExecute(reportId);
+      _setCustomReportData((prev) => ({ ...prev, [reportId]: data }));
     } catch {
       console.warn("[reports] failed to load custom report data");
     }

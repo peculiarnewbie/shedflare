@@ -1,7 +1,7 @@
 import { createSignal, createMemo, createEffect, For, Show, onCleanup } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
-import { execute } from "../lib/api";
+import { execute, api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import TransactionFilters from "../components/TransactionFilters";
@@ -69,17 +69,12 @@ export default function AccountPage() {
 
     payeeDebounceTimer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/payees/category-suggestions?payee=${encodeURIComponent(value.trim())}`,
-        );
-        if (res.ok) {
-          const data = (await res.json()) as any;
-          const suggestions = data.suggestions ?? [];
-          if (suggestions.length > 0) {
-            setAutoCategory(suggestions[0].category_id);
-          } else {
-            setAutoCategory(null);
-          }
+        const data = await api.payeeSuggestions(value.trim());
+        const suggestions = data.suggestions ?? [];
+        if (suggestions.length > 0) {
+          setAutoCategory(suggestions[0].category_id);
+        } else {
+          setAutoCategory(null);
         }
       } catch {
         console.warn("[account] failed to fetch category suggestion");
@@ -119,31 +114,24 @@ export default function AccountPage() {
     setError(null);
     try {
       const fId = filterId();
-      const filterParam = fId ? `?filter=${encodeURIComponent(fId)}` : "";
-      const [acctRes, txRes, txTagsRes] = await Promise.all([
-        fetch(`/api/accounts/${accountId}`),
-        fetch(`/api/accounts/${accountId}/transactions${filterParam}`),
-        fetch(`/api/accounts/${accountId}/tags`),
+      const [acctData, txData, txTagsData] = await Promise.all([
+        api.account(accountId),
+        api.accountTransactions(accountId, fId ?? undefined),
+        api.accountTags(accountId),
       ]);
-      if (acctRes.ok) setAccount((await acctRes.json()) as any);
-      if (txRes.ok) {
-        const data = (await txRes.json()) as any;
-        setTransactions(data.transactions ?? []);
+      setAccount(acctData);
+      setTransactions([...txData.transactions] as any);
+      const map: Record<string, { id: string; name: string; color: string | null }[]> = {};
+      for (const tt of txTagsData.transactionTags ?? []) {
+        const txId = tt.transactionId;
+        if (!map[txId]) map[txId] = [];
+        map[txId].push({
+          id: tt.tagId,
+          name: tt.tagName,
+          color: tt.tagColor,
+        });
       }
-      if (txTagsRes.ok) {
-        const data = (await txTagsRes.json()) as any;
-        const map: Record<string, { id: string; name: string; color: string | null }[]> = {};
-        for (const tt of data.transactionTags ?? []) {
-          const txId = String(tt.transaction_id);
-          if (!map[txId]) map[txId] = [];
-          map[txId].push({
-            id: String(tt.tag_id),
-            name: String(tt.tag_name),
-            color: tt.tag_color ? String(tt.tag_color) : null,
-          });
-        }
-        setTxTags(map);
-      }
+      setTxTags(map);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load account");
     } finally {
@@ -153,11 +141,8 @@ export default function AccountPage() {
 
   async function loadCategories() {
     try {
-      const res = await fetch("/api/categories");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setCategories(data.categories ?? []);
-      }
+      const data = await api.categories();
+      setCategories([...data.categories] as any);
     } catch {
       console.warn("[account] failed to load categories");
     }
@@ -165,11 +150,8 @@ export default function AccountPage() {
 
   async function loadTags() {
     try {
-      const res = await fetch("/api/tags");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setTagList(data.tags ?? []);
-      }
+      const data = await api.tags();
+      setTagList([...data.tags]);
     } catch {
       console.warn("[account] failed to load tags");
     }

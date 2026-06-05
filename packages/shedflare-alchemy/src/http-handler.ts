@@ -31,8 +31,7 @@ export function wrapHttpHandler(fn: (req: Request) => Promise<Response>) {
       return HttpServerResponse.fromWeb(response);
     }).pipe(
       Effect.catch((error: unknown) => {
-        const actual =
-          error instanceof Error && "cause" in error ? (error as Error).cause : error;
+        const actual = error instanceof Error && "cause" in error ? (error as Error).cause : error;
         if (actual instanceof Response) {
           return Effect.succeed(HttpServerResponse.fromWeb(actual));
         }

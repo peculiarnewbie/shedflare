@@ -1,23 +1,34 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import { CloudflareEnvironment } from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import { AuthStack } from "./apps/auth/alchemy.run.ts";
 import { CfBillStack } from "./apps/cf-bill/alchemy.run.ts";
 import { ChatStack } from "./apps/chat/alchemy.run.ts";
 import { DriveStack } from "./apps/drive/alchemy.run.ts";
 import { MoneyStack } from "./apps/money/alchemy.run.ts";
+import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { YouTubeStack } from "./apps/youtube/alchemy.run.ts";
+import { physicalName } from "./packages/shedflare-alchemy/src/index.ts";
 
-/**
- * Root Shedflare suite stack.
- *
- * Deploys all apps in dependency order:
- *   1. Auth (provides OAuth issuer)
- *   2. Drive, Chat, Money (depend on Auth)
- *
- * Each child app derives AUTH_ISSUER_URL from .env's AUTH_ISSUER_URL or the
- * auth app URL implied by SHEDFLARE_DOMAIN.
- */
+function patchTailConsumers(apiToken: string, accountId: string, scriptName: string, service: string) {
+  return Effect.tryPromise(() =>
+    fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/script-settings`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({ tail_consumers: [{ service }] }),
+      }
+    ).then((r) => r.json())
+  );
+}
+
 export default Alchemy.Stack(
   "Shedflare",
   {
@@ -26,6 +37,7 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
+    const { accountId, apiToken } = yield* CloudflareEnvironment;
 
     const auth = yield* AuthStack;
     const cfBill = yield* CfBillStack;
@@ -33,6 +45,25 @@ export default Alchemy.Stack(
     const chat = yield* ChatStack;
     const money = yield* MoneyStack;
     const youtube = yield* YouTubeStack;
+    const observability = yield* Effect.option(ObservabilityStack);
+
+    if (Option.isSome(observability)) {
+      const obsWorker = physicalName(stage, "observability");
+      const apps = ["auth", "cf-bill", "chat", "drive", "money", "youtube"] as const;
+      for (const app of apps) {
+        yield* patchTailConsumers(Redacted.value(apiToken), accountId, physicalName(stage, app), obsWorker).pipe(
+          Effect.catch((err) =>
+            Effect.sync(() =>
+              console.error(`[observability] failed to wire tail consumer for ${app}`, err)
+            )
+          ),
+        );
+      }
+    } else {
+      yield* Effect.sync(() =>
+        console.warn("[shedflare] observability app not enabled; tail consumers skipped")
+      );
+    }
 
     return {
       stage,
@@ -42,6 +73,7 @@ export default Alchemy.Stack(
       chatUrl: chat.url,
       moneyUrl: money.url,
       youtubeUrl: youtube.url,
+      observabilityUrl: Option.isSome(observability) ? observability.value.url : undefined,
     };
   }),
 );

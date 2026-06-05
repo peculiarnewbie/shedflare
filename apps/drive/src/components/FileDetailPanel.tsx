@@ -36,6 +36,11 @@ export default function FileDetailPanel() {
           <div class="detail-body">
             <h2 class="detail-name">{f().name}</h2>
 
+            <div class="share-state" classList={{ public: f().isPublic }}>
+              <span class="share-dot" />
+              <span>{f().isPublic ? "Publicly shared" : "Private"}</span>
+            </div>
+
             <Show when={f().description}>
               <p class="detail-description">{f().description}</p>
             </Show>
@@ -74,6 +79,21 @@ export default function FileDetailPanel() {
               <button class="btn btn-primary" onClick={() => ctx.download(f())}>
                 Download
               </button>
+              <Show
+                when={f().isPublic}
+                fallback={
+                  <button class="btn" onClick={() => void ctx.setFilePublic(f(), true)}>
+                    Make public
+                  </button>
+                }
+              >
+                <button class="btn" onClick={() => void ctx.copyPublicLink(f())}>
+                  Copy public link
+                </button>
+                <button class="btn" onClick={() => void ctx.setFilePublic(f(), false)}>
+                  Make private
+                </button>
+              </Show>
               <button class="btn" onClick={() => ctx.startRename(f())}>
                 Rename
               </button>

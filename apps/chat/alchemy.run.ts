@@ -31,11 +31,9 @@ export const ChatStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
-      bindings: {
+      env: {
         UPLOADS: uploads,
         SYNC_ENGINE: syncEngine,
-      },
-      env: {
         APP_PUBLIC_URL: config.url,
         AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-chat`,

@@ -1,11 +1,11 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { moneyApi } from "../definitions";
+import { moneyApi, uploadsGroup as group } from "../definitions";
 import { wrapHandler } from "./wrap-handler";
 
 type Env = { UPLOADS: R2Bucket };
 
 export function createUploadsGroup(env: Env) {
-  const endpoints = (moneyApi as any).groups["uploads"].endpoints;
+  const endpoints = group.endpoints;
   return (HttpApiBuilder.group as any)(moneyApi, "uploads", (handlers: any) => {
     handlers.handlers.set("upload", {
       endpoint: endpoints["upload"],

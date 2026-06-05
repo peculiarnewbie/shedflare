@@ -7,7 +7,7 @@ import {
   type SyncCommandType,
 } from "#/domain";
 
-const PENDING_OPS_KEY = "b3.pendingOps";
+const PENDING_OPS_KEY = "shedflare.pendingOps";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;

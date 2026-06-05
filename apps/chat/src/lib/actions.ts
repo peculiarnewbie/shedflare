@@ -96,7 +96,11 @@ export function rollbackOp(opId: string) {
     try {
       entry.rollback();
     } catch (e) {
-      console.warn("[actions] rollback failed for op", opId, e instanceof Error ? e.message : String(e));
+      console.warn(
+        "[actions] rollback failed for op",
+        opId,
+        e instanceof Error ? e.message : String(e),
+      );
     }
   }
   optimisticByOp.delete(opId);
@@ -670,10 +674,10 @@ export function resetAllData() {
   dispatch("reset_storage", {}, { opId });
   // Clear local state
   if (typeof localStorage !== "undefined") {
-    localStorage.removeItem("b3.lastServerSeq");
-    localStorage.removeItem("b3.activeWorkspaceId");
-    localStorage.removeItem("b3.activeThreadId");
-    localStorage.removeItem("b3.clientId");
+    localStorage.removeItem("shedflare.lastServerSeq");
+    localStorage.removeItem("shedflare.activeWorkspaceId");
+    localStorage.removeItem("shedflare.activeThreadId");
+    localStorage.removeItem("shedflare.clientId");
   }
   clearAllDraftState();
   // Reload to get fresh state from server

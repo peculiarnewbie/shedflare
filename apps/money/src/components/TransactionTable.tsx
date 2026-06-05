@@ -1,6 +1,7 @@
 import { createSignal, createMemo, createEffect, For, Show, onCleanup } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
@@ -142,18 +143,12 @@ export default function TransactionTable(props: TransactionTableProps) {
 
   async function fetchCategorySuggestion(txId: string, payee: string) {
     try {
-      const res = await fetch(
-        `/api/payees/category-suggestions?payee=${encodeURIComponent(payee)}`,
-      );
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        const suggestions = data.suggestions ?? [];
-        if (suggestions.length > 0) {
-          dispatch("update_transaction", {
-            id: txId,
-            fields: { categoryId: suggestions[0].category_id },
-          });
-        }
+      const data = await api.payeeSuggestions(payee);
+      if (data.suggestions.length > 0) {
+        dispatch("update_transaction", {
+          id: txId,
+          fields: { categoryId: data.suggestions[0].category_id },
+        });
       }
     } catch {
       console.warn("[TransactionTable] failed to fetch category suggestion");

@@ -4,6 +4,7 @@
 import { createMemo, createSignal, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
 import { useCurrency } from "../lib/currency";
@@ -54,14 +55,9 @@ export default function BudgetPage() {
       const mk = monthKey();
       const [y, m] = mk.split("-").map(Number);
       const monthInt = y * 100 + m;
-      const res = await fetch(`/api/budget/${monthInt}`);
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setCategories(data.categories ?? []);
-        setToBudget(data.toBudget ?? 0);
-      } else {
-        setError(`Failed to load (${res.status})`);
-      }
+      const data = await api.budgetMonth(monthInt);
+      setCategories([...data.categories]);
+      setToBudget(data.toBudget ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load budget");
     } finally {

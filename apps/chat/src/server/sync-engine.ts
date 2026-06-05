@@ -381,7 +381,9 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         .then(() => {
           this.activeTurnMessageIds.delete(turnMessageId);
           this.clearTurnParams(turnMessageId);
-          void this.ctx.storage.deleteAlarm().catch(() => syncLog("alarm_delete_failed", { messageId: turnMessageId }));
+          void this.ctx.storage
+            .deleteAlarm()
+            .catch(() => syncLog("alarm_delete_failed", { messageId: turnMessageId }));
           syncLog("turn_params_cleared", { messageId: turnMessageId });
           return undefined;
         })
@@ -542,7 +544,9 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       const refreshed = this.chatAccess.getMessage(newMessageId);
       if (refreshed && (refreshed.status === "completed" || refreshed.status === "failed")) {
         this.clearTurnParams(newMessageId);
-        void this.ctx.storage.deleteAlarm().catch(() => syncLog("alarm_delete_failed", { messageId: newMessageId }));
+        void this.ctx.storage
+          .deleteAlarm()
+          .catch(() => syncLog("alarm_delete_failed", { messageId: newMessageId }));
       }
     }
   }

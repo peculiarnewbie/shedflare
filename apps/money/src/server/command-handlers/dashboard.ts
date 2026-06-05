@@ -1,6 +1,7 @@
 import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { nowIso } from "../../domain/types";
+import type { CommandPayloadMap } from "../../domain/commands";
 
 export type CommandResult =
   | { ok: true; data: Record<string, unknown> }
@@ -8,7 +9,7 @@ export type CommandResult =
 
 export async function handleDashboardCommands(
   commandType: string,
-  payload: any,
+  payload: CommandPayloadMap["update_dashboard"],
   db: Db,
 ): Promise<CommandResult> {
   if (commandType !== "update_dashboard") {

@@ -25,16 +25,14 @@ export const DriveStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("DriveWorker", {
       name: physicalName(stage, "drive"),
       main: "apps/drive/src/worker.ts",
-      assets: "apps/drive/dist",
+      assets: "apps/drive/dist/client",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
-      bindings: {
+      env: {
         DB: db,
         FILES: filesBucket,
-      },
-      env: {
         APP_PUBLIC_URL: config.url,
         AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-drive`,

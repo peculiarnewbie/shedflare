@@ -22,13 +22,14 @@ export type CfCredentials =
 const API_BASE = "https://api.cloudflare.com/client/v4";
 
 export class CfApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly errors?: unknown[],
-  ) {
+  readonly status: number;
+  readonly errors?: unknown[];
+
+  constructor(message: string, status: number, errors?: unknown[]) {
     super(message);
     this.name = "CfApiError";
+    this.status = status;
+    this.errors = errors;
   }
 }
 

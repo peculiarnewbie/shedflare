@@ -3,6 +3,7 @@
  */
 import { createSignal, createEffect, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { settingsCollection } from "../lib/collections";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
@@ -70,13 +71,8 @@ export default function SettingsPage() {
   async function loadSettings() {
     setError(null);
     try {
-      const ratesRes = await fetch("/api/rates");
-      if (ratesRes.ok) {
-        const data = (await ratesRes.json()) as any;
-        setExchangeRate(data.usdToIdr ?? 16000);
-      } else {
-        setError(`Failed to load settings (${ratesRes.status})`);
-      }
+      const data = await api.rates();
+      setExchangeRate(data.usdToIdr ?? 16000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {

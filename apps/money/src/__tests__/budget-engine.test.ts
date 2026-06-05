@@ -9,8 +9,9 @@ import { describe, expect, test } from "vite-plus/test";
 import * as schema from "../db/schema";
 import { initializeStorage } from "../server/schema";
 import { computeMonthBudget, computeNetWorth, computeAgeOfMoney } from "../server/budget-engine";
+import type { Db } from "../server/d1-access";
 
-function createTestDb() {
+function createTestDb(): Db {
   const sqlite = new DatabaseSync(":memory:");
   const db = drizzle({ client: sqlite, schema });
 
@@ -30,13 +31,13 @@ function createTestDb() {
   };
   initializeStorage(exec, queryOne, () => {});
   sqlite.exec("PRAGMA foreign_keys = OFF");
-  return db;
+  return db as unknown as Db;
 }
 
 describe("computeMonthBudget", () => {
   test("returns null when no categories exist", async () => {
     const db = createTestDb();
-    expect(await computeMonthBudget(db as any, 202604)).toBeNull();
+    expect(await computeMonthBudget(db, 202604)).toBeNull();
   });
 
   test("budgeted minus spending equals leftover", async () => {
@@ -109,7 +110,7 @@ describe("computeMonthBudget", () => {
       updatedAt: now,
     });
 
-    const result = (await computeMonthBudget(db as any, 202604))!;
+    const result = (await computeMonthBudget(db, 202604))!;
     expect(result.categories[0].budgeted).toBe(100000);
     expect(result.categories[0].spent).toBe(-30000);
     expect(result.categories[0].leftover).toBe(70000);
@@ -185,7 +186,7 @@ describe("computeMonthBudget", () => {
       updatedAt: now,
     });
 
-    const result = (await computeMonthBudget(db as any, 202604))!;
+    const result = (await computeMonthBudget(db, 202604))!;
     expect(result.categories[0].leftover).toBe(-30000);
     expect(result.categories[0].leftoverPos).toBe(0);
   });
@@ -269,7 +270,7 @@ describe("computeMonthBudget", () => {
       updatedAt: now,
     });
 
-    const result = (await computeMonthBudget(db as any, 202604))!;
+    const result = (await computeMonthBudget(db, 202604))!;
     expect(result.categories[0].leftover).toBe(0);
   });
 
@@ -369,7 +370,7 @@ describe("computeMonthBudget", () => {
       updatedAt: now,
     });
 
-    const result = (await computeMonthBudget(db as any, 202604))!;
+    const result = (await computeMonthBudget(db, 202604))!;
     expect(result.toBudget).toBe(50000);
   });
 
@@ -427,7 +428,7 @@ describe("computeMonthBudget", () => {
       updatedAt: now,
     });
 
-    const result = (await computeMonthBudget(db as any, 202604))!;
+    const result = (await computeMonthBudget(db, 202604))!;
     expect(result.categories).toHaveLength(2);
     expect(result.toBudget).toBe(-150000);
   });
@@ -484,14 +485,14 @@ describe("computeNetWorth", () => {
       updatedAt: now,
     });
 
-    expect(await computeNetWorth(db as any)).toBe(600000);
+    expect(await computeNetWorth(db)).toBe(600000);
   });
 });
 
 describe("computeAgeOfMoney", () => {
   test("returns null when cash is zero", async () => {
     const db = createTestDb();
-    expect(await computeAgeOfMoney(db as any)).toBeNull();
+    expect(await computeAgeOfMoney(db)).toBeNull();
   });
 
   test("age = currentCash / avgDailySpending", async () => {
@@ -562,7 +563,7 @@ describe("computeAgeOfMoney", () => {
       });
     }
 
-    const age = await computeAgeOfMoney(db as any);
+    const age = await computeAgeOfMoney(db);
     expect(age).not.toBeNull();
     expect(age).toBeGreaterThan(0);
   });

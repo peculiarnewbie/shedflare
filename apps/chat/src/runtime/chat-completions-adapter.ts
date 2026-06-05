@@ -644,7 +644,10 @@ export class ChatCompletionsAdapter {
           try {
             parsed = JSON.parse(payloadJson);
           } catch {
-            console.warn("[completions] SSE parse failed for payload", (payloadJson as string).slice(0, 200));
+            console.warn(
+              "[completions] SSE parse failed for payload",
+              (payloadJson as string).slice(0, 200),
+            );
             continue;
           }
 
@@ -785,7 +788,11 @@ export class ChatCompletionsAdapter {
           try {
             parsedInput = JSON.parse(toolCall.args);
           } catch {
-            console.warn("[completions] tool call args parse failed for", toolCall.toolName, (toolCall.args as string).slice(0, 200));
+            console.warn(
+              "[completions] tool call args parse failed for",
+              toolCall.toolName,
+              (toolCall.args as string).slice(0, 200),
+            );
             parsedInput = undefined;
           }
         }

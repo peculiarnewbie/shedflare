@@ -1,5 +1,5 @@
 import type { Db } from "../d1-access";
-import { decodeCommand } from "../../domain/commands";
+import { decodeCommand, type CommandPayloadMap } from "../../domain/commands";
 import { isSyncCommandType } from "../../domain/types";
 import { handleAccountCommands } from "./accounts";
 import { handleTransactionCommands } from "./transactions";
@@ -28,14 +28,14 @@ export async function handleCommand(db: Db, body: Record<string, unknown>): Prom
   }
 
   try {
-    const payload = (decodeCommand as any)(commandType, body.payload ?? body);
+    const payload = decodeCommand(commandType, body.payload ?? body);
     return routeCommand(commandType, payload, db);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Validation failed" };
   }
 }
 
-async function routeCommand(commandType: string, payload: any, db: Db): Promise<CommandResult> {
+async function routeCommand(commandType: string, payload: unknown, db: Db): Promise<CommandResult> {
   switch (commandType) {
     case "create_account":
     case "update_account":
@@ -44,13 +44,21 @@ async function routeCommand(commandType: string, payload: any, db: Db): Promise<
     case "reopen_account":
     case "reorder_accounts":
     case "update_exchange_rate":
-      return handleAccountCommands(commandType, payload, db);
+      return handleAccountCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_transaction":
     case "update_transaction":
     case "delete_transaction":
     case "split_transaction":
-      return handleTransactionCommands(commandType, payload, db);
+      return handleTransactionCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_category":
     case "update_category":
@@ -59,7 +67,11 @@ async function routeCommand(commandType: string, payload: any, db: Db): Promise<
     case "update_category_group":
     case "delete_category_group":
     case "reorder_categories":
-      return handleCategoryCommands(commandType, payload, db);
+      return handleCategoryCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "set_budget_amount":
     case "set_budget_carryover":
@@ -72,55 +84,83 @@ async function routeCommand(commandType: string, payload: any, db: Db): Promise<
     case "cover_overspending":
     case "transfer_budget":
     case "hold_for_next_month":
-      return handleBudgetCommands(commandType, payload, db);
+      return handleBudgetCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_payee":
     case "update_payee":
     case "merge_payees":
-      return handlePayeeCommands(commandType, payload, db);
+      return handlePayeeCommands(commandType, payload as CommandPayloadMap[typeof commandType], db);
 
     case "create_schedule":
     case "update_schedule":
     case "delete_schedule":
     case "skip_schedule_date":
     case "post_schedule_transaction":
-      return handleScheduleCommands(commandType, payload, db);
+      return handleScheduleCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_rule":
     case "update_rule":
     case "delete_rule":
-      return handleRuleCommands(commandType, payload, db);
+      return handleRuleCommands(commandType, payload as CommandPayloadMap[typeof commandType], db);
 
     case "create_tag":
     case "delete_tag":
     case "add_transaction_tag":
     case "remove_transaction_tag":
-      return handleTagCommands(commandType, payload, db);
+      return handleTagCommands(commandType, payload as CommandPayloadMap[typeof commandType], db);
 
     case "import_transactions":
-      return handleImportCommands(commandType, payload, db);
+      return handleImportCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_filter":
     case "update_filter":
     case "delete_filter":
-      return handleFilterCommands(commandType, payload, db);
+      return handleFilterCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_report":
     case "update_report":
     case "delete_report":
-      return handleReportCommands(commandType, payload, db);
+      return handleReportCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "update_setting":
-      return handleSettingCommands(commandType, payload, db);
+      return handleSettingCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     case "create_note":
     case "update_note":
     case "delete_note":
     case "list_notes":
-      return handleNotesCommands(commandType, payload, db);
+      return handleNotesCommands(commandType, payload as CommandPayloadMap[typeof commandType], db);
 
     case "update_dashboard":
-      return handleDashboardCommands(commandType, payload, db);
+      return handleDashboardCommands(
+        commandType,
+        payload as CommandPayloadMap[typeof commandType],
+        db,
+      );
 
     default:
       return { ok: false, error: `Unhandled command: ${commandType}` };

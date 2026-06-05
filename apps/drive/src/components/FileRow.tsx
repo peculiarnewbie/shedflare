@@ -11,8 +11,12 @@ export default function FileRow(props: { file: DriveFile }) {
       class="file-row"
       classList={{ selected: ctx.selectedFileIds().has(file.id) }}
       onClick={(e) => {
+        e.stopPropagation();
         if ((e.target as HTMLElement).closest(".row-checkbox")) return;
-        ctx.setSelectedFileId(file.id);
+        const wasSelected = ctx.selectedFileIds().has(file.id);
+        ctx.toggleFileSelection(file.id);
+        ctx.setSelectedFileId(wasSelected ? "" : file.id);
+        if (!wasSelected) ctx.setRightSidebarCollapsed(false);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -37,6 +41,9 @@ export default function FileRow(props: { file: DriveFile }) {
           fallback={
             <span class="row-name-text" onDblClick={() => ctx.startRename(file)}>
               {file.name}
+              <Show when={file.isPublic}>
+                <span class="public-pill">Public</span>
+              </Show>
             </span>
           }
         >

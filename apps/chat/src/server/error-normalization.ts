@@ -1,7 +1,4 @@
-import {
-  extractAssistantErrorFacts,
-  type AssistantErrorFacts,
-} from "../lib/assistant-errors";
+import { extractAssistantErrorFacts, type AssistantErrorFacts } from "../lib/assistant-errors";
 
 export type NormalizedAssistantError = {
   errorCode: string;
@@ -37,8 +34,16 @@ const ERROR_NORMALIZERS: Array<{
   retryable: boolean;
 }> = [
   { check: (f) => f.isCancelled, errorCode: "cancelled", retryable: true },
-  { check: (f) => f.isImageNotSupported, errorCode: "provider_image_not_supported", retryable: false },
-  { check: (f) => f.isReasoningIncompatible, errorCode: "provider_reasoning_incompatible", retryable: false },
+  {
+    check: (f) => f.isImageNotSupported,
+    errorCode: "provider_image_not_supported",
+    retryable: false,
+  },
+  {
+    check: (f) => f.isReasoningIncompatible,
+    errorCode: "provider_reasoning_incompatible",
+    retryable: false,
+  },
   { check: (f) => f.isTimeout, errorCode: "assistant_timeout", retryable: true },
   { check: (f) => f.isInvalidRequest, errorCode: "provider_invalid_request", retryable: false },
   { check: (f) => f.isAuth, errorCode: "provider_auth", retryable: false },

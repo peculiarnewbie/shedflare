@@ -1,8 +1,9 @@
 /**
  * REST API handlers — typed read endpoints using Drizzle query builder.
- * All responses are typed via the schemas in ./api-types.ts.
+ * All responses are validated against Effect schemas from domain/schemas.ts.
  */
 import { eq, sql, and, type SQL } from "drizzle-orm";
+import * as S from "effect/Schema";
 import * as s from "../db/schema";
 import type { Db } from "./d1-access";
 import type { FilterCondition } from "./conditions-to-sql";
@@ -17,12 +18,50 @@ import {
   computeCrossoverProjection,
 } from "./budget-engine";
 import { discoverSchedules } from "./discover-schedules";
+import {
+  AccountsResponseSchema,
+  AccountApiSchema,
+  AccountTransactionsResponseSchema,
+  AccountTagsResponseSchema,
+  TransactionsResponseSchema,
+  CategoriesResponseSchema,
+  CategoryGroupsResponseSchema,
+  GoalProgressResponseSchema,
+  BudgetOverviewResponseSchema,
+  MonthBudgetResponseSchema,
+  PayeesResponseSchema,
+  PayeeSuggestionsResponseSchema,
+  SchedulesResponseSchema,
+  ScheduleResponseSchema,
+  SchedulesDiscoverResponseSchema,
+  RulesResponseSchema,
+  TagsResponseSchema,
+  FiltersResponseSchema,
+  ReportsNetWorthResponseSchema,
+  ReportsCashFlowResponseSchema,
+  ReportsSpendingResponseSchema,
+  ReportsBudgetAnalysisResponseSchema,
+  ReportsAgeOfMoneyResponseSchema,
+  ReportsCrossoverResponseSchema,
+  ReportsHeatmapResponseSchema,
+  CustomReportsResponseSchema,
+  CustomReportResultSchema,
+  DashboardWidgetsResponseSchema,
+  DashboardExportSchema,
+  RatesResponseSchema,
+} from "../domain/schemas";
 
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), {
+function validatedJson(
+  schema: Parameters<typeof S.decodeUnknownSync>[0],
+  data: unknown,
+  status = 200,
+): Response {
+  const encoded = S.encodeSync(schema as any)(data);
+  return new Response(JSON.stringify(encoded), {
     status,
     headers: { "content-type": "application/json" },
   });
+}
 
 export async function handleApiRequest(url: URL, method: string, db: Db): Promise<Response | null> {
   const pathname = url.pathname;
@@ -46,7 +85,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
        GROUP BY a.id
        ORDER BY a.sort_order, a.name`,
     );
-    return json({
+    return validatedJson(AccountsResponseSchema, {
       accounts: rows.map((r) => ({
         id: r.id,
         name: r.name,
@@ -81,8 +120,12 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .groupBy(s.accounts.id)
       .all();
     const row = rows[0];
-    if (!row) return json({ error: "Not found" }, 404);
-    return json({
+    if (!row)
+      return new Response(JSON.stringify({ error: "Not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    return validatedJson(AccountApiSchema, {
       id: row.id,
       name: row.name,
       offbudget: row.offbudget,
@@ -149,7 +192,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .where(whereClause)
       .orderBy(sql`${s.transactions.date} DESC, ${s.transactions.createdAt} DESC`)
       .all();
-    return json({ transactions: rows });
+    return validatedJson(AccountTransactionsResponseSchema, { transactions: rows });
   }
 
   // ── All transactions ─────────────────────────────────────────────────
@@ -211,7 +254,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
     }
 
     const rows = await query.all();
-    return json({ transactions: rows });
+    return validatedJson(TransactionsResponseSchema, { transactions: rows });
   }
 
   // ── Budget overview ──────────────────────────────────────────────────
@@ -256,7 +299,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
        WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 0 AND t.is_child = 0`,
     );
 
-    return json({
+    return validatedJson(BudgetOverviewResponseSchema, {
       netWorth: netWorthRow?.total ?? 0,
       onBudget: onBudgetRow?.total ?? 0,
       accountCount: accountCount ?? 0,
@@ -270,7 +313,10 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
   if (budgetMatch && method === "GET") {
     const month = parseInt(budgetMatch[1]);
     const result = await computeMonthBudget(db, month);
-    return json(result ?? { categories: [], toBudget: 0, buffered: 0, month });
+    return validatedJson(
+      MonthBudgetResponseSchema,
+      result ?? { categories: [], toBudget: 0, buffered: 0, month },
+    );
   }
 
   // ── Categories ──────────────────────────────────────────────────────
@@ -292,7 +338,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .leftJoin(s.categoryGroups, eq(s.categories.groupId, s.categoryGroups.id))
       .orderBy(s.categoryGroups.sortOrder, s.categories.sortOrder)
       .all();
-    return json({ categories: rows });
+    return validatedJson(CategoriesResponseSchema, { categories: rows });
   }
 
   if (pathname === "/api/category-groups" && method === "GET") {
@@ -301,12 +347,12 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.categoryGroups)
       .orderBy(s.categoryGroups.sortOrder, s.categoryGroups.name)
       .all();
-    return json({ groups: rows });
+    return validatedJson(CategoryGroupsResponseSchema, { groups: rows });
   }
 
   // ── Goal progress ──────────────────────────────────────────────────
   if (pathname === "/api/categories/goal-progress" && method === "GET") {
-    return json({ progress: [] });
+    return validatedJson(GoalProgressResponseSchema, { progress: [] });
   }
 
   // ── Payees ──────────────────────────────────────────────────────────
@@ -323,14 +369,14 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       sql`SELECT p.*, (SELECT COUNT(*) FROM transactions WHERE payee = p.name) as transaction_count
        FROM payees p ORDER BY p.name`,
     );
-    return json({ payees: rows.map(mapPayeeRow) });
+    return validatedJson(PayeesResponseSchema, { payees: rows.map(mapPayeeRow) });
   }
 
   // ── Payee category suggestions ─────────────────────────────────────
   const payeeCatMatch = pathname.match(/^\/api\/payees\/category-suggestions$/);
   if (payeeCatMatch && method === "GET") {
     const payeeName = url.searchParams.get("payee");
-    if (!payeeName) return json({ suggestions: [] });
+    if (!payeeName) return validatedJson(PayeeSuggestionsResponseSchema, { suggestions: [] });
     const rows = await db.all<{
       category_id: string;
       category_name: string;
@@ -346,18 +392,18 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
        ORDER BY count DESC
        LIMIT 5`,
     );
-    return json({ suggestions: rows });
+    return validatedJson(PayeeSuggestionsResponseSchema, { suggestions: rows });
   }
 
   // ── Schedules ───────────────────────────────────────────────────────
   if (pathname === "/api/schedules" && method === "GET") {
     const rows = await db.select().from(s.schedules).orderBy(s.schedules.name).all();
-    return json({ schedules: rows });
+    return validatedJson(SchedulesResponseSchema, { schedules: rows });
   }
 
   if (pathname === "/api/schedules/discover" && method === "GET") {
     const discovered = await discoverSchedules(db);
-    return json({ discovered });
+    return validatedJson(SchedulesDiscoverResponseSchema, { discovered });
   }
 
   const scheduleMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
@@ -392,8 +438,12 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .where(eq(s.schedules.id, scheduleMatch[1]))
       .all();
     const row = rows[0];
-    if (!row) return json({ error: "Not found" }, 404);
-    return json({ schedule: row });
+    if (!row)
+      return new Response(JSON.stringify({ error: "Not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    return validatedJson(ScheduleResponseSchema, { schedule: row });
   }
 
   // ── Filters ─────────────────────────────────────────────────────────
@@ -403,7 +453,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.transactionFilters)
       .orderBy(s.transactionFilters.name)
       .all();
-    return json({ filters: rows });
+    return validatedJson(FiltersResponseSchema, { filters: rows });
   }
 
   // ── Rules ───────────────────────────────────────────────────────────
@@ -414,7 +464,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .where(eq(s.rules.deleted, false))
       .orderBy(s.rules.createdAt)
       .all();
-    return json({ rules: rows });
+    return validatedJson(RulesResponseSchema, { rules: rows });
   }
 
   // ── Tags for account ────────────────────────────────────────────────
@@ -433,13 +483,13 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .where(eq(s.transactions.accountId, txTagsMatch[1]))
       .orderBy(s.tags.name)
       .all();
-    return json({ transactionTags: rows });
+    return validatedJson(AccountTagsResponseSchema, { transactionTags: rows });
   }
 
   // ── Tags ────────────────────────────────────────────────────────────
   if (pathname === "/api/tags" && method === "GET") {
     const rows = await db.select().from(s.tags).orderBy(s.tags.name).all();
-    return json({ tags: rows });
+    return validatedJson(TagsResponseSchema, { tags: rows });
   }
 
   // ── Exchange rates ──────────────────────────────────────────────────
@@ -449,10 +499,11 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.exchangeRates)
       .where(eq(s.exchangeRates.id, "latest"))
       .all();
-    return json(
+    return validatedJson(
+      RatesResponseSchema,
       row
         ? { id: row.id, usdToIdr: row.usdToIdr, updatedAt: row.updatedAt }
-        : { id: "latest", usdToIdr: 16000 },
+        : { id: "latest", usdToIdr: 16000, updatedAt: new Date().toISOString() },
     );
   }
 
@@ -460,13 +511,13 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
   if (pathname === "/api/reports/net-worth" && method === "GET") {
     const history = await computeNetWorthHistory(db, 12);
     const points = history.map((h) => ({ date: h.month, value: h.netWorth }));
-    return json({ points });
+    return validatedJson(ReportsNetWorthResponseSchema, { points });
   }
 
   // ── Report: cash flow ───────────────────────────────────────────────
   if (pathname === "/api/reports/cash-flow" && method === "GET") {
     const months = await computeCashFlow(db, 12);
-    return json({ months });
+    return validatedJson(ReportsCashFlowResponseSchema, { months });
   }
 
   // ── Report: spending by category ────────────────────────────────────
@@ -480,7 +531,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       value: Math.abs(c.amount),
       groupName: c.groupName,
     }));
-    return json({ categories });
+    return validatedJson(ReportsSpendingResponseSchema, { categories });
   }
 
   // ── Report: budget vs actuals ───────────────────────────────────────
@@ -493,19 +544,24 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       budgeted: c.budgeted,
       actual: c.spent,
     }));
-    return json({ categories });
+    return validatedJson(ReportsBudgetAnalysisResponseSchema, { categories });
   }
 
   // ── Report: age of money ────────────────────────────────────────────
   if (pathname === "/api/reports/age-of-money" && method === "GET") {
     const days = await computeAgeOfMoney(db);
-    return json({ days });
+    return validatedJson(ReportsAgeOfMoneyResponseSchema, { days });
   }
 
   // ── Report: crossover projection ────────────────────────────────────
   if (pathname === "/api/reports/crossover" && method === "GET") {
     const result = await computeCrossoverProjection(db);
-    return json(result ?? { error: "Not enough data" }, result ? 200 : 400);
+    if (!result)
+      return new Response(JSON.stringify({ error: "Not enough data" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    return validatedJson(ReportsCrossoverResponseSchema, result);
   }
 
   // ── Report: calendar heatmap ────────────────────────────────────────
@@ -513,7 +569,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const days = await computeDailySpending(db, monthKey);
-    return json({ monthKey, days });
+    return validatedJson(ReportsHeatmapResponseSchema, { monthKey, days });
   }
 
   // ── Custom reports list ─────────────────────────────────────────────
@@ -523,7 +579,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.customReports)
       .orderBy(sql`${s.customReports.createdAt} DESC`)
       .all();
-    return json({ reports: rows });
+    return validatedJson(CustomReportsResponseSchema, { reports: rows });
   }
 
   // ── Execute a custom report ─────────────────────────────────────────
@@ -534,7 +590,11 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.customReports)
       .where(eq(s.customReports.id, customReportMatch[1]))
       .all();
-    if (!reportRow) return json({ error: "Report not found" }, 404);
+    if (!reportRow)
+      return new Response(JSON.stringify({ error: "Report not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
 
     const conditions = JSON.parse((reportRow.conditions as string) ?? "[]") as FilterCondition[];
     const conditionsOp = ((reportRow.conditionsOp as string) ?? "and") as "and" | "or";
@@ -572,7 +632,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
          GROUP BY strftime('%Y-%m', t.date)
          ORDER BY month`,
       );
-      return json({
+      return validatedJson(CustomReportResultSchema, {
         rows: rows.map((r) => ({ month: r.month, total: Number(r.total), count: Number(r.count) })),
         groupBy: "month",
       });
@@ -595,7 +655,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
          GROUP BY t.category_id
          ORDER BY total`,
       );
-      return json({
+      return validatedJson(CustomReportResultSchema, {
         rows: rows.map((r) => ({
           category: r.category ?? "Uncategorized",
           groupName: r.group_name ?? null,
@@ -627,7 +687,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
        ORDER BY t.date DESC
        LIMIT 500`,
     );
-    return json({
+    return validatedJson(CustomReportResultSchema, {
       rows: rows.map((r) => ({
         id: String(r.id),
         date: r.date,
@@ -650,7 +710,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.dashboardWidgets)
       .orderBy(s.dashboardWidgets.y, s.dashboardWidgets.x)
       .all();
-    return json({ widgets: rows });
+    return validatedJson(DashboardWidgetsResponseSchema, { widgets: rows });
   }
 
   // ── Dashboard export ────────────────────────────────────────────────
@@ -660,7 +720,11 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       .from(s.dashboardWidgets)
       .orderBy(s.dashboardWidgets.y, s.dashboardWidgets.x)
       .all();
-    return json({ version: 1, exportedAt: new Date().toISOString(), widgets: rows });
+    return validatedJson(DashboardExportSchema, {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      widgets: rows,
+    });
   }
 
   // ── CSV export ──────────────────────────────────────────────────────

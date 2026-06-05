@@ -4,6 +4,7 @@
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { useDateFormat } from "../lib/date-format";
 import { PageState } from "../components/PageState";
@@ -26,13 +27,8 @@ export default function SchedulesPage() {
   async function loadSchedules() {
     setError(null);
     try {
-      const res = await fetch("/api/schedules");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setSchedules(data.schedules ?? []);
-      } else {
-        setError(`Failed to load (${res.status})`);
-      }
+      const data = await api.schedules();
+      setSchedules([...data.schedules]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load schedules");
     } finally {
@@ -439,13 +435,8 @@ function DiscoverModal(props: {
   async function loadCandidates() {
     setError(null);
     try {
-      const res = await fetch("/api/schedules/discover");
-      if (res.ok) {
-        const data = (await res.json()) as { discovered: DiscoverCandidate[] };
-        setCandidates(data.discovered ?? []);
-      } else {
-        setError(`Failed (${res.status})`);
-      }
+      const data = await api.schedulesDiscover();
+      setCandidates((data.discovered ?? []) as DiscoverCandidate[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to discover");
     } finally {

@@ -7,6 +7,7 @@ import { useNavigate } from "@solidjs/router";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { createId } from "../domain/types";
 import { settingsCollection } from "../lib/collections";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
@@ -195,50 +196,63 @@ function buildDefaultWidgets(): WidgetDef[] {
 // ---------------------------------------------------------------------------
 
 async function fetchOverview(): Promise<Record<string, number>> {
-  const res = await fetch("/api/budget/overview");
-  if (!res.ok) return {};
-  return (await res.json()) as Record<string, number>;
+  try {
+    const data = await api.budgetOverview();
+    return data as Record<string, number>;
+  } catch {
+    return {};
+  }
 }
 
 async function fetchNetWorthData(): Promise<TimeSeriesPoint[]> {
-  const res = await fetch("/api/reports/net-worth");
-  if (!res.ok) return [];
-  const data = (await res.json()) as any;
-  return (data.points ?? []) as TimeSeriesPoint[];
+  try {
+    const data = await api.reports.netWorth();
+    return data.points as TimeSeriesPoint[];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchCashFlowData(): Promise<BarGroup[]> {
-  const res = await fetch("/api/reports/cash-flow");
-  if (!res.ok) return [];
-  const data = (await res.json()) as any;
-  return (data.months ?? []).map((m: any) => ({
-    category: m.month,
-    values: [
-      { label: "Income", value: m.income ?? 0, color: "var(--positive)" },
-      { label: "Expenses", value: m.expense ?? 0, color: "var(--negative)" },
-    ],
-  }));
+  try {
+    const data = await api.reports.cashFlow();
+    return data.months.map((m) => ({
+      category: m.month,
+      values: [
+        { label: "Income", value: m.income ?? 0, color: "var(--positive)" },
+        { label: "Expenses", value: m.expense ?? 0, color: "var(--negative)" },
+      ],
+    }));
+  } catch {
+    return [];
+  }
 }
 
 async function fetchSpendingData(): Promise<PieSlice[]> {
-  const res = await fetch("/api/reports/spending");
-  if (!res.ok) return [];
-  const data = (await res.json()) as any;
-  return (data.categories ?? []) as PieSlice[];
+  try {
+    const data = await api.reports.spending();
+    return [...data.categories] as PieSlice[];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchBudgetData(): Promise<BudgetPair[]> {
-  const res = await fetch("/api/reports/budget-analysis");
-  if (!res.ok) return [];
-  const data = (await res.json()) as any;
-  return (data.categories ?? []) as BudgetPair[];
+  try {
+    const data = await api.reports.budgetAnalysis();
+    return data.categories as BudgetPair[];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchAgeOfMoney(): Promise<number | null> {
-  const res = await fetch("/api/reports/age-of-money");
-  if (!res.ok) return null;
-  const data = (await res.json()) as any;
-  return (data.days as number) ?? null;
+  try {
+    const data = await api.reports.ageOfMoney();
+    return data.days ?? null;
+  } catch {
+    return null;
+  }
 }
 
 interface CrossoverData {
@@ -257,19 +271,20 @@ interface CrossoverData {
   }>;
 }
 
-async function fetchCrossoverData(): Promise<CrossoverData | null> {
-  const res = await fetch("/api/reports/crossover");
-  if (!res.ok) return null;
-  return (await res.json()) as CrossoverData;
+async function fetchCrossoverData() {
+  try {
+    return await api.reports.crossover();
+  } catch {
+    return null;
+  }
 }
 
-async function fetchCalendarHeatmap(): Promise<{
-  monthKey: string;
-  days: Record<string, number>;
-}> {
-  const res = await fetch("/api/reports/calendar-heatmap");
-  if (!res.ok) return { monthKey: "", days: {} };
-  return (await res.json()) as any;
+async function fetchCalendarHeatmap() {
+  try {
+    return await api.reports.calendarHeatmap();
+  } catch {
+    return { monthKey: "", days: {} as Record<string, number> };
+  }
 }
 
 const formatMonth = (dateStr: string) => {
@@ -322,10 +337,8 @@ export default function Dashboard() {
 
   async function loadWidgets() {
     try {
-      const res = await fetch("/api/dashboard/widgets");
-      if (!res.ok) return [];
-      const data = (await res.json()) as any;
-      return (data.widgets ?? []) as WidgetDef[];
+      const data = await api.dashboard.widgets();
+      return [...data.widgets] as WidgetDef[];
     } catch {
       console.warn("[dashboard] failed to load widgets");
       return [];
@@ -914,9 +927,7 @@ export default function Dashboard() {
 
   async function exportDashboard() {
     try {
-      const res = await fetch("/api/dashboard/export");
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await api.dashboard.export();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

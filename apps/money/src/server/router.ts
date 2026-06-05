@@ -58,17 +58,18 @@ export function createRouter(env: Env) {
 
       try {
         // ── Auth routes ──────────────────────────────────────────────
-        if (url.pathname === "/api/auth/login" && method === "GET") return auth.loginRedirect();
+        if (url.pathname === "/api/auth/login" && method === "GET")
+          return await auth.loginRedirect();
         if (url.pathname === "/api/auth/callback" && method === "GET")
-          return auth.handleCallback(request);
+          return await auth.handleCallback(request);
         if (url.pathname === "/api/auth/logout" && method === "POST") return auth.logout();
         if (url.pathname === "/api/session" && method === "GET")
-          return auth.sessionEndpoint(request);
+          return await auth.sessionEndpoint(request);
 
         // ── Require session for all other API routes ─────────────────
         if (url.pathname.startsWith("/api/")) {
           await rawAuth.requireSession(request);
-          return wh.handler(request);
+          return await wh.handler(request);
         }
 
         // ── Assets ──────────────────────────────────────────────────

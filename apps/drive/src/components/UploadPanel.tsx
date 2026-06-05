@@ -32,7 +32,7 @@ export default function UploadPanel() {
             const dt = new DataTransfer();
             dt.items.add(file);
             input.files = dt.files;
-            e.currentTarget.dispatchEvent(new Event("submit", { cancelable: true }));
+            e.currentTarget.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
           }
         }
       }}
@@ -51,8 +51,23 @@ export default function UploadPanel() {
           <polyline points="17 8 12 3 7 8" />
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
-        <input name="file" type="file" />
-        <span class="drop-text">Drop files here or click to browse</span>
+        <input
+          name="file"
+          type="file"
+          disabled={ctx.busy()}
+          onChange={(e) => {
+            if (e.currentTarget.files?.[0]) {
+              e.currentTarget.form?.dispatchEvent(
+                new Event("submit", { bubbles: true, cancelable: true }),
+              );
+            }
+          }}
+        />
+        <span class="drop-text">
+          {ctx.busy()
+            ? `Uploading ${ctx.uploadingFileName()}`
+            : "Drop files here or click to browse"}
+        </span>
       </label>
       <input
         class="upload-tags-input"
@@ -66,9 +81,11 @@ export default function UploadPanel() {
         onInput={(e) => ctx.setDescription(e.currentTarget.value)}
         placeholder="short note"
       />
-      <button class="btn btn-primary upload-btn" disabled={ctx.busy()}>
-        {ctx.busy() ? "Uploading..." : "Upload"}
-      </button>
+      {ctx.busy() && (
+        <button class="btn upload-btn" type="button" onClick={ctx.cancelUpload}>
+          Cancel upload
+        </button>
+      )}
     </form>
   );
 }

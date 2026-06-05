@@ -390,7 +390,7 @@ function buildTraceCopyText(trace: {
 
 function getInitialTheme(): Theme {
   if (typeof localStorage !== "undefined") {
-    const saved = localStorage.getItem("b3-theme") as Theme | null;
+    const saved = localStorage.getItem("shedflare-theme") as Theme | null;
     if (saved === "night") return saved;
   }
   return "night";
@@ -398,7 +398,7 @@ function getInitialTheme(): Theme {
 
 function getInitialExpandReasoning(): boolean {
   if (typeof localStorage !== "undefined") {
-    return localStorage.getItem("b3-expand-reasoning") === "1";
+    return localStorage.getItem("shedflare-expand-reasoning") === "1";
   }
   return false;
 }
@@ -771,6 +771,8 @@ export default function Home() {
 
   const SCROLL_THRESHOLD = 80; // px from bottom to consider "at bottom"
 
+  let _isProgrammaticScroll = false;
+
   const [reasoningNearBottom, setReasoningNearBottom] = createSignal(true);
 
   let lastScrollTop = 0;
@@ -782,7 +784,7 @@ export default function Home() {
   };
 
   const handleTimelineScroll = () => {
-    if (!timelineRef) return;
+    if (!timelineRef || _isProgrammaticScroll) return;
     const { scrollTop, scrollHeight, clientHeight } = timelineRef;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     const nearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
@@ -808,13 +810,15 @@ export default function Home() {
 
   const scrollToBottom = () => {
     if (!timelineRef) return;
+    _isProgrammaticScroll = true;
     timelineRef.scrollTo({ top: timelineRef.scrollHeight, behavior: "smooth" });
+    _isProgrammaticScroll = false;
   };
 
   // Apply theme to document
   createEffect(() => {
     document.documentElement.setAttribute("data-theme", theme());
-    localStorage.setItem("b3-theme", theme());
+    localStorage.setItem("shedflare-theme", theme());
     ensureThemeFont(theme());
   });
 
@@ -1427,7 +1431,9 @@ export default function Home() {
     if (!lastId) return "";
     const msg = messageById(lastId);
     if (!msg) return "";
-    return `${msg.id}:${msg.status}:${msg.text?.length ?? 0}`;
+    const parts = msg.role === "assistant" ? messagePartsForMessage(lastId) : [];
+    const partsKey = parts.map((p) => `${p.id}:${p.seq}:${p.kind}`).join(",");
+    return `${msg.id}:${msg.status}:${msg.text?.length ?? 0}|${partsKey}`;
   });
   createEffect(() => {
     scrollFingerprint();
@@ -1437,7 +1443,9 @@ export default function Home() {
         streamingReasoningTextRef.scrollTop = streamingReasoningTextRef.scrollHeight;
       }
       if (timelineRef && isNearBottom()) {
+        _isProgrammaticScroll = true;
         timelineRef.scrollTop = timelineRef.scrollHeight;
+        _isProgrammaticScroll = false;
       }
     });
   });
@@ -3180,9 +3188,9 @@ export default function Home() {
         <aside classList={{ sidebar: true, open: sidebarOpen() }}>
           <div class="sidebar-top">
             <div class="brand">
-              <span class="brand-mark">b3</span>
+              <span class="brand-mark">shedflare</span>
               <div style="min-width:0">
-                <h1>b3.chat</h1>
+                <h1>shedflare.chat</h1>
                 <p class="brand-email">{session()?.user?.email}</p>
               </div>
             </div>
@@ -3700,7 +3708,7 @@ export default function Home() {
             <p class="eyebrow" style="margin-bottom:4px">
               Personal deployment
             </p>
-            <h1 class="session-title">b3 chat</h1>
+            <h1 class="session-title">shedflare chat</h1>
             <p>Checking session…</p>
             <p class="app-version" title={BUILD_INFO.tooltip}>
               {BUILD_INFO.label}
@@ -3715,7 +3723,7 @@ export default function Home() {
             <p class="eyebrow" style="margin-bottom:4px">
               Personal deployment
             </p>
-            <h1 class="session-title">b3 chat</h1>
+            <h1 class="session-title">shedflare chat</h1>
             <p>Sign in to continue.</p>
             <p class="app-version" title={BUILD_INFO.tooltip}>
               {BUILD_INFO.label}

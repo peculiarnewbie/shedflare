@@ -59,7 +59,9 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
         fetch("/api/accounts")
           .then((r) => r.json())
           .then((d: any) => setAccounts(d.accounts ?? []))
-          .catch(() => { console.warn("[TransactionFilters] failed to load accounts"); });
+          .catch(() => {
+            console.warn("[TransactionFilters] failed to load accounts");
+          });
       });
       return (
         <select value={String(value as string)} onChange={(e) => onChange(e.currentTarget.value)}>
@@ -78,7 +80,9 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
         fetch("/api/categories")
           .then((r) => r.json())
           .then((d: any) => setCats(d.categories ?? []))
-          .catch(() => { console.warn("[TransactionFilters] failed to load categories"); });
+          .catch(() => {
+            console.warn("[TransactionFilters] failed to load categories");
+          });
       });
       return (
         <select value={String(value as string)} onChange={(e) => onChange(e.currentTarget.value)}>
@@ -239,7 +243,9 @@ export default function TransactionFilters(props: {
     fetch("/api/filters")
       .then((r) => r.json())
       .then((d: any) => setSavedFilters(d.filters ?? []))
-      .catch(() => { console.warn("[TransactionFilters] failed to load saved filters"); });
+      .catch(() => {
+        console.warn("[TransactionFilters] failed to load saved filters");
+      });
   });
 
   function addCondition() {

@@ -28,10 +28,8 @@ export const YouTubeStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
-      bindings: {
-        DB: db,
-      },
       env: {
+        DB: db,
         APP_PUBLIC_URL: config.url,
         AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-youtube`,

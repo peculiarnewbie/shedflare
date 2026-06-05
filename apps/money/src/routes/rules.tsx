@@ -3,6 +3,7 @@
  */
 import { createSignal, For, Show, createEffect } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
 
@@ -20,13 +21,8 @@ export default function RulesPage() {
   async function loadRules() {
     setError(null);
     try {
-      const res = await fetch("/api/rules");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setRules(data.rules ?? []);
-      } else {
-        setError(`Failed to load (${res.status})`);
-      }
+      const data = await api.rules();
+      setRules([...data.rules]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load rules");
     } finally {
@@ -228,13 +224,8 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/transactions");
-      if (!res.ok) {
-        setError(`Failed to load transactions (${res.status})`);
-        return;
-      }
-      const data = (await res.json()) as any;
-      const allTx = data.transactions ?? [];
+      const txData = await api.transactions();
+      const allTx = txData.transactions ?? [];
 
       const conditionsOp = props.rule.conditions_op ?? props.rule.conditionsOp ?? "and";
       const conditionsStr = props.rule.conditions ?? "[]";
@@ -451,11 +442,8 @@ function RuleForm(props: { onClose: () => void }) {
 
   async function loadSchedules() {
     try {
-      const res = await fetch("/api/schedules");
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        setSchedules(data.schedules ?? []);
-      }
+      const data = await api.schedules();
+      setSchedules([...data.schedules]);
     } catch {
       console.warn("[rules] failed to load schedules");
     }

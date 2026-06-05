@@ -19,8 +19,12 @@ export default function FileCard(props: { file: DriveFile }) {
       class="file-card"
       classList={{ selected: ctx.selectedFileIds().has(file.id) }}
       onClick={(e) => {
+        e.stopPropagation();
         if ((e.target as HTMLElement).closest(".card-checkbox")) return;
-        ctx.setSelectedFileId(file.id);
+        const wasSelected = ctx.selectedFileIds().has(file.id);
+        ctx.toggleFileSelection(file.id);
+        ctx.setSelectedFileId(wasSelected ? "" : file.id);
+        if (!wasSelected) ctx.setRightSidebarCollapsed(false);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -36,6 +40,9 @@ export default function FileCard(props: { file: DriveFile }) {
       </label>
 
       <div class="card-preview">
+        <Show when={file.isPublic}>
+          <span class="card-public-badge">Public</span>
+        </Show>
         <Show
           when={showPreview()}
           fallback={

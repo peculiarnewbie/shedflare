@@ -3,19 +3,34 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { computeMonthBudget } from "../budget-engine";
 import { toMonthInt, nowIso, budgetId } from "../../domain/types";
+import type { CommandPayloadMap } from "../../domain/commands";
 
 export type CommandResult =
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; error: string };
 
+type BudgetCommand =
+  | "set_budget_amount"
+  | "set_budget_carryover"
+  | "set_buffer"
+  | "copy_previous_month"
+  | "set_3month_avg"
+  | "set_nmonth_avg"
+  | "set_zero"
+  | "apply_goal_templates"
+  | "cover_overspending"
+  | "transfer_budget"
+  | "hold_for_next_month";
+
 export async function handleBudgetCommands(
-  commandType: string,
-  payload: any,
+  commandType: BudgetCommand,
+  payload: CommandPayloadMap[BudgetCommand],
   db: Db,
 ): Promise<CommandResult> {
   switch (commandType) {
     case "set_budget_amount": {
-      const { month, categoryId, amount } = payload;
+      const p = payload as CommandPayloadMap["set_budget_amount"];
+      const { month, categoryId, amount } = p;
       const id = budgetId(month, categoryId);
       const now = nowIso();
       await db
@@ -30,7 +45,8 @@ export async function handleBudgetCommands(
     }
 
     case "set_budget_carryover": {
-      const { month, categoryId, carryover } = payload;
+      const p = payload as CommandPayloadMap["set_budget_carryover"];
+      const { month, categoryId, carryover } = p;
       await db
         .update(s.budgets)
         .set({ carryover, updatedAt: nowIso() })
@@ -40,21 +56,23 @@ export async function handleBudgetCommands(
     }
 
     case "set_buffer": {
-      const month = toMonthInt(payload.month);
+      const p = payload as CommandPayloadMap["set_buffer"];
+      const month = toMonthInt(p.month);
       const now = nowIso();
       await db
         .insert(s.budgetMonths)
-        .values({ id: payload.month, buffered: payload.amount, createdAt: now, updatedAt: now })
+        .values({ id: p.month, buffered: p.amount, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: s.budgetMonths.id,
-          set: { buffered: payload.amount, updatedAt: now },
+          set: { buffered: p.amount, updatedAt: now },
         });
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "copy_previous_month": {
-      const monthKey = payload.month;
+      const p = payload as CommandPayloadMap["copy_previous_month"];
+      const monthKey = p.month;
       const month = toMonthInt(monthKey);
       const [y, m] = monthKey.split("-").map(Number);
       const prev = new Date(y, m - 2, 1);
@@ -91,7 +109,8 @@ export async function handleBudgetCommands(
     }
 
     case "set_3month_avg": {
-      const month = toMonthInt(payload.month);
+      const p = payload as CommandPayloadMap["set_3month_avg"];
+      const month = toMonthInt(p.month);
       const cats = await db
         .select({ id: s.categories.id })
         .from(s.categories)
@@ -136,8 +155,9 @@ export async function handleBudgetCommands(
     }
 
     case "set_nmonth_avg": {
-      const month = toMonthInt(payload.month);
-      const n = payload.months;
+      const p = payload as CommandPayloadMap["set_nmonth_avg"];
+      const month = toMonthInt(p.month);
+      const n = p.months;
       const cats = await db
         .select({ id: s.categories.id })
         .from(s.categories)
@@ -182,7 +202,8 @@ export async function handleBudgetCommands(
     }
 
     case "set_zero": {
-      const month = toMonthInt(payload.month);
+      const p = payload as CommandPayloadMap["set_zero"];
+      const month = toMonthInt(p.month);
       await db.delete(s.budgets).where(eq(s.budgets.month, month));
       const now = nowIso();
       const cats = await db
@@ -207,7 +228,8 @@ export async function handleBudgetCommands(
     }
 
     case "apply_goal_templates": {
-      const month = toMonthInt(payload.month);
+      const p = payload as CommandPayloadMap["apply_goal_templates"];
+      const month = toMonthInt(p.month);
       const cats = await db
         .select({ id: s.categories.id, goalDef: s.categories.goalDef })
         .from(s.categories)
@@ -247,37 +269,39 @@ export async function handleBudgetCommands(
 
     case "cover_overspending":
     case "transfer_budget": {
-      const month = toMonthInt(payload.month);
+      const p = payload as CommandPayloadMap["cover_overspending"];
+      const month = toMonthInt(p.month);
       const now = nowIso();
-      const id = budgetId(month, payload.to);
+      const id = budgetId(month, p.to);
       await db
         .insert(s.budgets)
         .values({
           id,
           month,
-          categoryId: payload.to,
-          amount: payload.amount,
+          categoryId: p.to,
+          amount: p.amount,
           carryover: false,
           createdAt: now,
           updatedAt: now,
         })
         .onConflictDoUpdate({
           target: s.budgets.id,
-          set: { amount: payload.amount, updatedAt: now },
+          set: { amount: p.amount, updatedAt: now },
         });
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
 
     case "hold_for_next_month": {
-      const month = toMonthInt(payload.month);
+      const p = payload as CommandPayloadMap["hold_for_next_month"];
+      const month = toMonthInt(p.month);
       const now = nowIso();
       await db
         .insert(s.budgetMonths)
-        .values({ id: payload.month, buffered: payload.amount, createdAt: now, updatedAt: now })
+        .values({ id: p.month, buffered: p.amount, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: s.budgetMonths.id,
-          set: { buffered: payload.amount, updatedAt: now },
+          set: { buffered: p.amount, updatedAt: now },
         });
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };

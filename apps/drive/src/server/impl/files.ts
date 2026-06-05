@@ -19,6 +19,7 @@ function publicFile(row: any) {
     mimeType: row.mimeType,
     size: row.size,
     description: row.description ?? "",
+    isPublic: Boolean(row.isPublic),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     tags: row.tags ? row.tags.split(",").filter(Boolean) : [],
@@ -53,6 +54,7 @@ async function getFile(db: Db, id: string) {
       mimeType: files.mimeType,
       size: files.size,
       description: files.description,
+      isPublic: files.isPublic,
       createdAt: files.createdAt,
       updatedAt: files.updatedAt,
       tags: sql<string | null>`group_concat(${tags.name})`,
@@ -68,6 +70,7 @@ async function getFile(db: Db, id: string) {
 type UpdateFileBody = {
   name?: string;
   description?: string;
+  isPublic?: boolean;
   tags?: string[];
 };
 
@@ -83,6 +86,10 @@ function parseUpdateBody(value: unknown): UpdateFileBody | null {
     if (typeof input.description !== "string") return null;
     body.description = input.description;
   }
+  if (input.isPublic !== undefined) {
+    if (typeof input.isPublic !== "boolean") return null;
+    body.isPublic = input.isPublic;
+  }
   if (input.tags !== undefined) {
     if (!Array.isArray(input.tags) || input.tags.some((t: unknown) => typeof t !== "string"))
       return null;
@@ -93,12 +100,88 @@ function parseUpdateBody(value: unknown): UpdateFileBody | null {
 
 type FileEnv = { DB: D1Database; FILES: R2Bucket };
 
+let publicSharingSchemaReady: Promise<void> | null = null;
+
+async function ensurePublicSharingSchema(env: FileEnv) {
+  publicSharingSchemaReady ??= (async () => {
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE files ADD COLUMN is_public integer NOT NULL DEFAULT 0",
+      ).run();
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.toLowerCase().includes("duplicate column")) {
+        throw error;
+      }
+    }
+
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_files_is_public_created_at ON files (is_public, created_at)",
+    ).run();
+  })();
+
+  return publicSharingSchemaReady;
+}
+
+export async function listPublicFiles(env: FileEnv, _request: Request) {
+  await ensurePublicSharingSchema(env);
+  const db = drizzle(env.DB);
+  const rows = await db
+    .select({
+      id: files.id,
+      name: files.name,
+      mimeType: files.mimeType,
+      size: files.size,
+      description: files.description,
+      isPublic: files.isPublic,
+      createdAt: files.createdAt,
+      updatedAt: files.updatedAt,
+      tags: sql<string | null>`group_concat(${tags.name})`,
+    })
+    .from(files)
+    .leftJoin(fileTags, eq(fileTags.fileId, files.id))
+    .leftJoin(tags, eq(tags.id, fileTags.tagId))
+    .where(eq(files.isPublic, true))
+    .groupBy(files.id)
+    .orderBy(desc(files.createdAt))
+    .all();
+
+  return new Response(JSON.stringify({ files: rows.map(publicFile) }), {
+    headers: { "content-type": "application/json" },
+  });
+}
+
+export async function servePublicFile(
+  env: FileEnv,
+  id: string,
+  disposition: "inline" | "download",
+) {
+  await ensurePublicSharingSchema(env);
+  const db = drizzle(env.DB);
+  const row = await getFile(db, id);
+  if (!row || !row.isPublic) return new Response("Not found", { status: 404 });
+
+  const object = await env.FILES.get(row.objectKey);
+  if (!object) return new Response("File object missing", { status: 404 });
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("content-length", String(object.size));
+  headers.set(
+    "content-disposition",
+    disposition === "download"
+      ? `attachment; filename="${row.name.replaceAll('"', "'")}"`
+      : "inline",
+  );
+  return new Response(object.body, { headers });
+}
+
 export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
   const endpoints = (driveApi as any).groups["files"].endpoints;
   return (HttpApiBuilder.group as any)(driveApi, "files", (handlers: any) => {
     handlers.handlers.set("list", {
       endpoint: endpoints["list"],
       handler: auth.createProtectedHandler(async (webReq) => {
+        await ensurePublicSharingSchema(env);
         const db = drizzle(env.DB);
         const url = new URL(webReq.url);
         const search = url.searchParams.get("search")?.trim() ?? "";
@@ -128,6 +211,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
             mimeType: files.mimeType,
             size: files.size,
             description: files.description,
+            isPublic: files.isPublic,
             createdAt: files.createdAt,
             updatedAt: files.updatedAt,
             tags: sql<string | null>`group_concat(${tags.name})`,
@@ -153,6 +237,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
     handlers.handlers.set("create", {
       endpoint: endpoints["create"],
       handler: auth.createProtectedHandler(async (webReq) => {
+        await ensurePublicSharingSchema(env);
         const db = drizzle(env.DB);
         const form = await webReq.formData();
         const file = form.get("file");
@@ -190,6 +275,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
           mimeType: file.type || "application/octet-stream",
           size: file.size,
           description,
+          isPublic: false,
           createdAt: now,
           updatedAt: now,
         });
@@ -218,6 +304,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
     handlers.handlers.set("update", {
       endpoint: endpoints["update"],
       handler: auth.createProtectedHandler(async (webReq, _session, ctx) => {
+        await ensurePublicSharingSchema(env);
         const db = drizzle(env.DB);
         const id = ctx.params?.id as string;
         const current = await getFile(db, id);
@@ -236,6 +323,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
 
         const name = body.name?.trim() || current.name;
         const description = body.description?.trim() ?? current.description ?? "";
+        const isPublic = body.isPublic ?? Boolean(current.isPublic);
         const tagNames: string[] = Array.isArray(body.tags)
           ? Array.from(new Set(body.tags.map(normalizeTag).filter(Boolean) as string[])).slice(
               0,
@@ -244,7 +332,10 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
           : (current.tags?.split(",") ?? []);
         const now = new Date().toISOString();
 
-        await db.update(files).set({ name, description, updatedAt: now }).where(eq(files.id, id));
+        await db
+          .update(files)
+          .set({ name, description, isPublic, updatedAt: now })
+          .where(eq(files.id, id));
         await setFileTags(db, id, tagNames);
 
         const row = await getFile(db, id);
@@ -257,6 +348,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
     handlers.handlers.set("delete", {
       endpoint: endpoints["delete"],
       handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
+        await ensurePublicSharingSchema(env);
         const db = drizzle(env.DB);
         const id = ctx.params?.id as string;
         const row = await getFile(db, id);
@@ -272,6 +364,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
     handlers.handlers.set("download", {
       endpoint: endpoints["download"],
       handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
+        await ensurePublicSharingSchema(env);
         const db = drizzle(env.DB);
         const id = ctx.params?.id as string;
         const row = await getFile(db, id);
@@ -297,6 +390,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
     handlers.handlers.set("preview", {
       endpoint: endpoints["preview"],
       handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
+        await ensurePublicSharingSchema(env);
         const db = drizzle(env.DB);
         const id = ctx.params?.id as string;
         const row = await getFile(db, id);

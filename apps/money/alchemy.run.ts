@@ -29,11 +29,9 @@ export const MoneyStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
-      bindings: {
+      env: {
         UPLOADS: uploads,
         MONEY_DB: moneyDb,
-      },
-      env: {
         APP_PUBLIC_URL: config.url,
         AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-money`,

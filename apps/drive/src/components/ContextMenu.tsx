@@ -56,6 +56,35 @@ export default function ContextMenu() {
               Rename
             </button>
             <button
+              class="context-menu-item"
+              onClick={() => {
+                void ctx.setFilePublic(menuFile(), !menuFile().isPublic);
+                ctx.setContextMenu(null);
+              }}
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4.5 6a3.5 3.5 0 1 1 6.7 1.4.5.5 0 1 1-.9-.4 2.5 2.5 0 1 0-3.25 3.25.5.5 0 1 1-.4.92A3.5 3.5 0 0 1 4.5 6z" />
+                <path d="M6.75 8.75a.5.5 0 0 1 0-.7l1.3-1.3a.5.5 0 0 1 .7.7l-1.3 1.3a.5.5 0 0 1-.7 0zm1.1 3.72a3.5 3.5 0 1 0 1.48-6.7.5.5 0 0 0-.18.98 2.5 2.5 0 1 1-1.9 1.9.5.5 0 1 0-.98-.18 3.5 3.5 0 0 0 1.58 4z" />
+              </svg>
+              {menuFile().isPublic ? "Make private" : "Make public"}
+            </button>
+            <Show when={menuFile().isPublic}>
+              <button
+                class="context-menu-item"
+                onClick={() => {
+                  void ctx.copyPublicLink(menuFile());
+                  ctx.setContextMenu(null);
+                }}
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M4.5 6a3.5 3.5 0 1 1 5.45 2.9.5.5 0 1 1-.6-.8A2.5 2.5 0 1 0 5.9 4.65a.5.5 0 1 1-.8-.6A3.48 3.48 0 0 1 4.5 6z" />
+                  <path d="M11.5 10a3.5 3.5 0 1 1-5.45-2.9.5.5 0 1 1 .6.8 2.5 2.5 0 1 0 3.45 3.45.5.5 0 0 1 .8.6 3.48 3.48 0 0 1 .6-1.95z" />
+                  <path d="M6.65 10.35a.5.5 0 0 1 0-.7l2.5-2.5a.5.5 0 0 1 .7.7l-2.5 2.5a.5.5 0 0 1-.7 0z" />
+                </svg>
+                Copy public link
+              </button>
+            </Show>
+            <button
               class="context-menu-item context-menu-item-danger"
               onClick={() => {
                 ctx.setPendingDeleteId(menuFile().id);
