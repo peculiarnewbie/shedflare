@@ -1,5 +1,13 @@
-const CACHE_NAME = "shedflare-drive-v1";
+const CACHE_NAME = "shedflare-drive-v2";
 const PRECACHE = ["/"];
+
+function shouldCache(request) {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith("/api/")) return false;
+  if (url.pathname.startsWith("/public/files/")) return false;
+  return true;
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -25,9 +33,11 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  if (!shouldCache(event.request)) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {
+        if (!response.ok) return response;
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return response;
