@@ -1,28 +1,104 @@
+import { createSignal } from "solid-js";
 import { useDrive } from "../context";
+import type { DriveFile } from "../types";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeFileResponse(value: unknown): { file: DriveFile } | null {
+  if (!isRecord(value)) return null;
+  if (
+    !isRecord(value.file) ||
+    typeof value.file.id !== "string" ||
+    typeof value.file.name !== "string"
+  )
+    return null;
+  return { file: value.file as unknown as DriveFile };
+}
 
 export default function UploadPanel() {
   const ctx = useDrive();
+  const [busy, setBusy] = createSignal(false);
+  const [uploadingFileName, setUploadingFileName] = createSignal("");
+  const [dragging, setDragging] = createSignal(false);
+  const [description, setDescription] = createSignal("");
+  const [tags, setTags] = createSignal("");
+  let uploadController: AbortController | null = null;
+
+  function cancelUpload() {
+    uploadController?.abort();
+  }
+
+  async function handleUpload(event: Event) {
+    event.preventDefault();
+    if (busy()) return;
+
+    const form = event.currentTarget as HTMLFormElement;
+    const input = form.elements.namedItem("file") as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    const data = new FormData();
+    data.set("file", file);
+    data.set("description", description());
+    data.set("tags", tags());
+
+    setBusy(true);
+    setUploadingFileName(file.name);
+    ctx.setError("");
+    uploadController = new AbortController();
+    try {
+      const response = await fetch("/api/files", {
+        method: "POST",
+        body: data,
+        signal: uploadController.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const decoded = decodeFileResponse(await response.json());
+      if (!decoded) throw new Error("Invalid API response");
+      form.reset();
+      setDescription("");
+      setTags("");
+      await Promise.all([ctx.loadFiles(false, 0), ctx.loadTags()]);
+      ctx.addToast(`Uploaded ${file.name}`, "success");
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        ctx.addToast(`Canceled ${file.name}`, "info");
+        return;
+      }
+      if (err instanceof Error && err.message.includes("Unauthorized")) {
+        ctx.addToast("Session expired — please sign in again", "error");
+        return;
+      }
+      ctx.setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+      setUploadingFileName("");
+      uploadController = null;
+    }
+  }
 
   return (
     <form
       class="upload-panel"
-      classList={{ "drag-over": ctx.dragging() }}
-      onSubmit={ctx.upload}
+      classList={{ "drag-over": dragging() }}
+      onSubmit={handleUpload}
       onDragOver={(e) => {
         e.preventDefault();
-        ctx.setDragging(true);
+        setDragging(true);
       }}
       onDragEnter={(e) => {
         e.preventDefault();
-        ctx.setDragging(true);
+        setDragging(true);
       }}
       onDragLeave={(e) => {
         e.preventDefault();
-        ctx.setDragging(false);
+        setDragging(false);
       }}
       onDrop={(e) => {
         e.preventDefault();
-        ctx.setDragging(false);
+        setDragging(false);
         const file = e.dataTransfer?.files?.[0];
         if (file) {
           const input = e.currentTarget.querySelector(
@@ -54,7 +130,7 @@ export default function UploadPanel() {
         <input
           name="file"
           type="file"
-          disabled={ctx.busy()}
+          disabled={busy()}
           onChange={(e) => {
             if (e.currentTarget.files?.[0]) {
               e.currentTarget.form?.dispatchEvent(
@@ -64,25 +140,23 @@ export default function UploadPanel() {
           }}
         />
         <span class="drop-text">
-          {ctx.busy()
-            ? `Uploading ${ctx.uploadingFileName()}`
-            : "Drop files here or click to browse"}
+          {busy() ? `Uploading ${uploadingFileName()}` : "Drop files here or click to browse"}
         </span>
       </label>
       <input
         class="upload-tags-input"
-        value={ctx.uploadTags()}
-        onInput={(e) => ctx.setUploadTags(e.currentTarget.value)}
+        value={tags()}
+        onInput={(e) => setTags(e.currentTarget.value)}
         placeholder="tags: invoices, house, ideas"
       />
       <input
         class="upload-desc-input"
-        value={ctx.description()}
-        onInput={(e) => ctx.setDescription(e.currentTarget.value)}
+        value={description()}
+        onInput={(e) => setDescription(e.currentTarget.value)}
         placeholder="short note"
       />
-      {ctx.busy() && (
-        <button class="btn upload-btn" type="button" onClick={ctx.cancelUpload}>
+      {busy() && (
+        <button class="btn upload-btn" type="button" onClick={cancelUpload}>
           Cancel upload
         </button>
       )}

@@ -61,7 +61,7 @@ The `seq` auto-increments, giving each event a monotonically increasing sequence
 // sync-protocol's SyncEventStore calls this callback:
 (eventType, payload) => {
   this.applyEventToMaterializedState({ eventType, payload });
-}
+};
 ```
 
 `applyEventToMaterializedState()` is a giant switch statement (`src/server/event-store.ts:131`) that translates each event type to the appropriate SQL mutation:
@@ -106,6 +106,7 @@ private applyEventToMaterializedState(input: { eventType: SyncEventType; payload
 ### Why `message_delta` Converts to `message_upserted`
 
 The materialized tables store current state, not events. So a delta event needs to:
+
 1. Read the current message row
 2. Append the delta to `text`
 3. Set `status = "streaming"`
@@ -180,12 +181,14 @@ Snapshots are delivered in a `sync_reset` envelope:
 
 ```typescript
 // sync-engine.ts — when an error occurs or on first hello
-ws.send(JSON.stringify({
-  type: "sync_reset",
-  reason: "initial_sync",
-  protocolVersion: SYNC_PROTOCOL_VERSION,
-  snapshot: this.getSnapshot(),
-}));
+ws.send(
+  JSON.stringify({
+    type: "sync_reset",
+    reason: "initial_sync",
+    protocolVersion: SYNC_PROTOCOL_VERSION,
+    snapshot: this.getSnapshot(),
+  }),
+);
 ```
 
 ---
@@ -205,15 +208,15 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
         applyEvent(event.eventType, event.payload);
         break;
       case "ack":
-        confirmOp(envelope.opId);     // Remove from optimistic tracking
+        confirmOp(envelope.opId); // Remove from optimistic tracking
         pendingOps.resolve(envelope.opId);
         break;
       case "reject":
-        rollbackOp(envelope.opId);    // Rollback optimistic updates
+        rollbackOp(envelope.opId); // Rollback optimistic updates
         pendingOps.reject(envelope.opId, envelope.reason);
         break;
       case "sync_reset":
-        applySnapshot(envelope.snapshot.tables);  // Replace all collections
+        applySnapshot(envelope.snapshot.tables); // Replace all collections
         break;
     }
   }
@@ -267,7 +270,7 @@ function flushBatch() {
     const writer = getSyncWriter(collectionId);
     writer.begin();
     for (const op of ops) {
-      writer.write(op);  // insert, update, or delete
+      writer.write(op); // insert, update, or delete
     }
     writer.commit();
   }
@@ -285,15 +288,15 @@ function applySnapshot(tables: SyncTables | undefined) {
   for (const [tableName, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
     const writer = getSyncWriter(collectionId);
     writer.begin();
-    writer.truncate();                     // Remove all existing data
+    writer.truncate(); // Remove all existing data
     const rows = tables[tableName];
     if (rows) {
       for (const value of Object.values(rows)) {
-        writer.write({ type: "insert", value });  // Insert fresh data
+        writer.write({ type: "insert", value }); // Insert fresh data
       }
     }
     writer.commit();
-    writer.markReady();                    // Signal collection is ready
+    writer.markReady(); // Signal collection is ready
   }
 }
 ```
@@ -317,12 +320,12 @@ if (cached) {
 
 ### Why Both Events and Snapshots?
 
-| | Events | Snapshots |
-|---|---|---|
-| **When** | Real-time updates during a session | On connect, reconnect, or error recovery |
-| **Size** | Small (one mutation) | Large (full state) |
-| **Frequency** | High (every token delta) | Low (once per connection) |
-| **Purpose** | Incremental sync | Full state hydration |
+|               | Events                             | Snapshots                                |
+| ------------- | ---------------------------------- | ---------------------------------------- |
+| **When**      | Real-time updates during a session | On connect, reconnect, or error recovery |
+| **Size**      | Small (one mutation)               | Large (full state)                       |
+| **Frequency** | High (every token delta)           | Low (once per connection)                |
+| **Purpose**   | Incremental sync                   | Full state hydration                     |
 
 This is a common pattern in event-sourced systems: use events for real-time updates and snapshots for initial hydration and crash recovery.
 
@@ -364,6 +367,7 @@ export const EventPayloadSchemas = {
 ### Why "replaced" Instead of "upserted" for Search/Extract?
 
 Search runs and results are replaced wholesale per message because:
+
 1. They are produced in batches by the search tool
 2. The UI needs the full set to render correctly
 3. Partial updates would be more complex and error-prone
@@ -387,19 +391,21 @@ This version string is checked on every `hello`:
 // Server side
 if (hello.protocolVersion !== SYNC_PROTOCOL_VERSION) {
   // Send sync_reset with full snapshot — client will reload
-  ws.send(JSON.stringify({
-    type: "sync_reset",
-    reason: "protocol_mismatch",
-    protocolVersion: SYNC_PROTOCOL_VERSION,
-    snapshot: this.getSnapshot(),
-  }));
+  ws.send(
+    JSON.stringify({
+      type: "sync_reset",
+      reason: "protocol_mismatch",
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      snapshot: this.getSnapshot(),
+    }),
+  );
 }
 
 // Client side
 if (envelope.protocolVersion !== SYNC_PROTOCOL_VERSION) {
   pendingOps.clear();
   resetCollections();
-  window.location.reload();  // Reload to pick up new client code
+  window.location.reload(); // Reload to pick up new client code
 }
 ```
 
@@ -408,7 +414,7 @@ When the protocol version changes (because a new table was added or the schema c
 ```typescript
 // schema.ts
 if (version?.value !== SYNC_PROTOCOL_VERSION) {
-  resetForProtocolVersion(exec);  // DELETE FROM all tables, set new version
+  resetForProtocolVersion(exec); // DELETE FROM all tables, set new version
 }
 ```
 

@@ -31,7 +31,9 @@ export function createBudgetGroup(env: Env) {
         const accountCount = await db.$count(s.accounts, eq(s.accounts.closed, false));
         const now = new Date();
         const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-        const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+        const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+          .toISOString()
+          .slice(0, 10);
         const incomeRow = await db.get<{ total: number }>(
           sql`SELECT COALESCE(SUM(t.amount), 0) as total FROM transactions t
            JOIN categories c ON t.category_id = c.id
@@ -43,8 +45,11 @@ export function createBudgetGroup(env: Env) {
            WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 0 AND t.is_child = 0`,
         );
         return validatedJson(BudgetOverviewResponseSchema, {
-          netWorth: netWorthRow?.total ?? 0, onBudget: onBudgetRow?.total ?? 0,
-          accountCount: accountCount ?? 0, income: incomeRow?.total ?? 0, expense: expenseRow?.total ?? 0,
+          netWorth: netWorthRow?.total ?? 0,
+          onBudget: onBudgetRow?.total ?? 0,
+          accountCount: accountCount ?? 0,
+          income: incomeRow?.total ?? 0,
+          expense: expenseRow?.total ?? 0,
         });
       }),
       isRaw: true,
@@ -55,9 +60,14 @@ export function createBudgetGroup(env: Env) {
       endpoint: endpoints["month"],
       handler: wrapHandler(async (req: Request): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
-        const month = parseInt(new URL(req.url).pathname.match(/\/api\/budget\/(\d{6})$/)?.[1] ?? "0");
+        const month = parseInt(
+          new URL(req.url).pathname.match(/\/api\/budget\/(\d{6})$/)?.[1] ?? "0",
+        );
         const result = await computeMonthBudget(db, month);
-        return validatedJson(MonthBudgetResponseSchema, result ?? { categories: [], toBudget: 0, buffered: 0, month });
+        return validatedJson(
+          MonthBudgetResponseSchema,
+          result ?? { categories: [], toBudget: 0, buffered: 0, month },
+        );
       }),
       isRaw: true,
       uninterruptible: false,

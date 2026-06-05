@@ -6,11 +6,9 @@ import { driveApi } from "../definitions";
 import type { HttpApiAuth } from "@shedflare/auth-client/http-api";
 
 export function createTagsGroup(env: { DB: D1Database }, auth: HttpApiAuth) {
-  const endpoint = (driveApi as any).groups["tags"].endpoints["list"];
-  return (HttpApiBuilder.group as any)(driveApi, "tags", (handlers: any) => {
-    handlers.handlers.set("list", {
-      endpoint,
-      handler: auth.createProtectedHandler(async () => {
+  return HttpApiBuilder.group(driveApi, "tags", (handlers) =>
+    handlers.handle("list", (ctx) =>
+      auth.createProtectedHandler(async () => {
         const db = drizzle(env.DB);
         const rows = await db
           .select({ name: tags.name, count: count(fileTags.fileId) })
@@ -20,10 +18,7 @@ export function createTagsGroup(env: { DB: D1Database }, auth: HttpApiAuth) {
           .orderBy(tags.name)
           .all();
         return { tags: rows };
-      }),
-      isRaw: false,
-      uninterruptible: false,
-    });
-    return handlers;
-  });
+      })(ctx),
+    ),
+  );
 }

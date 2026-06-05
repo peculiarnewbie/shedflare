@@ -95,9 +95,14 @@ function DriveShell() {
         <div class="session-overlay">
           <div class="session-overlay-card">
             <p>Sign in with the central Shedflare auth worker to open your private drive.</p>
-            <button type="button" class="btn btn-primary" onClick={ctx.signIn}>
-              Sign in
-            </button>
+            <span class="auth-buttons">
+              <a class="btn" href="/public">
+                Public files
+              </a>
+              <button type="button" class="btn btn-primary" onClick={ctx.signIn}>
+                Sign in
+              </button>
+            </span>
           </div>
         </div>
       </Show>

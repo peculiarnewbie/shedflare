@@ -1,22 +1,43 @@
-import { Show } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import { useDrive, fileGlyph, formatSize } from "../context";
 import type { DriveFile } from "../types";
 
 export default function FileRow(props: { file: DriveFile }) {
   const ctx = useDrive();
   const file = props.file;
+  const [renameValue, setRenameValue] = createSignal("");
+
+  const isEditing = () => ctx.editingId() === file.id;
+
+  function startRename() {
+    setRenameValue(file.name);
+    ctx.setEditingId(file.id);
+  }
+
+  function cancelRename() {
+    ctx.setEditingId("");
+    setRenameValue("");
+  }
+
+  async function submitRename() {
+    await ctx.submitRename(file, renameValue());
+    cancelRename();
+  }
 
   return (
     <div
       class="file-row"
-      classList={{ selected: ctx.selectedFileIds().has(file.id) }}
+      classList={{ selected: ctx.selection().has(file.id) }}
       onClick={(e) => {
         e.stopPropagation();
         if ((e.target as HTMLElement).closest(".row-checkbox")) return;
-        const wasSelected = ctx.selectedFileIds().has(file.id);
-        ctx.toggleFileSelection(file.id);
-        ctx.setSelectedFileId(wasSelected ? "" : file.id);
-        if (!wasSelected) ctx.setRightSidebarCollapsed(false);
+        if (ctx.selection().size > 0) {
+          ctx.toggleFileSelection(file.id);
+        } else {
+          const isCurrentPreview = ctx.selectedFileId() === file.id;
+          ctx.setSelectedFileId(isCurrentPreview ? "" : file.id);
+          if (!isCurrentPreview) ctx.setRightSidebarCollapsed(false);
+        }
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -27,7 +48,7 @@ export default function FileRow(props: { file: DriveFile }) {
         <label class="row-checkbox" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
-            checked={ctx.selectedFileIds().has(file.id)}
+            checked={ctx.selection().has(file.id)}
             onChange={() => ctx.toggleFileSelection(file.id)}
           />
         </label>
@@ -37,9 +58,9 @@ export default function FileRow(props: { file: DriveFile }) {
       </div>
       <div class="col-name">
         <Show
-          when={ctx.editingId() === file.id}
+          when={isEditing()}
           fallback={
-            <span class="row-name-text" onDblClick={() => ctx.startRename(file)}>
+            <span class="row-name-text" onDblClick={startRename}>
               {file.name}
               <Show when={file.isPublic}>
                 <span class="public-pill">Public</span>
@@ -49,12 +70,12 @@ export default function FileRow(props: { file: DriveFile }) {
         >
           <input
             class="rename-input"
-            value={ctx.renameValue()}
-            onInput={(e) => ctx.setRenameValue(e.currentTarget.value)}
-            onBlur={() => ctx.submitRename(file)}
+            value={renameValue()}
+            onInput={(e) => setRenameValue(e.currentTarget.value)}
+            onBlur={() => void submitRename()}
             onKeyDown={(e) => {
-              if (e.key === "Enter") void ctx.submitRename(file);
-              if (e.key === "Escape") ctx.setEditingId("");
+              if (e.key === "Enter") void submitRename();
+              if (e.key === "Escape") cancelRename();
             }}
             autofocus
           />

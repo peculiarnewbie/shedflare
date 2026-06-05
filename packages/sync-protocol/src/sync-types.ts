@@ -21,15 +21,7 @@ export interface SyncClientResume {
   lastServerSeq: number;
 }
 
-export interface SyncClientPing {
-  type: "ping";
-}
-
-export type SyncClientEnvelope =
-  | SyncClientHello
-  | SyncClientCommand
-  | SyncClientResume
-  | SyncClientPing;
+export type SyncClientEnvelope = SyncClientHello | SyncClientCommand | SyncClientResume;
 
 // ─── Server → Client ─────────────────────────────────────────────
 
@@ -72,18 +64,12 @@ export interface SyncServerReset {
   snapshot: SyncSnapshot;
 }
 
-export interface SyncServerPong {
-  type: "pong";
-  at: string;
-}
-
 export type SyncServerEnvelope =
   | SyncServerHelloAck
   | SyncServerAck
   | SyncServerReject
   | SyncServerEvent
-  | SyncServerReset
-  | SyncServerPong;
+  | SyncServerReset;
 
 // ─── Snapshot ─────────────────────────────────────────────────────
 

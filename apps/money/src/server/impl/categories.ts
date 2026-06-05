@@ -4,7 +4,9 @@ import { moneyApi, categoriesGroup as group } from "../definitions";
 import { createDb } from "../d1-access";
 import { wrapHandler, validatedJson } from "./wrap-handler";
 import {
-  CategoriesResponseSchema, CategoryGroupsResponseSchema, GoalProgressResponseSchema,
+  CategoriesResponseSchema,
+  CategoryGroupsResponseSchema,
+  GoalProgressResponseSchema,
 } from "../../domain/schemas";
 import * as s from "../../db/schema";
 
@@ -19,10 +21,15 @@ export function createCategoriesGroup(env: Env) {
         const db = createDb(env.MONEY_DB);
         const rows = await db
           .select({
-            id: s.categories.id, name: s.categories.name, isIncome: s.categories.isIncome,
-            groupId: s.categories.groupId, sortOrder: s.categories.sortOrder,
-            hidden: s.categories.hidden, goalDef: s.categories.goalDef,
-            createdAt: s.categories.createdAt, updatedAt: s.categories.updatedAt,
+            id: s.categories.id,
+            name: s.categories.name,
+            isIncome: s.categories.isIncome,
+            groupId: s.categories.groupId,
+            sortOrder: s.categories.sortOrder,
+            hidden: s.categories.hidden,
+            goalDef: s.categories.goalDef,
+            createdAt: s.categories.createdAt,
+            updatedAt: s.categories.updatedAt,
             group_name: s.categoryGroups.name,
           })
           .from(s.categories)

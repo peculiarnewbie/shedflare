@@ -4,7 +4,7 @@ import type { SortBy } from "../types";
 
 export default function ViewToolbar() {
   const ctx = useDrive();
-  const selCount = () => ctx.selectedFileIds().size;
+  const selCount = () => ctx.selection().size;
 
   const sortOptions = [
     { value: "name" as const, label: "Name" },

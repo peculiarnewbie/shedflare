@@ -202,9 +202,6 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         case "resume":
           await this.replayAfter(ws, envelope.lastServerSeq);
           break;
-        case "ping":
-          ws.send(json({ type: "pong", at: nowIso() }));
-          break;
         case "command":
           await this.processChatCommand(
             envelope.opId,

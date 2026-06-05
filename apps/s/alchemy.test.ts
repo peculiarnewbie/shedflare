@@ -1,0 +1,40 @@
+// @ts-nocheck
+import { make } from "alchemy/Test/Vitest";
+import * as Cloudflare from "alchemy/Cloudflare";
+import * as Effect from "effect/Effect";
+import assert from "node:assert/strict";
+import ShortStack from "./alchemy.run";
+
+const live = process.env.SHEDFLARE_LIVE_ALCHEMY_TESTS === "1";
+
+const { test, afterAll, deploy, destroy } = make({
+  providers: Cloudflare.providers(),
+});
+
+afterAll(live ? destroy(ShortStack) : Effect.void);
+
+test.skipIf(!live)(
+  "s endpoints respond correctly",
+  Effect.gen(function* () {
+    const deployed = yield* deploy(ShortStack);
+    const base = deployed.url;
+
+    const root = yield* Effect.promise(() => fetch(base));
+    assert.equal(root.status, 200);
+
+    const login = yield* Effect.promise(() =>
+      fetch(`${base}/api/auth/login`, { redirect: "manual" }),
+    );
+    assert.equal(login.status, 302);
+
+    const links = yield* Effect.promise(() => fetch(`${base}/api/links`));
+    assert.equal(links.status, 401);
+
+    const session = yield* Effect.promise(() => fetch(`${base}/api/session`));
+    assert.equal(session.status, 401);
+
+    const notFound = yield* Effect.promise(() => fetch(`${base}/nonexistent-slug`));
+    assert.equal(notFound.status, 404);
+  }),
+  { timeout: 120_000 },
+);

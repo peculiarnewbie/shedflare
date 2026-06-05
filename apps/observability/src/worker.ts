@@ -9,7 +9,11 @@ function isErrorOutcome(outcome: string): boolean {
   return outcome !== "ok" && outcome !== "canceled";
 }
 
-function getFetchInfo(event: TraceItem["event"]): { method: string | null; url: string | null; status: number | null } {
+function getFetchInfo(event: TraceItem["event"]): {
+  method: string | null;
+  url: string | null;
+  status: number | null;
+} {
   if (!event) return { method: null, url: null, status: null };
   if ("request" in event) {
     const fetchEvent = event as TraceItemFetchEventInfo;
@@ -64,7 +68,19 @@ export default {
           );
 
           const batch = errors.map((e) =>
-            stmt.bind(e.id, e.outcome, e.scriptName, e.method, e.url, e.status, e.exceptionName, e.exceptionMessage, e.stack, e.cpuTimeUs, e.createdAt),
+            stmt.bind(
+              e.id,
+              e.outcome,
+              e.scriptName,
+              e.method,
+              e.url,
+              e.status,
+              e.exceptionName,
+              e.exceptionMessage,
+              e.stack,
+              e.cpuTimeUs,
+              e.createdAt,
+            ),
           );
 
           await env.OBSERVABILITY_DB.batch(batch);

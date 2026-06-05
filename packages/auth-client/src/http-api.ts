@@ -10,7 +10,7 @@ export interface HandlerContext {
 export function createHttpApiAuth(env: AuthEnv) {
   const auth = createAuthHandlers(env);
 
-  function requireSession(httpReq: any) {
+  function requireSession(httpReq: HttpServerRequest.HttpServerRequest) {
     return Effect.gen(function* () {
       const webReq = yield* HttpServerRequest.toWeb(httpReq);
       return yield* Effect.tryPromise(() => auth.requireSession(webReq));
@@ -20,7 +20,11 @@ export function createHttpApiAuth(env: AuthEnv) {
   function createProtectedHandler<A>(
     fn: (webReq: Request, session: Session, ctx: HandlerContext) => Promise<A>,
   ) {
-    return (ctx: { request: any; params?: Record<string, unknown>; payload?: unknown }) =>
+    return (ctx: {
+      request: HttpServerRequest.HttpServerRequest;
+      params?: Record<string, unknown>;
+      payload?: unknown;
+    }) =>
       Effect.gen(function* () {
         const webReq = yield* HttpServerRequest.toWeb(ctx.request);
         const session = yield* requireSession(ctx.request);
@@ -28,8 +32,8 @@ export function createHttpApiAuth(env: AuthEnv) {
           fn(webReq, session, { params: ctx.params, payload: ctx.payload }),
         );
       }).pipe(
-        Effect.catch((error: any) => {
-          const actual = error.cause ?? error;
+        Effect.catch((error: unknown) => {
+          const actual = error instanceof Error && "cause" in error ? error.cause : error;
           if (actual instanceof Response) {
             return Effect.succeed(HttpServerResponse.fromWeb(actual) as A);
           }

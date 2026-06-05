@@ -1,7 +1,7 @@
 {
   "name": "@shedflare/observability",
-  "type": "module",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@shedflare/alchemy": "workspace:*"
   },

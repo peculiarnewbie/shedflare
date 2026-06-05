@@ -85,19 +85,19 @@ The `sync` callback provides a writer interface (`begin/write/commit/markReady/t
 
 ### The 11 Collections
 
-| Collection | Key | Purpose |
-|---|---|---|
-| `workspaces` | workspace.id | Workspace configs |
-| `accountSettings` | `"default"` | Global settings |
-| `threads` | thread.id | Chat threads |
-| `messages` | message.id | Messages in threads |
-| `messageParts` | part.id | Stream parts (text, reasoning, activities) |
-| `attachments` | attachment.id | File attachments |
-| `searchRuns` | run.id | Web search records |
-| `searchResults` | result.id | Search result items |
-| `extractRuns` | run.id | Browser extract records |
-| `traceRuns` | run.id | Trace runs |
-| `traceSpans` | span.id | Trace spans |
+| Collection        | Key           | Purpose                                    |
+| ----------------- | ------------- | ------------------------------------------ |
+| `workspaces`      | workspace.id  | Workspace configs                          |
+| `accountSettings` | `"default"`   | Global settings                            |
+| `threads`         | thread.id     | Chat threads                               |
+| `messages`        | message.id    | Messages in threads                        |
+| `messageParts`    | part.id       | Stream parts (text, reasoning, activities) |
+| `attachments`     | attachment.id | File attachments                           |
+| `searchRuns`      | run.id        | Web search records                         |
+| `searchResults`   | result.id     | Search result items                        |
+| `extractRuns`     | run.id        | Browser extract records                    |
+| `traceRuns`       | run.id        | Trace runs                                 |
+| `traceSpans`      | span.id       | Trace spans                                |
 
 ### SyncWriter Interface
 
@@ -112,13 +112,14 @@ export type SyncWriter<T extends object, TKey extends string | number = string> 
 ```
 
 Usage:
+
 ```typescript
 const writer = getSyncWriter("messages");
-writer.begin();                          // Start transaction
+writer.begin(); // Start transaction
 writer.write({ type: "insert", value: newMessage });
 writer.write({ type: "update", value: updatedMessage });
 writer.write({ key: "msg_xxx", type: "delete" });
-writer.commit();                         // Commit transaction → triggers reactivity
+writer.commit(); // Commit transaction → triggers reactivity
 ```
 
 ---
@@ -147,7 +148,7 @@ Each optimistic operation stores rollback entries:
 
 ```typescript
 type OptimisticEntry = {
-  rollback: () => void;  // Restores previous state
+  rollback: () => void; // Restores previous state
 };
 
 const optimisticByOp = new Map<string, OptimisticEntry[]>();
@@ -158,6 +159,7 @@ function trackOptimistic(opId: string, entries: OptimisticEntry[]) {
 ```
 
 A rollback entry can be:
+
 - **Delete row** — if we optimistically inserted a new row, rollback deletes it
 - **Restore row** — if we optimistically updated an existing row, rollback restores the original
 
@@ -188,13 +190,15 @@ function restoreRow<T extends { id: string }>(
 ### Ack vs Reject
 
 On `ack` (server accepted):
+
 ```typescript
 export function confirmOp(opId: string) {
-  optimisticByOp.delete(opId);  // Just clean up — server data is now authoritative
+  optimisticByOp.delete(opId); // Just clean up — server data is now authoritative
 }
 ```
 
 On `reject` (server rejected):
+
 ```typescript
 export function rollbackOp(opId: string) {
   const entries = optimisticByOp.get(opId);
@@ -272,12 +276,14 @@ After `hello_ack`, the client replays all unacked ops:
 export function flushAll() {
   const ops = Array.from(pendingOpsMap.values());
   for (const op of ops) {
-    ws.send(JSON.stringify({
-      type: "command",
-      opId: op.opId,
-      commandType: op.commandType,
-      payload: op.payload,
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "command",
+        opId: op.opId,
+        commandType: op.commandType,
+        payload: op.payload,
+      }),
+    );
   }
 }
 ```
@@ -335,10 +341,7 @@ const DB_NAME = "shedflare-chat-cache";
 const STORE_NAME = "snapshots";
 const CACHE_KEY = "latest";
 
-export async function writeCachedSnapshot(
-  tables: SyncTables,
-  lastServerSeq: number,
-) {
+export async function writeCachedSnapshot(tables: SyncTables, lastServerSeq: number) {
   const db = await openDB();
   await db.put(STORE_NAME, {
     key: CACHE_KEY,
@@ -397,6 +400,7 @@ localStorage is synchronous and simpler for tiny values. IndexedDB handles large
 `src/lib/ws-connection.ts`
 
 The WebSocket connection manages:
+
 - **Connection** — creates WebSocket, sends `hello` with clientId, protocolVersion, lastServerSeq, unackedOpIds
 - **Reconnection** — exponential backoff on disconnect, re-sends `hello`
 - **Message batching** — server may send multiple envelopes in one WebSocket message; these are passed to `processEnvelopes()` as a batch
@@ -413,6 +417,7 @@ DISCONNECTED → CONNECTING → HELLO_SENT → CONNECTED
 ```
 
 On disconnect, the client:
+
 1. Saves pending ops to localStorage (they're already there)
 2. Waits with exponential backoff (1s, 2s, 4s, 8s, max 30s)
 3. Reconnects, sends `hello` with `lastServerSeq` and `unackedOpIds`
@@ -449,24 +454,22 @@ export function setActiveThreadId(id: string) {
 After events are processed (or on page load), `ensureActiveSelection()` validates that the active selections still exist:
 
 ```typescript
-export function ensureActiveSelection(
-  workspaces: Workspace[],
-  threads: Thread[],
-) {
+export function ensureActiveSelection(workspaces: Workspace[], threads: Thread[]) {
   // If active workspace was deleted, pick the first one
-  if (!workspaces.find(w => w.id === activeWorkspaceId)) {
+  if (!workspaces.find((w) => w.id === activeWorkspaceId)) {
     setActiveWorkspaceId(workspaces[0]?.id ?? null);
   }
 
   // If active thread was deleted, pick the first thread in active workspace
-  const wsThreads = threads.filter(t => t.workspaceId === activeWorkspaceId);
-  if (!wsThreads.find(t => t.id === activeThreadId)) {
+  const wsThreads = threads.filter((t) => t.workspaceId === activeWorkspaceId);
+  if (!wsThreads.find((t) => t.id === activeThreadId)) {
     setActiveThreadId(wsThreads[0]?.id ?? null);
   }
 }
 ```
 
 This is called:
+
 - After `processEnvelopes()` processes events (a thread may have been deleted)
 - After `rollbackOp()` reverts optimistic changes
 
@@ -483,7 +486,7 @@ In `src/routes/index.tsx`, the UI derives view state from collections using Soli
 const threadMessages = createMemo(() => {
   const allMessages = [...messages.state.values()];
   return allMessages
-    .filter(m => m.threadId === activeThreadId())
+    .filter((m) => m.threadId === activeThreadId())
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 });
 
@@ -494,7 +497,7 @@ const activeThread = createMemo(() => {
 
 // Is the assistant currently responding?
 const isResponding = createMemo(() => {
-  return threadMessages().some(m => m.role === "assistant" && m.status === "pending");
+  return threadMessages().some((m) => m.role === "assistant" && m.status === "pending");
 });
 ```
 

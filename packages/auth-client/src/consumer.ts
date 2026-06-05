@@ -7,6 +7,8 @@ export type AuthEnv = {
   APP_PUBLIC_URL: string;
   OWNER_EMAIL: string;
   DEV_AUTH_EMAIL?: string;
+  E2E_AUTH_EMAIL?: string;
+  E2E_AUTH_TOKEN?: string;
 };
 
 export type Session = {
@@ -55,6 +57,13 @@ function getCookie(request: Request, name: string) {
   const cookie = request.headers.get("cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function authenticateE2eRequest(request: Request, env: AuthEnv): Session | null {
+  if (!env.E2E_AUTH_EMAIL || !env.E2E_AUTH_TOKEN) return null;
+  const token = request.headers.get("x-shedflare-e2e-token");
+  if (token !== env.E2E_AUTH_TOKEN) return null;
+  return { email: normalizeEmail(env.E2E_AUTH_EMAIL) };
 }
 
 function envAccessCookie(value: string, maxAge: number) {
@@ -157,6 +166,9 @@ export function createAuthHandlers(env: AuthEnv) {
     request: Request,
     options?: { refresh?: boolean },
   ): Promise<Session | null> {
+    const e2eSession = authenticateE2eRequest(request, env);
+    if (e2eSession) return e2eSession;
+
     if (env.DEV_AUTH_EMAIL && isLocalRequest(request)) {
       return { email: normalizeEmail(env.DEV_AUTH_EMAIL) };
     }

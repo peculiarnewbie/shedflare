@@ -54,15 +54,11 @@ export const schedulesGroup = HttpApiGroup.make("schedules").add(
 
 // ── Rules ───────────────────────────────────────────────────────────
 
-export const rulesGroup = HttpApiGroup.make("rules").add(
-  HttpApiEndpoint.get("list", "/api/rules"),
-);
+export const rulesGroup = HttpApiGroup.make("rules").add(HttpApiEndpoint.get("list", "/api/rules"));
 
 // ── Tags ────────────────────────────────────────────────────────────
 
-export const tagsGroup = HttpApiGroup.make("tags").add(
-  HttpApiEndpoint.get("list", "/api/tags"),
-);
+export const tagsGroup = HttpApiGroup.make("tags").add(HttpApiEndpoint.get("list", "/api/tags"));
 
 // ── Filters ─────────────────────────────────────────────────────────
 
@@ -99,9 +95,7 @@ export const commandGroup = HttpApiGroup.make("command").add(
 
 // ── Data ────────────────────────────────────────────────────────────
 
-export const dataGroup = HttpApiGroup.make("data").add(
-  HttpApiEndpoint.get("dump", "/api/data"),
-);
+export const dataGroup = HttpApiGroup.make("data").add(HttpApiEndpoint.get("dump", "/api/data"));
 
 // ── Export ──────────────────────────────────────────────────────────
 
@@ -111,9 +105,7 @@ export const exportGroup = HttpApiGroup.make("export").add(
 
 // ── Rates ───────────────────────────────────────────────────────────
 
-export const ratesGroup = HttpApiGroup.make("rates").add(
-  HttpApiEndpoint.get("get", "/api/rates"),
-);
+export const ratesGroup = HttpApiGroup.make("rates").add(HttpApiEndpoint.get("get", "/api/rates"));
 
 // ── Settings ────────────────────────────────────────────────────────
 

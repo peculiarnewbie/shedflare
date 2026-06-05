@@ -10,10 +10,16 @@ import { ChatStack } from "./apps/chat/alchemy.run.ts";
 import { DriveStack } from "./apps/drive/alchemy.run.ts";
 import { MoneyStack } from "./apps/money/alchemy.run.ts";
 import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
+import { ShortStack } from "./apps/s/alchemy.run.ts";
 import { YouTubeStack } from "./apps/youtube/alchemy.run.ts";
 import { physicalName } from "./packages/shedflare-alchemy/src/index.ts";
 
-function patchTailConsumers(apiToken: string, accountId: string, scriptName: string, service: string) {
+function patchTailConsumers(
+  apiToken: string,
+  accountId: string,
+  scriptName: string,
+  service: string,
+) {
   return Effect.tryPromise(() =>
     fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/script-settings`,
@@ -24,8 +30,8 @@ function patchTailConsumers(apiToken: string, accountId: string, scriptName: str
           Authorization: `Bearer ${apiToken}`,
         },
         body: JSON.stringify({ tail_consumers: [{ service }] }),
-      }
-    ).then((r) => r.json())
+      },
+    ).then((r) => r.json()),
   );
 }
 
@@ -45,23 +51,29 @@ export default Alchemy.Stack(
     const chat = yield* ChatStack;
     const money = yield* MoneyStack;
     const youtube = yield* YouTubeStack;
+    const short = yield* ShortStack;
     const observability = yield* Effect.option(ObservabilityStack);
 
     if (Option.isSome(observability)) {
       const obsWorker = physicalName(stage, "observability");
-      const apps = ["auth", "cf-bill", "chat", "drive", "money", "youtube"] as const;
+      const apps = ["auth", "cf-bill", "chat", "drive", "money", "s", "youtube"] as const;
       for (const app of apps) {
-        yield* patchTailConsumers(Redacted.value(apiToken), accountId, physicalName(stage, app), obsWorker).pipe(
+        yield* patchTailConsumers(
+          Redacted.value(apiToken),
+          accountId,
+          physicalName(stage, app),
+          obsWorker,
+        ).pipe(
           Effect.catch((err) =>
             Effect.sync(() =>
-              console.error(`[observability] failed to wire tail consumer for ${app}`, err)
-            )
+              console.error(`[observability] failed to wire tail consumer for ${app}`, err),
+            ),
           ),
         );
       }
     } else {
       yield* Effect.sync(() =>
-        console.warn("[shedflare] observability app not enabled; tail consumers skipped")
+        console.warn("[shedflare] observability app not enabled; tail consumers skipped"),
       );
     }
 
@@ -73,6 +85,7 @@ export default Alchemy.Stack(
       chatUrl: chat.url,
       moneyUrl: money.url,
       youtubeUrl: youtube.url,
+      shortUrl: short.url,
       observabilityUrl: Option.isSome(observability) ? observability.value.url : undefined,
     };
   }),

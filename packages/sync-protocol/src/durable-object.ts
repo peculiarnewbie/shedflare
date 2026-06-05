@@ -98,9 +98,6 @@ export abstract class SyncEngineDO<Env> {
         case "resume":
           await this.replayAfter(ws, envelope.lastServerSeq);
           break;
-        case "ping":
-          ws.send(json({ type: "pong", at: nowIso() } satisfies SyncServerEnvelope));
-          break;
         case "command":
           await this.processCommand(envelope.opId, envelope.commandType, envelope.payload, true);
           break;

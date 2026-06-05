@@ -73,7 +73,7 @@ function decodeSessionResponse(value: unknown): { user: { email: string } } | nu
   return { user: { email: value.user.email } };
 }
 
-async function requestJson<T>(
+export async function requestJson<T>(
   input: RequestInfo | URL,
   decode: (value: unknown) => T | null,
   init?: RequestInit,
@@ -133,56 +133,63 @@ function sortFiles(files: DriveFile[], sortBy: SortBy, sortOrder: SortOrder): Dr
 /* ── Context type ────────────────────────────────── */
 
 export type DriveContextValue = {
+  // ── Data ─────────────────────────────────
   files: () => DriveFile[];
   sortedFiles: () => DriveFile[];
   tags: () => TagSummary[];
+  loadFiles: (append?: boolean, pageOffset?: number) => Promise<void>;
+  loadTags: () => Promise<void>;
+
+  // ── Query ────────────────────────────────
   search: () => string;
   setSearch: (v: string) => void;
   selectedTag: () => string;
   setSelectedTag: (v: string) => void;
-  uploadTags: () => string;
-  setUploadTags: (v: string) => void;
-  description: () => string;
-  setDescription: (v: string) => void;
-  busy: () => boolean;
-  uploadingFileName: () => string;
-  error: () => string;
-  setError: (v: string) => void;
-  checkingSession: () => boolean;
-  unauthorized: () => boolean;
-  userEmail: () => string;
-  offset: () => number;
-  hasMore: () => boolean;
-  editingId: () => string;
-  setEditingId: (v: string) => void;
-  renameValue: () => string;
-  setRenameValue: (v: string) => void;
   selectedFileId: () => string;
   setSelectedFileId: (v: string) => void;
   selectedFile: () => DriveFile | undefined;
+
+  // ── View ─────────────────────────────────
   viewMode: () => ViewMode;
   setViewMode: (v: ViewMode) => void;
   sortBy: () => SortBy;
   setSortBy: (v: SortBy) => void;
   sortOrder: () => SortOrder;
   setSortOrder: (v: SortOrder) => void;
-  leftSidebarOpen: () => boolean;
-  setLeftSidebarOpen: (v: boolean) => void;
-  rightSidebarCollapsed: () => boolean;
-  setRightSidebarCollapsed: (v: boolean) => void;
-  selectedFileIds: () => Set<string>;
-  toggleFileSelection: (id: string) => void;
-  clearSelection: () => void;
+
+  // ── Pagination ───────────────────────────
+  offset: () => number;
+  hasMore: () => boolean;
+  loadMore: () => Promise<void>;
+
+  // ── Session ──────────────────────────────
+  checkingSession: () => boolean;
+  unauthorized: () => boolean;
+  userEmail: () => string;
+  signIn: () => void;
+
+  // ── Feedback ─────────────────────────────
+  error: () => string;
+  setError: (v: string) => void;
   toasts: () => Toast[];
   addToast: (message: string, type?: Toast["type"]) => void;
-  dragging: () => boolean;
-  setDragging: (v: boolean) => void;
+
+  // ── UI coordination ──────────────────────
+  editingId: () => string;
+  setEditingId: (v: string) => void;
   contextMenu: () => ContextMenuState | null;
   setContextMenu: (v: ContextMenuState | null) => void;
   pendingDeleteId: () => string;
   setPendingDeleteId: (v: string) => void;
-  upload: (event: Event) => Promise<void>;
-  cancelUpload: () => void;
+  leftSidebarOpen: () => boolean;
+  setLeftSidebarOpen: (v: boolean) => void;
+  rightSidebarCollapsed: () => boolean;
+  setRightSidebarCollapsed: (v: boolean) => void;
+  selection: () => Set<string>;
+  toggleFileSelection: (id: string) => void;
+  clearSelection: () => void;
+
+  // ── File actions ─────────────────────────
   download: (file: DriveFile) => void;
   publicUrl: (file: DriveFile) => string;
   copyPublicLink: (file: DriveFile) => Promise<void>;
@@ -190,10 +197,7 @@ export type DriveContextValue = {
   remove: (file: DriveFile) => Promise<void>;
   removeSelected: () => Promise<void>;
   downloadSelected: () => void;
-  startRename: (file: DriveFile) => void;
-  submitRename: (file: DriveFile) => Promise<void>;
-  loadMore: () => Promise<void>;
-  signIn: () => void;
+  submitRename: (file: DriveFile, newName: string) => Promise<void>;
 };
 
 const DriveCtx = createContext<DriveContextValue>();
@@ -207,37 +211,42 @@ export function useDrive() {
 /* ── Provider ────────────────────────────────────── */
 
 export function DriveProvider(props: { children: import("solid-js").JSX.Element }) {
+  // ── Data ──────────────────────────────────
   const [files, setFiles] = createSignal<DriveFile[]>([]);
   const [tags, setTags] = createSignal<TagSummary[]>([]);
+
+  // ── Query ─────────────────────────────────
   const [search, setSearch] = createSignal("");
   const [selectedTag, setSelectedTag] = createSignal("");
-  const [uploadTags, setUploadTags] = createSignal("");
-  const [description, setDescription] = createSignal("");
-  const [busy, setBusy] = createSignal(false);
-  const [uploadingFileName, setUploadingFileName] = createSignal("");
-  const [error, setError] = createSignal("");
-  const [checkingSession, setCheckingSession] = createSignal(true);
-  const [unauthorized, setUnauthorized] = createSignal(false);
-  const [userEmail, setUserEmail] = createSignal("");
-  const [offset, setOffset] = createSignal(0);
-  const [hasMore, setHasMore] = createSignal(false);
-  const [editingId, setEditingId] = createSignal("");
-  const [renameValue, setRenameValue] = createSignal("");
-
   const [selectedFileId, setSelectedFileId] = createSignal("");
+
+  // ── View ──────────────────────────────────
   const [viewMode, setViewMode] = createSignal<ViewMode>("grid");
   const [sortBy, setSortBy] = createSignal<SortBy>("date");
   const [sortOrder, setSortOrder] = createSignal<SortOrder>("desc");
-  const [leftSidebarOpen, setLeftSidebarOpen] = createSignal(true);
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = createSignal(false);
-  const [selectedFileIds, setSelectedFileIds] = createSignal(new Set<string>());
+
+  // ── Pagination ────────────────────────────
+  const [offset, setOffset] = createSignal(0);
+  const [hasMore, setHasMore] = createSignal(false);
+
+  // ── Session ───────────────────────────────
+  const [checkingSession, setCheckingSession] = createSignal(true);
+  const [unauthorized, setUnauthorized] = createSignal(false);
+  const [userEmail, setUserEmail] = createSignal("");
+
+  // ── Feedback ──────────────────────────────
+  const [error, setError] = createSignal("");
   const [toasts, setToasts] = createSignal<Toast[]>([]);
-  const [dragging, setDragging] = createSignal(false);
+
+  // ── UI coordination ───────────────────────
+  const [editingId, setEditingId] = createSignal("");
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = createSignal("");
-  let uploadController: AbortController | null = null;
+  const [leftSidebarOpen, setLeftSidebarOpen] = createSignal(true);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = createSignal(false);
+  const [selection, setSelection] = createSignal(new Set<string>());
 
-  /* ── Derived ─────────────────────────────── */
+  // ── Derived ───────────────────────────────
 
   const selectedFile = createMemo(() => {
     const id = selectedFileId();
@@ -247,8 +256,6 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
 
   const sortedFiles = createMemo(() => sortFiles(files(), sortBy(), sortOrder()));
 
-  /* ── Query memo ──────────────────────────── */
-
   const query = createMemo(() => {
     const params = new URLSearchParams();
     if (search().trim()) params.set("search", search().trim());
@@ -256,7 +263,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     return params.toString();
   });
 
-  /* ── API functions ───────────────────────── */
+  // ── API ───────────────────────────────────
 
   async function loadFiles(append = false, pageOffset = 0) {
     const base = query() ? `?${query()}&` : "?";
@@ -301,60 +308,32 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
 
   void bootstrap();
 
-  async function upload(event: Event) {
-    event.preventDefault();
-    if (busy()) return;
+  // ── Toast helper ──────────────────────────
 
-    const form = event.currentTarget as HTMLFormElement;
-    const input = form.elements.namedItem("file") as HTMLInputElement | null;
-    const file = input?.files?.[0];
-    if (!file) return;
-
-    const data = new FormData();
-    data.set("file", file);
-    data.set("description", description());
-    data.set("tags", uploadTags());
-
-    setBusy(true);
-    setUploadingFileName(file.name);
-    setError("");
-    uploadController = new AbortController();
-    try {
-      const response = await fetch("/api/files", {
-        method: "POST",
-        body: data,
-        signal: uploadController.signal,
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const decoded = decodeFileResponse(await response.json());
-      if (!decoded) throw new Error("Invalid API response");
-      form.reset();
-      setUploadTags("");
-      setDescription("");
-      await Promise.all([loadFiles(false, 0), loadTags()]);
-      setOffset(0);
-      addToast(`Uploaded ${file.name}`, "success");
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        addToast(`Canceled ${file.name}`, "info");
-        return;
-      }
-      if (err instanceof Error && err.message.includes("Unauthorized")) {
-        setUnauthorized(true);
-        setUserEmail("");
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setBusy(false);
-      setUploadingFileName("");
-      uploadController = null;
-    }
+  function addToast(message: string, type: Toast["type"] = "info") {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
   }
 
-  function cancelUpload() {
-    uploadController?.abort();
+  // ── Selection helpers ─────────────────────
+
+  function toggleFileSelection(id: string) {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
+
+  function clearSelection() {
+    setSelection(new Set<string>());
+  }
+
+  // ── File actions ──────────────────────────
 
   function signIn() {
     window.location.assign("/api/auth/login");
@@ -373,7 +352,6 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       addToast("Publish the file before copying its public link", "error");
       return;
     }
-
     try {
       await navigator.clipboard.writeText(publicUrl(file));
       addToast("Public link copied", "success");
@@ -400,7 +378,9 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   async function remove(file: DriveFile) {
     setError("");
     try {
-      const response = await fetch(`/api/files/${file.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/files/${file.id}`, {
+        method: "DELETE",
+      });
       if (!response.ok) throw new Error(await response.text());
       setSelectedFileId("");
       setPendingDeleteId("");
@@ -413,7 +393,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   }
 
   async function removeSelected() {
-    const ids = [...selectedFileIds()];
+    const ids = [...selection()];
     if (ids.length === 0) return;
     setError("");
     let deleted = 0;
@@ -432,36 +412,15 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   }
 
   function downloadSelected() {
-    for (const id of selectedFileIds()) {
+    for (const id of selection()) {
       const file = files().find((f) => f.id === id);
       if (file) download(file);
     }
   }
 
-  function toggleFileSelection(id: string) {
-    setSelectedFileIds((prev) => {
-      const next = new Set<string>(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelectedFileIds(new Set<string>());
-  }
-
-  async function startRename(file: DriveFile) {
-    setEditingId(file.id);
-    setRenameValue(file.name);
-  }
-
-  async function submitRename(file: DriveFile) {
-    const name = renameValue().trim();
-    if (!name || name === file.name) {
-      setEditingId("");
-      return;
-    }
+  async function submitRename(file: DriveFile, newName: string) {
+    const name = newName.trim();
+    if (!name || name === file.name) return;
     setError("");
     try {
       await requestJson(`/api/files/${file.id}`, decodeFileResponse, {
@@ -472,8 +431,6 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       setFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, name } : f)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Rename failed");
-    } finally {
-      setEditingId("");
     }
   }
 
@@ -483,41 +440,18 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     await loadFiles(true, next);
   }
 
-  function addToast(message: string, type: Toast["type"] = "info") {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }
-
   /* ── Value ────────────────────────────────── */
 
   const value: DriveContextValue = {
     files,
     sortedFiles,
     tags,
+    loadFiles,
+    loadTags,
     search,
     setSearch,
     selectedTag,
     setSelectedTag,
-    uploadTags,
-    setUploadTags,
-    description,
-    setDescription,
-    busy,
-    uploadingFileName,
-    error,
-    setError,
-    checkingSession,
-    unauthorized,
-    userEmail,
-    offset,
-    hasMore,
-    editingId,
-    setEditingId,
-    renameValue,
-    setRenameValue,
     selectedFileId,
     setSelectedFileId,
     selectedFile,
@@ -527,23 +461,30 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     setSortBy,
     sortOrder,
     setSortOrder,
-    leftSidebarOpen,
-    setLeftSidebarOpen,
-    rightSidebarCollapsed,
-    setRightSidebarCollapsed,
-    selectedFileIds,
-    toggleFileSelection,
-    clearSelection,
+    offset,
+    hasMore,
+    loadMore,
+    checkingSession,
+    unauthorized,
+    userEmail,
+    signIn,
+    error,
+    setError,
     toasts,
     addToast,
-    dragging,
-    setDragging,
+    editingId,
+    setEditingId,
     contextMenu,
     setContextMenu,
     pendingDeleteId,
     setPendingDeleteId,
-    upload,
-    cancelUpload,
+    leftSidebarOpen,
+    setLeftSidebarOpen,
+    rightSidebarCollapsed,
+    setRightSidebarCollapsed,
+    selection,
+    toggleFileSelection,
+    clearSelection,
     download,
     publicUrl,
     copyPublicLink,
@@ -551,10 +492,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     remove,
     removeSelected,
     downloadSelected,
-    startRename,
     submitRename,
-    loadMore,
-    signIn,
   };
 
   return <DriveCtx.Provider value={value}>{props.children}</DriveCtx.Provider>;

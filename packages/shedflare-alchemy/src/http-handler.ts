@@ -1,18 +1,23 @@
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
-import { HttpApiBuilder } from "effect/unstable/httpapi";
+import { HttpApiBuilder, type HttpApi } from "effect/unstable/httpapi";
 
 type WebHandler = {
   handler(request: Request): Promise<Response>;
 };
 
-export function createHttpApiWebHandler(api: unknown, groups: ReadonlyArray<unknown>): WebHandler {
-  const layers = groups as [any, ...any[]];
-  const combinedLayer = (HttpApiBuilder.layer(api as any) as any).pipe(
-    Layer.provide(Layer.mergeAll(...layers) as any),
+export function createHttpApiWebHandler(
+  api: HttpApi.Any,
+  groups: ReadonlyArray<Layer.Any>,
+): WebHandler {
+  const merged = Layer.mergeAll(
+    ...(groups as unknown as [Layer.Layer<unknown>, ...Layer.Layer<unknown>[]]),
+  );
+  const combinedLayer = HttpApiBuilder.layer(api as unknown as HttpApi.HttpApi<string>).pipe(
+    Layer.provide(merged),
   );
 
-  return HttpRouter.toWebHandler(combinedLayer as any) as WebHandler;
+  return HttpRouter.toWebHandler(combinedLayer) as unknown as WebHandler;
 }
 
 /**
@@ -24,7 +29,7 @@ export function createHttpApiWebHandler(api: unknown, groups: ReadonlyArray<unkn
  * diagnostic.
  */
 export function wrapHttpHandler(fn: (req: Request) => Promise<Response>) {
-  return (ctx: { request: any }) =>
+  return (ctx: { request: HttpServerRequest.HttpServerRequest }) =>
     Effect.gen(function* () {
       const webReq = yield* HttpServerRequest.toWeb(ctx.request);
       const response = yield* Effect.tryPromise(() => fn(webReq));

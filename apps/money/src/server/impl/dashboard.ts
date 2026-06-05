@@ -35,7 +35,9 @@ export function createDashboardGroup(env: Env) {
           .orderBy(s.dashboardWidgets.y, s.dashboardWidgets.x)
           .all();
         return validatedJson(DashboardExportSchema, {
-          version: 1, exportedAt: new Date().toISOString(), widgets: rows,
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          widgets: rows,
         });
       }),
       isRaw: true,

@@ -5,6 +5,7 @@ The chat app is a **single-player AI chat interface** deployed on Cloudflare Wor
 ## Why a Durable Object?
 
 A DO gives us:
+
 - **A single logical server** that handles all writes, so there is no conflict resolution needed
 - **SQLite storage** embedded in the DO — no external database to provision
 - **Alarms** for crash recovery (restart interrupted assistant turns)
@@ -114,10 +115,12 @@ runAssistantTurn()
 ## Why Event Sourcing Instead of Direct Writes?
 
 Every mutation goes through `EventStore.insertEvent()` which:
+
 1. Writes a row to the `events` table (append-only log)
 2. Applies the event to the materialized SQLite tables (the "current state")
 
 This gives us:
+
 - **Full audit trail** — the events table is an append-only log of everything that happened
 - **Crash recovery** — if the DO restarts mid-turn, the events are still there, and alarm-based recovery picks up where we left off
 - **Snapshot for new clients** — when a client connects, it gets a snapshot of all materialized tables, not the full event log
@@ -130,12 +133,14 @@ Materialized state is updated synchronously (same transaction) so reads always s
 The WebSocket protocol (defined in `@shedflare/sync-protocol`) has a few envelope types:
 
 **Client → Server:**
+
 - `hello` — initial handshake (clientId, protocolVersion, lastServerSeq, unackedOpIds)
 - `resume` — reconnect without re-syncing everything
 - `command` — the actual operation (opId, commandType, payload)
 - `ping` — keepalive
 
 **Server → Client:**
+
 - `hello_ack` — confirms protocol version, tells client last server seq
 - `ack` — confirms a specific opId was committed
 - `reject` — rejects an opId (duplicate, invalid, error)
@@ -144,6 +149,7 @@ The WebSocket protocol (defined in `@shedflare/sync-protocol`) has a few envelop
 - `pong` — keepalive response
 
 The event types are defined in `src/domain/index.ts` as both TypeScript types and Effect Schema schemas:
+
 - `message_upserted`, `message_delta`, `message_completed`, `message_failed`
 - `thread_upserted`, `thread_archived`, `thread_deleted`
 - `workspace_upserted`, `workspace_archived`
@@ -156,13 +162,13 @@ The event types are defined in `src/domain/index.ts` as both TypeScript types an
 
 ## Stack Choices
 
-| Layer | Choice | Why not alternatives |
-|-------|--------|---------------------|
-| **AI SDK** | TanStack AI (`@tanstack/ai`) | Vercel AI SDK is tied to Next.js conventions; TanStack AI is framework-agnostic and works directly with Workers |
+| Layer                | Choice                             | Why not alternatives                                                                                                |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **AI SDK**           | TanStack AI (`@tanstack/ai`)       | Vercel AI SDK is tied to Next.js conventions; TanStack AI is framework-agnostic and works directly with Workers     |
 | **State management** | TanStack DB (reactive collections) | No Redux/Zustand needed — TanStack DB collections are reactive key-value stores that integrate with SolidJS signals |
-| **Validation** | Effect Schema | Zod would work fine, but Effect Schema integrates with the Effect ecosystem for dependency injection and tracing |
-| **ORM** | Drizzle | Kysely is lighter but Drizzle's type inference saves boilerplate; raw SQL for complex queries |
-| **Streaming** | AG-UI over SSE | Standard SSE from the go-bridge; no WebSocket-level streaming |
-| **UI** | SolidJS | React would add overhead; SolidJS signals map cleanly to TanStack DB reactivity |
-| **Testing** | Vitest (via Vite+) | Standard choice for Vite projects |
-| **Linting** | Oxlint (via Vite+) | Faster than ESLint |
+| **Validation**       | Effect Schema                      | Zod would work fine, but Effect Schema integrates with the Effect ecosystem for dependency injection and tracing    |
+| **ORM**              | Drizzle                            | Kysely is lighter but Drizzle's type inference saves boilerplate; raw SQL for complex queries                       |
+| **Streaming**        | AG-UI over SSE                     | Standard SSE from the go-bridge; no WebSocket-level streaming                                                       |
+| **UI**               | SolidJS                            | React would add overhead; SolidJS signals map cleanly to TanStack DB reactivity                                     |
+| **Testing**          | Vitest (via Vite+)                 | Standard choice for Vite projects                                                                                   |
+| **Linting**          | Oxlint (via Vite+)                 | Faster than ESLint                                                                                                  |

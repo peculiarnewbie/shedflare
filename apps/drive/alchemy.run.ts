@@ -12,6 +12,9 @@ export const DriveStack = Alchemy.Stack(
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
     const config = yield* appConfig("drive");
+    const e2eAuthEmail = process.env.SHEDFLARE_DRIVE_E2E_AUTH_EMAIL;
+    const e2eAuthToken = process.env.SHEDFLARE_DRIVE_E2E_AUTH_TOKEN;
+    const isE2eStage = stage.startsWith("e2e-");
 
     const db = yield* Cloudflare.D1Database("DB", {
       name: physicalName(stage, "drive"),
@@ -37,8 +40,17 @@ export const DriveStack = Alchemy.Stack(
         AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-drive`,
         OWNER_EMAIL: config.ownerEmail,
+        ...(e2eAuthEmail && e2eAuthToken
+          ? {
+              E2E_AUTH_EMAIL: e2eAuthEmail,
+              E2E_AUTH_TOKEN: e2eAuthToken,
+            }
+          : {}),
       },
-      domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
+      domain:
+        !isE2eStage && config.url.startsWith("https://")
+          ? new URL(config.url).hostname
+          : undefined,
     });
 
     return {

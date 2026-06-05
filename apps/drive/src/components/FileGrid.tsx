@@ -12,7 +12,7 @@ export default function FileGrid() {
       <Show
         when={ctx.sortedFiles().length > 0}
         fallback={
-          <Show when={ctx.checkingSession() || ctx.busy()} fallback={<EmptyState />}>
+          <Show when={ctx.checkingSession() || false} fallback={<EmptyState />}>
             <ShimmerSkeleton />
           </Show>
         }

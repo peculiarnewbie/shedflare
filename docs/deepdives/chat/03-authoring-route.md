@@ -127,17 +127,20 @@ export function dispatch<T extends SyncCommandType>(
   pendingOps.set(options.opId, op);
 
   // Send via WebSocket
-  ws.send(JSON.stringify({
-    type: "command",
-    opId: options.opId,
-    clientTs: op.clientTs,
-    commandType,
-    payload,
-  }));
+  ws.send(
+    JSON.stringify({
+      type: "command",
+      opId: options.opId,
+      clientTs: op.clientTs,
+      commandType,
+      payload,
+    }),
+  );
 }
 ```
 
 The pending ops queue (`src/lib/pending-ops.ts`) serves multiple purposes:
+
 - **Persistence to localStorage** — if the page reloads before the server acks, the op is replayed on reconnect
 - **Tracking** — the op stays in `pendingOps` until an `ack` or `reject` arrives from the server
 - **Replay** — on `hello_ack`, `flushAll()` replays any unacked ops
@@ -145,6 +148,7 @@ The pending ops queue (`src/lib/pending-ops.ts`) serves multiple purposes:
 ### What Happens If the WebSocket Disconnects?
 
 `ws-connection.ts` handles reconnection with exponential backoff. When it reconnects:
+
 1. It sends a `hello` with `unackedOpIds` (list of ops that were dispatched but not yet acknowledged)
 2. The server checks each opId against its `commands` table
 3. Already-committed ops get re-acked (no duplicate work)
@@ -318,8 +322,8 @@ export function normalizeMessage(row: Message, opId: string) {
     parentMessageId: row.parentMessageId ?? null,
     sourceMessageId: row.sourceMessageId ?? null,
     reasoningLevel: row.reasoningLevel ?? "off",
-    optimistic: false,        // Server strips optimistic flag
-    opId,                     // Server assigns its own opId
+    optimistic: false, // Server strips optimistic flag
+    opId, // Server assigns its own opId
     updatedAt: row.updatedAt || nowIso(),
   });
 }
@@ -458,6 +462,7 @@ RUN_ERROR → message_failed event
 ```
 
 Key behavior:
+
 - **Delta batching**: Text deltas are batched up to 96 characters before broadcasting. This reduces the number of `message_delta` events and prevents the UI from re-rendering on every token.
 - **Reasoning interleaving**: Reasoning content (from models that emit thinking/reasoning) is flushed to `message_part_appended` parts immediately, preserving seq order with text parts.
 - **Tool call tracking**: Each tool call iteration is tracked and logged for observability.
@@ -465,13 +470,13 @@ Key behavior:
 
 ### How Stream Events Map to Client Updates
 
-| Server event | Client effect |
-|---|---|
-| `message_delta` | Appends text to the message, sets status to `"streaming"` |
-| `message_part_appended` (reasoning) | Shows a collapsible "Reasoning" chip |
-| `message_part_appended` (activity) | Shows a progress chip (e.g., "Searching...") |
-| `message_completed` | Sets status to `"completed"`, shows token metrics |
-| `message_failed` | Sets status to `"failed"`, shows error message |
+| Server event                        | Client effect                                             |
+| ----------------------------------- | --------------------------------------------------------- |
+| `message_delta`                     | Appends text to the message, sets status to `"streaming"` |
+| `message_part_appended` (reasoning) | Shows a collapsible "Reasoning" chip                      |
+| `message_part_appended` (activity)  | Shows a progress chip (e.g., "Searching...")              |
+| `message_completed`                 | Sets status to `"completed"`, shows token metrics         |
+| `message_failed`                    | Sets status to `"failed"`, shows error message            |
 
 ---
 
@@ -493,16 +498,21 @@ export function retryMessageAction(input) {
   });
 
   // Optimistic update + dispatch
-  dispatch("retry_message", {
-    threadId: input.thread.id,
-    userMessage: toWire(input.userMessage, opId),
-    assistantMessage: toWire(assistantMessage, opId),
-    // ...
-  }, { opId });
+  dispatch(
+    "retry_message",
+    {
+      threadId: input.thread.id,
+      userMessage: toWire(input.userMessage, opId),
+      assistantMessage: toWire(assistantMessage, opId),
+      // ...
+    },
+    { opId },
+  );
 }
 ```
 
 On the server, `handleRetryMessage()` (`src/server/command-handlers.ts:317`):
+
 1. Looks up the existing user message by ID
 2. Creates only the assistant message event (`message_upserted`)
 3. Updates the thread head
@@ -521,10 +531,10 @@ export function editUserMessageAction(input) {
   // Creates a NEW user message (with sourceMessageId pointing to original)
   const userMessage = createMessage({
     threadId: input.thread.id,
-    parentMessageId: input.sourceMessage.parentMessageId,  // Same parent as the edited message
-    sourceMessageId: input.sourceMessage.id,               // Points to what was edited
+    parentMessageId: input.sourceMessage.parentMessageId, // Same parent as the edited message
+    sourceMessageId: input.sourceMessage.id, // Points to what was edited
     role: "user",
-    text: input.text,                                       // New text
+    text: input.text, // New text
     status: "completed",
   });
 
@@ -549,17 +559,22 @@ export function editUserMessageAction(input) {
   });
 
   // Optimistic update + dispatch
-  dispatch("edit_user_message", {
-    sourceMessageId: input.sourceMessage.id,
-    userMessage: toWire(userMessage, opId),
-    assistantMessage: toWire(assistantMessage, opId),
-    attachments: clonedAttachments.map(a => toWire(a, opId)),
-    // ...
-  }, { opId });
+  dispatch(
+    "edit_user_message",
+    {
+      sourceMessageId: input.sourceMessage.id,
+      userMessage: toWire(userMessage, opId),
+      assistantMessage: toWire(assistantMessage, opId),
+      attachments: clonedAttachments.map((a) => toWire(a, opId)),
+      // ...
+    },
+    { opId },
+  );
 }
 ```
 
 On the server, `handleEditUserMessage()` creates:
+
 1. `thread_upserted` — updates head to new assistant message
 2. `message_upserted` — the new user message
 3. `message_upserted` — the new assistant message
@@ -601,6 +616,7 @@ async alarm() {
 ```
 
 Recovery steps in `recoverTurn()`:
+
 1. Create a new assistant message (with fresh ID)
 2. Save new turn params
 3. Broadcast `message_failed` for the stale message (error: `"interrupted"`)
@@ -609,6 +625,7 @@ Recovery steps in `recoverTurn()`:
 6. Call `runAssistantTurn()` with the original parameters
 
 This means the user sees:
+
 - The original pending message marked as "interrupted"
 - A new pending message appearing
 - The assistant turn restarting from scratch

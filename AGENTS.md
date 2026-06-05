@@ -67,6 +67,10 @@ For apps using SQLite (DO storage):
 
 Both must be kept in sync. The DDL runs on DO cold start. Raw SQL is only for dynamic-table operations and DDL — all other queries should use Drizzle.
 
+## TypeScript: No `as any` unless absolutely necessary
+
+**Never use `as any` to silence type errors.** It erases compile-time safety and causes bugs like the drive 400 incident (schema mismatch hidden behind `any` cast). If a type doesn't fit, use proper generics, `unknown`, type assertions to the correct type, or `satisfies`. The only acceptable use is when interfacing with a library that has genuinely untyped APIs — and even then, wrap it in a typed helper so the `any` is contained.
+
 ## Using Vite+
 
 The apps in this repo use Vite+. See `apps/chat/AGENTS.md` for detailed Vite+ workflow guidance.

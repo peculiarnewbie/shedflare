@@ -2,7 +2,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "jsonc-parser";
 
-export type AppId = "auth" | "cf-bill" | "chat" | "drive" | "money" | "observability" | "youtube";
+export type AppId =
+  | "auth"
+  | "cf-bill"
+  | "chat"
+  | "drive"
+  | "money"
+  | "observability"
+  | "s"
+  | "youtube";
 
 export interface ShedflareAlchemyConfig {
   domain: string;

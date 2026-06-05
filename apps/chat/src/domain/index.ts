@@ -442,9 +442,6 @@ export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | n
         snapshot,
       };
     }
-    case "pong":
-      if (typeof value.at !== "string") return null;
-      return value as SyncServerPong;
     default:
       return null;
   }
@@ -706,15 +703,7 @@ export type SyncClientResume = {
   lastServerSeq: number;
 };
 
-export type SyncClientPing = {
-  type: "ping";
-};
-
-export type SyncClientEnvelope =
-  | SyncClientHello
-  | SyncClientCommand
-  | SyncClientResume
-  | SyncClientPing;
+export type SyncClientEnvelope = SyncClientHello | SyncClientCommand | SyncClientResume;
 
 // ---------------------------------------------------------------------------
 // Event payload schemas (Effect Schema — derived from row schemas)
@@ -841,18 +830,12 @@ export type SyncServerReset = {
   snapshot: SyncSnapshot;
 };
 
-export type SyncServerPong = {
-  type: "pong";
-  at: string;
-};
-
 export type SyncServerEnvelope =
   | SyncServerHelloAck
   | SyncServerAck
   | SyncServerReject
   | SyncServerEvent
-  | SyncServerReset
-  | SyncServerPong;
+  | SyncServerReset;
 
 export type PendingSyncOp<T extends SyncCommandType = SyncCommandType> = {
   opId: string;

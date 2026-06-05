@@ -94,7 +94,7 @@ export default function FileDetailPanel() {
                   Make private
                 </button>
               </Show>
-              <button class="btn" onClick={() => ctx.startRename(f())}>
+              <button class="btn" onClick={() => ctx.setEditingId(f().id)}>
                 Rename
               </button>
               <button class="btn btn-danger" onClick={() => ctx.setPendingDeleteId(f().id)}>

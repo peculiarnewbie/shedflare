@@ -228,6 +228,11 @@ select {
   line-height: 1.5;
 }
 
+.auth-buttons {
+  display: flex;
+  gap: 10px;
+}
+
 .session-overlay-error {
   border-color: rgba(185, 74, 72, 0.25);
   color: #e85347;

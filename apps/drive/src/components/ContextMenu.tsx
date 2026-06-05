@@ -46,7 +46,7 @@ export default function ContextMenu() {
             <button
               class="context-menu-item"
               onClick={() => {
-                ctx.startRename(menuFile());
+                ctx.setEditingId(menuFile().id);
                 ctx.setContextMenu(null);
               }}
             >

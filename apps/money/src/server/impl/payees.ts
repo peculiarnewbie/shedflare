@@ -15,8 +15,13 @@ export function createPayeesGroup(env: Env) {
       handler: wrapHandler(async (): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
         const rows = await db.all<{
-          id: string; name: string; transfer_account_id: string | null;
-          favorite: number; created_at: string; updated_at: string; transaction_count: number;
+          id: string;
+          name: string;
+          transfer_account_id: string | null;
+          favorite: number;
+          created_at: string;
+          updated_at: string;
+          transaction_count: number;
         }>(
           sql`SELECT p.*, (SELECT COUNT(*) FROM transactions WHERE payee = p.name) as transaction_count
            FROM payees p ORDER BY p.name`,
@@ -45,7 +50,10 @@ export function createPayeesGroup(env: Env) {
         if (!payeeName) return validatedJson(PayeeSuggestionsResponseSchema, { suggestions: [] });
         const db = createDb(env.MONEY_DB);
         const rows = await db.all<{
-          category_id: string; category_name: string; group_name: string | null; count: number;
+          category_id: string;
+          category_name: string;
+          group_name: string | null;
+          count: number;
         }>(
           sql`SELECT t.category_id, c.name AS category_name, cg.name AS group_name, COUNT(*) AS count
            FROM transactions t

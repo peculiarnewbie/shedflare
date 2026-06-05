@@ -1,0 +1,2561 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shedflare Onboarding — Chat &amp; Drive Architecture Guide</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface-2: #1c2128;
+        --border: #30363d;
+        --text: #e6edf3;
+        --text-muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-2: #3fb950;
+        --accent-3: #d2a8ff;
+        --accent-4: #f0883e;
+        --red: #f85149;
+        --code-bg: #0d1117;
+        --inline-code-bg: #1c2128;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.7;
+        font-size: 16px;
+      }
+
+      /* ── Layout ─────────────────────────────────────── */
+      .layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        min-height: 100vh;
+      }
+
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          display: none;
+        }
+      }
+
+      /* ── Sidebar ────────────────────────────────────── */
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        padding: 24px 16px;
+      }
+
+      .sidebar h2 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin: 20px 0 8px;
+      }
+
+      .sidebar h2:first-child {
+        margin-top: 0;
+      }
+
+      .sidebar a {
+        display: block;
+        padding: 4px 8px;
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 14px;
+        border-radius: 6px;
+        transition: all 0.15s;
+      }
+
+      .sidebar a:hover {
+        color: var(--text);
+        background: var(--surface-2);
+      }
+
+      .sidebar .logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--accent);
+        margin-bottom: 8px;
+        display: block;
+        padding: 0 8px;
+      }
+
+      .sidebar .subtitle {
+        font-size: 12px;
+        color: var(--text-muted);
+        padding: 0 8px;
+        margin-bottom: 16px;
+      }
+
+      /* ── Main Content ───────────────────────────────── */
+      .content {
+        max-width: 860px;
+        padding: 48px 48px 120px;
+      }
+
+      @media (max-width: 900px) {
+        .content {
+          padding: 24px 16px 80px;
+        }
+      }
+
+      h1 {
+        font-size: 36px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: var(--text);
+        line-height: 1.2;
+      }
+
+      h1 .subtitle-text {
+        display: block;
+        font-size: 18px;
+        font-weight: 400;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+
+      h2 {
+        font-size: 28px;
+        font-weight: 600;
+        margin-top: 64px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      h3 {
+        font-size: 22px;
+        font-weight: 600;
+        margin-top: 40px;
+        margin-bottom: 12px;
+        color: var(--text);
+      }
+
+      h4 {
+        font-size: 17px;
+        font-weight: 600;
+        margin-top: 28px;
+        margin-bottom: 8px;
+        color: var(--accent-3);
+      }
+
+      p {
+        margin-bottom: 16px;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      strong {
+        color: var(--text);
+      }
+
+      ul,
+      ol {
+        margin-bottom: 16px;
+        padding-left: 24px;
+      }
+
+      li {
+        margin-bottom: 6px;
+      }
+
+      /* ── Code ────────────────────────────────────────── */
+      code {
+        font-family: "SF Mono", "Fira Code", "JetBrains Mono", Consolas, monospace;
+        font-size: 14px;
+      }
+
+      :not(pre) > code {
+        background: var(--inline-code-bg);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        overflow-x: auto;
+        margin-bottom: 20px;
+        line-height: 1.5;
+      }
+
+      pre code {
+        color: var(--text);
+        font-size: 13.5px;
+      }
+
+      /* ── Callout Boxes ──────────────────────────────── */
+      .callout {
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        border-left: 4px solid;
+        background: var(--surface);
+      }
+
+      .callout-title {
+        font-weight: 600;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+      }
+
+      .callout.info {
+        border-color: var(--accent);
+      }
+      .callout.info .callout-title {
+        color: var(--accent);
+      }
+
+      .callout.good {
+        border-color: var(--accent-2);
+      }
+      .callout.good .callout-title {
+        color: var(--accent-2);
+      }
+
+      .callout.bad {
+        border-color: var(--red);
+      }
+      .callout.bad .callout-title {
+        color: var(--red);
+      }
+
+      .callout.warn {
+        border-color: var(--accent-4);
+      }
+      .callout.warn .callout-title {
+        color: var(--accent-4);
+      }
+
+      .callout.why {
+        border-color: var(--accent-3);
+      }
+      .callout.why .callout-title {
+        color: var(--accent-3);
+      }
+
+      /* ── Tables ─────────────────────────────────────── */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+      }
+
+      th {
+        background: var(--surface);
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      td {
+        color: var(--text-muted);
+      }
+
+      tr:hover td {
+        background: var(--surface-2);
+      }
+
+      /* ── Comparison Grid ────────────────────────────── */
+      .comparison {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      @media (max-width: 700px) {
+        .comparison {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .comparison > div {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+
+      .comparison .label {
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .comparison .good-label {
+        background: rgba(63, 185, 80, 0.15);
+        color: var(--accent-2);
+      }
+      .comparison .bad-label {
+        background: rgba(248, 81, 73, 0.15);
+        color: var(--red);
+      }
+      .comparison .ts-label {
+        background: rgba(139, 148, 158, 0.15);
+        color: var(--text-muted);
+      }
+      .comparison .effect-label {
+        background: rgba(88, 166, 255, 0.15);
+        color: var(--accent);
+      }
+
+      .comparison pre {
+        margin: 0;
+        border: none;
+        border-radius: 0;
+      }
+
+      /* ── Mermaid ─────────────────────────────────────── */
+      .mermaid-container {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 24px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+      }
+
+      .mermaid {
+        display: flex;
+        justify-content: center;
+      }
+
+      .mermaid svg {
+        max-width: 100%;
+      }
+
+      /* ── File Reference ─────────────────────────────── */
+      .file-ref {
+        display: inline-block;
+        font-family: "SF Mono", monospace;
+        font-size: 13px;
+        background: var(--surface-2);
+        padding: 2px 8px;
+        border-radius: 4px;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+
+      /* ── Separator ──────────────────────────────────── */
+      hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 48px 0;
+      }
+
+      /* ── Tag Chips ──────────────────────────────────── */
+      .tag {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-right: 4px;
+      }
+
+      .tag-effect {
+        background: rgba(88, 166, 255, 0.2);
+        color: var(--accent);
+      }
+      .tag-schema {
+        background: rgba(210, 168, 255, 0.2);
+        color: var(--accent-3);
+      }
+      .tag-do {
+        background: rgba(63, 185, 80, 0.2);
+        color: var(--accent-2);
+      }
+      .tag-pattern {
+        background: rgba(240, 136, 62, 0.2);
+        color: var(--accent-4);
+      }
+
+      /* ── Scrollbar ──────────────────────────────────── */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+      }
+
+      /* ── Syntax Highlighting (minimal) ──────────────── */
+      .kw {
+        color: #ff7b72;
+      } /* keywords */
+      .str {
+        color: #a5d6ff;
+      } /* strings */
+      .num {
+        color: #79c0ff;
+      } /* numbers */
+      .cmt {
+        color: #8b949e;
+        font-style: italic;
+      } /* comments */
+      .fn {
+        color: #d2a8ff;
+      } /* functions */
+      .typ {
+        color: #7ee787;
+      } /* types */
+      .op {
+        color: #ff7b72;
+      } /* operators */
+      .dec {
+        color: #ffa657;
+      } /* decorators */
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <!-- ═══════════════════════════════════════════════════ SIDEBAR -->
+      <nav class="sidebar">
+        <span class="logo">Shedflare</span>
+        <span class="subtitle">Onboarding Guide</span>
+
+        <h2>Getting Started</h2>
+        <a href="#overview">Overview</a>
+        <a href="#monorepo">Monorepo Structure</a>
+        <a href="#tooling">Tooling &amp; Commands</a>
+
+        <h2>The Chat App</h2>
+        <a href="#chat-arch">Architecture</a>
+        <a href="#chat-sync">Sync Protocol</a>
+        <a href="#chat-do">Durable Object</a>
+        <a href="#chat-commands">Commands &amp; Events</a>
+        <a href="#chat-turn">Assistant Turn</a>
+        <a href="#chat-client">Client-Side</a>
+
+        <h2>The Drive App</h2>
+        <a href="#drive-arch">Architecture</a>
+        <a href="#drive-api">Effect HttpApi</a>
+        <a href="#drive-storage">Storage (D1 + R2)</a>
+        <a href="#drive-client">Client-Side</a>
+
+        <h2>Effect Patterns</h2>
+        <a href="#effect-schema">Schema</a>
+        <a href="#effect-context">Context.Services</a>
+        <a href="#effect-layers">Layers</a>
+        <a href="#effect-gen">Effect.gen</a>
+        <a href="#effect-tryPromise">Effect.tryPromise</a>
+        <a href="#effect-pipe">Effect.pipe</a>
+        <a href="#effect-httpapi">HttpApi</a>
+        <a href="#effect-errors">Tagged Errors</a>
+        <a href="#effect-onExit">Effect.onExit</a>
+        <a href="#effect-antipatterns">Anti-Patterns</a>
+
+        <h2>Authoring Conventions</h2>
+        <a href="#conv-schema">Dual Schema Pattern</a>
+        <a href="#conv-branded">Branded Types</a>
+        <a href="#conv-factories">Factory Functions</a>
+        <a href="#conv-logging">Structured Logging</a>
+        <a href="#conv-runtime">Runtime Env</a>
+
+        <h2>Decision Log</h2>
+        <a href="#decisions">Why We Do It This Way</a>
+      </nav>
+
+      <!-- ═══════════════════════════════════════════════════ MAIN CONTENT -->
+      <main class="content">
+        <h1 id="top">
+          Shedflare Onboarding Guide
+          <span class="subtitle-text"
+            >A deep dive into the Chat and Drive apps, Effect patterns, and authoring
+            conventions</span
+          >
+        </h1>
+
+        <p>
+          This guide is written for developers who are new to the Shedflare codebase but already
+          comfortable with TypeScript. It assumes you understand what Effect is at a conceptual
+          level (it's a library for typed, composable effects) but don't yet know the syntax or how
+          we use it here. Every section includes real code from the repo, anti-patterns to avoid,
+          and plain-TypeScript comparisons where they help.
+        </p>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ OVERVIEW -->
+        <h2 id="overview">Overview</h2>
+
+        <p>
+          Shedflare is a <strong>self-hosted suite of personal productivity tools</strong> deployed
+          on Cloudflare. It is not a SaaS — there is one user (the deployer), no sign-up flow, and
+          no per-user isolation. Auth exists solely to protect the deployment from public access.
+        </p>
+
+        <p>
+          The suite contains seven apps, but this guide focuses on the two most architecturally
+          interesting:
+        </p>
+
+        <table>
+          <tr>
+            <th>App</th>
+            <th>What It Does</th>
+            <th>Storage</th>
+            <th>Real-Time</th>
+          </tr>
+          <tr>
+            <td><strong>Chat</strong></td>
+            <td>AI chat with web search, file attachments, tracing</td>
+            <td>Durable Object SQLite</td>
+            <td>WebSocket sync</td>
+          </tr>
+          <tr>
+            <td><strong>Drive</strong></td>
+            <td>File storage with tags, public sharing</td>
+            <td>D1 + R2</td>
+            <td>No (request/response)</td>
+          </tr>
+        </table>
+
+        <p>These two apps represent the two main architectural patterns in the repo:</p>
+        <ul>
+          <li>
+            <strong>Chat pattern</strong>: Durable Object with WebSocket-based sync protocol, event
+            sourcing, and optimistic updates
+          </li>
+          <li>
+            <strong>Drive pattern</strong>: Standard Worker with D1/R2, Effect HttpApi for typed
+            REST endpoints
+          </li>
+        </ul>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+graph TB
+  subgraph "Cloudflare Edge"
+    Worker["Worker<br/>(fetch handler)"]
+    ChatDO["Chat DO<br/>(SyncEngineDurableObject)"]
+    DriveWorker["Drive Worker<br/>(ExportedHandler)"]
+    D1["D1 Database"]
+    R2["R2 Bucket"]
+    KV["KV Storage"]
+  end
+
+  subgraph "Client"
+    ChatClient["Chat SPA<br/>(SolidJS)"]
+    DriveClient["Drive SPA<br/>(SolidJS)"]
+  end
+
+  ChatClient -->|"WebSocket"| ChatDO
+  ChatClient -->|"HTTP /api/*"| Worker
+  Worker -->|"/api/sync/* proxy"| ChatDO
+  DriveClient -->|"HTTP /api/*"| DriveWorker
+  DriveWorker --> D1
+  DriveWorker --> R2
+  ChatDO -->|"SQLite"| ChatDO
+  Worker --> KV
+</pre>
+        </div>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ MONOREPO -->
+        <h2 id="monorepo">Monorepo Structure</h2>
+
+        <p>This is a pnpm workspace monorepo. The key directories:</p>
+
+        <pre><code>shedflare/
+├── apps/
+│   ├── chat/          # AI chat app (this guide)
+│   ├── drive/         # File storage app (this guide)
+│   ├── auth/          # OpenAuth issuer
+│   ├── money/         # Budgeting app
+│   ├── cf-bill/       # Cloudflare billing dashboard
+│   ├── observability/ # Log aggregation tail consumer
+│   └── youtube/       # YouTube utilities
+├── packages/
+│   ├── sync-protocol/ # Shared DO sync engine base class
+│   ├── shedflare-alchemy/ # Deployment config + providers
+│   ├── auth-client/   # Auth consumer/issuer library
+│   ├── cli/           # Deprecated CLI
+│   └── cli-tui/       # Deprecated TUI installer
+├── docs/              # ← You are here
+├── infra/             # Deprecated re-exports
+├── alchemy.run.ts     # Root deployment stack
+├── shedflare.config.example.jsonc  # Config template
+└── pnpm-workspace.yaml
+</code></pre>
+
+        <h3 id="tooling">Tooling &amp; Commands</h3>
+
+        <p>
+          We use <strong>Vite+</strong> (<code>vp</code> CLI) for builds, linting, formatting, and
+          testing. All apps share the same toolchain.
+        </p>
+
+        <table>
+          <tr>
+            <th>Command</th>
+            <th>What It Does</th>
+          </tr>
+          <tr>
+            <td><code>vp check</code></td>
+            <td>Format + Lint + TypeScript type check</td>
+          </tr>
+          <tr>
+            <td><code>vp test</code></td>
+            <td>Run Vitest tests</td>
+          </tr>
+          <tr>
+            <td><code>vp dev</code></td>
+            <td>Start dev server</td>
+          </tr>
+          <tr>
+            <td><code>vp build</code></td>
+            <td>Production build</td>
+          </tr>
+          <tr>
+            <td><code>pnpm deploy:chat</code></td>
+            <td>Deploy chat app via Alchemy</td>
+          </tr>
+          <tr>
+            <td><code>pnpm deploy</code></td>
+            <td>Deploy the full suite</td>
+          </tr>
+        </table>
+
+        <div class="callout warn">
+          <div class="callout-title">Important</div>
+          Always run <code>vp check</code> before committing. It catches formatting, lint, and type
+          errors in one pass.
+        </div>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ CHAT APP -->
+        <h2 id="chat-arch">The Chat App — Architecture</h2>
+
+        <p>
+          The chat app is a real-time AI chat interface backed by a
+          <strong>Durable Object</strong> with SQLite storage. It uses a custom WebSocket sync
+          protocol for live updates, optimistic writes, and event sourcing.
+        </p>
+
+        <div class="file-ref">apps/chat/src/worker.ts</div>
+        <pre><code>// The Worker entry point is minimal — it exports the DO class and a fetch handler
+export { SyncEngineDurableObject } from "./server/sync-engine";
+
+export default {
+  async fetch(request: Request, env: Env): Promise&lt;Response&gt; {
+    return createRouter(env).fetch(request);
+  },
+};</code></pre>
+
+        <p>
+          The Worker itself handles HTTP routes (auth, uploads, API endpoints). Real-time chat
+          traffic goes directly to the Durable Object via WebSocket.
+        </p>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+sequenceDiagram
+    participant C as Chat Client
+    participant W as Worker
+    participant DO as SyncEngineDO
+    participant LLM as LLM Provider
+
+    C->>W: GET /api/auth/login
+    W-->>C: OAuth redirect
+
+    C->>DO: WebSocket /ws
+    DO->>C: hello_ack (protocol version, last seq)
+
+    C->>DO: command (create_user_message)
+    DO->>DO: validate, execute in transaction
+    DO->>C: ack (opId, serverSeq)
+    DO->>C: event (message_upserted: user msg)
+    DO->>C: event (message_upserted: assistant msg, status=pending)
+
+    DO->>LLM: chat completion (streaming)
+    loop Streaming
+        LLM->>DO: token
+        DO->>C: event (message_delta: partial text)
+    end
+    LLM-->>DO: done
+    DO->>C: event (message_completed)
+</pre
+          >
+        </div>
+
+        <h3 id="chat-sync">The Sync Protocol</h3>
+
+        <p>
+          The sync protocol is defined in <code class="file-ref">packages/sync-protocol/</code> and
+          extended by the chat app. It's a typed WebSocket protocol with message envelopes.
+        </p>
+
+        <h4>Client → Server Messages</h4>
+        <table>
+          <tr>
+            <th>Type</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>hello</code></td>
+            <td>
+              Initial handshake — sends clientId, protocolVersion, lastServerSeq, unackedOpIds
+            </td>
+          </tr>
+          <tr>
+            <td><code>command</code></td>
+            <td>A sync command — opId, commandType, payload</td>
+          </tr>
+          <tr>
+            <td><code>resume</code></td>
+            <td>Resume after reconnect — sends lastServerSeq to catch up</td>
+          </tr>
+        </table>
+
+        <h4>Server → Client Messages</h4>
+        <table>
+          <tr>
+            <th>Type</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>hello_ack</code></td>
+            <td>Handshake response — protocolVersion, serverTime, lastServerSeq</td>
+          </tr>
+          <tr>
+            <td><code>ack</code></td>
+            <td>Command accepted — opId, serverSeq, acceptedAt</td>
+          </tr>
+          <tr>
+            <td><code>reject</code></td>
+            <td>Command rejected — opId, reason, code, retriable</td>
+          </tr>
+          <tr>
+            <td><code>event</code></td>
+            <td>Data change — serverSeq, eventId, eventType, payload</td>
+          </tr>
+          <tr>
+            <td><code>sync_reset</code></td>
+            <td>Full snapshot replacement — when protocol version changes or cursor is stale</td>
+          </tr>
+        </table>
+
+        <p>
+          The protocol uses <strong>sequence numbers</strong> (<code>serverSeq</code>) for ordering
+          and <strong>operation IDs</strong> (<code>opId</code>) for deduplication. Every command
+          gets exactly one ack (or reject), and every event is sequenced so clients can resume from
+          where they left off.
+        </p>
+
+        <h3 id="chat-do">The Durable Object</h3>
+
+        <p>
+          <code class="file-ref">apps/chat/src/server/sync-engine.ts</code> —
+          <code>SyncEngineDurableObject</code> extends <code>SyncEngineDO&lt;AppEnv&gt;</code> from
+          the shared sync-protocol package.
+        </p>
+
+        <pre><code>export class SyncEngineDurableObject extends SyncEngineDO&lt;AppEnv&gt; {
+  private readonly db: DrizzleSqliteDODatabase&lt;typeof dbSchema&gt;;
+  private readonly chatAccess: DataAccess;
+  private readonly eventStore: EventStore;
+  private readonly assistantTurnControllers = new Map&lt;string, AbortController&gt;();
+  private readonly chatHandlers = new Map&lt;SyncCommandType, ChatHandlerFn&gt;();
+
+  constructor(ctx: DurableObjectState, env: AppEnv) {
+    super(ctx, env);
+    this.db = drizzle(ctx.storage, { schema: dbSchema, logger: false });
+    this.chatAccess = new DataAccess(this.access, this.db);
+    this.eventStore = new EventStore(this.chatAccess);
+    this.registerChatHandlers();
+
+    // Run DDL on cold start — blockConcurrencyWhile ensures this completes
+    // before any requests are processed
+    void ctx.blockConcurrencyWhile(async () =&gt; {
+      initializeStorage(
+        (query, ...params) =&gt; ctx.storage.sql.exec(query, ...params),
+        // ...
+      );
+    });
+  }
+}</code></pre>
+
+        <div class="callout info">
+          <div class="callout-title">Key Concept — blockConcurrencyWhile</div>
+          Durable Objects process requests one at a time (single-threaded).
+          <code>blockConcurrencyWhile</code> ensures that the initialization (DDL, migrations)
+          completes before the DO accepts its first request. Without this, a request could arrive
+          before the schema is ready.
+        </div>
+
+        <h4>Command Processing Flow</h4>
+
+        <pre><code>private async processChatCommand&lt;T extends SyncCommandType&gt;(
+  opId: string,
+  commandType: T,
+  payload: SyncCommandPayloadMap[T],
+  doBroadcast: boolean,
+): Promise&lt;SyncCommandResult&gt; {
+  // 1. Dedup check — if we already processed this opId, return the cached ack
+  const existing = this.access.getCommandAck(opId);
+  if (existing) return { ack: existing, events: [] };
+
+  // 2. Look up the handler for this command type
+  const handler = this.chatHandlers.get(commandType);
+
+  // 3. Validate the payload against the Effect Schema
+  const validatedPayload = decodeCommand(commandType, payload);
+
+  // 4. Execute in a transaction
+  const result = this.db.transaction(() =&gt; {
+    const { events, followUp } = handler(opId, validatedPayload, handlerContext);
+    // Write ack to commands table for dedup
+    this.db.insert(dbSchema.commands).values({ opId, ... }).run();
+    return { ack, events, followUp };
+  });
+
+  // 5. Broadcast ack + events to all connected WebSocket clients
+  if (doBroadcast) {
+    this.broadcast(result.ack);
+    for (const event of result.events) this.broadcast(event);
+  }
+
+  // 6. Execute follow-up (e.g., assistant turn) via ctx.waitUntil
+  if (result.followUp) {
+    this.ctx.waitUntil(result.followUp());
+  }
+
+  return result;
+}</code></pre>
+
+        <h3 id="chat-commands">Commands &amp; Events</h3>
+
+        <p>
+          The chat app has <strong>21 command types</strong> and <strong>19 event types</strong>.
+          Commands are typed payloads validated against Effect Schemas. Events are the resulting
+          state changes broadcast to all clients.
+        </p>
+
+        <div class="file-ref">apps/chat/src/domain/index.ts</div>
+        <pre><code>// Command payload schemas — each command has a corresponding Effect Schema
+export const CommandPayloadSchemas = {
+  bootstrap_session: BootstrapSessionPayloadSchema,
+  create_workspace: CreateWorkspacePayloadSchema,
+  create_user_message: CreateUserMessagePayloadSchema,
+  retry_message: RetryMessagePayloadSchema,
+  cancel_assistant_turn: CancelAssistantTurnPayloadSchema,
+  // ... 16 more
+} as const;
+
+// Type-safe command decoder
+export function decodeCommand&lt;K extends SyncCommandType&gt;(
+  commandType: K,
+  input: unknown,
+): SyncCommandPayloadMap[K] {
+  const schema = CommandPayloadSchemas[commandType];
+  return Schema.decodeUnknownSync(schema)(input);
+}</code></pre>
+
+        <h3 id="chat-turn">The Assistant Turn</h3>
+
+        <p>
+          When a user sends a message, the chat app creates both a user message and a pending
+          assistant message, then starts an LLM streaming turn. This is the most complex flow in the
+          app.
+        </p>
+
+        <div class="file-ref">apps/chat/src/server/assistant-turn.ts</div>
+        <pre><code>export async function runAssistantTurn(
+  payload: AssistantTurnPayload,
+  ctx: AssistantTurnContext,
+) {
+  const abortController = new AbortController();
+  ctx.assistantTurnControllers.set(payload.assistantMessage.id, abortController);
+
+  // Create trace context for observability
+  const traceContext = makeRootTraceContext({
+    messageId: payload.assistantMessage.id,
+    threadId: payload.threadId,
+    modelId: payload.modelId,
+  });
+
+  // Create a trace recorder that writes spans to the DB via events
+  const recorder = makeTraceRecorder({
+    scope: "assistant-turn",
+    onTraceRunStart: async (row) =&gt; {
+      const event = await ctx.eventStore.appendServerEvent(
+        null, "trace_run_upserted", { row }
+      );
+      ctx.broadcast(event);
+    },
+    // ... onTraceRunFinish, onSpanStart, onSpanFinish
+  });
+
+  // The actual LLM call, wrapped with Effect tracing
+  const traceAsync = (name, kind, attrs, run) =&gt;
+    runAppEffect(
+      traceEffect(name, kind, attrs, Effect.tryPromise(run)),
+      { env: ctx.env, traceRecorder: recorder, traceContext: childContext },
+    );
+
+  const messages = await traceAsync(
+    "assistant.thread_messages.load", "internal", {},
+    () =&gt; buildModelMessages(ctx.access, payload),
+  );
+
+  const stream = await traceAsync(
+    "assistant.upstream.chat", "model", { modelId: payload.modelId },
+    () =&gt; chat({ model, messages, signal: abortController.signal }),
+  );
+
+  // Consume the stream and emit events
+  await consumeAssistantStream(stream, { ... });
+}</code></pre>
+
+        <div class="callout why">
+          <div class="callout-title">Why Effect for tracing?</div>
+          The chat app uses Effect primarily for <strong>structured tracing</strong>, not for
+          general control flow. Each significant operation is wrapped with <code>traceEffect</code>,
+          which creates a span, executes the operation, and records the result — including errors
+          and cancellations via <code>Effect.onExit</code>. This gives us detailed observability
+          without cluttering the business logic with try/catch/finally blocks.
+        </div>
+
+        <h4>Turn Recovery via Alarms</h4>
+
+        <p>
+          If the Durable Object restarts mid-turn (e.g., due to Cloudflare eviction), the turn
+          parameters are persisted in a <code>pending_turns</code> table. A DO
+          <strong>alarm</strong> fires 30 seconds later to check for and recover interrupted turns.
+        </p>
+
+        <pre><code>async alarm() {
+  const turns = this.loadAllTurnParams();
+  for (const [messageId, params] of turns) {
+    const message = this.chatAccess.getMessage(messageId);
+    if (!message || message.status === "completed" || message.status === "failed") {
+      this.clearTurnParams(messageId); // Clean up stale entries
+      continue;
+    }
+    // Create a new assistant message and restart the turn
+    await this.recoverTurn(messageId, params);
+  }
+}</code></pre>
+
+        <h3 id="chat-client">Client-Side Architecture</h3>
+
+        <p>The chat client is a SolidJS SPA. It communicates with the server via:</p>
+        <ul>
+          <li><strong>WebSocket</strong> — for real-time sync (commands in, events out)</li>
+          <li><strong>HTTP</strong> — for auth, bootstrap, model catalog, file uploads</li>
+        </ul>
+
+        <div class="file-ref">apps/chat/src/lib/ws-connection.ts</div>
+        <pre><code>// WebSocket connection manager with exponential backoff reconnection
+// and RAF-based envelope batching (batches rapid events into a single frame)
+export function createWsConnection(options: WsConnectionOptions) {
+  // Connects, handles hello/hello_ack handshake
+  // On disconnect: exponential backoff with jitter
+  // On reconnect: sends resume with lastServerSeq
+  // Batches incoming envelopes via requestAnimationFrame
+}</code></pre>
+
+        <div class="file-ref">apps/chat/src/lib/collections.ts</div>
+        <pre><code>// TanStack DB collections — reactive data stores that the UI subscribes to
+// Each collection corresponds to a table in the SQLite schema
+export const workspaceCollection = createCollection(workspaceConfig);
+export const threadCollection = createCollection(threadConfig);
+export const messageCollection = createCollection(messageConfig);
+// ... etc</code></pre>
+
+        <div class="file-ref">apps/chat/src/lib/actions.ts</div>
+        <pre><code>// Command dispatchers — these create optimistic local mutations and send
+// commands over the WebSocket
+export function sendMessage(input: SendMessageInput) {
+  const opId = createId("op");
+  const userMessage = createMessage({ role: "user", ... });
+  const assistantMessage = createMessage({ role: "assistant", status: "pending", ... });
+
+  // Optimistic: insert into local collection immediately
+  messageCollection.insert(toWire(userMessage, opId));
+  messageCollection.insert(toWire(assistantMessage, opId));
+
+  // Send command to server
+  ws.send({
+    type: "command",
+    opId,
+    commandType: "create_user_message",
+    payload: { threadId, userMessage, assistantMessage, ... },
+  });
+}</code></pre>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant A as actions.ts
+    participant C as collections
+    participant WS as WebSocket
+    participant S as Server
+
+    U->>A: type message, hit Enter
+    A->>A: createMessage (user + assistant)
+    A->>C: optimistic insert (both messages)
+    A->>WS: send command
+
+    WS->>S: command envelope
+    S->>S: validate, execute, commit
+    S->>WS: ack + events
+
+    WS->>C: apply events (replace optimistic with confirmed)
+    Note over C: optimistic flag removed,<br/>opId cleared
+
+    S->>WS: message_delta (streaming)
+    WS->>C: apply delta events
+    C-->>U: UI re-renders with new text
+</pre>
+        </div>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ DRIVE APP -->
+        <h2 id="drive-arch">The Drive App — Architecture</h2>
+
+        <p>
+          The drive app is simpler than chat. It's a standard Cloudflare Worker (no Durable Object)
+          with D1 for metadata and R2 for file content. It uses Effect's HttpApi system for typed
+          REST endpoints.
+        </p>
+
+        <div class="file-ref">apps/drive/src/worker.ts</div>
+        <pre><code>export default {
+  async fetch(request: Request, env: Env): Promise&lt;Response&gt; {
+    return createRouter(env).fetch(request);
+  },
+};</code></pre>
+
+        <h3 id="drive-api">Effect HttpApi — Typed API Definitions</h3>
+
+        <p>
+          The drive app defines its API using Effect's <code>HttpApi</code>,
+          <code>HttpApiGroup</code>, and <code>HttpApiEndpoint</code>. This gives you typed
+          endpoints with schema-validated inputs and outputs.
+        </p>
+
+        <div class="file-ref">apps/drive/src/server/definitions.ts</div>
+        <pre><code>import { Schema } from "effect";
+import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
+
+// Define the response shape
+const FileSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  mimeType: Schema.String,
+  size: Schema.Number,
+  description: Schema.String,
+  isPublic: Schema.Boolean,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  tags: Schema.Array(Schema.String),
+});
+
+const FilesSuccess = Schema.Struct({
+  files: Schema.Array(FileSchema),
+  nextOffset: Schema.optional(Schema.Number),
+});
+
+// Define endpoints
+const fileListEp = HttpApiEndpoint.get("list", "/api/files", {
+  success: FilesSuccess,
+});
+
+const fileCreateEp = HttpApiEndpoint.post("create", "/api/files", {
+  success: Schema.Struct({ file: FileSchema }),
+});
+
+const fileUpdateEp = HttpApiEndpoint.patch("update", "/api/files/:id", {
+  params: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ file: FileSchema }),
+});
+
+// Group endpoints and build the API
+const filesGroup = HttpApiGroup.make("files").add(
+  fileListEp, fileCreateEp, fileUpdateEp, fileDeleteEp,
+  fileDownloadEp, filePreviewEp,
+);
+
+export const driveApi = HttpApi.make("drive").add(filesGroup, tagsGroup);</code></pre>
+
+        <h4>Handler Implementation</h4>
+
+        <p>
+          Handlers are wired up using <code>HttpApiBuilder.group</code>. Each handler receives the
+          Effect context and wraps the actual logic with auth:
+        </p>
+
+        <div class="file-ref">apps/drive/src/server/impl/files.ts</div>
+        <pre><code>export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
+  return HttpApiBuilder.group(driveApi, "files", (handlers) =&gt;
+    handlers
+      .handle("list", (ctx) =&gt;
+        auth.createProtectedHandler(async (webReq) =&gt; {
+          const db = drizzle(env.DB);
+          const url = new URL(webReq.url);
+          const search = url.searchParams.get("search")?.trim() ?? "";
+          const tag = normalizeTag(url.searchParams.get("tag") ?? "");
+          const limit = Math.min(Math.max(..., 1), 100);
+          const offset = Math.max(..., 0);
+
+          const rows = await db
+            .select({ id: files.id, name: files.name, ... })
+            .from(files)
+            .leftJoin(fileTags, eq(fileTags.fileId, files.id))
+            .leftJoin(tags, eq(tags.id, fileTags.tagId))
+            .where(and(searchWhere, tagWhere))
+            .groupBy(files.id)
+            .orderBy(desc(files.createdAt))
+            .limit(limit + 1)
+            .offset(offset)
+            .all();
+
+          const hasMore = rows.length &gt; limit;
+          return {
+            files: pageRows.map(publicFile),
+            ...(hasMore ? { nextOffset: offset + limit } : {}),
+          };
+        })(ctx),
+      )
+      .handle("create", (ctx) =&gt;
+        auth.createProtectedHandler(async (webReq) =&gt; {
+          const form = await webReq.formData();
+          const file = form.get("file");
+          // Stream file to R2
+          await env.FILES.put(objectKey, file.stream(), {
+            httpMetadata: { contentType: file.type },
+          });
+          // Insert metadata into D1
+          await db.insert(files).values({ id, objectKey, name, ... });
+          await setFileTags(db, id, tagNames);
+          return HttpServerResponse.fromWeb(
+            new Response(JSON.stringify({ file: publicFile(row) }), { status: 201 })
+          );
+        })(ctx),
+      )
+      // ... update, delete, download, preview handlers
+  );
+}</code></pre>
+
+        <h4>Router — Wiring It All Together</h4>
+
+        <div class="file-ref">apps/drive/src/server/router.ts</div>
+        <pre><code>export function createRouter(env: Env) {
+  const auth = createHttpApiAuth(env);
+
+  // Create the Effect HttpApi handler
+  const wh = createHttpApiWebHandler(driveApi, [
+    createFileHandlersGroup(env, auth),
+    createTagsGroup(env, auth),
+  ]);
+
+  return {
+    async fetch(request: Request): Promise&lt;Response&gt; {
+      const url = new URL(request.url);
+
+      // Auth routes (manual)
+      if (pathname === "/api/auth/login") return auth.loginRedirect();
+      if (pathname === "/api/auth/callback") return auth.handleCallback(request);
+
+      // Public routes (no auth)
+      if (pathname === "/api/public/files") return listPublicFiles(env, request);
+
+      // Protected API routes → Effect HttpApi handler
+      if (pathname.startsWith("/api/")) return wh.handler(request);
+
+      // Static assets (SPA fallback)
+      return env.ASSETS.fetch(request);
+    },
+  };
+}</code></pre>
+
+        <div class="callout info">
+          <div class="callout-title">Pattern: Hybrid Routing</div>
+          The drive app uses <strong>manual URL dispatch</strong> for auth and public routes, and
+          delegates <code>/api/*</code> to the Effect HttpApi handler. This is a common pattern —
+          you get full control over auth and public routes while letting Effect handle the typed API
+          layer.
+        </div>
+
+        <h3 id="drive-storage">Storage — D1 + R2</h3>
+
+        <div class="file-ref">apps/drive/src/db/schema.ts</div>
+        <pre><code>import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const files = sqliteTable("files", {
+  id: text("id").primaryKey(),
+  objectKey: text("object_key").notNull().unique(),  // R2 key: files/{uuid}
+  name: text("name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  description: text("description"),
+  isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) =&gt; [
+  index("idx_files_created_at").on(table.createdAt),
+  index("idx_files_is_public_created_at").on(table.isPublic, table.createdAt),
+]);
+
+export const tags = sqliteTable("tags", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull().unique(),
+});
+
+export const fileTags = sqliteTable("file_tags", {
+  fileId: text("file_id").notNull().references(() =&gt; files.id, { onDelete: "cascade" }),
+  tagId: text("tag_id").notNull().references(() =&gt; tags.id, { onDelete: "cascade" }),
+}, (table) =&gt; [primaryKey({ columns: [table.fileId, table.tagId] })]);</code></pre>
+
+        <p>
+          The pattern is: <strong>R2 stores the bytes, D1 stores the metadata</strong>. File objects
+          are keyed as <code>files/{uuid}</code> in R2. The D1 schema has a many-to-many
+          relationship between files and tags via a junction table.
+        </p>
+
+        <h3 id="drive-client">Drive Client-Side</h3>
+
+        <p>
+          The drive client is also SolidJS, but simpler than chat — no WebSocket, no sync protocol.
+          All state lives in a single <code>DriveProvider</code> context with ~30 signals.
+        </p>
+
+        <div class="file-ref">apps/drive/src/context.tsx</div>
+        <pre><code>// ALL application state in one context — signals for everything
+const [files, setFiles] = createSignal&lt;DriveFile[]&gt;([]);
+const [tags, setTags] = createSignal&lt;TagSummary[]&gt;([]);
+const [search, setSearch] = createSignal("");
+const [selectedTag, setSelectedTag] = createSignal("");
+const [busy, setBusy] = createSignal(false);
+const [viewMode, setViewMode] = createSignal&lt;ViewMode&gt;("grid");
+const [sortBy, setSortBy] = createSignal&lt;SortBy&gt;("date");
+// ... 20+ more signals
+
+// Derived state
+const sortedFiles = createMemo(() =&gt; sortFiles(files(), sortBy(), sortOrder()));
+const selectedFile = createMemo(() =&gt; files().find(f =&gt; f.id === selectedFileId()));
+
+// Auto-reload when search/tag changes
+createEffect(() =&gt; {
+  const q = query();  // dependency tracking
+  loadFiles(false, 0);
+});</code></pre>
+
+        <div class="callout warn">
+          <div class="callout-title">No Effect on the Drive Client</div>
+          The drive client does <strong>not</strong> use Effect at all. Every API response is
+          decoded through manual type-checking functions (<code>isRecord()</code> + field checks).
+          This is deliberate — it avoids shipping Effect's runtime to the client bundle.
+        </div>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ EFFECT PATTERNS -->
+        <h2 id="effect-schema">Effect Patterns — Schema</h2>
+
+        <p><span class="tag tag-schema">Schema</span> <span class="tag tag-effect">Effect</span></p>
+
+        <p>
+          Effect Schema is used for <strong>runtime type validation</strong> — defining the shape of
+          data, validating incoming payloads, and deriving TypeScript types. Think of it as a more
+          powerful, composable alternative to Zod.
+        </p>
+
+        <h3>Basic Schema Definition</h3>
+
+        <div class="file-ref">apps/chat/src/domain/index.ts</div>
+        <pre><code>import * as Schema from "effect/Schema";
+
+// A simple enum — like a union of string literals
+export const ReasoningLevel = Schema.Literals(["off", "low", "medium", "high"]);
+export const MessageStatus = Schema.Literals([
+  "queued", "pending", "streaming", "completed", "failed", "cancelled",
+]);
+
+// A struct — like a TypeScript interface
+export const MessageRow = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  role: MessageRole,
+  status: MessageStatus,
+  modelId: Schema.String,
+  reasoningLevel: ReasoningLevel,
+  text: Schema.String,
+  createdAt: Schema.String,
+  errorCode: Schema.NullOr(Schema.String),    // string | null
+  durationMs: Schema.NullOr(Schema.Number),    // number | null
+  searchEnabled: Schema.Boolean,
+  // Optional fields (may be absent from the object)
+  optimistic: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  opId: Schema.optional(Schema.NullOr(Schema.String)),
+});
+
+// Derive the TypeScript type from the schema
+export type Message = Schema.Schema.Type&lt;typeof MessageRow&gt;;</code></pre>
+
+        <h3>Decoding (Runtime Validation)</h3>
+
+        <pre><code>// Decode and validate — throws on invalid input
+const message = Schema.decodeUnknownSync(MessageRow)(rawInput);
+
+// This is equivalent to:
+// if (typeof rawInput.id !== "string") throw ...
+// if (typeof rawInput.threadId !== "string") throw ...
+// ... but with much less boilerplate and better error messages</code></pre>
+
+        <h3>Comparison: Effect Schema vs Plain TypeScript</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label ts-label">Plain TypeScript (type only — no runtime validation)</div>
+            <pre><code>type Message = {
+  id: string;
+  threadId: string;
+  role: "user" | "assistant" | "system";
+  status: "pending" | "completed" | "failed";
+  text: string;
+  errorCode: string | null;
+};
+
+// Problem: this type disappears at runtime.
+// You can't validate that incoming JSON matches it.
+function handleMessage(input: unknown): Message {
+  // You'd need to manually check every field...
+  const obj = input as Record&lt;string, unknown&gt;;
+  if (typeof obj.id !== "string") throw new Error("...");
+  if (typeof obj.threadId !== "string") throw new Error("...");
+  if (obj.role !== "user" && obj.role !== "assistant" && ...)
+    throw new Error("...");
+  // ... 20 more checks
+  return obj as Message;
+}</code></pre>
+          </div>
+          <div>
+            <div class="label effect-label">Effect Schema (type + runtime validation)</div>
+            <pre><code>const MessageSchema = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  role: Schema.Literals(["user", "assistant", "system"]),
+  status: Schema.Literals(["pending", "completed", "failed"]),
+  text: Schema.String,
+  errorCode: Schema.NullOr(Schema.String),
+});
+
+type Message = Schema.Schema.Type&lt;typeof MessageSchema&gt;;
+
+// One-liner validation — throws with detailed error messages
+const message = Schema.decodeUnknownSync(MessageSchema)(input);</code></pre>
+          </div>
+        </div>
+
+        <div class="callout good">
+          <div class="callout-title">Why We Use Schema</div>
+          The sync protocol receives JSON payloads from the network. Without runtime validation, a
+          malformed payload could crash the server or corrupt data. Schema gives us a single source
+          of truth: the TypeScript type <em>and</em> the runtime validator are derived from the same
+          definition.
+        </div>
+
+        <h3>Schema for API Definitions</h3>
+
+        <p>
+          Effect HttpApi uses Schema to define the shape of request params, query strings, and
+          response bodies:
+        </p>
+
+        <pre><code>// Params are validated automatically
+const fileUpdateEp = HttpApiEndpoint.patch("update", "/api/files/:id", {
+  params: Schema.Struct({ id: Schema.String }),  // :id is extracted and validated
+  success: Schema.Struct({ file: FileSchema }),
+});</code></pre>
+
+        <hr />
+
+        <h2 id="effect-context">Effect Patterns — Context.Services</h2>
+
+        <p>
+          <span class="tag tag-effect">Effect</span> <span class="tag tag-pattern">Pattern</span>
+        </p>
+
+        <p>
+          Context Services are Effect's dependency injection system. A
+          <code>Context.Service</code> defines a <strong>tag</strong> (a unique identifier) and a
+          <strong>type</strong> (what the service provides). Other Effects can then
+          <code>yield*</code> the tag to access the service.
+        </p>
+
+        <p>Think of it as a typed, compile-time-checked service locator.</p>
+
+        <div class="file-ref">apps/chat/src/effect/index.ts</div>
+        <pre><code>import { Context, Effect } from "effect";
+
+// Define three services — each with a unique tag and a type
+export const AppEnvTag = Context.Service&lt;AppEnv&gt;("#/effect/AppEnv");
+export const TraceRecorder = Context.Service&lt;TraceRecorderService&gt;("#/effect/TraceRecorder");
+export const TraceContext = Context.Service&lt;TraceContextValue&gt;("#/effect/TraceContext");
+
+// Now any Effect can require these services:
+const myEffect = Effect.gen(function* () {
+  const env = yield* AppEnvTag;           // ← gets AppEnv from the context
+  const recorder = yield* TraceRecorder;  // ← gets TraceRecorderService
+  const context = yield* TraceContext;    // ← gets TraceContextValue
+
+  // Use them...
+  yield* Effect.tryPromise(() =&gt; recorder.startSpan({ ... }));
+});</code></pre>
+
+        <h3>Comparison: Context vs Manual Dependency Passing</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label ts-label">Manual dependency passing (what we do in some places)</div>
+            <pre><code>// Dependencies passed as function arguments
+async function runAssistantTurn(
+  payload: AssistantTurnPayload,
+  ctx: AssistantTurnContext,  // ← all deps bundled here
+) {
+  const recorder = makeTraceRecorder({
+    onSpanStart: (row) =&gt; ctx.eventStore.appendServerEvent(...),
+  });
+  // recorder must be threaded through every call
+  await doWork(payload, ctx.access, recorder);
+}
+
+// Problem: every function needs the same deps passed through.
+// Adding a new dependency means updating every function signature.</code></pre>
+          </div>
+          <div>
+            <div class="label effect-label">Effect Context (dependency injection)</div>
+            <pre><code>// Services are available via yield* — no manual threading
+const doWork = Effect.gen(function* () {
+  const recorder = yield* TraceRecorder;  // ← auto-injected
+  const access = yield* AppEnvTag;        // ← auto-injected
+  yield* Effect.tryPromise(() =&gt;
+    recorder.startSpan({ ... })
+  );
+});
+
+// When running, provide the layer once:
+Effect.runPromise(
+  doWork.pipe(Effect.provide(AppRuntime.layer(input)))
+);</code></pre>
+          </div>
+        </div>
+
+        <div class="callout info">
+          <div class="callout-title">When We Use Context vs Closures</div>
+          The chat app uses Context.Services for the Effect-based tracing layer. The drive app uses
+          <strong>closures</strong> (capturing <code>env</code> and <code>auth</code> in the handler
+          factory function). Both approaches work — Context.Services are better when you have deeply
+          nested effect chains, closures are simpler for straightforward request/response handlers.
+        </div>
+
+        <hr />
+
+        <h2 id="effect-layers">Effect Patterns — Layers</h2>
+
+        <p>
+          <span class="tag tag-effect">Effect</span> <span class="tag tag-pattern">Pattern</span>
+        </p>
+
+        <p>
+          A Layer is a <strong>recipe for constructing a service</strong>. It describes how to build
+          the service (and what other services it depends on). Layers are composable — you can merge
+          them, stack them, and provide them to Effects.
+        </p>
+
+        <div class="file-ref">apps/chat/src/effect/index.ts</div>
+        <pre><code>type AppRuntimeInput = {
+  env: AppEnv;
+  traceRecorder: TraceRecorderService;
+  traceContext: TraceContextValue;
+};
+
+export const AppRuntime = {
+  layer(input: AppRuntimeInput) {
+    return Layer.mergeAll(
+      Layer.succeed(AppEnvTag, input.env),           // Provides AppEnv
+      Layer.succeed(TraceRecorder, input.traceRecorder), // Provides TraceRecorder
+      Layer.succeed(TraceContext, input.traceContext),    // Provides TraceContext
+    );
+  },
+};</code></pre>
+
+        <p>
+          <code>Layer.succeed(tag, value)</code> creates a layer that provides a
+          <strong>pre-built value</strong> for a service tag. <code>Layer.mergeAll</code> combines
+          multiple layers into one.
+        </p>
+
+        <h3>How Layers Are Used</h3>
+
+        <pre><code>// The bridge function — runs an Effect with all services provided
+export function runAppEffect&lt;A, E, R&gt;(
+  effect: Effect.Effect&lt;A, E, R&gt;,
+  input: AppRuntimeInput,
+) {
+  return Effect.runPromise(
+    effect.pipe(Effect.provide(AppRuntime.layer(input)))
+    //    as Effect.Effect&lt;A, E, never&gt;  ← R is satisfied, so this compiles
+  );
+}</code></pre>
+
+        <h3>Comparison: Layers vs Constructor Injection</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label ts-label">Constructor injection (OOP style)</div>
+            <pre><code>class AssistantService {
+  constructor(
+    private env: AppEnv,
+    private recorder: TraceRecorderService,
+    private context: TraceContextValue,
+  ) {}
+
+  async run() {
+    // Use this.env, this.recorder, etc.
+  }
+}
+
+// Instantiation:
+const service = new AssistantService(env, recorder, context);
+await service.run();</code></pre>
+          </div>
+          <div>
+            <div class="label effect-label">Effect Layers (functional style)</div>
+            <pre><code>const run = Effect.gen(function* () {
+  const env = yield* AppEnvTag;
+  const recorder = yield* TraceRecorder;
+  const context = yield* TraceContext;
+  // Use env, recorder, context...
+});
+
+// Instantiation:
+Effect.runPromise(
+  run.pipe(Effect.provide(AppRuntime.layer(input)))
+);</code></pre>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2 id="effect-gen">Effect Patterns — Effect.gen</h2>
+
+        <p>
+          <span class="tag tag-effect">Effect</span> <span class="tag tag-pattern">Pattern</span>
+        </p>
+
+        <p>
+          <code>Effect.gen</code> is Effect's <strong>do-notation</strong> — a way to write
+          sequential effect code that looks like async/await. Inside the generator,
+          <code>yield*</code> "unwraps" an Effect to get its success value (or throws if it fails).
+        </p>
+
+        <div class="file-ref">apps/chat/src/effect/index.ts — traceEffect</div>
+        <pre><code>export function traceEffect&lt;A, E, R&gt;(
+  name: string,
+  kind: TraceSpanKind,
+  attrs: Record&lt;string, unknown&gt;,
+  effect: Effect.Effect&lt;A, E, R&gt;,
+) {
+  return Effect.gen(function* () {
+    // yield* unwraps the Effect and gives us the value
+    const recorder = yield* TraceRecorder;  // reads from Context
+    const context = yield* TraceContext;    // reads from Context
+    const spanId = createId("span");
+
+    // Start a trace span (Effect.tryPromise wraps a Promise)
+    yield* Effect.tryPromise(() =&gt;
+      recorder.startSpan({ spanId, traceRunId: context.traceRunId, ... })
+    );
+
+    // Create child context with updated parentSpanId
+    const childContext = { ...context, parentSpanId: spanId } satisfies TraceContextValue;
+
+    // Execute the inner effect with child context, and finish the span on exit
+    return yield* effect.pipe(
+      Effect.provideService(TraceContext, childContext),
+      Effect.onExit((exit) =&gt; {
+        const status = statusFromExit(exit);
+        return Effect.tryPromise(() =&gt;
+          recorder.finishSpan({ spanId, status, ... })
+        );
+      }),
+    );
+  });
+}</code></pre>
+
+        <h3>Reading the Generator Syntax</h3>
+
+        <pre><code>// Effect.gen(function* () { ... }) is syntactic sugar for Effect chains:
+Effect.gen(function* () {
+  const a = yield* effectA;    // run effectA, get its value
+  const b = yield* effectB;    // run effectB, get its value
+  return a + b;                // wrap in Effect.succeed
+});
+
+// Equivalent pipe form:
+effectA.pipe(
+  Effect.andThen((a) =&gt;
+    effectB.pipe(
+      Effect.andThen((b) =&gt; Effect.succeed(a + b))
+    )
+  )
+);</code></pre>
+
+        <div class="callout info">
+          <div class="callout-title">When to use gen vs pipe</div>
+          Use <code>Effect.gen</code> when you have
+          <strong>sequential steps that reference each other's results</strong> (like the trace
+          function above). Use <code>.pipe()</code> when you have a
+          <strong>linear chain of transformations</strong> that don't need intermediate values. In
+          this codebase, <code>gen</code> is more common.
+        </div>
+
+        <hr />
+
+        <h2 id="effect-tryPromise">Effect Patterns — Effect.tryPromise</h2>
+
+        <p><span class="tag tag-effect">Effect</span></p>
+
+        <p>
+          <code>Effect.tryPromise</code> wraps a Promise-returning function into an Effect. If the
+          promise rejects, the Effect fails. This is the primary way we bridge async code into
+          Effect.
+        </p>
+
+        <pre><code>// Wrapping a Promise into an Effect
+const effect = Effect.tryPromise(() =&gt;
+  recorder.startSpan({ spanId, traceId, ... })
+);
+
+// With a catch handler for custom error mapping
+const effect = Effect.tryPromise({
+  try: () =&gt; fetch("https://api.example.com"),
+  catch: (error) =&gt; new NetworkError(String(error)),
+});</code></pre>
+
+        <h3>Comparison: Effect.tryPromise vs raw try/catch</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label ts-label">Traditional async/await with try/catch</div>
+            <pre><code>async function doWork() {
+  try {
+    const result = await fetch(url);
+    const data = await result.json();
+    return data;
+  } catch (error) {
+    // Error is `unknown` — need to narrow
+    if (error instanceof Error) {
+      log.error("fetch_failed", { message: error.message });
+    }
+    throw error;  // re-throw, but caller must also try/catch
+  }
+}</code></pre>
+          </div>
+          <div>
+            <div class="label effect-label">Effect.tryPromise (error is part of the type)</div>
+            <pre><code>const doWork = Effect.tryPromise(() =&gt;
+  fetch(url).then(r =&gt; r.json())
+).pipe(
+  Effect.catchAll((error) =&gt;
+    Effect.gen(function* () {
+      yield* Effect.sync(() =&gt;
+        log.error("fetch_failed", { message: String(error) })
+      );
+      return yield* Effect.fail(error);  // typed failure
+    })
+  )
+);
+// The Effect type tells you exactly what errors can happen:
+// Effect&lt;Data, Error, never&gt;</code></pre>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2 id="effect-pipe">Effect Patterns — Effect.pipe</h2>
+
+        <p><span class="tag tag-effect">Effect</span></p>
+
+        <p>
+          <code>.pipe()</code> is how you compose Effects in a readable, left-to-right chain. It's
+          like Unix pipes — each step receives the output of the previous one.
+        </p>
+
+        <pre><code>// Pipe chains read left-to-right
+const program = Effect.tryPromise(() =&gt; fetch(url)).pipe(
+  Effect.andThen((response) =&gt; Effect.tryPromise(() =&gt; response.json())),
+  Effect.catchAll((error) =&gt; Effect.succeed({ fallback: true })),
+  Effect.provide(AppRuntime.layer(input)),
+);</code></pre>
+
+        <p>In the codebase, <code>.pipe()</code> is used for:</p>
+        <ul>
+          <li>Providing layers: <code>effect.pipe(Effect.provide(layer))</code></li>
+          <li>Adding cleanup: <code>effect.pipe(Effect.onExit(handler))</code></li>
+          <li>Error handling: <code>effect.pipe(Effect.catchAll(handler))</code></li>
+          <li>Sequential chaining: <code>effect.pipe(Effect.andThen(nextEffect))</code></li>
+        </ul>
+
+        <hr />
+
+        <h2 id="effect-httpapi">Effect Patterns — HttpApi</h2>
+
+        <p><span class="tag tag-effect">Effect</span> <span class="tag tag-schema">Schema</span></p>
+
+        <p>
+          Effect's HttpApi system (from <code>effect/unstable/httpapi</code>) gives you a
+          <strong>declarative way to define REST APIs</strong> with typed endpoints, validated
+          params, and schema-validated request/response bodies.
+        </p>
+
+        <h3>The Three-Layer Pattern</h3>
+
+        <div class="mermaid-container">
+          <pre class="mermaid">
+graph LR
+  D["definitions.ts<br/>HttpApi + HttpApiGroup + HttpApiEndpoint<br/>(what exists)"] --> I["impl/*.ts<br/>HttpApiBuilder.group handlers<br/>(how it works)"]
+  I --> R["router.ts<br/>createHttpApiWebHandler<br/>(wiring)"]
+</pre>
+        </div>
+
+        <p><strong>1. Definitions</strong> — declare the API shape (no logic):</p>
+        <pre><code>// definitions.ts
+const fileListEp = HttpApiEndpoint.get("list", "/api/files", { success: FilesSuccess });
+const filesGroup = HttpApiGroup.make("files").add(fileListEp, ...);
+export const driveApi = HttpApi.make("drive").add(filesGroup, tagsGroup);</code></pre>
+
+        <p><strong>2. Implementations</strong> — wire up handlers for each endpoint:</p>
+        <pre><code>// impl/files.ts
+export function createFileHandlersGroup(env, auth) {
+  return HttpApiBuilder.group(driveApi, "files", (handlers) =&gt;
+    handlers.handle("list", (ctx) =&gt;
+      auth.createProtectedHandler(async (webReq) =&gt; {
+        // actual logic here
+        return { files: [...], nextOffset: ... };
+      })(ctx),
+    )
+  );
+}</code></pre>
+
+        <p><strong>3. Router</strong> — create the web handler and route requests:</p>
+        <pre><code>// router.ts
+const wh = createHttpApiWebHandler(driveApi, [
+  createFileHandlersGroup(env, auth),
+  createTagsGroup(env, auth),
+]);
+// Use: wh.handler(request) for /api/* routes</code></pre>
+
+        <div class="callout good">
+          <div class="callout-title">Why This Pattern?</div>
+          Separating definitions from implementations means you can:
+          <ul>
+            <li>See the entire API surface at a glance (just read definitions.ts)</li>
+            <li>Generate API docs or client SDKs from the definitions</li>
+            <li>Test handlers independently</li>
+            <li>
+              Add middleware (like auth) at the group level without touching individual handlers
+            </li>
+          </ul>
+        </div>
+
+        <hr />
+
+        <h2 id="effect-errors">Effect Patterns — Tagged Errors</h2>
+
+        <p>
+          <span class="tag tag-effect">Effect</span> <span class="tag tag-pattern">Pattern</span>
+        </p>
+
+        <p>
+          The chat app defines a hierarchy of error classes, each with a
+          <code>_tag</code> discriminator. This allows pattern matching on error types.
+        </p>
+
+        <div class="file-ref">apps/chat/src/effect/index.ts</div>
+        <pre><code>export class CancelledError extends Error {
+  readonly _tag = "CancelledError";
+  constructor(message = "Cancelled") {
+    super(message);
+    this.name = this._tag;
+  }
+}
+
+export class ProviderTimeoutError extends Error {
+  readonly _tag = "ProviderTimeoutError";
+  constructor(message: string) {
+    super(message);
+    this.name = this._tag;
+  }
+}
+
+export class RateLimitError extends Error {
+  readonly _tag = "RateLimitError";
+  constructor(message: string) {
+    super(message);
+    this.name = this._tag;
+  }
+}
+
+// ... more error types
+
+export type AppError =
+  | CancelledError
+  | ProviderTimeoutError
+  | InvalidRequestError
+  | AuthError
+  | RateLimitError
+  | SearchFailureError
+  | SyncFailureError
+  | UnknownUpstreamError;</code></pre>
+
+        <h3>How Tagged Errors Are Used</h3>
+
+        <pre><code>// In error normalization — pattern matching on _tag
+function normalizeAssistantError(error: unknown): AppError {
+  if (error instanceof CancelledError) return error;
+  if (error instanceof RateLimitError) return error;
+
+  // Check HTTP status codes from upstream providers
+  if (isHttpError(error, 429)) return new RateLimitError("Rate limited by provider");
+  if (isHttpError(error, 408)) return new ProviderTimeoutError("Provider timeout");
+  if (isHttpError(error, 401)) return new AuthError("Invalid API key");
+
+  return new UnknownUpstreamError(String(error));
+}
+
+// In trace recording — error type becomes the errorCode
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      errorCode: error._tag ?? error.name ?? "Error",  // _tag preferred
+      errorMessage: error.message,
+    };
+  }
+  return { errorCode: "UnknownUpstreamError", errorMessage: String(error) };
+}</code></pre>
+
+        <h3>Comparison: Tagged Errors vs Error Codes</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label ts-label">String error codes (common in REST APIs)</div>
+            <pre><code>throw { code: "RATE_LIMITED", message: "Too many requests" };
+
+// Problem: no type safety — you can throw any string.
+// No instanceof check — must match on string.
+catch (e) {
+  if (e.code === "RATE_LIMITED") { ... }
+  // What if someone typos "RATE_LIMTED"? No compile error.
+}</code></pre>
+          </div>
+          <div>
+            <div class="label effect-label">Tagged error classes</div>
+            <pre><code>throw new RateLimitError("Too many requests");
+
+// Type-safe pattern matching
+catch (e) {
+  if (e instanceof RateLimitError) { ... }
+  // e._tag === "RateLimitError" — can also match on _tag
+  // TypeScript narrows the type automatically
+}</code></pre>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2 id="effect-onExit">Effect Patterns — Effect.onExit</h2>
+
+        <p><span class="tag tag-effect">Effect</span></p>
+
+        <p>
+          <code>Effect.onExit</code> is like <code>finally</code>, but for Effects. It runs a
+          handler
+          <strong>regardless of whether the effect succeeded, failed, or was interrupted</strong>.
+          The handler receives an <code>Exit</code> value that tells you what happened.
+        </p>
+
+        <pre><code>// From traceEffect — always finish the span, whether the inner effect
+// succeeded, failed, or was cancelled
+return yield* effect.pipe(
+  Effect.provideService(TraceContext, childContext),
+  Effect.onExit((exit) =&gt; {
+    const status = statusFromExit(exit);  // "completed" | "failed" | "cancelled"
+    const error = errorFromExit(exit);    // error details if failed
+    return Effect.tryPromise(() =&gt;
+      recorder.finishSpan({ spanId, status, ...error })
+    );
+  }),
+);</code></pre>
+
+        <h3>Comparison: Effect.onExit vs try/catch/finally</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label ts-label">try/catch/finally</div>
+            <pre><code>async function withSpan(name, fn) {
+  const spanId = createId("span");
+  await recorder.startSpan({ spanId, name });
+  try {
+    const result = await fn();
+    await recorder.finishSpan({ spanId, status: "completed" });
+    return result;
+  } catch (error) {
+    // Is it a real error or a cancellation?
+    // Hard to tell with standard try/catch.
+    await recorder.finishSpan({
+      spanId,
+      status: "failed",
+      errorMessage: String(error),
+    });
+    throw error;
+  } finally {
+    // This runs, but we already finished the span above.
+    // What if we need different cleanup for success vs failure?
+    // We'd need to track state manually.
+  }
+}</code></pre>
+          </div>
+          <div>
+            <div class="label effect-label">Effect.onExit</div>
+            <pre><code>// Single handler covers success, failure, AND interruption
+const withSpan = (name, effect) =&gt;
+  Effect.gen(function* () {
+    const spanId = createId("span");
+    yield* Effect.tryPromise(() =&gt;
+      recorder.startSpan({ spanId, name })
+    );
+    return yield* effect.pipe(
+      Effect.onExit((exit) =&gt; {
+        // exit tells you exactly what happened
+        const status = Exit.isSuccess(exit) ? "completed"
+          : Cause.hasInterruptsOnly(exit.cause) ? "cancelled"
+          : "failed";
+        return Effect.tryPromise(() =&gt;
+          recorder.finishSpan({ spanId, status })
+        );
+      }),
+    );
+  });</code></pre>
+          </div>
+        </div>
+
+        <hr />
+
+        <h2 id="effect-antipatterns">Effect Anti-Patterns</h2>
+
+        <p>These are patterns you should <strong>not</strong> use in this codebase.</p>
+
+        <h3>Anti-Pattern 1: Using <code>Effect.runSync</code> for side effects</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label bad-label">Anti-Pattern</div>
+            <pre><code>// Don't do this — runSync throws on async effects
+Effect.runSync(
+  Effect.tryPromise(() =&gt; fetch(url))
+); // 💥 Runtime error if the effect is actually async</code></pre>
+          </div>
+          <div>
+            <div class="label good-label">Correct</div>
+            <pre><code>// Use runPromise for async effects
+await Effect.runPromise(
+  Effect.tryPromise(() =&gt; fetch(url))
+);</code></pre>
+          </div>
+        </div>
+
+        <h3>Anti-Pattern 2: Mixing async/await with Effect.gen</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label bad-label">Anti-Pattern</div>
+            <pre><code>// Don't mix async/await inside Effect.gen
+const effect = Effect.gen(function* () {
+  const data = await fetch(url);  // ❌ Don't use await inside gen
+  yield* Effect.tryPromise(() =&gt; process(data));
+});</code></pre>
+          </div>
+          <div>
+            <div class="label good-label">Correct</div>
+            <pre><code>// Wrap ALL async calls in Effect.tryPromise
+const effect = Effect.gen(function* () {
+  const data = yield* Effect.tryPromise(() =&gt; fetch(url));
+  yield* Effect.tryPromise(() =&gt; process(data));
+});</code></pre>
+          </div>
+        </div>
+
+        <h3>Anti-Pattern 3: Ignoring the error channel</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label bad-label">Anti-Pattern</div>
+            <pre><code>// Don't swallow errors — the type says it can't fail, but it can
+const effect = Effect.tryPromise(() =&gt; riskyOperation()).pipe(
+  Effect.catchAll(() =&gt; Effect.succeed(null)),  // ❌ Hides the error
+);</code></pre>
+          </div>
+          <div>
+            <div class="label good-label">Correct</div>
+            <pre><code>// Handle errors explicitly and log them
+const effect = Effect.tryPromise(() =&gt; riskyOperation()).pipe(
+  Effect.catchAll((error) =&gt;
+    Effect.gen(function* () {
+      yield* Effect.sync(() =&gt;
+        log.error("risky_operation_failed", { error: String(error) })
+      );
+      return yield* Effect.fail(error);  // Re-fail with context
+    })
+  ),
+);</code></pre>
+          </div>
+        </div>
+
+        <h3>Anti-Pattern 4: Using Effect for everything</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label bad-label">Anti-Pattern</div>
+            <pre><code>// Don't wrap simple pure functions in Effect
+const add = (a: number, b: number) =&gt;
+  Effect.gen(function* () {
+    return yield* Effect.succeed(a + b);  // ❌ Unnecessary
+  });
+
+// Don't use Effect.runPromise for synchronous code
+await Effect.runPromise(Effect.succeed(42));  // ❌ Adds overhead</code></pre>
+          </div>
+          <div>
+            <div class="label good-label">Correct</div>
+            <pre><code>// Pure functions stay as regular functions
+const add = (a: number, b: number) =&gt; a + b;
+
+// Use Effect.sync for synchronous side effects
+const logMessage = Effect.sync(() =&gt; console.log("hello"));
+
+// Use Effect only when you need:
+// - Error handling (Effect.tryPromise)
+// - Dependency injection (Context.Services)
+// - Resource management (Effect.onExit)
+// - Composition of effectful operations</code></pre>
+          </div>
+        </div>
+
+        <h3>Anti-Pattern 5: <code>as any</code> to silence type errors</h3>
+
+        <div class="comparison">
+          <div>
+            <div class="label bad-label">Anti-Pattern</div>
+            <pre><code>// Don't use `as any` to make things compile
+const result = someEffect as any;  // ❌ Erases all type safety
+const data = Schema.decodeUnknownSync(schema)(input) as any; // ❌</code></pre>
+          </div>
+          <div>
+            <div class="label good-label">Correct</div>
+            <pre><code>// Use proper type narrowing
+const result = someEffect as Effect.Effect&lt;MyType, MyError, MyContext&gt;;
+
+// Or use the typed decode helper
+const data = Schema.decodeUnknownSync(schema)(input);
+// data is already correctly typed — no cast needed</code></pre>
+          </div>
+        </div>
+
+        <div class="callout bad">
+          <div class="callout-title">The <code>as any</code> Rule</div>
+          The AGENTS.md explicitly forbids <code>as any</code>. It caused a real production bug (the
+          "drive 400 incident") where a schema mismatch was hidden behind an <code>any</code> cast.
+          If a type doesn't fit, use proper generics, <code>unknown</code>, type assertions to the
+          <em>correct</em> type, or <code>satisfies</code>.
+        </div>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ AUTHORING CONVENTIONS -->
+        <h2 id="conv-schema">Authoring Conventions — Dual Schema Pattern</h2>
+
+        <p>
+          Apps using SQLite (whether DO or D1) maintain <strong>two schema files</strong> that must
+          be kept in sync:
+        </p>
+
+        <table>
+          <tr>
+            <th>File</th>
+            <th>Purpose</th>
+            <th>Format</th>
+          </tr>
+          <tr>
+            <td><code>src/db/schema.ts</code></td>
+            <td>Drizzle ORM table definitions</td>
+            <td>TypeScript (Drizzle API)</td>
+          </tr>
+          <tr>
+            <td><code>src/server/schema.ts</code></td>
+            <td>Raw DDL strings</td>
+            <td>SQL <code>CREATE TABLE IF NOT EXISTS</code></td>
+          </tr>
+        </table>
+
+        <h4>Drizzle Schema (source of truth for types)</h4>
+        <div class="file-ref">apps/drive/src/db/schema.ts</div>
+        <pre><code>export const files = sqliteTable("files", {
+  id: text("id").primaryKey(),
+  objectKey: text("object_key").notNull().unique(),
+  name: text("name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) =&gt; [
+  index("idx_files_created_at").on(table.createdAt),
+]);</code></pre>
+
+        <h4>Raw DDL (for DO cold-start initialization)</h4>
+        <pre><code>const FILES_TABLE_DDL = `
+  CREATE TABLE IF NOT EXISTS files (
+    id TEXT PRIMARY KEY,
+    object_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  )
+`;
+
+const FILES_INDEX_DDL = `
+  CREATE INDEX IF NOT EXISTS idx_files_created_at ON files (created_at)
+`;</code></pre>
+
+        <div class="callout warn">
+          <div class="callout-title">Keep Them in Sync</div>
+          When you add a column to the Drizzle schema, you must also add it to the raw DDL. The DDL
+          runs on DO cold start. If they're out of sync, the app will crash or behave incorrectly.
+        </div>
+
+        <hr />
+
+        <h2 id="conv-branded">Authoring Conventions — Branded Types</h2>
+
+        <p>
+          The chat app uses <strong>branded types</strong> to prevent mixing up different kinds of
+          IDs at compile time.
+        </p>
+
+        <div class="file-ref">apps/chat/src/domain/index.ts</div>
+        <pre><code>// A branded type adds a phantom brand to a primitive
+type Brand&lt;T, Name extends string&gt; = T &amp; { readonly __brand: Name };
+
+export type WorkspaceId = Brand&lt;string, "WorkspaceId"&gt;;
+export type ThreadId = Brand&lt;string, "ThreadId"&gt;;
+export type MessageId = Brand&lt;string, "MessageId"&gt;;
+
+// Constructor function — validates and brands
+function brandString&lt;Name extends string&gt;(value: string, brandName: Name): Brand&lt;string, Name&gt; {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`Invalid ${brandName}`);
+  return trimmed as Brand&lt;string, Name&gt;;
+}
+
+export const toWorkspaceId = (value: string) =&gt; brandString(value, "WorkspaceId");
+export const toThreadId = (value: string) =&gt; brandString(value, "ThreadId");
+export const toMessageId = (value: string) =&gt; brandString(value, "MessageId");</code></pre>
+
+        <pre><code>// At compile time:
+const wid: WorkspaceId = toWorkspaceId("wrk_abc123");
+const tid: ThreadId = toThreadId("thd_xyz789");
+
+function getThread(workspaceId: WorkspaceId) { ... }
+
+getThread(wid);  // ✅ OK
+getThread(tid);  // ❌ Compile error — ThreadId is not assignable to WorkspaceId
+getThread("wrk_abc123" as string);  // ❌ Compile error — string is not branded</code></pre>
+
+        <div class="callout good">
+          <div class="callout-title">Why Branded Types?</div>
+          Without branding, all IDs are just <code>string</code>. You could accidentally pass a
+          thread ID where a workspace ID is expected, and TypeScript wouldn't catch it. Branding
+          makes these mistakes compile-time errors.
+        </div>
+
+        <hr />
+
+        <h2 id="conv-factories">Authoring Conventions — Factory Functions</h2>
+
+        <p>
+          Every domain entity has a <strong>factory function</strong> that creates a fully-formed
+          row with defaults, timestamps, and a fresh ID.
+        </p>
+
+        <div class="file-ref">apps/chat/src/domain/index.ts</div>
+        <pre><code>export function createMessage(input: {
+  threadId: string;
+  parentMessageId?: string | null;
+  role: MessageRole;
+  modelId: string;
+  reasoningLevel?: ReasoningLevel;
+  text?: string;
+  status?: "queued" | "pending" | "streaming" | "completed" | "failed" | "cancelled";
+  searchEnabled?: boolean;
+}) {
+  const now = nowIso();
+  return decodeMessageRow({
+    id: createId("msg"),           // "msg_" + random UUID fragment
+    threadId: input.threadId,
+    parentMessageId: input.parentMessageId ?? null,
+    role: input.role,
+    status: input.status ?? "completed",
+    modelId: input.modelId,
+    reasoningLevel: input.reasoningLevel ?? "off",
+    text: input.text ?? "",
+    createdAt: now,
+    updatedAt: now,
+    errorCode: null,
+    errorMessage: null,
+    searchEnabled: input.searchEnabled ?? false,
+    durationMs: null,
+    ttftMs: null,
+    promptTokens: null,
+    completionTokens: null,
+  });
+}</code></pre>
+
+        <p>The factory function:</p>
+        <ul>
+          <li>
+            Generates a fresh ID with a recognizable prefix (<code>msg_</code>, <code>thd_</code>,
+            <code>wrk_</code>)
+          </li>
+          <li>Sets timestamps to now</li>
+          <li>Provides sensible defaults for optional fields</li>
+          <li>
+            Runs the result through <code>decodeMessageRow</code> (Schema validation) — so even
+            factory-created objects are validated
+          </li>
+        </ul>
+
+        <pre><code>// ID format: prefix + UUID without dashes, truncated to 24 chars
+export const createId = (prefix: string) =&gt;
+  `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+
+// Examples:
+// createId("msg")  → "msg_a1b2c3d4e5f6g7h8i9j0k1l2"
+// createId("thd")  → "thd_x9y8z7w6v5u4t3s2r1q0p9o8"</code></pre>
+
+        <hr />
+
+        <h2 id="conv-logging">Authoring Conventions — Structured Logging</h2>
+
+        <p>
+          The codebase uses JSON-structured logging throughout. No
+          <code>console.log("debug:", someVar)</code> — every log entry is a JSON object with
+          consistent fields.
+        </p>
+
+        <div class="file-ref">apps/chat/src/effect/index.ts</div>
+        <pre><code>export function createStructuredLogger(
+  scope: string,
+  defaults: Record&lt;string, unknown&gt; = {},
+) {
+  return {
+    log(
+      event: string,
+      details?: Record&lt;string, unknown&gt;,
+      level: "debug" | "info" | "warn" | "error" = "info",
+    ) {
+      const entry = { scope, event, level, ...defaults, ...details };
+      const message = JSON.stringify(entry);
+      switch (level) {
+        case "debug":
+        case "info":  console.log(message); break;
+        case "warn":  console.warn(message); break;
+        case "error": console.error(message); break;
+      }
+    },
+  };
+}
+
+// Usage:
+const syncLog = createStructuredLogger("sync-engine");
+syncLog("process_command_start", { opId, commandType, doBroadcast });
+// Output: {"scope":"sync-engine","event":"process_command_start","level":"info","opId":"op_abc","commandType":"create_user_message","doBroadcast":true}</code></pre>
+
+        <p>Each major subsystem has its own logger with contextual defaults:</p>
+
+        <pre><code>const syncLog = createStructuredLogger("sync-engine");
+const turnLog = createStructuredLogger("assistant-turn", {
+  traceId: traceContext.traceId,
+  messageId: payload.assistantMessage.id,
+});
+const chatWorkerLog = createStructuredLogger("chat-worker");
+const modelsApiLog = createStructuredLogger("models-api");</code></pre>
+
+        <hr />
+
+        <h2 id="conv-runtime">Authoring Conventions — Runtime Environment</h2>
+
+        <p>
+          Cloudflare Workers don't have a traditional process.env. The environment (bindings,
+          secrets, config) is passed to the <code>fetch</code> handler. The chat app uses a
+          <strong>globalThis pattern</strong> to make it accessible to any module:
+        </p>
+
+        <div class="file-ref">apps/chat/src/runtime/index.ts</div>
+        <pre><code>declare global {
+  var __env__: AppEnv | undefined;
+}
+
+export function setRuntimeEnv(input: unknown) {
+  globalThis.__env__ = decodeAppEnv(input);  // Validates via Effect Schema
+}
+
+export function getRuntimeEnv(): AppEnv {
+  if (!globalThis.__env__) throw new Error("Runtime env not set");
+  return globalThis.__env__;
+}</code></pre>
+
+        <pre><code>// In the Worker's fetch handler — set once per request
+export function createRouter(env: Env) {
+  setRuntimeEnv(env);  // Validate and store globally
+  // Now any module can call getRuntimeEnv()
+}
+
+// In any module:
+const env = getRuntimeEnv();
+const apiKey = env.OPENCODE_GO_API_KEY;</code></pre>
+
+        <div class="callout info">
+          <div class="callout-title">Why globalThis?</div>
+          Cloudflare Workers isolate modules from each other. The <code>env</code> object is only
+          available in the <code>fetch</code> handler — not in imported modules. The globalThis
+          pattern bridges this gap. The drive app uses closures instead (passing
+          <code>env</code> explicitly), which is also fine.
+        </div>
+
+        <hr />
+
+        <!-- ═══════════════════════════════════════════════════ DECISION LOG -->
+        <h2 id="decisions">Decision Log — Why We Do It This Way</h2>
+
+        <h3>Why Durable Objects for Chat (not D1)?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: DO SQLite for Chat, D1 for Drive</div>
+          <p>
+            <strong>Chat needs real-time state.</strong> A Durable Object is a single-instance,
+            single-threaded actor. All WebSocket connections for a user land on the same DO, so
+            there's no concurrency issues, no distributed locking, and event broadcasting is trivial
+            (iterate over connected sockets).
+          </p>
+          <p>
+            <strong>Drive is request/response.</strong> No real-time sync needed. D1 (Cloudflare's
+            managed SQLite) is simpler, cheaper, and doesn't require a DO class. The drive app can
+            run as a plain <code>ExportedHandler</code>.
+          </p>
+          <p>
+            <strong>Alternative considered:</strong> Using D1 + Durable Objects for drive too.
+            Rejected because drive doesn't need WebSocket sync, and DOs have higher operational cost
+            (cold starts, alarms, storage limits).
+          </p>
+        </div>
+
+        <h3>Why a Custom Sync Protocol (not CRDT, not REST)?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: Custom WebSocket sync with commands/events</div>
+          <p>
+            <strong>CRDTs</strong> (like Yjs, Automerge) are designed for collaborative editing of
+            shared documents. Chat doesn't have shared documents — each user has their own
+            workspace. CRDTs would add complexity without benefit.
+          </p>
+          <p>
+            <strong>REST polling</strong> would work but gives poor real-time UX. The user would see
+            delays between sending a message and seeing the streaming response.
+          </p>
+          <p>
+            <strong>The custom protocol</strong> gives us: optimistic updates (instant UI feedback),
+            event sourcing (full audit trail), deduplication (safe retries), and efficient resume
+            after disconnect (just replay events from last known seq).
+          </p>
+        </div>
+
+        <h3>Why Effect for Tracing (not OpenTelemetry SDK)?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: Effect-based tracing with custom TraceRecorder</div>
+          <p>
+            <strong>OpenTelemetry SDK</strong> is heavy and designed for server-side Node.js. It
+            doesn't work well in Durable Objects (no long-running process, limited storage).
+          </p>
+          <p>
+            <strong>The custom approach</strong> uses Effect's Context.Services and onExit to create
+            spans that are stored in the DO's SQLite database and synced to the client via events.
+            This means traces are visible in the UI in real-time, not in a separate observability
+            tool.
+          </p>
+        </div>
+
+        <h3>Why SolidJS (not React)?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: SolidJS for both client apps</div>
+          <p>
+            SolidJS provides fine-grained reactivity without a virtual DOM. Signals update only the
+            DOM nodes that depend on them — no re-rendering entire component trees. For a chat app
+            where streaming text updates the UI every ~50ms, this matters.
+          </p>
+          <p>
+            Also: SolidJS has no runtime overhead comparable to React (no fiber, no reconciler),
+            which is important for a self-hosted deployment where bundle size affects cold start
+            time.
+          </p>
+        </div>
+
+        <h3>Why No Effect on the Client?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: Effect only on the server</div>
+          <p>
+            Effect's runtime is ~50KB minified. For a self-hosted app, every kilobyte matters. The
+            client doesn't need Effect's features (dependency injection, error channel, tracing) —
+            it's a UI that receives events and dispatches commands. SolidJS's signals handle
+            reactivity, and manual type-checking functions handle response validation.
+          </p>
+        </div>
+
+        <h3>Why Drizzle ORM (not Prisma, not raw SQL)?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: Drizzle ORM with D1/DO SQLite</div>
+          <p>
+            <strong>Prisma</strong> doesn't support Cloudflare D1 or Durable Object SQLite (it needs
+            a long-running Node.js process for its query engine).
+          </p>
+          <p>
+            <strong>Raw SQL</strong> works but loses type safety — you'd need to manually type every
+            query result.
+          </p>
+          <p>
+            <strong>Drizzle</strong> generates SQL at build time (no runtime query engine), has
+            excellent TypeScript inference, and supports both D1 and DO SQLite drivers. The
+            dual-schema pattern (Drizzle definitions + raw DDL) is a pragmatic compromise — Drizzle
+            for typed queries, raw DDL for cold-start initialization.
+          </p>
+        </div>
+
+        <h3>Why <code>HttpServerResponse.fromWeb()</code> for File Downloads?</h3>
+
+        <div class="callout why">
+          <div class="callout-title">Decision: Hybrid Effect + raw Response for binary data</div>
+          <p>
+            Effect's HttpApi is designed for JSON request/response. File downloads need streaming
+            binary bodies with custom headers (<code>content-disposition</code>,
+            <code>content-type</code>). <code>HttpServerResponse.fromWeb()</code> wraps a raw Web
+            <code>Response</code> object so it can be returned from an Effect handler.
+          </p>
+          <p>
+            This is why the drive handlers use
+            <code>HttpServerResponse.fromWeb(new Response(object.body, { headers }))</code> for
+            downloads but return plain objects like <code>{ file: publicFile(row) }</code> for JSON
+            responses.
+          </p>
+        </div>
+
+        <hr />
+
+        <p style="text-align: center; color: var(--text-muted); margin-top: 64px; font-size: 14px">
+          End of Onboarding Guide — Last updated June 2026
+        </p>
+      </main>
+    </div>
+
+    <script>
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "dark",
+        themeVariables: {
+          primaryColor: "#1f6feb",
+          primaryTextColor: "#e6edf3",
+          primaryBorderColor: "#30363d",
+          lineColor: "#8b949e",
+          secondaryColor: "#161b22",
+          tertiaryColor: "#1c2128",
+          noteBkgColor: "#161b22",
+          noteTextColor: "#e6edf3",
+          noteBorderColor: "#30363d",
+          actorBkg: "#1f6feb",
+          actorTextColor: "#e6edf3",
+          actorBorder: "#388bfd",
+          signalColor: "#e6edf3",
+          signalTextColor: "#e6edf3",
+          labelBoxBkgColor: "#161b22",
+          labelTextColor: "#e6edf3",
+          loopTextColor: "#e6edf3",
+          activationBkgColor: "#1c2128",
+          activationBorderColor: "#30363d",
+          sequenceNumberColor: "#0d1117",
+        },
+        sequence: { mirrorActors: false },
+        flowchart: { curve: "basis" },
+      });
+    </script>
+  </body>
+</html>

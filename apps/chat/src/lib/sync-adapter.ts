@@ -509,9 +509,6 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
           envelope.snapshot.serverSeq ?? conn.getLastServerSeq(),
         );
         break;
-
-      case "pong":
-        break;
     }
     index += 1;
   }

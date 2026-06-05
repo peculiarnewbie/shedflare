@@ -28,7 +28,9 @@ export function createTransactionsGroup(env: Env) {
             .where(eq(s.transactionFilters.id, filterId))
             .all();
           if (filterRow) {
-            const conditions = JSON.parse((filterRow.conditions as string) ?? "[]") as FilterCondition[];
+            const conditions = JSON.parse(
+              (filterRow.conditions as string) ?? "[]",
+            ) as FilterCondition[];
             const conditionsOp = (filterRow.conditionsOp as string) ?? "and";
             const filterSql = buildFilterSql(conditions, conditionsOp as "and" | "or");
             if (filterSql) whereClause = filterSql;
@@ -37,18 +39,27 @@ export function createTransactionsGroup(env: Env) {
 
         const query = db
           .select({
-            id: s.transactions.id, accountId: s.transactions.accountId,
-            categoryId: s.transactions.categoryId, amount: s.transactions.amount,
-            payee: s.transactions.payee, notes: s.transactions.notes,
-            date: s.transactions.date, cleared: s.transactions.cleared,
+            id: s.transactions.id,
+            accountId: s.transactions.accountId,
+            categoryId: s.transactions.categoryId,
+            amount: s.transactions.amount,
+            payee: s.transactions.payee,
+            notes: s.transactions.notes,
+            date: s.transactions.date,
+            cleared: s.transactions.cleared,
             reconciled: s.transactions.reconciled,
             importedDescription: s.transactions.importedDescription,
             startingBalanceFlag: s.transactions.startingBalanceFlag,
-            sortOrder: s.transactions.sortOrder, isParent: s.transactions.isParent,
-            isChild: s.transactions.isChild, parentId: s.transactions.parentId,
-            transferId: s.transactions.transferId, scheduleId: s.transactions.scheduleId,
-            createdAt: s.transactions.createdAt, updatedAt: s.transactions.updatedAt,
-            categoryName: s.categories.name, accountName: s.accounts.name,
+            sortOrder: s.transactions.sortOrder,
+            isParent: s.transactions.isParent,
+            isChild: s.transactions.isChild,
+            parentId: s.transactions.parentId,
+            transferId: s.transactions.transferId,
+            scheduleId: s.transactions.scheduleId,
+            createdAt: s.transactions.createdAt,
+            updatedAt: s.transactions.updatedAt,
+            categoryName: s.categories.name,
+            accountName: s.accounts.name,
             scheduleName: s.schedules.name,
           })
           .from(s.transactions)

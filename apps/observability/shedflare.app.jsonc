@@ -11,7 +11,7 @@
       "type": "d1",
       "binding": "OBSERVABILITY_DB",
       "name": "shedflare-observability",
-      "idField": "OBSERVABILITY_DB_ID"
-    }
-  ]
+      "idField": "OBSERVABILITY_DB_ID",
+    },
+  ],
 }

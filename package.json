@@ -28,14 +28,19 @@
     "destroy:youtube": "vp exec alchemy destroy apps/youtube/alchemy.run.ts",
     "deploy:observability": "vp exec alchemy deploy apps/observability/alchemy.run.ts",
     "destroy:observability": "vp exec alchemy destroy apps/observability/alchemy.run.ts",
+    "deploy:s": "vp exec alchemy deploy apps/s/alchemy.run.ts --yes",
+    "destroy:s": "vp exec alchemy destroy apps/s/alchemy.run.ts",
     "deploy": "vp exec alchemy deploy alchemy.run.ts",
     "destroy": "vp exec alchemy destroy alchemy.run.ts",
     "test:auth": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/auth/alchemy.test.ts",
     "test:cf-bill": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/cf-bill/alchemy.test.ts",
     "test:drive": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/drive/alchemy.test.ts",
+    "test:e2e:drive": "vp exec jiti apps/drive/e2e.run.ts",
+    "test:e2e:drive:destroy": "vp exec jiti apps/drive/e2e.run.ts --destroy-only",
     "test:chat": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/chat/alchemy.test.ts",
     "test:money": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/money/alchemy.test.ts",
     "test:youtube": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/youtube/alchemy.test.ts",
+    "test:s": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/s/alchemy.test.ts",
     "cli:init": "pnpm --filter shedflare exec shedflare init --yes --mock-resources",
     "cli:doctor": "pnpm --filter shedflare exec shedflare doctor",
     "cli:check": "node packages/cli/dist/index.mjs configure --check",
@@ -49,7 +54,9 @@
     "@types/node": "catalog:",
     "alchemy": "catalog:",
     "effect": "catalog:",
-    "jsonc-parser": "catalog:"
+    "jiti": "catalog:",
+    "jsonc-parser": "catalog:",
+    "playwright": "catalog:"
   },
   "engines": {
     "node": ">=22.12.0"

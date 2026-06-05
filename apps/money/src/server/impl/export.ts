@@ -14,8 +14,12 @@ export function createExportGroup(env: Env) {
       handler: wrapHandler(async (): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
         const rows = await db.all<{
-          date: string; amount: number; payee: string | null;
-          category: string | null; notes: string | null; account: string;
+          date: string;
+          amount: number;
+          payee: string | null;
+          category: string | null;
+          notes: string | null;
+          account: string;
         }>(
           sql`SELECT t.date, t.amount, t.payee, c.name as category,
                   t.notes, a.name as account
@@ -26,8 +30,14 @@ export function createExportGroup(env: Env) {
         );
         const header = "Date,Amount,Payee,Category,Notes,Account\n";
         const csvLines = rows.map((r) =>
-          [r.date, Number(r.amount ?? 0) / 100, `"${r.payee ?? ""}"`,
-           `"${r.category ?? ""}"`, `"${r.notes ?? ""}"`, `"${r.account ?? ""}"`].join(","),
+          [
+            r.date,
+            Number(r.amount ?? 0) / 100,
+            `"${r.payee ?? ""}"`,
+            `"${r.category ?? ""}"`,
+            `"${r.notes ?? ""}"`,
+            `"${r.account ?? ""}"`,
+          ].join(","),
         );
         return new Response(header + csvLines.join("\n"), {
           headers: {

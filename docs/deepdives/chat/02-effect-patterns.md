@@ -7,6 +7,7 @@ This codebase uses [Effect-TS](https://effect.website/) in a **limited, pragmati
 3. **Tracing spans** (`Effect.gen`, `Effect.tryPromise`, `Effect.provideService`) — wrapping async operations with OpenTelemetry-style spans
 
 We do NOT use Effect for:
+
 - Control flow (no `Effect.flatMap` chains replacing async/await)
 - Error handling (we throw `Error` subclasses, not `Effect.fail`)
 - Concurrency (no `Effect.fork`/`Effect.join`)
@@ -79,10 +80,11 @@ const MessageRow = z.object({
 ```
 
 Effect Schema and Zod are roughly equivalent for validation. We use Effect Schema because:
+
 - We already import Effect for tracing, so there is no extra dependency
 - Effect Schema integrates with Effect's error channel (`ParseError` is an `Effect.Effect`)
 
-If we were *only* doing validation, Zod would be the simpler choice.
+If we were _only_ doing validation, Zod would be the simpler choice.
 
 #### ...plain TypeScript types with manual validation?
 
@@ -330,11 +332,11 @@ export function traceEffect(...) {
 
 ### How Generator Syntax Maps to Async/Await
 
-| Effect | JavaScript analogy |
-|--------|-------------------|
-| `yield* someEffect` | `await somePromise` |
-| `Effect.gen(function* () { ... })` | `async function() { ... }` |
-| `return yield* effect` | `return await promise` |
+| Effect                                | JavaScript analogy                |
+| ------------------------------------- | --------------------------------- |
+| `yield* someEffect`                   | `await somePromise`               |
+| `Effect.gen(function* () { ... })`    | `async function() { ... }`        |
+| `return yield* effect`                | `return await promise`            |
 | `Effect.tryPromise(() => fetch(...))` | Wrapping a Promise into an Effect |
 
 ### The `.pipe()` Alternative
@@ -371,9 +373,7 @@ The generator version reads more naturally for people familiar with async/await.
 // DON'T — this is confusing:
 return Effect.gen(function* () {
   const x = yield* effectA;
-  return yield* effectB.pipe(
-    Effect.map((y) => x + y),
-  );
+  return yield* effectB.pipe(Effect.map((y) => x + y));
 });
 ```
 
@@ -397,14 +397,15 @@ return Effect.gen(function* () {
 When we need to call an async function (a Promise-returning function) inside an Effect, we wrap it with `Effect.tryPromise`:
 
 ```typescript
-yield* Effect.tryPromise(() =>
-  recorder.startSpan({
-    spanId,
-    traceRunId: context.traceRunId,
-    traceId: context.traceId,
-    // ...
-  }),
-);
+yield *
+  Effect.tryPromise(() =>
+    recorder.startSpan({
+      spanId,
+      traceRunId: context.traceRunId,
+      traceId: context.traceId,
+      // ...
+    }),
+  );
 ```
 
 ### Plain TypeScript Equivalent
@@ -420,12 +421,15 @@ await recorder.startSpan({ spanId, ... });
 
 ```typescript
 // Catch errors from the promise:
-yield* Effect.tryPromise(() => riskyOperation()).pipe(
-  Effect.catchAll((error) => Effect.sync(() => {
-    console.error("Operation failed:", error);
-    return fallbackValue;
-  })),
-);
+yield *
+  Effect.tryPromise(() => riskyOperation()).pipe(
+    Effect.catchAll((error) =>
+      Effect.sync(() => {
+        console.error("Operation failed:", error);
+        return fallbackValue;
+      }),
+    ),
+  );
 ```
 
 ---
@@ -543,13 +547,14 @@ const traceSync = <A>(
 
 ```typescript
 // Wrap any async operation with tracing:
-const threadMessages = await traceSync("assistant.thread_messages.load", "sync", {},
-  () => ctx.access.getThreadMessages(thread, [payload.userMessage, payload.assistantMessage]),
+const threadMessages = await traceSync("assistant.thread_messages.load", "sync", {}, () =>
+  ctx.access.getThreadMessages(thread, [payload.userMessage, payload.assistantMessage]),
 );
 
 // Wrap any promise-returning operation:
 const { messages, systemPrompts } = await traceAsync(
-  "assistant.attachments.resolve", "io",
+  "assistant.attachments.resolve",
+  "io",
   { threadMessageCount: threadMessages.length },
   () => buildModelMessages(workspace.id, threadMessages, ctx.access, ctx.env),
 );
@@ -584,9 +589,21 @@ The Effect version is more concise and eliminates the error-handling boilerplate
 
 ```typescript
 export const ReasoningLevel = Schema.Literals(["off", "low", "medium", "high"]);
-export const MessageStatus = Schema.Literals(["queued", "pending", "streaming", "completed", "failed", "cancelled"]);
+export const MessageStatus = Schema.Literals([
+  "queued",
+  "pending",
+  "streaming",
+  "completed",
+  "failed",
+  "cancelled",
+]);
 export const MessageRole = Schema.Literals(["user", "assistant", "system"]);
-export const MessagePartKind = Schema.Literals(["activity", "thinking_tokens", "text", "reasoning"]);
+export const MessagePartKind = Schema.Literals([
+  "activity",
+  "thinking_tokens",
+  "text",
+  "reasoning",
+]);
 ```
 
 ### Plain TypeScript Equivalent
@@ -608,12 +625,12 @@ export type ReasoningLevel = Schema.Schema.Type<typeof ReasoningLevel>;
 
 ## Summary: Effect Usage Map
 
-| File | Effect feature | What it does |
-|------|---------------|--------------|
-| `src/domain/index.ts` | `Schema.Struct`, `Schema.Literals`, `Schema.decodeUnknownSync` | Validate WebSocket command/event payloads |
-| `src/effect/index.ts` | `Context.Service`, `Layer.succeed`, `Effect.gen`, `Effect.tryPromise`, `Effect.provide`, `Effect.provideService`, `Effect.onExit` | DI for tracing, error types |
-| `src/server/assistant-turn.ts` | `runAppEffect`, `traceEffect` | Wrap operations with tracing spans |
-| `src/server/search.ts` | `traceEffect` (via callback) | Trace search tool calls |
-| `src/server/extract.ts` | `traceEffect` (via callback) | Trace browser extract calls |
-| `alchemy.run.ts` | `Effect.gen` | Alchemy deployment stack |
-| `alchemy.test.ts` | `Effect.gen`, `Effect.promise` | Live smoke tests |
+| File                           | Effect feature                                                                                                                    | What it does                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `src/domain/index.ts`          | `Schema.Struct`, `Schema.Literals`, `Schema.decodeUnknownSync`                                                                    | Validate WebSocket command/event payloads |
+| `src/effect/index.ts`          | `Context.Service`, `Layer.succeed`, `Effect.gen`, `Effect.tryPromise`, `Effect.provide`, `Effect.provideService`, `Effect.onExit` | DI for tracing, error types               |
+| `src/server/assistant-turn.ts` | `runAppEffect`, `traceEffect`                                                                                                     | Wrap operations with tracing spans        |
+| `src/server/search.ts`         | `traceEffect` (via callback)                                                                                                      | Trace search tool calls                   |
+| `src/server/extract.ts`        | `traceEffect` (via callback)                                                                                                      | Trace browser extract calls               |
+| `alchemy.run.ts`               | `Effect.gen`                                                                                                                      | Alchemy deployment stack                  |
+| `alchemy.test.ts`              | `Effect.gen`, `Effect.promise`                                                                                                    | Live smoke tests                          |
