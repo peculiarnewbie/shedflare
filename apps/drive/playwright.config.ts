@@ -9,9 +9,11 @@ export default defineConfig({
     baseURL: process.env.BASE_URL ?? "http://localhost:8787",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    extraHTTPHeaders: {
-      "x-shedflare-e2e-token": process.env.E2E_AUTH_TOKEN ?? "",
-    },
+    ...(process.env.E2E_AUTH_TOKEN && {
+      extraHTTPHeaders: {
+        "x-shedflare-e2e-token": process.env.E2E_AUTH_TOKEN,
+      },
+    }),
   },
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
 });
