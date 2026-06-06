@@ -27,3 +27,7 @@ apps/*/wrangler.jsonc
 
 # OpenAuth storage — must never be committed
 apps/auth/keys.json
+
+# Playwright artifacts
+test-results/
+playwright-report/
