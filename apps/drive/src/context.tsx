@@ -1,133 +1,36 @@
 import { createContext, createEffect, createMemo, createSignal, useContext } from "solid-js";
-import type {
-  ContextMenuState,
-  DriveFile,
-  SortBy,
-  SortOrder,
-  TagSummary,
-  Toast,
-  ViewMode,
+import * as Schema from "effect/Schema";
+import type { ContextMenuState, SortBy, SortOrder, Toast, ViewMode } from "./types";
+import {
+  type DriveFile,
+  type TagSummary,
+  FilesResponse,
+  FileResponse,
+  TagsResponse,
+  SessionResponse,
 } from "./types";
+import { formatSize, fileGlyph, sortFiles } from "./utils";
 
-/* ── Decoders ────────────────────────────────────── */
+export { formatSize, fileGlyph };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/* ── requestJson helper ───────────────────────────── */
 
-function decodeDriveFile(value: unknown): DriveFile | null {
-  if (!isRecord(value)) return null;
-  if (
-    typeof value.id !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.mimeType !== "string" ||
-    typeof value.size !== "number" ||
-    typeof value.description !== "string" ||
-    typeof value.isPublic !== "boolean" ||
-    typeof value.createdAt !== "string" ||
-    typeof value.updatedAt !== "string" ||
-    !Array.isArray(value.tags) ||
-    !value.tags.every((tag) => typeof tag === "string")
-  )
-    return null;
-  return value as DriveFile;
-}
-
-function decodeTagSummary(value: unknown): TagSummary | null {
-  if (!isRecord(value) || typeof value.name !== "string" || typeof value.count !== "number")
-    return null;
-  return { name: value.name, count: value.count };
-}
-
-function decodeFilesResponse(
-  value: unknown,
-): { files: DriveFile[]; nextOffset: number | null } | null {
-  if (!isRecord(value) || !Array.isArray(value.files)) return null;
-  const files = value.files.map(decodeDriveFile);
-  if (files.some((f) => !f)) return null;
-  const nextOffset =
-    value.nextOffset === null
-      ? null
-      : typeof value.nextOffset === "number"
-        ? value.nextOffset
-        : null;
-  return { files: files as DriveFile[], nextOffset };
-}
-
-function decodeFileResponse(value: unknown): { file: DriveFile } | null {
-  if (!isRecord(value)) return null;
-  const file = decodeDriveFile(value.file);
-  return file ? { file } : null;
-}
-
-function decodeTagsResponse(value: unknown): { tags: TagSummary[] } | null {
-  if (!isRecord(value) || !Array.isArray(value.tags)) return null;
-  const tags = value.tags.map(decodeTagSummary);
-  if (tags.some((t) => !t)) return null;
-  return { tags: tags as TagSummary[] };
-}
-
-function decodeSessionResponse(value: unknown): { user: { email: string } } | null {
-  if (!isRecord(value) || !isRecord(value.user) || typeof value.user.email !== "string")
-    return null;
-  return { user: { email: value.user.email } };
-}
+type AnySchema = Parameters<typeof Schema.decodeUnknownSync>[0];
 
 export async function requestJson<T>(
   input: RequestInfo | URL,
-  decode: (value: unknown) => T | null,
+  schema: AnySchema,
   init?: RequestInit,
-) {
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(input, { ...init, signal: controller.signal });
     if (!response.ok) throw new Error(await response.text());
-    const data = decode(await response.json());
-    if (!data) throw new Error("Invalid API response");
-    return data;
+    return Schema.decodeUnknownSync(schema)(await response.json()) as T;
   } finally {
     clearTimeout(timer);
   }
-}
-
-/* ── Helpers ─────────────────────────────────────── */
-
-export function formatSize(size: number) {
-  const fmt = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${fmt.format(size / 1024)} KB`;
-  if (size < 1024 * 1024 * 1024) return `${fmt.format(size / 1024 / 1024)} MB`;
-  return `${fmt.format(size / 1024 / 1024 / 1024)} GB`;
-}
-
-export function fileGlyph(file: DriveFile) {
-  if (file.mimeType.startsWith("image/")) return "IMG";
-  if (file.mimeType.includes("pdf")) return "PDF";
-  if (file.mimeType.startsWith("video/")) return "VID";
-  if (file.mimeType.startsWith("audio/")) return "AUD";
-  if (file.mimeType.includes("zip") || file.mimeType.includes("tar")) return "ZIP";
-  return "DOC";
-}
-
-function sortFiles(files: DriveFile[], sortBy: SortBy, sortOrder: SortOrder): DriveFile[] {
-  const sorted = [...files];
-  sorted.sort((a, b) => {
-    let cmp = 0;
-    switch (sortBy) {
-      case "name":
-        cmp = a.name.localeCompare(b.name);
-        break;
-      case "date":
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        break;
-      case "size":
-        cmp = a.size - b.size;
-        break;
-    }
-    return sortOrder === "asc" ? cmp : -cmp;
-  });
-  return sorted;
 }
 
 /* ── Context type ────────────────────────────────── */
@@ -202,6 +105,8 @@ export type DriveContextValue = {
 
 const DriveCtx = createContext<DriveContextValue>();
 
+export { DriveCtx };
+
 export function useDrive() {
   const ctx = useContext(DriveCtx);
   if (!ctx) throw new Error("useDrive must be used within DriveProvider");
@@ -267,27 +172,32 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
 
   async function loadFiles(append = false, pageOffset = 0) {
     const base = query() ? `?${query()}&` : "?";
-    const data = await requestJson(
+    const data = await requestJson<FilesResponse>(
       `/api/files${base}limit=30&offset=${pageOffset}`,
-      decodeFilesResponse,
+      FilesResponse,
     );
-    setFiles((prev) => (append ? [...prev, ...data.files] : data.files));
+    setFiles((prev) => (append ? [...prev, ...data.files] : [...data.files]));
     setHasMore(data.nextOffset !== null);
   }
 
   async function loadTags() {
-    const data = await requestJson("/api/tags", decodeTagsResponse);
-    setTags(data.tags);
+    const data = await requestJson<TagsResponse>("/api/tags", TagsResponse);
+    setTags([...data.tags]);
   }
 
   async function bootstrap() {
     try {
-      const session = await requestJson("/api/session", decodeSessionResponse);
+      const session = await requestJson<SessionResponse>("/api/session", SessionResponse);
       setUserEmail(session.user.email);
       setUnauthorized(false);
       await Promise.all([loadFiles(false, 0), loadTags()]);
     } catch (err) {
       if (err instanceof Error && err.message.includes("Unauthorized")) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get("error") !== "no_session") {
+          window.location.replace("/api/auth/login?auto=1");
+          return;
+        }
         setUnauthorized(true);
         return;
       }
@@ -363,7 +273,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   async function setFilePublic(file: DriveFile, isPublic: boolean) {
     setError("");
     try {
-      const data = await requestJson(`/api/files/${file.id}`, decodeFileResponse, {
+      const data = await requestJson<FileResponse>(`/api/files/${file.id}`, FileResponse, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ isPublic }),
@@ -423,7 +333,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     if (!name || name === file.name) return;
     setError("");
     try {
-      await requestJson(`/api/files/${file.id}`, decodeFileResponse, {
+      await requestJson<FileResponse>(`/api/files/${file.id}`, FileResponse, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name }),

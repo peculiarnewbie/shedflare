@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     allowedHosts: true,
   },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.{ts,tsx}"],
+  },
   staged: {
     "*": "vp check --fix",
   },
