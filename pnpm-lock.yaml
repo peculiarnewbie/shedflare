@@ -274,6 +274,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20260415.1
         version: 4.20260604.1
+      '@shedflare/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
       '@solidjs/testing-library':
         specifier: ^0.8.0
         version: 0.8.10(@solidjs/router@0.15.4(solid-js@1.9.13))(solid-js@1.9.13)
@@ -583,6 +586,21 @@ importers:
       vitest:
         specifier: npm:@voidzero-dev/vite-plus-test@latest
         version: '@voidzero-dev/vite-plus-test@0.1.24(@types/node@24.13.0)(esbuild@0.27.3)(jiti@2.7.0)(jsdom@29.1.1)(typescript@6.0.3)(vite@8.0.16(@types/node@24.13.0)(esbuild@0.27.3)(jiti@2.7.0)(yaml@2.9.0))(yaml@2.9.0)'
+
+  packages/test-utils:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20260415.1
+        version: 4.20260604.1
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260421.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.24(@types/node@24.13.0)(esbuild@0.27.3)(jiti@2.7.0)(jsdom@29.1.1)(typescript@6.0.3)(vite@8.0.16(@types/node@24.13.0)(esbuild@0.27.3)(jiti@2.7.0)(yaml@2.9.0))(yaml@2.9.0)
 
   site:
     dependencies:
