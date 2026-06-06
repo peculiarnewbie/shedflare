@@ -1,5 +1,7 @@
+import { drizzle } from "drizzle-orm/d1";
 import { createTestD1, type D1Shim } from "./d1-shim";
 import { R2Mock, createR2Mock } from "./r2-mock";
+import { files, tags, fileTags } from "../db/schema";
 
 export type TestEnv = {
   DB: D1Shim;
@@ -29,7 +31,7 @@ export function createTestEnv(overrides?: Partial<TestEnv>): TestEnv {
 }
 
 export function insertTestFile(
-  db: D1Shim,
+  d1: D1Shim,
   overrides?: Partial<{
     id: string;
     name: string;
@@ -39,43 +41,34 @@ export function insertTestFile(
     isPublic: boolean;
   }>,
 ) {
+  const db = drizzle(d1 as unknown as D1Database);
   const id = overrides?.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
-  void db
-    .prepare(
-      `INSERT INTO files (id, object_key, name, mime_type, size, description, is_public, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      `files/${id}`,
-      overrides?.name ?? "test-file.txt",
-      overrides?.mimeType ?? "text/plain",
-      overrides?.size ?? 1024,
-      overrides?.description ?? "",
-      overrides?.isPublic ? 1 : 0,
-      now,
-      now,
-    )
-    .run();
+  void db.insert(files).values({
+    id,
+    objectKey: `files/${id}`,
+    name: overrides?.name ?? "test-file.txt",
+    mimeType: overrides?.mimeType ?? "text/plain",
+    size: overrides?.size ?? 1024,
+    description: overrides?.description ?? "",
+    isPublic: overrides?.isPublic ?? false,
+    createdAt: now,
+    updatedAt: now,
+  });
   return id;
 }
 
-export function insertTestTag(db: D1Shim, name: string) {
+export function insertTestTag(d1: D1Shim, name: string) {
+  const db = drizzle(d1 as unknown as D1Database);
   const id = crypto.randomUUID();
   const normalized = name.trim().toLowerCase().replaceAll(/\s+/g, " ");
-  void db
-    .prepare(`INSERT INTO tags (id, name, normalized_name) VALUES (?, ?, ?)`)
-    .bind(id, name, normalized)
-    .run();
+  void db.insert(tags).values({ id, name, normalizedName: normalized });
   return id;
 }
 
-export function linkFileTag(db: D1Shim, fileId: string, tagId: string) {
-  void db
-    .prepare(`INSERT INTO file_tags (file_id, tag_id) VALUES (?, ?)`)
-    .bind(fileId, tagId)
-    .run();
+export function linkFileTag(d1: D1Shim, fileId: string, tagId: string) {
+  const db = drizzle(d1 as unknown as D1Database);
+  void db.insert(fileTags).values({ fileId, tagId });
 }
 
 export { R2Mock };
