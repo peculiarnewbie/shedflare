@@ -8,6 +8,7 @@
     "build": "vp build",
     "preview": "vp preview",
     "test": "vp test",
+    "test:e2e": "vp exec jiti e2e.run.ts",
     "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "vp exec alchemy deploy alchemy.run.ts",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "@playwright/test": "^1.60.0",
     "@shedflare/test-utils": "workspace:*",
     "@solidjs/testing-library": "^0.8.0",
     "@typescript/native-preview": "catalog:",
