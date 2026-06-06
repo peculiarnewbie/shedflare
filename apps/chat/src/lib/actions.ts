@@ -1,5 +1,6 @@
 import {
   createAttachment,
+  createComparisonGroup,
   createId,
   createMessage,
   createThread,
@@ -10,6 +11,7 @@ import {
   type AccountSettings,
   type Attachment,
   type CancelAssistantTurnPayload,
+  type CreateComparisonPayload,
   type CreateUserMessagePayload,
   type EditUserMessagePayload,
   type ForkThreadPayload,
@@ -165,6 +167,135 @@ export function createThreadAction(workspaceId: string) {
   trackOptimistic(opId, [deleteRow("threads", thread.id)]);
 
   dispatch("create_thread", { thread: toWire(thread, opId) }, { opId });
+}
+
+export function createComparisonAction(input: {
+  workspace: Workspace;
+  text: string;
+  modelIds: string[];
+  modelInterleavedFields: (string | null | undefined)[];
+  reasoningLevel: ReasoningLevel;
+  search: boolean;
+  searchLimit?: number;
+  preferFreeSearch?: boolean;
+  attachmentIds?: string[];
+}) {
+  const opId = createId("op");
+
+  // Create comparison group
+  const comparisonGroup = createComparisonGroup({
+    workspaceId: input.workspace.id,
+    threadIds: [], // Will be filled below
+  });
+
+  // Create one thread per model
+  const comparisonThreads: Thread[] = [];
+  for (let i = 0; i < input.modelIds.length; i++) {
+    const thread = createThread({
+      workspaceId: input.workspace.id,
+      title: "New Chat",
+      modelId: input.modelIds[i],
+      reasoningLevel: input.reasoningLevel,
+      searchEnabled: input.search,
+      searchLimit: input.searchLimit,
+      threadType: "comparison",
+      comparisonGroupId: comparisonGroup.id,
+    });
+    comparisonThreads.push(thread);
+  }
+
+  // Update comparison group with actual thread IDs
+  const updatedComparisonGroup = {
+    ...comparisonGroup,
+    threadIds: JSON.stringify(comparisonThreads.map((t) => t.id)),
+  };
+
+  // Create user messages and assistant messages per thread
+  const userMessages: Message[] = [];
+  const assistantMessages: Message[] = [];
+  for (let i = 0; i < comparisonThreads.length; i++) {
+    const thread = comparisonThreads[i];
+    const userMessage = createMessage({
+      threadId: thread.id,
+      parentMessageId: null,
+      role: "user",
+      modelId: input.modelIds[i],
+      reasoningLevel: input.reasoningLevel,
+      text: input.text,
+      searchEnabled: input.search,
+      status: "completed",
+    });
+    const assistantMessage = createMessage({
+      threadId: thread.id,
+      parentMessageId: userMessage.id,
+      role: "assistant",
+      modelId: input.modelIds[i],
+      reasoningLevel: input.reasoningLevel,
+      text: "",
+      searchEnabled: input.search,
+      status: "pending",
+    });
+    // Update thread headMessageId
+    thread.headMessageId = assistantMessage.id;
+    userMessages.push(userMessage);
+    assistantMessages.push(assistantMessage);
+  }
+
+  // Optimistic mutations
+  applyLocalInsert("comparisonGroups", toLocalSyncRow(updatedComparisonGroup, opId));
+  for (const thread of comparisonThreads) {
+    applyLocalInsert("threads", toLocalSyncRow(thread, opId));
+  }
+  for (const msg of [...userMessages, ...assistantMessages]) {
+    applyLocalInsert("messages", toLocalSyncRow(msg, opId));
+  }
+
+  const rollbackEntries: OptimisticEntry[] = [
+    deleteRow("comparisonGroups", updatedComparisonGroup.id),
+    ...comparisonThreads.map((t) => deleteRow("threads", t.id)),
+    ...userMessages.map((m) => deleteRow("messages", m.id)),
+    ...assistantMessages.map((m) => deleteRow("messages", m.id)),
+  ];
+
+  // Link attachments to user messages
+  for (const attachmentId of input.attachmentIds ?? []) {
+    for (const userMessage of userMessages) {
+      const existing = attachments.get(attachmentId) as Attachment | undefined;
+      if (!existing) continue;
+      rollbackEntries.push(restoreRow("attachments", attachments, existing));
+      applyLocalUpdate("attachments", {
+        ...existing,
+        messageId: userMessage.id,
+        status: "ready",
+        optimistic: false,
+        opId,
+      });
+    }
+  }
+
+  trackOptimistic(opId, rollbackEntries);
+
+  // Navigate to first thread
+  setActiveThreadId(comparisonThreads[0].id);
+
+  dispatch(
+    "create_comparison",
+    {
+      comparisonGroup: toWire(updatedComparisonGroup, opId),
+      threads: comparisonThreads.map((t) => toWire(t, opId)),
+      userMessages: userMessages.map((m) => toWire(m, opId)),
+      assistantMessages: assistantMessages.map((m) => toWire(m, opId)),
+      promptText: input.text,
+      modelIds: input.modelIds,
+      modelInterleavedFields: input.modelInterleavedFields,
+      reasoningLevel: input.reasoningLevel,
+      search: input.search,
+      searchLimit: input.searchLimit,
+      preferFreeSearch: input.preferFreeSearch,
+      attachmentIds: input.attachmentIds ?? [],
+    } satisfies CreateComparisonPayload,
+    { opId },
+  );
 }
 
 export function deleteThreadAction(threadId: string) {

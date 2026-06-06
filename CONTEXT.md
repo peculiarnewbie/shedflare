@@ -32,3 +32,13 @@ A **deep module** extracted from the duplicated sync infrastructure between Chat
 - REST routes inside the DO are declared via `registerRoutes(router: HttpApp.Default)` and resolved by the base class on non-WebSocket, non-internal requests.
 - DDL remains app-side, run in `blockConcurrencyWhile` before any request arrives.
 - The protocol types are shared; command type unions and event type unions are app-specific.
+
+## Chat App
+
+### Comparison Threads
+
+- **Comparison Group** — A set of 2-3 threads linked for side-by-side model comparison. Stored in a `comparison_group` join table with `threadIds[]`. The group is the UI-level identity; threads are independent backend entities. Created via a toggle in the composer (new conversations only). Thread type is immutable after creation.
+
+- **Comparison Thread** — A thread that belongs to a comparison group. Runs the full `runAssistantTurn()` pipeline independently per model. Each user message fans out to all models in the group. Tools (search, extract) are called independently per model. Settings (reasoning, search) are uniform across the group.
+
+- **Fork (comparison)** — Each column in a comparison view has a fork button. Forking creates a standalone thread from that model's conversation path. The comparison group stays intact — the original threads are not affected.

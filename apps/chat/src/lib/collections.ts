@@ -11,6 +11,7 @@ import type {
   ExtractRun,
   TraceRun,
   TraceSpan,
+  ComparisonGroup,
 } from "#/domain";
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ export const COLLECTION_IDS = [
   "extractRuns",
   "traceRuns",
   "traceSpans",
+  "comparisonGroups",
 ] as const;
 
 export type CollectionId = (typeof COLLECTION_IDS)[number];
@@ -105,6 +107,10 @@ export const searchResults = createSyncedCollection<SearchResult>("searchResults
 export const extractRuns = createSyncedCollection<ExtractRun>("extractRuns", (er) => er.id);
 export const traceRuns = createSyncedCollection<TraceRun>("traceRuns", (run) => run.id);
 export const traceSpans = createSyncedCollection<TraceSpan>("traceSpans", (span) => span.id);
+export const comparisonGroups = createSyncedCollection<ComparisonGroup>(
+  "comparisonGroups",
+  (cg) => cg.id,
+);
 
 export function applyLocalInsert<T extends object>(collectionId: CollectionId, value: T) {
   commitImmediateWrite(collectionId, { type: "insert", value });
@@ -142,4 +148,5 @@ export const TABLE_TO_COLLECTION: Record<string, string> = {
   extract_runs: "extractRuns",
   trace_runs: "traceRuns",
   trace_spans: "traceSpans",
+  comparison_groups: "comparisonGroups",
 };

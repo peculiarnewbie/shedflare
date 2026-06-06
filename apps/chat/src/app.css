@@ -2598,3 +2598,149 @@ a {
     max-width: 76px;
   }
 }
+
+/* ── Comparison mode ────────────────────────────────── */
+
+.comparison-toggle.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.comparison-model-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.comparison-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.comparison-model-chip.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.comparison-model-chip.is-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.comparison-model-chip input[type="checkbox"] {
+  display: none;
+}
+
+.comparison-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.comparison-tabs {
+  display: none;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0 8px;
+  overflow-x: auto;
+}
+
+.comparison-tab {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.comparison-tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.comparison-columns {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.comparison-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+}
+
+.comparison-column:last-child {
+  border-right: none;
+}
+
+.comparison-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.comparison-column-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-column-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.comparison-badge {
+  font-size: 11px;
+  color: var(--accent);
+  margin-right: 2px;
+}
+
+/* Mobile: show tabs, hide columns except active */
+@media (max-width: 768px) {
+  .comparison-tabs {
+    display: flex;
+  }
+
+  .comparison-column {
+    display: none;
+  }
+
+  .comparison-column.is-active {
+    display: flex;
+    flex: 1;
+  }
+
+  .comparison-columns {
+    flex-direction: column;
+  }
+}

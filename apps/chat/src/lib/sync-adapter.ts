@@ -22,6 +22,7 @@ import {
   extractRuns,
   traceRuns,
   traceSpans,
+  comparisonGroups,
   getSyncWriter,
   resetCollections,
   TABLE_TO_COLLECTION,
@@ -53,6 +54,7 @@ function buildCachedSnapshotTables() {
     [TABLES.extractRuns]: rowsById(extractRuns.state.values() as Iterable<any>),
     [TABLES.traceRuns]: rowsById(traceRuns.state.values() as Iterable<any>),
     [TABLES.traceSpans]: rowsById(traceSpans.state.values() as Iterable<any>),
+    [TABLES.comparisonGroups]: rowsById(comparisonGroups.state.values() as Iterable<any>),
   };
 }
 
@@ -99,6 +101,7 @@ const COLLECTION_MAP: Record<string, { get(key: string): unknown }> = {
   extractRuns,
   traceRuns,
   traceSpans,
+  comparisonGroups,
 };
 
 function hasRow(collectionId: string, key: string) {
@@ -379,6 +382,11 @@ function applyEvent(eventType: string, payload: unknown) {
     case "trace_span_upserted": {
       const event = payload as SyncEventPayloadMap["trace_span_upserted"];
       syncUpsert("traceSpans", event.row.id, event.row);
+      break;
+    }
+    case "comparison_group_upserted": {
+      const event = payload as SyncEventPayloadMap["comparison_group_upserted"];
+      syncUpsert("comparisonGroups", event.row.id, event.row);
       break;
     }
     case "server_state_rebased": {

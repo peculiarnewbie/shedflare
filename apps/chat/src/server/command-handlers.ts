@@ -495,3 +495,89 @@ export function handleResetStorage(
   );
   return { events };
 }
+
+export function handleCreateComparison(
+  opId: string,
+  payload: SyncCommandPayloadMap["create_comparison"],
+  ctx: CommandHandlerContext,
+): CommandHandlerResult {
+  const events: SyncServerEvent[] = [];
+
+  // 1. Upsert comparison group
+  events.push(
+    ctx.eventStore.insertEvent(opId, "comparison_group_upserted", {
+      row: { ...payload.comparisonGroup, optimistic: false, opId },
+    }),
+  );
+
+  // 2. Upsert all threads
+  for (const thread of payload.threads) {
+    events.push(
+      ctx.eventStore.insertEvent(opId, "thread_upserted", {
+        row: { ...thread, optimistic: false, opId },
+      }),
+    );
+  }
+
+  // 3. Upsert all user messages and assistant messages
+  for (const userMessage of payload.userMessages) {
+    events.push(
+      ctx.eventStore.insertEvent(opId, "message_upserted", {
+        row: { ...userMessage, status: "completed", optimistic: false, opId },
+      }),
+    );
+  }
+  for (const assistantMessage of payload.assistantMessages) {
+    events.push(
+      ctx.eventStore.insertEvent(opId, "message_upserted", {
+        row: { ...assistantMessage, status: "pending", text: "", optimistic: false, opId },
+      }),
+    );
+  }
+
+  // 4. Link attachments to user messages
+  if (payload.attachmentIds?.length) {
+    for (const userMessage of payload.userMessages) {
+      for (const attId of payload.attachmentIds) {
+        const attRow = ctx.access.getAttachment(attId);
+        if (attRow) {
+          events.push(
+            ctx.eventStore.insertEvent(opId, "attachment_upserted", {
+              row: normalizeAttachment({ ...attRow, messageId: userMessage.id }, opId),
+            }),
+          );
+        }
+      }
+    }
+  }
+
+  // 5. Follow-up: run N assistant turns in parallel + generate title once
+  const normalizedThreads = payload.threads.map((t) => normalizeThread(t, opId));
+  const followUp: DeferredFollowUp = () =>
+    Promise.allSettled([
+      // Title generation only from first thread
+      ctx.generateThreadTitle({
+        threadId: normalizedThreads[0].id,
+        promptText: payload.promptText,
+        chatModelId: payload.modelIds[0],
+        chatModelInterleavedField: payload.modelInterleavedFields[0] ?? null,
+      }),
+      // Run one assistant turn per thread/model
+      ...normalizedThreads.map((thread, i) =>
+        ctx.runAssistantTurn({
+          threadId: thread.id,
+          modelId: payload.modelIds[i],
+          modelInterleavedField: payload.modelInterleavedFields[i] ?? null,
+          reasoningLevel: payload.reasoningLevel,
+          search: payload.search,
+          searchLimit: payload.searchLimit,
+          preferFreeSearch: payload.preferFreeSearch,
+          thread,
+          userMessage: payload.userMessages[i],
+          assistantMessage: payload.assistantMessages[i],
+        }),
+      ),
+    ]).then(() => undefined);
+
+  return { events, followUp };
+}

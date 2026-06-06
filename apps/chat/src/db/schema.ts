@@ -81,11 +81,25 @@ export const threads = sqliteTable(
     archivedAt: text("archived_at"),
     forkedFromThreadId: text("forked_from_thread_id"),
     forkedFromMessageId: text("forked_from_message_id"),
+    threadType: text("thread_type", { enum: ["single", "comparison"] }),
+    comparisonGroupId: text("comparison_group_id"),
     optimistic: integer("optimistic", { mode: "boolean" }),
     opId: text("op_id"),
   },
-  (table) => [index("idx_threads_workspace").on(table.workspaceId)],
+  (table) => [
+    index("idx_threads_workspace").on(table.workspaceId),
+    index("idx_threads_comparison_group").on(table.comparisonGroupId),
+  ],
 );
+
+export const comparisonGroups = sqliteTable("comparison_groups", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull(),
+  threadIds: text("thread_ids").notNull(),
+  createdAt: text("created_at").notNull(),
+  optimistic: integer("optimistic", { mode: "boolean" }),
+  opId: text("op_id"),
+});
 
 export const messages = sqliteTable(
   "messages",
@@ -277,3 +291,4 @@ export type SearchResult = typeof searchResults.$inferSelect;
 export type ExtractRun = typeof extractRuns.$inferSelect;
 export type TraceRun = typeof traceRuns.$inferSelect;
 export type TraceSpan = typeof traceSpans.$inferSelect;
+export type ComparisonGroup = SyncMeta<typeof comparisonGroups.$inferSelect>;

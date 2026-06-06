@@ -16,6 +16,7 @@ export const DATA_TABLES = [
   "extract_runs",
   "trace_runs",
   "trace_spans",
+  "comparison_groups",
 ] as const;
 
 /**
@@ -89,6 +90,8 @@ const DDL = `
     archived_at TEXT,
     forked_from_thread_id TEXT,
     forked_from_message_id TEXT,
+    thread_type TEXT,
+    comparison_group_id TEXT,
     optimistic INTEGER,
     op_id TEXT
   );
@@ -219,6 +222,15 @@ const DDL = `
   CREATE INDEX IF NOT EXISTS idx_extract_runs_message ON extract_runs(message_id);
   CREATE INDEX IF NOT EXISTS idx_trace_runs_message ON trace_runs(message_id);
   CREATE INDEX IF NOT EXISTS idx_trace_spans_trace_run ON trace_spans(trace_run_id);
+  CREATE TABLE IF NOT EXISTS comparison_groups (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    thread_ids TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    optimistic INTEGER,
+    op_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_threads_comparison_group ON threads(comparison_group_id);
 
   CREATE TABLE IF NOT EXISTS pending_turns (
     message_id TEXT PRIMARY KEY,
@@ -255,6 +267,12 @@ export function initializeStorage(
     }
     if (cols && !cols.sql.includes("search_limit")) {
       exec(`ALTER TABLE threads ADD COLUMN search_limit INTEGER`);
+    }
+    if (cols && !cols.sql.includes("thread_type")) {
+      exec(`ALTER TABLE threads ADD COLUMN thread_type TEXT`);
+    }
+    if (cols && !cols.sql.includes("comparison_group_id")) {
+      exec(`ALTER TABLE threads ADD COLUMN comparison_group_id TEXT`);
     }
   }
   const version = queryOne<{ value: string }>(

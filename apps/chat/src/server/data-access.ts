@@ -3,6 +3,7 @@ import {
   clampSearchesPerTurn,
   decodeAttachmentRow,
   decodeAccountSettingsRow,
+  decodeComparisonGroupRow,
   decodeExtractRunRow,
   decodeMessagePartRow,
   decodeMessageRow,
@@ -73,6 +74,8 @@ export function normalizeThread(row: Partial<Thread>, opId: string) {
     searchLimit: row.searchLimit == null ? null : clampSearchesPerTurn(row.searchLimit),
     forkedFromThreadId: row.forkedFromThreadId ?? null,
     forkedFromMessageId: row.forkedFromMessageId ?? null,
+    threadType: row.threadType ?? null,
+    comparisonGroupId: row.comparisonGroupId ?? null,
     optimistic: false,
     opId,
     updatedAt: row.updatedAt || nowIso(),
@@ -148,6 +151,8 @@ const INFLATE_DISPATCH: Record<string, (row: Record<string, unknown>) => unknown
       lastMessageAt: row.last_message_at,
       forkedFromThreadId: row.forked_from_thread_id ?? null,
       forkedFromMessageId: row.forked_from_message_id ?? null,
+      threadType: row.thread_type ?? null,
+      comparisonGroupId: row.comparison_group_id ?? null,
       archivedAt: row.archived_at ?? null,
       optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
       opId: row.op_id ?? undefined,
@@ -275,6 +280,15 @@ const INFLATE_DISPATCH: Record<string, (row: Record<string, unknown>) => unknown
       errorMessage: row.error_message ?? null,
       attrsJson: row.attrs_json,
       eventsJson: row.events_json,
+    }),
+  comparison_groups: (row) =>
+    decodeComparisonGroupRow({
+      id: row.id,
+      workspaceId: row.workspace_id,
+      threadIds: row.thread_ids,
+      createdAt: row.created_at,
+      optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
+      opId: row.op_id ?? undefined,
     }),
 };
 
@@ -423,6 +437,7 @@ export class DataAccess {
         [TABLES.extractRuns]: this.readTable("extract_runs"),
         [TABLES.traceRuns]: this.readTable("trace_runs"),
         [TABLES.traceSpans]: this.readTable("trace_spans"),
+        [TABLES.comparisonGroups]: this.readTable("comparison_groups"),
       },
     };
   }

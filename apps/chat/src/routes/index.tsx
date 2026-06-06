@@ -53,6 +53,7 @@ import {
   extractRuns as extractRunsCollection,
   traceRuns as traceRunsCollection,
   traceSpans as traceSpansCollection,
+  comparisonGroups as comparisonGroupsCollection,
 } from "../lib/collections";
 import {
   createWorkspaceAction,
@@ -68,6 +69,7 @@ import {
   editUserMessageAction,
   retryMessageAction,
   sendMessageAction,
+  createComparisonAction,
   resetAllData,
 } from "../lib/actions";
 import {
@@ -409,7 +411,12 @@ const fetchBootstrap = async () => {
     const message = await response.text().catch(() => response.statusText);
     throw new Error(message || "Failed to load app bootstrap");
   }
-  return (await response.json()) as BootstrapPayload;
+  const payload = (await response.json()) as BootstrapPayload;
+  const url = new URL(window.location.href);
+  if (!payload.session && url.searchParams.get("error") !== "no_session") {
+    window.location.replace("/api/auth/login?auto=1");
+  }
+  return payload;
 };
 
 const fetchModels = async (hasSession: boolean) => {
@@ -464,6 +471,7 @@ export default function Home() {
   const allExtractRuns = useLiveQuery(() => extractRunsCollection);
   const allTraceRuns = useLiveQuery(() => traceRunsCollection);
   const allTraceSpans = useLiveQuery(() => traceSpansCollection);
+  const allComparisonGroups = useLiveQuery(() => comparisonGroupsCollection);
   const [theme] = createSignal<Theme>(getInitialTheme());
   const [expandReasoningByDefault, setExpandReasoningByDefault] = createSignal<boolean>(
     getInitialExpandReasoning(),
@@ -504,6 +512,52 @@ export default function Home() {
       status: "uploading" | "ready" | "failed";
       previewUrl?: string;
     }>,
+  });
+
+  // Comparison mode state
+  const [comparisonMode, setComparisonMode] = createSignal(false);
+  const [comparisonModelIds, setComparisonModelIds] = createSignal<string[]>([]);
+
+  const toggleComparisonModel = (modelId: string) => {
+    setComparisonModelIds((prev) => {
+      if (prev.includes(modelId)) return prev.filter((id) => id !== modelId);
+      if (prev.length >= 3) return prev;
+      return [...prev, modelId];
+    });
+  };
+
+  // Active comparison tab (for mobile view)
+  const [activeComparisonTab, setActiveComparisonTab] = createSignal(0);
+
+  // Check if current thread is a comparison thread
+  const isComparisonThread = createMemo(() => {
+    const thread = selectedConversationThread();
+    return thread?.threadType === "comparison" && thread?.comparisonGroupId;
+  });
+
+  // Get comparison group for current thread
+  const currentComparisonGroup = createMemo(() => {
+    const thread = selectedConversationThread();
+    if (!thread?.comparisonGroupId) return null;
+    return (
+      (allComparisonGroups() as any[]).find((cg: any) => cg.id === thread.comparisonGroupId) ?? null
+    );
+  });
+
+  // Get sibling threads in the same comparison group
+  const comparisonSiblingThreads = createMemo(() => {
+    const group = currentComparisonGroup();
+    if (!group) return [];
+    const threadIds: string[] = (() => {
+      try {
+        return JSON.parse(group.threadIds);
+      } catch {
+        return [];
+      }
+    })();
+    return threadIds
+      .map((id: string) => (allThreads() as Thread[]).find((t) => t.id === id))
+      .filter((t): t is Thread => !!t && !t.archivedAt);
   });
 
   // Inline editing state
@@ -3092,17 +3146,40 @@ export default function Home() {
           return true;
         })
         .map((a) => a.attachmentId!);
-      sendMessageAction({
-        thread,
-        text,
-        modelId,
-        modelInterleavedField: modelInterleavedFieldFor(modelId),
-        reasoningLevel: effectiveComposerReasoningLevel(),
-        search: composerSearch(),
-        searchLimit: composerSearchLimit(),
-        preferFreeSearch: effectivePreferFreeSearch(),
-        attachmentIds,
-      });
+
+      // Comparison mode: create multiple threads and fan out
+      if (comparisonMode() && comparisonModelIds().length >= 2 && draftMode && workspace) {
+        const selectedModelIds = comparisonModelIds();
+        const allModels = models()?.models ?? [];
+        const interleavedFields = selectedModelIds.map(
+          (id) => allModels.find((m) => m.id === id)?.interleaved?.field?.trim() || null,
+        );
+        createComparisonAction({
+          workspace,
+          text,
+          modelIds: selectedModelIds,
+          modelInterleavedFields: interleavedFields,
+          reasoningLevel: effectiveComposerReasoningLevel(),
+          search: composerSearch(),
+          searchLimit: composerSearchLimit(),
+          preferFreeSearch: effectivePreferFreeSearch(),
+          attachmentIds,
+        });
+        setComparisonMode(false);
+        setComparisonModelIds([]);
+      } else {
+        sendMessageAction({
+          thread,
+          text,
+          modelId,
+          modelInterleavedField: modelInterleavedFieldFor(modelId),
+          reasoningLevel: effectiveComposerReasoningLevel(),
+          search: composerSearch(),
+          searchLimit: composerSearchLimit(),
+          preferFreeSearch: effectivePreferFreeSearch(),
+          attachmentIds,
+        });
+      }
       for (const att of composerAttachments()) {
         if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
       }
@@ -3329,6 +3406,15 @@ export default function Home() {
                                     ⑂
                                   </span>
                                 </Show>
+                                <Show when={(thread as any).threadType === "comparison"}>
+                                  <span
+                                    class="comparison-badge"
+                                    title="Comparison thread"
+                                    aria-label="Comparison thread"
+                                  >
+                                    ⧉
+                                  </span>
+                                </Show>
                                 <strong>{thread.title}</strong>
                                 <div class="nav-item-actions">
                                   <span
@@ -3448,10 +3534,95 @@ export default function Home() {
               </Show>
             </header>
 
-            <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
-              <For each={messageIds()}>{renderMessage}</For>
-              <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
-            </section>
+            <Show
+              when={isComparisonThread()}
+              fallback={
+                <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
+                  <For each={messageIds()}>{renderMessage}</For>
+                  <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
+                </section>
+              }
+            >
+              <div class="comparison-view">
+                <div class="comparison-tabs">
+                  <For each={comparisonSiblingThreads()}>
+                    {(sibling, index) => (
+                      <button
+                        classList={{
+                          "comparison-tab": true,
+                          "is-active": activeComparisonTab() === index(),
+                        }}
+                        onClick={() => {
+                          setActiveComparisonTab(index());
+                          setActiveThreadId(sibling.id);
+                        }}
+                      >
+                        {sibling.modelId ?? `Model ${index() + 1}`}
+                      </button>
+                    )}
+                  </For>
+                </div>
+                <div class="comparison-columns">
+                  <For each={comparisonSiblingThreads()}>
+                    {(sibling, index) => {
+                      const siblingMessageIds = createMemo(() =>
+                        resolveThreadMessagePath(
+                          (allMessages() as Message[]).filter((m) => m.threadId === sibling.id),
+                          sibling.headMessageId ?? null,
+                        ).map((m) => m.id),
+                      );
+                      return (
+                        <div
+                          classList={{
+                            "comparison-column": true,
+                            "is-active": activeComparisonTab() === index(),
+                          }}
+                        >
+                          <div class="comparison-column-header">
+                            <span class="comparison-column-model">
+                              {sibling.modelId ?? `Model ${index() + 1}`}
+                            </span>
+                            <button
+                              type="button"
+                              class="msg-action-btn fork-btn"
+                              aria-label="Fork this comparison thread"
+                              title="Fork as standalone thread"
+                              onClick={() =>
+                                forkThreadAction({
+                                  sourceThreadId: sibling.id,
+                                  sourceMessageId: sibling.headMessageId ?? "",
+                                  workspaceId: activeWorkspace()?.id ?? sibling.id,
+                                })
+                              }
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                              >
+                                <line x1="6" y1="3" x2="6" y2="15" />
+                                <circle cx="18" cy="6" r="3" />
+                                <circle cx="6" cy="21" r="3" />
+                                <line x1="15" y1="9" x2="9" y2="17" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div class="comparison-column-timeline">
+                            <For each={siblingMessageIds()}>{renderMessage}</For>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
+            </Show>
 
             <Show when={!isConnected()}>
               <div class="connection-banner">Connecting…</div>
@@ -3565,15 +3736,85 @@ export default function Home() {
                   onChange={(e) => handleFileSelect(e.currentTarget.files)}
                 />
                 <div class="composer-context-controls">
-                  <select
-                    class="composer-model"
-                    value={composerModelId()}
-                    onChange={(event) => handleModelChange(event.currentTarget.value)}
+                  <Show
+                    when={comparisonMode() && isDraftViewActive()}
+                    fallback={
+                      <select
+                        class="composer-model"
+                        value={composerModelId()}
+                        onChange={(event) => handleModelChange(event.currentTarget.value)}
+                      >
+                        <For each={models()?.models ?? []}>
+                          {(model) => <option value={model.id}>{model.name}</option>}
+                        </For>
+                      </select>
+                    }
                   >
-                    <For each={models()?.models ?? []}>
-                      {(model) => <option value={model.id}>{model.name}</option>}
-                    </For>
-                  </select>
+                    <div class="comparison-model-picker">
+                      <For each={models()?.models ?? []}>
+                        {(model) => (
+                          <label
+                            classList={{
+                              "comparison-model-chip": true,
+                              "is-selected": comparisonModelIds().includes(model.id),
+                              "is-disabled":
+                                !comparisonModelIds().includes(model.id) &&
+                                comparisonModelIds().length >= 3,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={comparisonModelIds().includes(model.id)}
+                              disabled={
+                                !comparisonModelIds().includes(model.id) &&
+                                comparisonModelIds().length >= 3
+                              }
+                              onChange={() => toggleComparisonModel(model.id)}
+                            />
+                            {model.name}
+                          </label>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                  <Show when={isDraftViewActive()}>
+                    <button
+                      type="button"
+                      class="composer-action-btn comparison-toggle"
+                      classList={{ "is-active": comparisonMode() }}
+                      title={
+                        comparisonMode()
+                          ? "Disable comparison mode"
+                          : "Compare 2-3 models side-by-side"
+                      }
+                      onClick={() => {
+                        setComparisonMode(!comparisonMode());
+                        if (!comparisonMode()) {
+                          setComparisonModelIds(
+                            composerModelId()
+                              ? [composerModelId()]
+                              : [models()?.models?.[0]?.id ?? ""].filter(Boolean),
+                          );
+                        } else {
+                          setComparisonModelIds([]);
+                        }
+                      }}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <rect x="3" y="3" width="7" height="18" rx="1" />
+                        <rect x="14" y="3" width="7" height="18" rx="1" />
+                      </svg>
+                    </button>
+                  </Show>
                   <button
                     type="button"
                     class="composer-action-btn"

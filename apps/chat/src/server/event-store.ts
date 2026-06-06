@@ -2,6 +2,7 @@ import {
   TABLES,
   type AccountSettings,
   type Attachment,
+  type ComparisonGroup,
   type ExtractRun,
   type Message,
   type SearchResult,
@@ -125,6 +126,12 @@ export class EventStore {
           payload: { row },
         });
       }
+      for (const row of Object.values<ComparisonGroup>(tables[TABLES.comparisonGroups] ?? {})) {
+        this.applyEventToMaterializedState({
+          eventType: "comparison_group_upserted",
+          payload: { row },
+        });
+      }
     });
   }
 
@@ -185,8 +192,8 @@ export class EventStore {
       case "thread_upserted": {
         const row = payload.row;
         this.access.exec(
-          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, search_enabled, search_limit, created_at, updated_at, last_message_at, archived_at, forked_from_thread_id, forked_from_message_id, optimistic, op_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO threads (id, workspace_id, title, pinned, head_message_id, model_id, reasoning_level, search_enabled, search_limit, created_at, updated_at, last_message_at, archived_at, forked_from_thread_id, forked_from_message_id, thread_type, comparison_group_id, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.workspaceId,
           row.title,
@@ -202,6 +209,8 @@ export class EventStore {
           row.archivedAt,
           row.forkedFromThreadId ?? null,
           row.forkedFromMessageId ?? null,
+          row.threadType ?? null,
+          row.comparisonGroupId ?? null,
           boolToSql(row.optimistic),
           row.opId ?? null,
         );
@@ -449,6 +458,20 @@ export class EventStore {
           row.errorMessage,
           row.attrsJson,
           row.eventsJson,
+        );
+        break;
+      }
+      case "comparison_group_upserted": {
+        const row = payload.row;
+        this.access.exec(
+          `INSERT OR REPLACE INTO comparison_groups (id, workspace_id, thread_ids, created_at, optimistic, op_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          row.id,
+          row.workspaceId,
+          row.threadIds,
+          row.createdAt,
+          boolToSql(row.optimistic),
+          row.opId ?? null,
         );
         break;
       }

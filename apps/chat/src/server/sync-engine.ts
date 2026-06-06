@@ -40,6 +40,7 @@ import {
   handleDeleteAttachment,
   handleSetSearchMode,
   handleResetStorage,
+  handleCreateComparison,
   type DeferredFollowUp,
   type CommandHandlerContext,
   type AssistantTurnPayload,
@@ -137,6 +138,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       ["delete_attachment", handleDeleteAttachment as ChatHandlerFn],
       ["delete_thread", handleDeleteThread as ChatHandlerFn],
       ["fork_thread", handleForkThread as ChatHandlerFn],
+      ["create_comparison", handleCreateComparison as ChatHandlerFn],
       ["set_search_mode", handleSetSearchMode as ChatHandlerFn],
       ["reset_storage", handleResetStorage as ChatHandlerFn],
     ];
@@ -352,47 +354,95 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     const followUpPromise = transactionResult.followUp?.();
 
     if (followUpPromise && isTurnCommand(commandType)) {
-      const turnPayload = validatedPayload as SyncCommandPayloadMap[
-        | "create_user_message"
-        | "retry_message"
-        | "edit_user_message"];
-      const turnMessageId = turnPayload.assistantMessage.id;
-      const userMessageId = "userMessage" in turnPayload ? turnPayload.userMessage.id : "";
-
-      this.saveTurnParams(turnMessageId, {
-        messageId: turnMessageId,
-        threadId: turnPayload.threadId,
-        userMessageId,
-        modelId: turnPayload.modelId,
-        modelInterleavedField: turnPayload.modelInterleavedField ?? null,
-        reasoningLevel: turnPayload.reasoningLevel,
-        search: turnPayload.search,
-        searchLimit: turnPayload.searchLimit ?? 5,
-        preferFreeSearch: turnPayload.preferFreeSearch ?? false,
-      });
-      this.activeTurnMessageIds.add(turnMessageId);
-      void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
-      syncLog("turn_params_saved", { messageId: turnMessageId, threadId: turnPayload.threadId });
-
-      followUpPromise
-        .then(() => {
-          this.activeTurnMessageIds.delete(turnMessageId);
-          this.clearTurnParams(turnMessageId);
-          void this.ctx.storage
-            .deleteAlarm()
-            .catch(() => syncLog("alarm_delete_failed", { messageId: turnMessageId }));
-          syncLog("turn_params_cleared", { messageId: turnMessageId });
-          return undefined;
-        })
-        .catch((error: any) => {
-          this.activeTurnMessageIds.delete(turnMessageId);
-          syncLog("follow_up_error", {
-            opId,
-            commandType,
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
+      if (commandType === "create_comparison") {
+        const comparisonPayload = validatedPayload as SyncCommandPayloadMap["create_comparison"];
+        for (let i = 0; i < comparisonPayload.assistantMessages.length; i++) {
+          const assistantMsg = comparisonPayload.assistantMessages[i];
+          const userMsg = comparisonPayload.userMessages[i];
+          const thread = comparisonPayload.threads[i];
+          this.saveTurnParams(assistantMsg.id, {
+            messageId: assistantMsg.id,
+            threadId: thread.id,
+            userMessageId: userMsg.id,
+            modelId: comparisonPayload.modelIds[i],
+            modelInterleavedField: comparisonPayload.modelInterleavedFields[i] ?? null,
+            reasoningLevel: comparisonPayload.reasoningLevel,
+            search: comparisonPayload.search,
+            searchLimit: comparisonPayload.searchLimit ?? 5,
+            preferFreeSearch: comparisonPayload.preferFreeSearch ?? false,
           });
+          this.activeTurnMessageIds.add(assistantMsg.id);
+        }
+        void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+        syncLog("comparison_turn_params_saved", {
+          count: comparisonPayload.assistantMessages.length,
+          threadIds: comparisonPayload.threads.map((t) => t.id),
         });
+
+        followUpPromise
+          .then(() => {
+            for (const msg of comparisonPayload.assistantMessages) {
+              this.activeTurnMessageIds.delete(msg.id);
+              this.clearTurnParams(msg.id);
+            }
+            void this.ctx.storage.deleteAlarm().catch(() => syncLog("alarm_delete_failed"));
+            syncLog("comparison_turn_params_cleared");
+            return undefined;
+          })
+          .catch((error: any) => {
+            for (const msg of comparisonPayload.assistantMessages) {
+              this.activeTurnMessageIds.delete(msg.id);
+            }
+            syncLog("follow_up_error", {
+              opId,
+              commandType,
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            });
+          });
+      } else {
+        const turnPayload = validatedPayload as SyncCommandPayloadMap[
+          | "create_user_message"
+          | "retry_message"
+          | "edit_user_message"];
+        const turnMessageId = turnPayload.assistantMessage.id;
+        const userMessageId = "userMessage" in turnPayload ? turnPayload.userMessage.id : "";
+
+        this.saveTurnParams(turnMessageId, {
+          messageId: turnMessageId,
+          threadId: turnPayload.threadId,
+          userMessageId,
+          modelId: turnPayload.modelId,
+          modelInterleavedField: turnPayload.modelInterleavedField ?? null,
+          reasoningLevel: turnPayload.reasoningLevel,
+          search: turnPayload.search,
+          searchLimit: turnPayload.searchLimit ?? 5,
+          preferFreeSearch: turnPayload.preferFreeSearch ?? false,
+        });
+        this.activeTurnMessageIds.add(turnMessageId);
+        void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+        syncLog("turn_params_saved", { messageId: turnMessageId, threadId: turnPayload.threadId });
+
+        followUpPromise
+          .then(() => {
+            this.activeTurnMessageIds.delete(turnMessageId);
+            this.clearTurnParams(turnMessageId);
+            void this.ctx.storage
+              .deleteAlarm()
+              .catch(() => syncLog("alarm_delete_failed", { messageId: turnMessageId }));
+            syncLog("turn_params_cleared", { messageId: turnMessageId });
+            return undefined;
+          })
+          .catch((error: any) => {
+            this.activeTurnMessageIds.delete(turnMessageId);
+            syncLog("follow_up_error", {
+              opId,
+              commandType,
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            });
+          });
+      }
 
       this.ctx.waitUntil(followUpPromise);
     } else if (followUpPromise) {

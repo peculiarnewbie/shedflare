@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import {
   type AccountSettings,
   type Attachment,
+  type ComparisonGroup,
   type ExtractRun,
   type Message,
   type MessagePart,
@@ -25,6 +26,7 @@ export const TABLES = {
   extractRuns: "extract_runs",
   traceRuns: "trace_runs",
   traceSpans: "trace_spans",
+  comparisonGroups: "comparison_groups",
 } as const;
 
 // Bumped from "effect4-trace-v1" because we added a new persisted table
@@ -133,6 +135,8 @@ export const ThreadRow = Schema.Struct({
   archivedAt: NullableString,
   forkedFromThreadId: Schema.optional(NullableString),
   forkedFromMessageId: Schema.optional(NullableString),
+  threadType: Schema.optional(Schema.NullOr(Schema.Literals(["single", "comparison"]))),
+  comparisonGroupId: Schema.optional(NullableString),
   ...OptionalOptimisticRowFields,
 });
 
@@ -258,6 +262,14 @@ export const TraceSpanRow = Schema.Struct({
   eventsJson: Schema.String,
 });
 
+export const ComparisonGroupRow = Schema.Struct({
+  id: Schema.String,
+  workspaceId: Schema.String,
+  threadIds: Schema.String,
+  createdAt: Schema.String,
+  ...OptionalOptimisticRowFields,
+});
+
 /** Add optimistic wire fields to an entity for command payloads sent to the server. */
 export function toWire<T extends object>(
   entity: T,
@@ -281,10 +293,12 @@ export const decodeSearchResultRow = typedDecode<SearchResult>(SearchResultRow);
 export const decodeExtractRunRow = typedDecode<ExtractRun>(ExtractRunRow);
 export const decodeTraceRunRow = typedDecode<TraceRun>(TraceRunRow);
 export const decodeTraceSpanRow = typedDecode<TraceSpan>(TraceSpanRow);
+export const decodeComparisonGroupRow = typedDecode<ComparisonGroup>(ComparisonGroupRow);
 
 export type {
   AccountSettings,
   Attachment,
+  ComparisonGroup,
   ExtractRun,
   Message,
   MessagePart,
@@ -604,6 +618,22 @@ export type DeleteThreadPayload = Schema.Schema.Type<typeof DeleteThreadPayloadS
 export const ResetStoragePayloadSchema = Schema.Struct({});
 export type ResetStoragePayload = Schema.Schema.Type<typeof ResetStoragePayloadSchema>;
 
+export const CreateComparisonPayloadSchema = Schema.Struct({
+  comparisonGroup: ComparisonGroupRow,
+  threads: Schema.Array(ThreadRow),
+  userMessages: Schema.Array(MessageRow),
+  assistantMessages: Schema.Array(MessageRow),
+  promptText: Schema.String,
+  modelIds: Schema.Array(Schema.String),
+  modelInterleavedFields: Schema.Array(Schema.optional(Schema.NullOr(Schema.String))),
+  reasoningLevel: ReasoningLevel,
+  search: Schema.Boolean,
+  searchLimit: Schema.optional(Schema.Number),
+  preferFreeSearch: Schema.optional(Schema.Boolean),
+  attachmentIds: Schema.Array(Schema.String),
+});
+export type CreateComparisonPayload = Schema.Schema.Type<typeof CreateComparisonPayloadSchema>;
+
 export const CommandPayloadSchemas = {
   bootstrap_session: BootstrapSessionPayloadSchema,
   update_account_settings: UpdateAccountSettingsPayloadSchema,
@@ -625,6 +655,7 @@ export const CommandPayloadSchemas = {
   set_search_mode: SetSearchModePayloadSchema,
   delete_thread: DeleteThreadPayloadSchema,
   fork_thread: ForkThreadPayloadSchema,
+  create_comparison: CreateComparisonPayloadSchema,
   reset_storage: ResetStoragePayloadSchema,
 } as const;
 
@@ -646,11 +677,16 @@ export function decodeCommand<K extends SyncCommandType>(
 
 export function isTurnCommand(
   commandType: SyncCommandType,
-): commandType is "create_user_message" | "retry_message" | "edit_user_message" {
+): commandType is
+  | "create_user_message"
+  | "retry_message"
+  | "edit_user_message"
+  | "create_comparison" {
   return (
     commandType === "create_user_message" ||
     commandType === "retry_message" ||
-    commandType === "edit_user_message"
+    commandType === "edit_user_message" ||
+    commandType === "create_comparison"
   );
 }
 
@@ -675,6 +711,7 @@ export const SYNC_COMMAND_TYPES = [
   "set_search_mode",
   "delete_thread",
   "fork_thread",
+  "create_comparison",
   "reset_storage",
 ] as const satisfies readonly SyncCommandType[];
 
@@ -761,6 +798,7 @@ export const ExtractRunsReplacedPayload = Schema.Struct({
 });
 export const TraceRunUpsertedPayload = Schema.Struct({ row: TraceRunRow });
 export const TraceSpanUpsertedPayload = Schema.Struct({ row: TraceSpanRow });
+export const ComparisonGroupUpsertedPayload = Schema.Struct({ row: ComparisonGroupRow });
 export const ServerStateRebasedPayload = Schema.Struct({ snapshot: SyncSnapshotSchema });
 
 export const EventPayloadSchemas = {
@@ -782,6 +820,7 @@ export const EventPayloadSchemas = {
   extract_runs_replaced: ExtractRunsReplacedPayload,
   trace_run_upserted: TraceRunUpsertedPayload,
   trace_span_upserted: TraceSpanUpsertedPayload,
+  comparison_group_upserted: ComparisonGroupUpsertedPayload,
   server_state_rebased: ServerStateRebasedPayload,
 } as const;
 
@@ -940,6 +979,8 @@ export function createThread(input: {
   searchLimit?: number | null;
   forkedFromThreadId?: string | null;
   forkedFromMessageId?: string | null;
+  threadType?: "single" | "comparison" | null;
+  comparisonGroupId?: string | null;
 }) {
   const now = nowIso();
   return decodeThreadRow({
@@ -958,6 +999,18 @@ export function createThread(input: {
     archivedAt: null,
     forkedFromThreadId: input.forkedFromThreadId ?? null,
     forkedFromMessageId: input.forkedFromMessageId ?? null,
+    threadType: input.threadType ?? null,
+    comparisonGroupId: input.comparisonGroupId ?? null,
+  });
+}
+
+export function createComparisonGroup(input: { workspaceId: string; threadIds: string[] }) {
+  const now = nowIso();
+  return decodeComparisonGroupRow({
+    id: createId("cmp"),
+    workspaceId: input.workspaceId,
+    threadIds: JSON.stringify(input.threadIds),
+    createdAt: now,
   });
 }
 
