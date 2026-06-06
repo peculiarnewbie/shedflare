@@ -4,10 +4,7 @@ import * as s from "../../db/schema";
 import { createTransaction } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-export type CommandResult =
-  | { ok: true; data: Record<string, unknown> }
-  | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type TransactionCommand =
   | "create_transaction"

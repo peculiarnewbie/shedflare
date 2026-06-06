@@ -3,8 +3,7 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createTag } from "../../domain/factories";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type TagCommand = "create_tag" | "delete_tag" | "add_transaction_tag" | "remove_transaction_tag";
 
@@ -12,7 +11,7 @@ export async function handleTagCommands(
   c: TagCommand,
   p: CommandPayloadMap[TagCommand],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   switch (c) {
     case "create_tag": {
       const pp = p as CommandPayloadMap["create_tag"];

@@ -4,8 +4,7 @@ import * as s from "../../db/schema";
 import { createPayee } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type PayeeCommand = "create_payee" | "update_payee" | "merge_payees";
 
@@ -13,7 +12,7 @@ export async function handlePayeeCommands(
   c: PayeeCommand,
   p: CommandPayloadMap[PayeeCommand],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   switch (c) {
     case "create_payee": {
       const pp = p as CommandPayloadMap["create_payee"];

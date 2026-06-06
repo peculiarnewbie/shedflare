@@ -194,26 +194,36 @@ export async function computeNetWorthHistory(
   monthsBack: number = 12,
 ): Promise<Array<{ month: string; netWorth: number }>> {
   const now = new Date();
-  const results: Array<{ month: string; netWorth: number }> = [];
+  const monthKeys: string[] = [];
+  const monthBoundariesList: string[] = [];
 
   for (let i = monthsBack; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const endDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-
-    const txRow = await db.get<{ total: number | null }>(
-      sql`SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE date < ${endDate} AND account_id IN (SELECT id FROM accounts WHERE closed = 0)`,
-    );
-    const startingRow = await db.get<{ total: number | null }>(
-      sql`SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE closed = 0 AND balance_current IS NOT NULL`,
-    );
-
-    results.push({
-      month: mk,
-      netWorth: Number(startingRow?.total ?? 0) + Number(txRow?.total ?? 0),
-    });
+    monthKeys.push(mk);
+    monthBoundariesList.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
   }
-  return results;
+
+  const startingRow = await db.get<{ total: number | null }>(
+    sql`SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE closed = 0 AND balance_current IS NOT NULL`,
+  );
+  const startingBalance = Number(startingRow?.total ?? 0);
+
+  const monthlyTx = await db.all<{ month: string; total: number }>(
+    sql`SELECT strftime('%Y-%m', date) AS month, COALESCE(SUM(amount), 0) AS total
+     FROM transactions
+     WHERE account_id IN (SELECT id FROM accounts WHERE closed = 0)
+     GROUP BY strftime('%Y-%m', date)`,
+  );
+
+  const txByMonth = new Map<string, number>();
+  for (const r of monthlyTx) txByMonth.set(r.month, Number(r.total));
+
+  let cumulative = 0;
+  return monthKeys.map((mk) => {
+    cumulative += txByMonth.get(mk) ?? 0;
+    return { month: mk, netWorth: startingBalance + cumulative };
+  });
 }
 
 // -- Cash flow ----------------------------------------------------------------
@@ -222,34 +232,40 @@ export async function computeCashFlow(
   monthsBack: number = 12,
 ): Promise<Array<{ month: string; income: number; expense: number }>> {
   const now = new Date();
-  const results: Array<{ month: string; income: number; expense: number }> = [];
+  const monthKeys: string[] = [];
+  const monthStarts: string[] = [];
+  const monthEnds: string[] = [];
 
   for (let i = monthsBack; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    monthKeys.push(mk);
     const boundaries = monthBoundaries(mk);
-
-    const incomeRow = await db.get<{ total: number | null }>(
-      sql`SELECT COALESCE(SUM(t.amount), 0) AS total
-       FROM transactions t
-       JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ${boundaries.start} AND t.date < ${boundaries.end}
-         AND c.is_income = 1 AND t.is_child = 0`,
-    );
-    const expenseRow = await db.get<{ total: number | null }>(
-      sql`SELECT COALESCE(SUM(t.amount), 0) AS total
-       FROM transactions t
-       JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ${boundaries.start} AND t.date < ${boundaries.end}
-         AND c.is_income = 0 AND t.is_child = 0`,
-    );
-    results.push({
-      month: mk,
-      income: Number(incomeRow?.total ?? 0),
-      expense: Number(expenseRow?.total ?? 0),
-    });
+    monthStarts.push(boundaries.start);
+    monthEnds.push(boundaries.end);
   }
-  return results;
+
+  const rows = await db.all<{ month: string; is_income: number; total: number }>(
+    sql`SELECT strftime('%Y-%m', t.date) AS month, c.is_income, COALESCE(SUM(t.amount), 0) AS total
+     FROM transactions t
+     JOIN categories c ON t.category_id = c.id
+     WHERE t.date >= ${monthStarts[0]} AND t.date <= ${monthEnds[monthEnds.length - 1]}
+       AND t.is_child = 0
+     GROUP BY strftime('%Y-%m', t.date), c.is_income`,
+  );
+
+  const incomeMap = new Map<string, number>();
+  const expenseMap = new Map<string, number>();
+  for (const r of rows) {
+    if (r.is_income === 1) incomeMap.set(r.month, Number(r.total));
+    else expenseMap.set(r.month, Number(r.total));
+  }
+
+  return monthKeys.map((mk) => ({
+    month: mk,
+    income: Math.abs(incomeMap.get(mk) ?? 0),
+    expense: Math.abs(expenseMap.get(mk) ?? 0),
+  }));
 }
 
 // -- Spending by category -----------------------------------------------------

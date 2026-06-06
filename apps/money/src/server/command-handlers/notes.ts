@@ -4,8 +4,7 @@ import * as s from "../../db/schema";
 import { createNote } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type NoteCommand = "create_note" | "update_note" | "delete_note" | "list_notes";
 
@@ -13,7 +12,7 @@ export async function handleNotesCommands(
   c: NoteCommand,
   p: CommandPayloadMap[NoteCommand],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   switch (c) {
     case "create_note": {
       const pp = p as CommandPayloadMap["create_note"];

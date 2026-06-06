@@ -1,6 +1,6 @@
 import type { Db } from "../d1-access";
 import { decodeCommand, type CommandPayloadMap } from "../../domain/commands";
-import { isSyncCommandType } from "../../domain/types";
+import { isSyncCommandType, type CommandResult } from "../../domain/types";
 import { handleAccountCommands } from "./accounts";
 import { handleTransactionCommands } from "./transactions";
 import { handleCategoryCommands } from "./categories";
@@ -16,9 +16,7 @@ import { handleSettingCommands } from "./settings";
 import { handleNotesCommands } from "./notes";
 import { handleDashboardCommands } from "./dashboard";
 
-export type CommandResult =
-  | { ok: true; data: Record<string, unknown> }
-  | { ok: false; error: string };
+export type { CommandResult } from "../../domain/types";
 
 export async function handleCommand(db: Db, body: Record<string, unknown>): Promise<CommandResult> {
   const commandType = body.commandType as string;

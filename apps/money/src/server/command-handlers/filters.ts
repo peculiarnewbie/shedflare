@@ -4,8 +4,7 @@ import * as s from "../../db/schema";
 import { createTransactionFilter } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type FilterCommand = "create_filter" | "update_filter" | "delete_filter";
 
@@ -13,7 +12,7 @@ export async function handleFilterCommands(
   c: FilterCommand,
   p: CommandPayloadMap[FilterCommand],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   switch (c) {
     case "create_filter": {
       const pp = p as CommandPayloadMap["create_filter"];

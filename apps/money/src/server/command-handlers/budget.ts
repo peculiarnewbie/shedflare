@@ -4,10 +4,7 @@ import * as s from "../../db/schema";
 import { computeMonthBudget } from "../budget-engine";
 import { toMonthInt, nowIso, budgetId } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-export type CommandResult =
-  | { ok: true; data: Record<string, unknown> }
-  | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type BudgetCommand =
   | "set_budget_amount"

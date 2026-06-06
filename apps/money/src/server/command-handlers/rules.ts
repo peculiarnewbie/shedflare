@@ -4,8 +4,7 @@ import * as s from "../../db/schema";
 import { createRule } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type RuleCommand = "create_rule" | "update_rule" | "delete_rule";
 
@@ -13,7 +12,7 @@ export async function handleRuleCommands(
   c: RuleCommand,
   p: CommandPayloadMap[RuleCommand],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   switch (c) {
     case "create_rule": {
       const pp = p as CommandPayloadMap["create_rule"];

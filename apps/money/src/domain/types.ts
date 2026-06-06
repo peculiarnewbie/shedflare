@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -81,17 +83,65 @@ export type WidgetId = string & { readonly __brand: "WidgetId" };
 export type EventId = string & { readonly __brand: "EventId" };
 export type OpId = string & { readonly __brand: "OpId" };
 
+export const AccountIdSchema = Schema.String.pipe(Schema.brand("AccountId"));
+export const TransactionIdSchema = Schema.String.pipe(Schema.brand("TransactionId"));
+export const CategoryIdSchema = Schema.String.pipe(Schema.brand("CategoryId"));
+export const CategoryGroupIdSchema = Schema.String.pipe(Schema.brand("CategoryGroupId"));
+export const PayeeIdSchema = Schema.String.pipe(Schema.brand("PayeeId"));
+export const ScheduleIdSchema = Schema.String.pipe(Schema.brand("ScheduleId"));
+export const RuleIdSchema = Schema.String.pipe(Schema.brand("RuleId"));
+export const TagIdSchema = Schema.String.pipe(Schema.brand("TagId"));
+export const ReportIdSchema = Schema.String.pipe(Schema.brand("ReportId"));
+export const WidgetIdSchema = Schema.String.pipe(Schema.brand("WidgetId"));
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-export function createId(prefix: string): string {
-  return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+const PREFIXES = [
+  "acct",
+  "txn",
+  "cat",
+  "cgrp",
+  "pay",
+  "sch",
+  "rule",
+  "tag",
+  "rpt",
+  "wgt",
+  "nt",
+  "flt",
+] as const;
+
+type PrefixToBrand = {
+  acct: AccountId;
+  txn: TransactionId;
+  cat: CategoryId;
+  cgrp: CategoryGroupId;
+  pay: PayeeId;
+  sch: ScheduleId;
+  rule: RuleId;
+  tag: TagId;
+  rpt: ReportId;
+  wgt: WidgetId;
+  flt: string;
+  nt: string;
+};
+
+export function createId<P extends (typeof PREFIXES)[number]>(prefix: P): PrefixToBrand[P] {
+  return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}` as PrefixToBrand[P];
 }
 
 /** Cast a known-valid string to a branded ID type. Use at trust boundaries (after validation). */
 export function castId<T extends string>(id: string): T {
   return id as T;
 }
+
+// ---------------------------------------------------------------------------
+// CommandResult — shared return type for all command handlers
+// ---------------------------------------------------------------------------
+export type CommandResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; error: string };
 
 export function nowIso(): string {
   return new Date().toISOString();

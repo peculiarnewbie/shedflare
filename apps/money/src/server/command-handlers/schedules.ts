@@ -4,8 +4,7 @@ import * as s from "../../db/schema";
 import { createSchedule } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 type ScheduleCommand =
   | "create_schedule"
@@ -18,7 +17,7 @@ export async function handleScheduleCommands(
   c: ScheduleCommand,
   p: CommandPayloadMap[ScheduleCommand],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   switch (c) {
     case "create_schedule": {
       const pp = p as CommandPayloadMap["create_schedule"];

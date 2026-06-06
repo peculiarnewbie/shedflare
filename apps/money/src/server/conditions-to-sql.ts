@@ -1,11 +1,58 @@
 import { and, or, sql, type SQL } from "drizzle-orm";
 
-export interface FilterCondition {
+// ── Discriminated union: only valid operator/value combos are representable ──
+
+export interface IsCondition {
   field: string;
-  op: string;
-  value: unknown;
-  value2?: unknown;
+  op: "is";
+  value: string | number | boolean;
 }
+
+export interface IsNotCondition {
+  field: string;
+  op: "isNot";
+  value: string | number;
+}
+
+export interface ContainsCondition {
+  field: string;
+  op: "contains";
+  value: string;
+}
+
+export interface DoesNotContainCondition {
+  field: string;
+  op: "doesNotContain";
+  value: string;
+}
+
+export interface NumericCondition {
+  field: string;
+  op: "gt" | "gte" | "lt" | "lte";
+  value: number;
+}
+
+export interface OneOfCondition {
+  field: string;
+  op: "oneOf";
+  value: Array<string | number>;
+}
+
+export interface IsBetweenCondition {
+  field: string;
+  op: "isbetween";
+  value: number;
+  value2: number;
+}
+
+export type FilterCondition =
+  | IsCondition
+  | IsNotCondition
+  | ContainsCondition
+  | DoesNotContainCondition
+  | NumericCondition
+  | OneOfCondition
+  | IsBetweenCondition;
 
 function colRef(field: string): SQL {
   switch (field) {
@@ -28,7 +75,7 @@ function colRef(field: string): SQL {
   }
 }
 
-function conditionToSql(cond: FilterCondition): SQL | null {
+function conditionToSql(cond: FilterCondition): SQL {
   const col = colRef(cond.field);
 
   switch (cond.op) {
@@ -41,9 +88,9 @@ function conditionToSql(cond: FilterCondition): SQL | null {
     case "isNot":
       return sql`${col} != ${cond.value}`;
     case "contains":
-      return sql`${col} LIKE ${"%" + String(cond.value) + "%"}`;
+      return sql`${col} LIKE ${"%" + cond.value + "%"}`;
     case "doesNotContain":
-      return sql`${col} NOT LIKE ${"%" + String(cond.value) + "%"}`;
+      return sql`${col} NOT LIKE ${"%" + cond.value + "%"}`;
     case "gt":
       return sql`${col} > ${cond.value}`;
     case "gte":
@@ -53,7 +100,7 @@ function conditionToSql(cond: FilterCondition): SQL | null {
     case "lte":
       return sql`${col} <= ${cond.value}`;
     case "oneOf": {
-      const arr = (cond.value as unknown[]) ?? [];
+      const arr = cond.value;
       return sql`${col} IN (${sql.join(
         arr.map((v) => sql`${v}`),
         sql`, `,
@@ -61,9 +108,6 @@ function conditionToSql(cond: FilterCondition): SQL | null {
     }
     case "isbetween":
       return sql`${col} >= ${cond.value} AND ${col} <= ${cond.value2}`;
-    default:
-      console.warn("[filters] unhandled filter operator", cond.op);
-      return null;
   }
 }
 
@@ -73,7 +117,7 @@ export function buildFilterSql(
   conditionsOp: "and" | "or",
 ): SQL | null {
   if (conditions.length === 0) return null;
-  const fragments = conditions.map(conditionToSql).filter((x): x is SQL => x !== null);
+  const fragments = conditions.map(conditionToSql);
   if (fragments.length === 0) return null;
   return (conditionsOp === "or" ? or(...fragments) : and(...fragments)) as SQL<unknown>;
 }

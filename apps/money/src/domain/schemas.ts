@@ -1,6 +1,18 @@
 import { createSelectSchema, createInsertSchema } from "drizzle-orm/effect-schema";
 import * as Schema from "effect/Schema";
 import * as schema from "../db/schema";
+import {
+  AccountIdSchema,
+  TransactionIdSchema,
+  CategoryIdSchema,
+  CategoryGroupIdSchema,
+  PayeeIdSchema,
+  ScheduleIdSchema,
+  RuleIdSchema,
+  TagIdSchema,
+  ReportIdSchema,
+  WidgetIdSchema,
+} from "./types";
 
 export const AccountSchema = createSelectSchema(schema.accounts);
 export const TransactionSchema = createSelectSchema(schema.transactions);
@@ -89,7 +101,7 @@ export type ParsedTransaction = Schema.Schema.Type<typeof ParsedTransaction>;
 // Enriched entity schemas (extend Drizzle schemas with computed/joined fields)
 
 export const AccountApiSchema = Schema.Struct({
-  id: Schema.String,
+  id: AccountIdSchema,
   name: Schema.String,
   offbudget: Schema.Boolean,
   closed: Schema.Boolean,
@@ -100,9 +112,9 @@ export const AccountApiSchema = Schema.Struct({
 export type AccountApi = Schema.Schema.Type<typeof AccountApiSchema>;
 
 export const TransactionApiSchema = Schema.Struct({
-  id: Schema.String,
-  accountId: Schema.String,
-  categoryId: Schema.NullOr(Schema.String),
+  id: TransactionIdSchema,
+  accountId: AccountIdSchema,
+  categoryId: Schema.NullOr(CategoryIdSchema),
   amount: Schema.Number,
   payee: Schema.NullOr(Schema.String),
   notes: Schema.NullOr(Schema.String),
@@ -114,9 +126,9 @@ export const TransactionApiSchema = Schema.Struct({
   sortOrder: Schema.NullOr(Schema.Number),
   isParent: Schema.Boolean,
   isChild: Schema.Boolean,
-  parentId: Schema.NullOr(Schema.String),
-  transferId: Schema.NullOr(Schema.String),
-  scheduleId: Schema.NullOr(Schema.String),
+  parentId: Schema.NullOr(TransactionIdSchema),
+  transferId: Schema.NullOr(TransactionIdSchema),
+  scheduleId: Schema.NullOr(ScheduleIdSchema),
   createdAt: Schema.String,
   updatedAt: Schema.String,
   categoryName: Schema.optional(Schema.NullOr(Schema.String)),
@@ -126,10 +138,10 @@ export const TransactionApiSchema = Schema.Struct({
 export type TransactionApi = Schema.Schema.Type<typeof TransactionApiSchema>;
 
 export const CategoryApiSchema = Schema.Struct({
-  id: Schema.String,
+  id: CategoryIdSchema,
   name: Schema.String,
   isIncome: Schema.Boolean,
-  groupId: Schema.NullOr(Schema.String),
+  groupId: Schema.NullOr(CategoryGroupIdSchema),
   sortOrder: Schema.Number,
   hidden: Schema.Boolean,
   goalDef: Schema.NullOr(Schema.String),
@@ -140,9 +152,9 @@ export const CategoryApiSchema = Schema.Struct({
 export type CategoryApi = Schema.Schema.Type<typeof CategoryApiSchema>;
 
 export const PayeeApiSchema = Schema.Struct({
-  id: Schema.String,
+  id: PayeeIdSchema,
   name: Schema.String,
-  transferAccountId: Schema.NullOr(Schema.String),
+  transferAccountId: Schema.NullOr(AccountIdSchema),
   favorite: Schema.Boolean,
   createdAt: Schema.String,
   updatedAt: Schema.String,
@@ -151,8 +163,8 @@ export const PayeeApiSchema = Schema.Struct({
 export type PayeeApi = Schema.Schema.Type<typeof PayeeApiSchema>;
 
 export const TransactionTagApiSchema = Schema.Struct({
-  transactionId: Schema.String,
-  tagId: Schema.String,
+  transactionId: TransactionIdSchema,
+  tagId: TagIdSchema,
   tagName: Schema.String,
   tagColor: Schema.NullOr(Schema.String),
 });
@@ -175,9 +187,9 @@ export const BudgetOverviewSchema = Schema.Struct({
 export type BudgetOverview = Schema.Schema.Type<typeof BudgetOverviewSchema>;
 
 export const CategoryBudgetRowSchema = Schema.Struct({
-  categoryId: Schema.String,
+  categoryId: CategoryIdSchema,
   categoryName: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
+  groupId: Schema.NullOr(CategoryGroupIdSchema),
   groupName: Schema.NullOr(Schema.String),
   budgeted: Schema.Number,
   spent: Schema.Number,

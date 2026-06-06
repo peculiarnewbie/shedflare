@@ -52,11 +52,13 @@ import {
 } from "../domain/schemas";
 
 function validatedJson(
-  schema: Parameters<typeof S.decodeUnknownSync>[0],
+  schema: Parameters<typeof S.encodeSync>[0],
   data: unknown,
   status = 200,
 ): Response {
-  const encoded = S.encodeSync(schema as any)(data);
+  const encoded = (
+    S.encodeSync as (s: Parameters<typeof S.encodeSync>[0]) => (u: unknown) => unknown
+  )(schema)(data);
   return new Response(JSON.stringify(encoded), {
     status,
     headers: { "content-type": "application/json" },

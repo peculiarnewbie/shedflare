@@ -4,14 +4,13 @@ import * as s from "../../db/schema";
 import { createTransaction } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
 import type { CommandPayloadMap } from "../../domain/commands";
-
-type CR = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+import type { CommandResult } from "../../domain/types";
 
 export async function handleImportCommands(
   c: string,
   p: CommandPayloadMap["import_transactions"],
   db: Db,
-): Promise<CR> {
+): Promise<CommandResult> {
   if (c !== "import_transactions") return { ok: true, data: { added: 0, updated: 0, errors: [] } };
 
   const txs = p.transactions ?? [];
