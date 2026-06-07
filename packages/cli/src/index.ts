@@ -17,6 +17,15 @@ cli
   });
 
 cli
+  .command("deploy [app]", "Deploy apps via Alchemy")
+  .option("--yes", "Skip confirmation prompts")
+  .option("--secret <pair>", "Set secret for deploy: NAME=value (repeatable)")
+  .action(async (options) => {
+    const { deployCommand } = await import("./commands/deploy.js");
+    await deployCommand(options);
+  });
+
+cli
   .command("doctor", "Check the workspace for common issues and missing configuration")
   .option("--json", "Output results as JSON for CI and scripting")
   .action(async (options) => {
