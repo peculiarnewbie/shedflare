@@ -7,7 +7,7 @@ export default defineConfig({
   reporter: [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: process.env.BASE_URL ?? "http://localhost:8787",
-    trace: "on-first-retry",
+    trace: "on",
     screenshot: "only-on-failure",
     ...(process.env.E2E_AUTH_TOKEN && {
       extraHTTPHeaders: {
