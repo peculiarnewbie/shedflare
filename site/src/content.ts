@@ -1,12 +1,5 @@
 export const apps = [
   {
-    id: "auth",
-    name: "Auth",
-    summary: "The single-owner gate in front of the suite.",
-    resources: "Worker + KV",
-    notes: "Protects your private tools from public access. It is not a SaaS user system.",
-  },
-  {
     id: "chat",
     name: "Chat",
     summary: "An AI workspace with sync, file uploads, search, and browser automation.",
@@ -25,15 +18,24 @@ export const apps = [
     name: "Money",
     summary: "Envelope budgeting for personal finance workflows.",
     resources: "Worker + Durable Object + R2",
-    notes: "Built around a local-first sync protocol and a single owner’s budgeting model.",
+    notes: "Built around a local-first sync protocol and a single owner's budgeting model.",
   },
   {
-    id: "youtube",
-    name: "YouTube",
-    summary: "A Watch Later manager and notification dashboard.",
+    id: "s",
+    name: "Links",
+    summary: "A simple link shortener with a dashboard.",
     resources: "Worker + D1",
-    notes:
-      "Keeps YouTube-adjacent utility data in your own deployment instead of a hosted service.",
+    notes: "Shorten and manage links under your own domain.",
+  },
+];
+
+export const helpers = [
+  {
+    id: "auth",
+    name: "Auth",
+    summary: "The single-owner gate in front of the suite.",
+    resources: "Worker + KV",
+    notes: "Protects your private tools from public access. It is not a SaaS user system.",
   },
   {
     id: "cf-bill",
@@ -42,12 +44,19 @@ export const apps = [
     resources: "Worker + Cloudflare API token",
     notes: "Uses your account token to show usage context for the Cloudflare cloud you operate in.",
   },
+  {
+    id: "observability",
+    name: "Observability",
+    summary: "Centralized error collection from tail events across all app Workers.",
+    resources: "Worker + D1",
+    notes: "Collects and stores errors from all Shedflare apps in one place.",
+  },
 ];
 
 export const guides = [
   {
     title: "Configure once",
-    body: "The owner’s deployment settings live in shedflare.config.jsonc. It is local, gitignored, and treated as the source of truth for domains, subdomains, owner email, and app vars.",
+    body: "The owner's deployment settings live in shedflare.config.jsonc. It is local, gitignored, and treated as the source of truth for domains, subdomains, owner email, and app vars.",
   },
   {
     title: "Deploy with Alchemy",
@@ -59,6 +68,6 @@ export const guides = [
   },
   {
     title: "Keep it personal",
-    body: "There are no tenants, teams, sign-up flows, or per-user settings. Auth exists to protect the owner’s tools from the public internet.",
+    body: "There are no tenants, teams, sign-up flows, or per-user settings. Auth exists to protect the owner's tools from the public internet.",
   },
 ];

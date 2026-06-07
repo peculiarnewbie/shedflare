@@ -12,6 +12,7 @@ import { MoneyStack } from "./apps/money/alchemy.run.ts";
 import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { ShortStack } from "./apps/s/alchemy.run.ts";
 import { YouTubeStack } from "./apps/youtube/alchemy.run.ts";
+import { SiteStack } from "./site/alchemy.run.ts";
 import { physicalName } from "./packages/shedflare-alchemy/src/index.ts";
 
 function patchTailConsumers(
@@ -53,10 +54,11 @@ export default Alchemy.Stack(
     const youtube = yield* YouTubeStack;
     const short = yield* ShortStack;
     const observability = yield* Effect.option(ObservabilityStack);
+    const site = yield* SiteStack;
 
     if (Option.isSome(observability)) {
       const obsWorker = physicalName(stage, "observability");
-      const apps = ["auth", "cf-bill", "chat", "drive", "money", "s", "youtube"] as const;
+      const apps = ["auth", "cf-bill", "chat", "drive", "money", "s", "youtube", "site"] as const;
       for (const app of apps) {
         yield* patchTailConsumers(
           Redacted.value(apiToken),
@@ -86,6 +88,7 @@ export default Alchemy.Stack(
       moneyUrl: money.url,
       youtubeUrl: youtube.url,
       shortUrl: short.url,
+      siteUrl: site.url,
       observabilityUrl: Option.isSome(observability) ? observability.value.url : undefined,
     };
   }),

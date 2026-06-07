@@ -2,7 +2,13 @@ import { MetaProvider, Title } from "@solidjs/meta";
 import { A, Route, Router } from "@solidjs/router";
 import { For, Show } from "solid-js";
 import "./styles.css";
-import { apps, guides } from "./content";
+import { apps, helpers, guides } from "./content";
+
+const allTools = [...apps, ...helpers];
+
+function findTool(id: string) {
+  return allTools.find((item) => item.id === id);
+}
 
 function Shell(props: { children: unknown }) {
   return (
@@ -24,8 +30,7 @@ function Shell(props: { children: unknown }) {
       {props.children}
       <footer class="footer">
         <p>
-          Shedflare is project-owned infrastructure for people who want personal tools in their own
-          Cloudflare account.
+          Shedflare is a set of personal tools you deploy to your own Cloudflare account.
         </p>
       </footer>
     </>
@@ -38,47 +43,52 @@ function Home() {
       <main>
         <section class="hero">
           <div class="hero-copy">
-            <p class="eyebrow">Self-hosted, but cloud-native</p>
-            <h1>Personal utility apps that live in your Cloudflare cloud.</h1>
+            <p class="eyebrow">Your own tools, your own cloud</p>
+            <h1>Personal apps that live in your Cloudflare account.</h1>
             <p class="lede">
-              Shedflare is a suite of private productivity tools deployed into your own Cloudflare
-              account. You may not control the hardware, but you control the Workers, resources,
-              data boundary, secrets, and deployment lifecycle.
+              Shedflare is a set of private productivity apps — chat, file storage, budgeting, and
+              a link shortener — that deploy into your own Cloudflare account.
             </p>
             <div class="actions">
               <A class="button primary" href="/docs">
-                Read the docs
+                Get started
               </A>
               <A class="button secondary" href="/docs/apps">
-                Explore apps
+                See the apps
               </A>
             </div>
-          </div>
-          <div class="cloud-card" aria-label="Shedflare deployment model diagram">
-            <div class="orbit orbit-one" />
-            <div class="orbit orbit-two" />
-            <div class="core">Your Cloudflare Account</div>
-            <div class="node node-a">Workers</div>
-            <div class="node node-b">R2</div>
-            <div class="node node-c">D1</div>
-            <div class="node node-d">DO</div>
           </div>
         </section>
 
         <section class="statement">
           <p>
-            This is not a hosted SaaS trying to become your landlord. It is a repo, a deployment
-            model, and a set of owner-operated apps for the Cloudflare platform.
+            Built for one person. No sign-ups, no tenants, no pricing tiers. Just a repo you
+            deploy and tools you own.
           </p>
         </section>
 
-        <section class="grid-section">
-          <div class="section-heading">
-            <p class="eyebrow">The suite</p>
-            <h2>Tools with clear resource boundaries.</h2>
-          </div>
-          <div class="app-grid">
-            <For each={apps}>{(app) => <AppCard app={app} />}</For>
+        <section class="apps-intro">
+          <p class="eyebrow">The suite</p>
+          <h2>Four apps, each built for a different job.</h2>
+        </section>
+
+        <For each={apps}>
+          {(app, index) => <AppShowcase app={app} index={index()} />}
+        </For>
+
+        <section class="helpers-showcase">
+          <div class="helpers-inner">
+            <div class="helpers-header">
+              <p class="eyebrow">Included helpers</p>
+              <h2>Everything you need to run and manage the suite.</h2>
+              <p class="helpers-blurb">
+                Auth keeps your apps private. Observability collects errors across all Workers.
+                CF Usage tracks your Cloudflare plan against limits.
+              </p>
+            </div>
+            <div class="helper-grid">
+              <For each={helpers}>{(helper) => <HelperCard helper={helper} />}</For>
+            </div>
           </div>
         </section>
       </main>
@@ -86,18 +96,106 @@ function Home() {
   );
 }
 
-function AppCard(props: { app: (typeof apps)[number] }) {
+function AppShowcase(props: { app: (typeof apps)[number]; index: number }) {
+  const even = props.index % 2 === 0;
+  const Visual =
+    props.app.id === "chat"
+      ? ChatVisual
+      : props.app.id === "drive"
+        ? DriveVisual
+        : props.app.id === "money"
+          ? MoneyVisual
+          : LinksVisual;
+
   return (
-    <A class="app-card" href={`/docs/apps/${props.app.id}`}>
-      <span>{props.app.resources}</span>
-      <h3>{props.app.name}</h3>
-      <p>{props.app.summary}</p>
+    <section class={`app-showcase ${even ? "showcase-left" : "showcase-right"}`}>
+      <div class="showcase-inner">
+        <div class="showcase-text">
+          <span class="showcase-number">0{props.index + 1}</span>
+          <h2>{props.app.name}</h2>
+          <p>{props.app.summary}</p>
+          <div class="showcase-tags">
+            {props.app.resources.split(" + ").map((r) => (
+              <span class="tag">{r}</span>
+            ))}
+          </div>
+          <A class="showcase-link" href={`/docs/apps/${props.app.id}`}>
+            Read about {props.app.name.toLowerCase()} →
+          </A>
+        </div>
+        <div class="showcase-visual">
+          <div class={`showcase-art ${props.app.id}-art`}>
+            <Visual />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ChatVisual() {
+  return (
+    <>
+      <div class="art-window">
+        <div class="art-titlebar" />
+        <div class="art-bubble art-bubble-left" />
+        <div class="art-bubble art-bubble-right" />
+        <div class="art-bubble art-bubble-left art-bubble-small" />
+      </div>
+    </>
+  );
+}
+
+function DriveVisual() {
+  return (
+    <>
+      <div class="art-folder">
+        <div class="art-folder-tab" />
+        <div class="art-folder-body">
+          <div class="art-doc art-doc-1" />
+          <div class="art-doc art-doc-2" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MoneyVisual() {
+  return (
+    <>
+      <div class="art-coin">
+        <div class="art-coin-inner" />
+      </div>
+      <div class="art-bars">
+        <div class="art-bar" />
+        <div class="art-bar" />
+        <div class="art-bar" />
+      </div>
+    </>
+  );
+}
+
+function LinksVisual() {
+  return (
+    <>
+      <div class="art-link art-link-1" />
+      <div class="art-link art-link-2" />
+    </>
+  );
+}
+
+function HelperCard(props: { helper: (typeof helpers)[number] }) {
+  return (
+    <A class="helper-card" href={`/docs/apps/${props.helper.id}`}>
+      <h3>{props.helper.name}</h3>
+      <p>{props.helper.summary}</p>
+      <span class="helper-resources">{props.helper.resources}</span>
     </A>
   );
 }
 
 function Docs(props: { page?: string }) {
-  const app = () => apps.find((item) => item.id === props.page);
+  const tool = () => findTool(props.page ?? "");
 
   return (
     <Shell>
@@ -107,11 +205,13 @@ function Docs(props: { page?: string }) {
           <A href="/docs/deployment">Deployment</A>
           <A href="/docs/apps">Apps</A>
           <For each={apps}>{(item) => <A href={`/docs/apps/${item.id}`}>{item.name}</A>}</For>
+          <p class="sidebar-heading">Helpers</p>
+          <For each={helpers}>{(item) => <A href={`/docs/apps/${item.id}`}>{item.name}</A>}</For>
         </aside>
         <article class="docs-page">
           <Show
             when={props.page === "deployment"}
-            fallback={props.page ? <AppDoc app={app()} /> : <DocsIndex />}
+            fallback={props.page ? <AppDoc app={tool()} /> : <DocsIndex />}
           >
             <DeploymentDoc />
           </Show>
@@ -125,10 +225,10 @@ function DocsIndex() {
   return (
     <>
       <p class="eyebrow">Documentation</p>
-      <h1>Run personal software inside a cloud account you control.</h1>
+      <h1>Deploy personal software to your own cloud account.</h1>
       <p class="doc-lede">
-        Shedflare’s model is single-owner self-hosting on Cloudflare. The suite is deployed from
-        source into your account, with Alchemy managing the Workers and platform resources.
+        Shedflare is a single-owner self-hosting suite for Cloudflare. Deploy from source into
+        your account, with Alchemy managing the Workers and platform resources.
       </p>
       <div class="guide-list">
         <For each={guides}>{(guide) => <GuideCard guide={guide} />}</For>
@@ -141,10 +241,10 @@ function DeploymentDoc() {
   return (
     <>
       <p class="eyebrow">Deployment</p>
-      <h1>Alchemy is the lifecycle.</h1>
+      <h1>How to deploy.</h1>
       <p class="doc-lede">
-        User-deployable apps live under <code>apps/*</code>. Each app has an Alchemy stack that
-        declares its Worker, assets, bindings, and Cloudflare resources.
+        Each app lives under <code>apps/*</code> and has an Alchemy stack that declares its
+        Worker, assets, bindings, and Cloudflare resources.
       </p>
       <div class="steps">
         <p>
@@ -169,12 +269,12 @@ function DeploymentDoc() {
   );
 }
 
-function AppDoc(props: { app?: (typeof apps)[number] }) {
+function AppDoc(props: { app?: (typeof allTools)[number] }) {
   return (
     <Show when={props.app} fallback={<DocsIndex />}>
       {(app) => (
         <>
-          <p class="eyebrow">App</p>
+          <p class="eyebrow">{app().id === "auth" || app().id === "cf-bill" || app().id === "observability" ? "Helper" : "App"}</p>
           <h1>Shedflare {app().name}</h1>
           <p class="doc-lede">{app().summary}</p>
           <dl class="facts">
@@ -183,12 +283,12 @@ function AppDoc(props: { app?: (typeof apps)[number] }) {
               <dd>{app().resources}</dd>
             </div>
             <div>
-              <dt>Intent</dt>
+              <dt>What it does</dt>
               <dd>{app().notes}</dd>
             </div>
           </dl>
           <p>
-            This app is part of the owner-deployed suite and is protected by Shedflare Auth when
+            This is part of the owner-deployed suite and is protected by Shedflare Auth when
             deployed for real use.
           </p>
         </>

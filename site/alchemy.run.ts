@@ -3,7 +3,9 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import { physicalName } from "../infra/alchemy-env.ts";
 
-const SITE_DOMAIN = process.env.SHEDFLARE_SITE_DOMAIN;
+const SITE_DOMAINS = process.env.SHEDFLARE_SITE_DOMAIN
+  ? process.env.SHEDFLARE_SITE_DOMAIN.split(",").map((d) => d.trim())
+  : ["shedflare.com", "www.shedflare.com"];
 
 export const SiteStack = Alchemy.Stack(
   "ShedflareSite",
@@ -26,12 +28,14 @@ export const SiteStack = Alchemy.Stack(
         enabled: true,
         headSamplingRate: 1,
       },
-      domain: SITE_DOMAIN,
+      url: false,
+      domain: SITE_DOMAINS,
     });
 
     return {
       app: "site" as const,
-      url: worker.url ?? (SITE_DOMAIN ? `https://${SITE_DOMAIN}` : undefined),
+      url: worker.url ?? (SITE_DOMAINS.length > 0 ? `https://${SITE_DOMAINS[0]}` : undefined),
+      domains: SITE_DOMAINS,
       workerName: worker.workerName,
     };
   }),
