@@ -4,8 +4,6 @@ import { APP_IDS, loadManifest } from "../core/manifests.js";
 import type { AppId } from "../core/manifests.js";
 import { writeConfig } from "../core/config.js";
 import type { ShedflareConfig } from "../core/config.js";
-import { writeWorkspaceFiles } from "../core/generate.js";
-import { provisionResources } from "../core/provision.js";
 import { whoami, login } from "../core/wrangler.js";
 import {
   selectApps,
@@ -112,16 +110,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
   console.log(`  Apps: ${plan.apps.map((a) => a.id).join(", ")}`);
   console.log(`  Deploy order: ${plan.deployOrder.join(" → ")}`);
 
-  // Provision resources
-  console.log("\nProvisioning Cloudflare resources...");
-  const provisionResult = await provisionResources(plan);
-  plan.resourceIds = provisionResult.resourceIds;
-
-  for (const warning of provisionResult.warnings) {
-    console.warn(`  ⚠ ${warning}`);
-  }
-
-  // Build config for file generation
+  // Build config
   const config: ShedflareConfig = {
     domain,
     ownerEmail,
@@ -138,17 +127,11 @@ export async function initCommand(options: InitOptions): Promise<void> {
     if (draft.vars[app.id]) {
       config.vars[app.id] = draft.vars[app.id];
     }
-    config.resources[app.id] = provisionResult.resourceIds[app.id] ?? {};
   }
 
   // Write config
   writeConfig(config);
   console.log("\nConfig written to shedflare.config.jsonc");
-
-  // Generate workspace files
-  console.log("Generating workspace files...");
-  writeWorkspaceFiles(plan, config);
-  console.log("Workspace files generated.");
 
   // Print summary
   console.log("\n── Setup Complete ──");
@@ -160,7 +143,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
     console.log(`    ${app.id}: https://${subdomain}.${domain}`);
   }
   console.log("\nNext steps:");
-  console.log("  1. Run `wrangler deploy` in each app directory (in order: auth → chat/drive)");
-  console.log("  2. Set required secrets via `wrangler secret put`");
-  console.log("  3. Enable Browser Automation for chat in the Cloudflare dashboard");
+  console.log("  1. Deploy with Alchemy: pnpm deploy");
+  console.log("  2. Set required secrets: shedflare secret set <app> <NAME>");
+  console.log("  3. Or use pnpm deploy:<app> to deploy individual apps");
 }

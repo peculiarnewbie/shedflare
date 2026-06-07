@@ -26,16 +26,6 @@ export {
 } from "./config.js";
 
 export {
-  type MergedWranglerConfig,
-  mergeWranglerConfig,
-  resolveVars,
-  resolveSecrets,
-  mergeResourceConfig,
-  addRoutes,
-  addSecretsBlock,
-} from "./template.js";
-
-export {
   type InitOptions,
   type InitDraft,
   type InitPlan,
@@ -45,21 +35,12 @@ export {
   buildPlanFromConfig,
 } from "./init-draft.js";
 
-export { writeAppFiles, writeWorkspaceFiles } from "./generate.js";
-
-export { type ProvisionResult, provisionResources } from "./provision.js";
-
-export { type CheckResult, type DriftReport, runDoctor, checkDrift } from "./validate.js";
+export { type CheckResult, runDoctor } from "./validate.js";
 
 export {
   type WranglerUser,
-  type DeployResult,
   whoami,
   login,
-  createKv,
-  createD1,
-  createR2,
   putSecret,
-  deploy,
   listSecrets,
 } from "./wrangler.js";

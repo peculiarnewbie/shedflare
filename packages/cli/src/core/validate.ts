@@ -1,11 +1,6 @@
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { parse } from "jsonc-parser";
 import type { AppId } from "./manifests.js";
 import { APP_IDS, loadManifest, getWorkspaceRoot } from "./manifests.js";
 import { loadConfig, validateConfig } from "./config.js";
-import { mergeWranglerConfig } from "./template.js";
-import { loadBaseConfig } from "./generate.js";
 import * as wrangler from "./wrangler.js";
 import { physicalWorkerName } from "./worker-names.js";
 
@@ -13,11 +8,6 @@ export interface CheckResult {
   name: string;
   status: "pass" | "fail" | "warn";
   message?: string;
-}
-
-export interface DriftReport {
-  hasDrift: boolean;
-  diffs: Array<{ appId: string; expected: string; actual: string }>;
 }
 
 export async function runDoctor(): Promise<CheckResult[]> {
@@ -78,37 +68,17 @@ export async function runDoctor(): Promise<CheckResult[]> {
     }
   }
 
-  // Wrangler base configs
-  for (const appId of APP_IDS) {
-    try {
-      loadBaseConfig(appId);
-      checks.push({
-        name: `base-${appId}`,
-        status: "pass",
-      });
-    } catch {
-      console.warn(`[validate] Failed to load base config for ${appId}`);
-      checks.push({
-        name: `base-${appId}`,
-        status: "fail",
-        message: `Could not load base config for ${appId}`,
-      });
-    }
-  }
-
-  // Config drift
+  // Alchemy stack files
   if (config) {
-    const drift = await checkDrift(config);
-    if (drift.hasDrift) {
+    for (const [appId, appConfig] of Object.entries(config.apps)) {
+      if (!(APP_IDS as readonly string[]).includes(appId) || !appConfig.enabled) continue;
+
+      const stackPath = `${getWorkspaceRoot()}/apps/${appId}/alchemy.run.ts`;
+      const { existsSync } = await import("node:fs");
       checks.push({
-        name: "config-drift",
-        status: "fail",
-        message: `${drift.diffs.length} app(s) have drifted from generated config`,
-      });
-    } else {
-      checks.push({
-        name: "config-drift",
-        status: "pass",
+        name: `stack-${appId}`,
+        status: existsSync(stackPath) ? "pass" : "fail",
+        message: existsSync(stackPath) ? undefined : `apps/${appId}/alchemy.run.ts missing`,
       });
     }
   }
@@ -131,55 +101,6 @@ export async function runDoctor(): Promise<CheckResult[]> {
   }
 
   return checks;
-}
-
-export async function checkDrift(
-  config: import("./config.js").ShedflareConfig,
-): Promise<DriftReport> {
-  const diffs: DriftReport["diffs"] = [];
-
-  for (const [appId, appConfig] of Object.entries(config.apps)) {
-    if (!(APP_IDS as readonly string[]).includes(appId) || !appConfig.enabled) continue;
-
-    try {
-      const manifes = loadManifest(appId as AppId);
-      const base = loadBaseConfig(appId);
-
-      const manifests: Record<string, import("./manifests.js").AppManifest> = {};
-      for (const id of APP_IDS) {
-        manifests[id] = loadManifest(id);
-      }
-
-      const expected = mergeWranglerConfig(
-        base,
-        appId as AppId,
-        manifes,
-        config,
-        manifests as Record<AppId, import("./manifests.js").AppManifest>,
-        config.resources as Record<AppId, Record<string, string>>,
-      );
-
-      const actualPath = join(getWorkspaceRoot(), "apps", appId, "wrangler.jsonc");
-      const actualRaw = existsSync(actualPath) ? readFileSync(actualPath, "utf-8") : "";
-      const actual = actualRaw ? (parse(actualRaw) as Record<string, unknown>) : null;
-
-      const expectedStr = JSON.stringify(expected, null, 2);
-      const actualStr = actual ? JSON.stringify(actual, null, 2) : "(missing)";
-
-      if (expectedStr !== actualStr) {
-        diffs.push({
-          appId,
-          expected: expectedStr,
-          actual: actualStr,
-        });
-      }
-    } catch {
-      console.warn(`[validate] Failed to compute drift for ${appId}`);
-      diffs.push({ appId, expected: "(error computing)", actual: "(error reading)" });
-    }
-  }
-
-  return { hasDrift: diffs.length > 0, diffs };
 }
 
 async function getMissingSecrets(config: import("./config.js").ShedflareConfig): Promise<string[]> {
