@@ -1,13 +1,14 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { fetchLinks, createLink, deleteLink } from "../api";
 
-type Link = { slug: string; url: string; createdAt: string };
+type Link = { slug: string; url: string; hidePreview: boolean; createdAt: string };
 
 export default function Dashboard() {
   const [links, setLinks] = createSignal<Link[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [slug, setSlug] = createSignal("");
   const [url, setUrl] = createSignal("");
+  const [hidePreview, setHidePreview] = createSignal(false);
   const [error, setError] = createSignal("");
   const [success, setSuccess] = createSignal("");
   const [submitting, setSubmitting] = createSignal(false);
@@ -50,13 +51,14 @@ export default function Dashboard() {
 
     setSubmitting(true);
     try {
-      const result = await createLink(s, u);
+      const result = await createLink(s, u, hidePreview());
       if ("error" in result) {
         setError(result.error);
       } else {
         setSuccess(`Created ${s}`);
         setSlug("");
         setUrl("");
+        setHidePreview(false);
         void load();
       }
     } catch {
@@ -120,6 +122,16 @@ export default function Dashboard() {
               onInput={(e) => setUrl(e.currentTarget.value)}
             />
           </div>
+          <div class="input-group" style={{ flex: 0, "align-self": "flex-end" }}>
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                checked={hidePreview()}
+                onChange={(e) => setHidePreview(e.currentTarget.checked)}
+              />
+              Hide preview
+            </label>
+          </div>
           <div class="input-group" style={{ "align-self": "flex-end" }}>
             <button type="submit" class="btn btn-primary" disabled={submitting()}>
               {submitting() ? "Creating..." : "Create"}
@@ -177,7 +189,14 @@ export default function Dashboard() {
                 {(link) => (
                   <tr>
                     <td>
-                      <span class="link-slug">{link.slug}</span>
+                      <span class="link-slug">
+                        {link.slug}
+                        {link.hidePreview && (
+                          <span class="link-hidden-badge" title="Preview hidden">
+                            Hidden
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td>
                       <span class="link-url">

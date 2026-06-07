@@ -46,6 +46,7 @@ export function createHttpApiAuth(env: AuthEnv) {
 
   return {
     loginRedirect: auth.loginRedirect,
+    autoLoginRedirect: auth.autoLoginRedirect,
     handleCallback: auth.handleCallback,
     logout: auth.logout,
     sessionEndpoint: auth.sessionEndpoint,

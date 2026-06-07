@@ -12,6 +12,12 @@ type Env = AuthEnv & {
   DB: D1Database;
 };
 
+function getCookie(request: Request, name: string): string | null {
+  const cookie = request.headers.get("cookie") ?? "";
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
   const wh = createHttpApiWebHandler(shortApi, [createLinksGroup(env, auth)]);
@@ -23,9 +29,19 @@ export function createRouter(env: Env) {
       const method = request.method;
 
       try {
-        if (pathname === "/api/auth/login" && method === "GET") return await auth.loginRedirect();
-        if (pathname === "/api/auth/callback" && method === "GET")
+        if (pathname === "/api/auth/login" && method === "GET") {
+          return url.searchParams.get("auto") === "1"
+            ? await auth.autoLoginRedirect()
+            : await auth.loginRedirect();
+        }
+        if (pathname === "/api/auth/callback" && method === "GET") {
+          if (url.searchParams.get("error") === "no_session") {
+            const redirectUrl = new URL("/", url.origin);
+            redirectUrl.searchParams.set("error", "no_session");
+            return Response.redirect(redirectUrl.toString(), 302);
+          }
           return await auth.handleCallback(request);
+        }
         if (pathname === "/api/auth/logout" && method === "POST") return auth.logout();
         if (pathname === "/api/session" && method === "GET")
           return await auth.sessionEndpoint(request);
@@ -39,8 +55,38 @@ export function createRouter(env: Env) {
           const db = drizzle(env.DB);
           const row = await db.select().from(links).where(eq(links.slug, slug)).get();
           if (row) {
+            if (row.hidePreview) {
+              const safeUrl = row.url
+                .replace(/&/g, "&amp;")
+                .replace(/"/g, "&quot;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+              const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:title" content="Link">
+<meta property="og:description" content="">
+<meta name="twitter:card" content="summary">
+<title>Redirecting…</title>
+<meta http-equiv="refresh" content="0;url=${safeUrl}">
+<script>location.replace(${JSON.stringify(row.url)})</script>
+</head>
+<body>
+<p>Redirecting to <a href="${safeUrl}">${safeUrl}</a>…</p>
+</body>
+</html>`;
+              return new Response(html, {
+                headers: { "content-type": "text/html; charset=utf-8" },
+              });
+            }
             return Response.redirect(row.url, 301);
           }
+        }
+
+        if (!getCookie(request, "auth_access_token")) {
+          return Response.redirect(new URL("/api/auth/login?auto=1", url.origin).toString(), 302);
         }
 
         const assetResponse = await env.ASSETS.fetch(request);

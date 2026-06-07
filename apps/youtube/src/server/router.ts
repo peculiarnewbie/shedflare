@@ -13,6 +13,12 @@ type Env = AuthEnv & {
   SYNC_SECRET: string;
 };
 
+function getCookie(request: Request, name: string): string | null {
+  const cookie = request.headers.get("cookie") ?? "";
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
 
@@ -30,15 +36,29 @@ export function createRouter(env: Env) {
       const method = request.method;
 
       try {
-        if (pathname === "/api/auth/login" && method === "GET") return await auth.loginRedirect();
-        if (pathname === "/api/auth/callback" && method === "GET")
+        if (pathname === "/api/auth/login" && method === "GET") {
+          return url.searchParams.get("auto") === "1"
+            ? await auth.autoLoginRedirect()
+            : await auth.loginRedirect();
+        }
+        if (pathname === "/api/auth/callback" && method === "GET") {
+          if (url.searchParams.get("error") === "no_session") {
+            const redirectUrl = new URL("/", url.origin);
+            redirectUrl.searchParams.set("error", "no_session");
+            return Response.redirect(redirectUrl.toString(), 302);
+          }
           return await auth.handleCallback(request);
+        }
         if (pathname === "/api/auth/logout" && method === "POST") return auth.logout();
         if (pathname === "/api/session" && method === "GET")
           return await auth.sessionEndpoint(request);
 
         if (pathname.startsWith("/api/")) {
           return await wh.handler(request);
+        }
+
+        if (!getCookie(request, "auth_access_token")) {
+          return Response.redirect(new URL("/api/auth/login?auto=1", url.origin).toString(), 302);
         }
 
         const assetResponse = await env.ASSETS.fetch(request);

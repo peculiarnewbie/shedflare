@@ -13,7 +13,7 @@ export function createTagsGroup(env: { DB: D1Database }, auth: HttpApiAuth) {
         const rows = await db
           .select({ name: tags.name, count: count(fileTags.fileId) })
           .from(tags)
-          .innerJoin(fileTags, eq(fileTags.fileId, tags.id))
+          .innerJoin(fileTags, eq(fileTags.tagId, tags.id))
           .groupBy(tags.id)
           .orderBy(tags.name)
           .all();

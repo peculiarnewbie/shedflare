@@ -1,21 +1,7 @@
 import { createSignal } from "solid-js";
 import { useDrive } from "../context";
-import type { DriveFile } from "../types";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function decodeFileResponse(value: unknown): { file: DriveFile } | null {
-  if (!isRecord(value)) return null;
-  if (
-    !isRecord(value.file) ||
-    typeof value.file.id !== "string" ||
-    typeof value.file.name !== "string"
-  )
-    return null;
-  return { file: value.file as unknown as DriveFile };
-}
+import { FileResponse } from "../types";
+import * as Schema from "effect/Schema";
 
 export default function UploadPanel() {
   const ctx = useDrive();
@@ -55,8 +41,7 @@ export default function UploadPanel() {
         signal: uploadController.signal,
       });
       if (!response.ok) throw new Error(await response.text());
-      const decoded = decodeFileResponse(await response.json());
-      if (!decoded) throw new Error("Invalid API response");
+      Schema.decodeUnknownSync(FileResponse)(await response.json());
       form.reset();
       setDescription("");
       setTags("");

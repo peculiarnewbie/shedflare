@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
+    "jose": "catalog:",
     "valibot": "catalog:"
   },
   "devDependencies": {

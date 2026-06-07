@@ -48,9 +48,7 @@ export const DriveStack = Alchemy.Stack(
           : {}),
       },
       domain:
-        !isE2eStage && config.url.startsWith("https://")
-          ? new URL(config.url).hostname
-          : undefined,
+        !isE2eStage && config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });
 
     return {

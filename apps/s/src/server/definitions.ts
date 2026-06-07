@@ -4,6 +4,7 @@ import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi"
 const LinkRow = Schema.Struct({
   slug: Schema.String,
   url: Schema.String,
+  hidePreview: Schema.Boolean,
   createdAt: Schema.String,
 });
 
@@ -13,7 +14,13 @@ linksListEp.success.add(Schema.Struct({ links: Schema.Array(LinkRow) }));
 const linksCreateEp: any = { ...HttpApiEndpoint.post("create", "/api/links") };
 linksCreateEp.payload.set("application/json", {
   encoding: { _tag: "Json" },
-  schemas: [Schema.Struct({ slug: Schema.String, url: Schema.String })],
+  schemas: [
+    Schema.Struct({
+      slug: Schema.String,
+      url: Schema.String,
+      hidePreview: Schema.optional(Schema.Boolean),
+    }),
+  ],
 });
 linksCreateEp.success.add(LinkRow);
 linksCreateEp.error.add(Schema.Struct({ error: Schema.String }));

@@ -2,6 +2,7 @@ import { issuer } from "@openauthjs/openauth";
 import { GoogleOidcProvider } from "@openauthjs/openauth/provider/google";
 import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
 import { createSubjects } from "@openauthjs/openauth/subject";
+import { importPKCS8, SignJWT } from "jose";
 import { object, string } from "valibot";
 
 type Env = {
@@ -77,15 +78,206 @@ function isHttps(url: string) {
   return url.startsWith("https://");
 }
 
+type SigningKey = {
+  id: string;
+  privateKey: string;
+  alg: string;
+  created?: number | string;
+};
+
+let cachedSigningKey: SigningKey | null = null;
+
+function isSigningKey(value: unknown): value is SigningKey {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.privateKey === "string" &&
+    typeof record.alg === "string"
+  );
+}
+
+function createdMs(key: SigningKey) {
+  if (typeof key.created === "number") return key.created;
+  if (typeof key.created === "string") {
+    const parsed = Date.parse(key.created);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+async function getSigningKey(env: Env): Promise<SigningKey> {
+  if (cachedSigningKey) return cachedSigningKey;
+  const { keys } = await env.OPENAUTH_STORAGE.list({ prefix: "signing:key" });
+  if (keys.length === 0) throw new Error("No signing keys found in storage");
+  const signingKeys = (
+    await Promise.all(keys.map((key) => env.OPENAUTH_STORAGE.get(key.name, "json")))
+  ).filter(isSigningKey);
+  if (signingKeys.length === 0) throw new Error("No valid signing keys found in storage");
+  signingKeys.sort((a, b) => createdMs(b) - createdMs(a));
+  cachedSigningKey = signingKeys[0];
+  return cachedSigningKey;
+}
+
+async function handleTokenExchange(request: Request, env: Env): Promise<Response | null> {
+  const body = await request.clone().text();
+  const params = new URLSearchParams(body);
+  const grantType = params.get("grant_type");
+
+  if (grantType === "authorization_code") {
+    const code = params.get("code");
+    if (!code) return null;
+
+    const codeEntry = await env.OPENAUTH_STORAGE.get(`oauth:code\x1f${code}`, "json");
+    if (
+      !codeEntry ||
+      typeof codeEntry !== "object" ||
+      !("source" in codeEntry) ||
+      codeEntry.source !== "shedflare:silent-auth" ||
+      !("subject" in codeEntry) ||
+      !("properties" in codeEntry)
+    ) {
+      return null;
+    }
+
+    const entry = codeEntry as {
+      subject: string;
+      properties: { email: string };
+      redirectURI?: string;
+      clientID?: string;
+      ttl?: { access: number; refresh: number };
+    };
+
+    const ttl = entry.ttl?.access ?? 60 * 60 * 24 * 365;
+    const signingKey = await getSigningKey(env);
+    const privateKey = await importPKCS8(signingKey.privateKey, signingKey.alg);
+
+    const now = Math.floor(Date.now() / 1000);
+    const accessToken = await new SignJWT({
+      mode: "access",
+      properties: entry.properties,
+    })
+      .setProtectedHeader({ alg: signingKey.alg, kid: signingKey.id, typ: "JWT" })
+      .setIssuer(env.APP_PUBLIC_URL)
+      .setSubject(entry.subject)
+      .setIssuedAt(now)
+      .setExpirationTime(now + ttl)
+      .sign(privateKey);
+
+    const refreshToken = crypto.randomUUID();
+
+    await env.OPENAUTH_STORAGE.put(
+      `oauth:refresh\x1f${entry.subject}\x1f${refreshToken}`,
+      JSON.stringify({
+        source: "shedflare:silent-auth",
+        subject: entry.subject,
+        properties: entry.properties,
+        ttl: entry.ttl,
+      }),
+      { expirationTtl: ttl },
+    );
+
+    await env.OPENAUTH_STORAGE.delete(`oauth:code\x1f${code}`);
+
+    return new Response(
+      JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_in: ttl,
+        token_type: "bearer",
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+
+  if (grantType === "refresh_token") {
+    const refreshToken = params.get("refresh_token");
+    if (!refreshToken) return null;
+
+    const { keys } = await env.OPENAUTH_STORAGE.list({ prefix: "oauth:refresh" });
+    for (const key of keys) {
+      const data = await env.OPENAUTH_STORAGE.get(key.name, "json");
+      if (!data || typeof data !== "object") continue;
+      if (!("source" in data) || data.source !== "shedflare:silent-auth") continue;
+      const entry = data as {
+        source: "shedflare:silent-auth";
+        subject: string;
+        properties: { email: string };
+        ttl?: { access: number; refresh: number };
+      };
+      if (!key.name.endsWith(`\x1f${refreshToken}`)) continue;
+
+      const ttl = entry.ttl?.access ?? 60 * 60 * 24 * 365;
+      const signingKey = await getSigningKey(env);
+      const privateKey = await importPKCS8(signingKey.privateKey, signingKey.alg);
+
+      const now = Math.floor(Date.now() / 1000);
+      const accessToken = await new SignJWT({
+        mode: "access",
+        properties: entry.properties,
+      })
+        .setProtectedHeader({ alg: signingKey.alg, kid: signingKey.id, typ: "JWT" })
+        .setIssuer(env.APP_PUBLIC_URL)
+        .setSubject(entry.subject)
+        .setIssuedAt(now)
+        .setExpirationTime(now + ttl)
+        .sign(privateKey);
+
+      const newRefreshToken = crypto.randomUUID();
+      await env.OPENAUTH_STORAGE.delete(key.name);
+      await env.OPENAUTH_STORAGE.put(
+        `oauth:refresh\x1f${entry.subject}\x1f${newRefreshToken}`,
+        JSON.stringify({
+          source: "shedflare:silent-auth",
+          subject: entry.subject,
+          properties: entry.properties,
+          ttl: entry.ttl,
+        }),
+        { expirationTtl: ttl },
+      );
+
+      return new Response(
+        JSON.stringify({
+          access_token: accessToken,
+          refresh_token: newRefreshToken,
+          expires_in: ttl,
+          token_type: "bearer",
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+  }
+
+  return null;
+}
+
 async function handleSilentAuth(request: Request, env: Env): Promise<Response | null> {
+  const url = new URL(request.url);
+  const auto = url.searchParams.get("auto") === "1";
+  const redirectURI = url.searchParams.get("redirect_uri");
+
+  if (!auto) return null;
+
   const sessionId = getCookieValue(request.headers.get("cookie"), SESSION_COOKIE);
-  if (!sessionId) return null;
+  if (!sessionId) {
+    if (redirectURI) {
+      const location = new URL(redirectURI);
+      location.searchParams.set("error", "no_session");
+      return Response.redirect(location.toString(), 302);
+    }
+    return null;
+  }
 
   const session = await env.OPENAUTH_STORAGE.get(`session:${sessionId}`, "json");
-  if (!session || typeof session !== "object" || !("email" in session)) return null;
+  if (!session || typeof session !== "object" || !("email" in session)) {
+    if (redirectURI) {
+      const location = new URL(redirectURI);
+      location.searchParams.set("error", "no_session");
+      return Response.redirect(location.toString(), 302);
+    }
+    return null;
+  }
 
-  const url = new URL(request.url);
-  const redirectURI = url.searchParams.get("redirect_uri");
   const responseType = url.searchParams.get("response_type");
   const clientId = url.searchParams.get("client_id");
   const state = url.searchParams.get("state");
@@ -101,6 +293,7 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
   await env.OPENAUTH_STORAGE.put(
     `oauth:code\x1f${code}`,
     JSON.stringify({
+      source: "shedflare:silent-auth",
       subject,
       type: "user",
       properties: { email },
@@ -176,6 +369,11 @@ export default {
     if (url.pathname === "/authorize") {
       const silent = await handleSilentAuth(request, env);
       if (silent) return silent;
+    }
+
+    if (url.pathname === "/token" && request.method === "POST") {
+      const customResponse = await handleTokenExchange(request, env);
+      if (customResponse) return customResponse;
     }
 
     const response = await getIssuer(env).fetch(request, env, ctx);

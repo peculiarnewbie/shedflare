@@ -226,6 +226,16 @@ export function createAuthHandlers(env: AuthEnv) {
     return Response.redirect(url, 302);
   }
 
+  async function autoLoginRedirect(): Promise<Response> {
+    const client = createClient({ clientID: env.AUTH_CLIENT_ID, issuer: env.AUTH_ISSUER_URL });
+    const { url } = await client.authorize(`${env.APP_PUBLIC_URL}/api/auth/callback`, "code", {
+      provider: "google",
+    });
+    const autoUrl = new URL(url);
+    autoUrl.searchParams.set("auto", "1");
+    return Response.redirect(autoUrl.toString(), 302);
+  }
+
   async function handleCallback(request: Request): Promise<Response> {
     const code = new URL(request.url).searchParams.get("code");
     if (!code) return new Response("Missing code", { status: 400 });
@@ -281,6 +291,7 @@ export function createAuthHandlers(env: AuthEnv) {
     requireSession,
     withSessionCookies,
     loginRedirect,
+    autoLoginRedirect,
     handleCallback,
     logout,
     sessionEndpoint,

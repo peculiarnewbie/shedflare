@@ -1,16 +1,24 @@
-export type DriveFile = {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  description: string;
-  isPublic: boolean;
-  createdAt: string;
-  updatedAt: string;
-  tags: string[];
-};
+import * as SharedSchema from "./shared/schema";
 
-export type TagSummary = { name: string; count: number };
+export const DriveFile = SharedSchema.DriveFile;
+export type DriveFile = SharedSchema.DriveFile;
+
+export const FileResponse = SharedSchema.FileResponse;
+export type FileResponse = SharedSchema.FileResponse;
+
+export const FilesResponse = SharedSchema.FilesResponse;
+export type FilesResponse = SharedSchema.FilesResponse;
+
+export const SessionResponse = SharedSchema.SessionResponse;
+export type SessionResponse = SharedSchema.SessionResponse;
+
+export const TagSummary = SharedSchema.TagSummary;
+export type TagSummary = SharedSchema.TagSummary;
+
+export const TagsResponse = SharedSchema.TagsResponse;
+export type TagsResponse = SharedSchema.TagsResponse;
+
+/* ── App-local types ──────────────────────────────── */
 
 export type ViewMode = "grid" | "list";
 export type SortBy = "name" | "date" | "size";

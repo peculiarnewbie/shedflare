@@ -1,6 +1,7 @@
 export type LinkRow = {
   slug: string;
   url: string;
+  hidePreview: boolean;
   createdAt: string;
 };
 
@@ -14,11 +15,15 @@ export function fetchLinks(): Promise<{ links: LinkRow[] }> {
   return apiFetch("/api/links");
 }
 
-export function createLink(slug: string, url: string): Promise<LinkRow | { error: string }> {
+export function createLink(
+  slug: string,
+  url: string,
+  hidePreview = false,
+): Promise<LinkRow | { error: string }> {
   return apiFetch("/api/links", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ slug, url }),
+    body: JSON.stringify({ slug, url, hidePreview }),
   });
 }
 

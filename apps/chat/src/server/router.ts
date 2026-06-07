@@ -36,6 +36,12 @@ function serializeCookie(
   return cookie;
 }
 
+function getCookie(request: Request, name: string): string | null {
+  const cookie = request.headers.get("cookie") ?? "";
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 type RawEnv = {
   APP_PUBLIC_URL: string;
   AUTH_ISSUER_URL?: string;
@@ -87,11 +93,24 @@ export function createRouter(env: RawEnv) {
               "code",
               { provider: "google" },
             );
+            const finalUrl =
+              url.searchParams.get("auto") === "1"
+                ? (() => {
+                    const u = new URL(authUrl);
+                    u.searchParams.set("auto", "1");
+                    return u.toString();
+                  })()
+                : authUrl;
             logger.log("auth_login_redirect_created", { durationMs: Date.now() - startedAt });
-            return withVersionHeader(Response.redirect(authUrl, 302));
+            return withVersionHeader(Response.redirect(finalUrl, 302));
           }
 
           if (pathname === "/api/auth/callback" && method === "GET") {
+            if (url.searchParams.get("error") === "no_session") {
+              const redirectUrl = new URL("/", url.origin);
+              redirectUrl.searchParams.set("error", "no_session");
+              return withVersionHeader(Response.redirect(redirectUrl.toString(), 302));
+            }
             const startedAt = Date.now();
             const code = url.searchParams.get("code");
             if (!code) {
@@ -169,6 +188,12 @@ export function createRouter(env: RawEnv) {
           }
 
           return wh.handler(request);
+        }
+
+        if (!getCookie(request, "auth_access_token")) {
+          return withVersionHeader(
+            Response.redirect(new URL("/api/auth/login?auto=1", url.origin).toString(), 302),
+          );
         }
 
         const assetResponse = await env.ASSETS.fetch(request);

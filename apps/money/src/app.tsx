@@ -23,10 +23,19 @@ type SessionPayload = {
   user: { email: string } | null;
 };
 
+function shouldAttemptAutoLogin() {
+  return new URL(window.location.href).searchParams.get("error") !== "no_session";
+}
+
 const fetchSession = async (): Promise<SessionPayload> => {
   const response = await fetch("/api/session");
   if (!response.ok) {
-    if (response.status === 401) return { user: null };
+    if (response.status === 401) {
+      if (shouldAttemptAutoLogin()) {
+        window.location.replace("/api/auth/login?auto=1");
+      }
+      return { user: null };
+    }
     throw new Error("Failed to check session");
   }
   return await response.json();

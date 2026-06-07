@@ -19,6 +19,7 @@ export const MoneyStack = Alchemy.Stack(
 
     const moneyDb = Cloudflare.D1Database("MONEY_DB", {
       name: physicalName(stage, "money", "db"),
+      migrationsDir: "apps/money/src/migrations",
     });
 
     const worker = yield* Cloudflare.Worker("MoneyWorker", {

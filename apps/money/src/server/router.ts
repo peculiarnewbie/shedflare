@@ -27,6 +27,12 @@ type Env = AuthEnv & {
   UPLOADS: R2Bucket;
 };
 
+function getCookie(request: Request, name: string): string | null {
+  const cookie = request.headers.get("cookie") ?? "";
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
   const rawAuth = createAuthHandlers(env);
@@ -58,10 +64,19 @@ export function createRouter(env: Env) {
 
       try {
         // ── Auth routes ──────────────────────────────────────────────
-        if (url.pathname === "/api/auth/login" && method === "GET")
-          return await auth.loginRedirect();
-        if (url.pathname === "/api/auth/callback" && method === "GET")
+        if (url.pathname === "/api/auth/login" && method === "GET") {
+          return url.searchParams.get("auto") === "1"
+            ? await auth.autoLoginRedirect()
+            : await auth.loginRedirect();
+        }
+        if (url.pathname === "/api/auth/callback" && method === "GET") {
+          if (url.searchParams.get("error") === "no_session") {
+            const redirectUrl = new URL("/", url.origin);
+            redirectUrl.searchParams.set("error", "no_session");
+            return Response.redirect(redirectUrl.toString(), 302);
+          }
           return await auth.handleCallback(request);
+        }
         if (url.pathname === "/api/auth/logout" && method === "POST") return auth.logout();
         if (url.pathname === "/api/session" && method === "GET")
           return await auth.sessionEndpoint(request);
@@ -73,6 +88,10 @@ export function createRouter(env: Env) {
         }
 
         // ── Assets ──────────────────────────────────────────────────
+        if (!getCookie(request, "auth_access_token")) {
+          return Response.redirect(new URL("/api/auth/login?auto=1", url.origin).toString(), 302);
+        }
+
         const assetResponse = await env.ASSETS.fetch(request);
         if (assetResponse.status === 404) {
           return env.ASSETS.fetch(new Request(new URL("/index.html", url.origin)));

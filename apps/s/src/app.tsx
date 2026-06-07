@@ -5,6 +5,10 @@ import Dashboard from "./routes/index";
 
 type Session = { email: string } | null;
 
+function shouldAttemptAutoLogin() {
+  return new URL(window.location.href).searchParams.get("error") !== "no_session";
+}
+
 export function useSession() {
   return (globalThis as any).__shedflareSession as ReturnType<typeof createSessionSignal>;
 }
@@ -19,6 +23,9 @@ function createSessionSignal() {
       if (res.ok) {
         const data = (await res.json()) as { user: { email: string } };
         setSession(data.user);
+      } else if (res.status === 401 && shouldAttemptAutoLogin()) {
+        window.location.replace("/api/auth/login?auto=1");
+        return;
       }
     } catch {
     } finally {

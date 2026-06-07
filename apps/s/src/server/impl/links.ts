@@ -39,13 +39,14 @@ export function createLinksGroup(env: { DB: D1Database }, auth: HttpApiAuth) {
     handlers.handlers.set("create", {
       endpoint: endpoints["create"],
       handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
-        const body = ctx.payload as { slug?: string; url?: string } | null;
+        const body = ctx.payload as { slug?: string; url?: string; hidePreview?: boolean } | null;
         if (!body?.slug || !body?.url) {
           return { error: "slug and url are required" } as any;
         }
 
         const slug = body.slug.trim().toLowerCase();
         const url = body.url.trim();
+        const hidePreview = body.hidePreview ?? false;
 
         if (!isValidSlug(slug)) {
           return {
@@ -63,8 +64,8 @@ export function createLinksGroup(env: { DB: D1Database }, auth: HttpApiAuth) {
         }
 
         const now = new Date().toISOString();
-        await db.insert(links).values({ slug, url, createdAt: now }).run();
-        return { slug, url, createdAt: now };
+        await db.insert(links).values({ slug, url, hidePreview, createdAt: now }).run();
+        return { slug, url, hidePreview, createdAt: now };
       }),
       isRaw: false,
       uninterruptible: false,
