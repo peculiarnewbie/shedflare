@@ -32,7 +32,11 @@ async function destroyDrive() {
 }
 
 function runPlaywright(baseUrl: string) {
-  execSync("npx playwright test", {
+  const extraArgs = process.argv
+    .slice(2)
+    .filter((a) => a !== "--destroy-only" && a !== "--")
+    .join(" ");
+  execSync(`npx playwright test ${extraArgs}`, {
     cwd: driveRoot,
     stdio: "inherit",
     env: {
