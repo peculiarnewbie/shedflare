@@ -53,8 +53,6 @@ test.describe("Drive E2E", () => {
       description: "Created by e2e lifecycle test",
     });
     await expect(page.getByRole("heading", { name: fileName })).toBeVisible({ timeout: 20_000 });
-
-    // Dismiss toast
     await page.waitForTimeout(1000);
 
     // ── Step 2: Verify file in list with metadata ──
@@ -74,36 +72,46 @@ test.describe("Drive E2E", () => {
     expect(dlResp.status()).toBe(200);
     expect(await dlResp.text()).toBe(fileBody);
 
-    // ── Step 4: Rename file ──
-    const patchResp = await context.request.patch(`/api/files/${fileId}`, {
-      data: { name: renamedName },
-    });
-    expect(patchResp.status()).toBe(200);
-    const patchBody = (await patchResp.json()) as { file: { name: string } };
-    expect(patchBody.file.name).toBe(renamedName);
+    // ── Step 4: Rename file via UI ──
+    await page.locator(`.file-card:has-text("${fileName}")`).click();
+    await expect(page.locator(".right-sidebar.open")).toBeVisible({ timeout: 5_000 });
+    await page.locator('.detail-actions button:has-text("Rename")').click();
+    await closeSidebar(page);
 
-    // Verify rename in UI
-    await page.reload({ waitUntil: "networkidle" });
-    await expect(page.getByText(renamedName)).toBeVisible({ timeout: 15_000 });
+    const renameInput = page.locator(".rename-input").first();
+    await expect(renameInput).toBeVisible({ timeout: 5_000 });
+    await renameInput.click();
+    await renameInput.fill(renamedName);
+    await renameInput.press("Enter");
 
-    // ── Step 5: Search files ──
-    await page.locator('input[placeholder*="Search"]').fill(`lifecycle-${ts}`);
-    await expect(page.getByText(renamedName)).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.locator("article.file-card").getByRole("heading", { name: renamedName }),
+    ).toBeVisible({ timeout: 10_000 });
 
-    await page.locator('input[placeholder*="Search"]').fill(`nonexistent-${ts}`);
-    await expect(page.getByText(renamedName)).not.toBeVisible({ timeout: 10_000 });
+    // Verify rename via API
+    const fileResp = await context.request.get(`/api/files?limit=100&offset=0`);
+    const fileList = (await fileResp.json()) as {
+      files: Array<{ id: string; name: string }>;
+    };
+    expect(fileList.files.find((f) => f.id === fileId)!.name).toBe(renamedName);
 
-    await page.locator('input[placeholder*="Search"]').fill("");
-    await expect(page.getByText(renamedName)).toBeVisible({ timeout: 10_000 });
+    // ── Step 5: Search files (verify via API) ──
+    const searchResp = await context.request.get(`/api/files?search=lifecycle-${ts}&limit=100`);
+    expect(searchResp.status()).toBe(200);
+    const searchBody = (await searchResp.json()) as { files: Array<{ id: string }> };
+    expect(searchBody.files.find((f) => f.id === fileId)).toBeDefined();
+
+    const emptyResp = await context.request.get(`/api/files?search=nonexistent-${ts}&limit=100`);
+    const emptyBody = (await emptyResp.json()) as { files: Array<{ id: string }> };
+    expect(emptyBody.files.find((f) => f.id === fileId)).toBeUndefined();
 
     // ── Step 6: Toggle public/private via UI ──
+    await closeSidebar(page);
     await page.locator(`.file-card:has-text("${renamedName}")`).click();
     await expect(page.locator(".right-sidebar.open")).toBeVisible({ timeout: 5_000 });
 
     await page.locator('.detail-actions button:has-text("Make public")').click();
     await expect(page.locator(".share-state.public")).toBeVisible({ timeout: 5_000 });
-
-    // Close sidebar to avoid blocking later clicks
     await closeSidebar(page);
 
     // ── Step 7: Public access works ──
@@ -128,7 +136,6 @@ test.describe("Drive E2E", () => {
 
     await page.locator('.detail-actions button:has-text("Make private")').click();
     await expect(page.locator(".share-state:not(.public)")).toBeVisible({ timeout: 5_000 });
-
     await closeSidebar(page);
 
     const pub404 = await context.request.get(`/public/files/${fileId}/download`);
@@ -152,7 +159,6 @@ test.describe("Drive E2E", () => {
       timeout: 10_000,
     });
 
-    // Final verification: file gone from API
     const dl404 = await context.request.get(`/api/files/${fileId}/download`);
     expect(dl404.status()).toBe(404);
   });

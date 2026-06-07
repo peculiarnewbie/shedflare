@@ -6,12 +6,14 @@ export default function FileRow(props: { file: DriveFile }) {
   const ctx = useDrive();
   const file = props.file;
   const [renameValue, setRenameValue] = createSignal("");
+  let renameInput!: HTMLInputElement;
 
   const isEditing = () => ctx.editingId() === file.id;
 
   function startRename() {
     setRenameValue(file.name);
     ctx.setEditingId(file.id);
+    queueMicrotask(() => renameInput?.focus());
   }
 
   function cancelRename() {
@@ -69,15 +71,16 @@ export default function FileRow(props: { file: DriveFile }) {
           }
         >
           <input
+            ref={renameInput}
             class="rename-input"
             value={renameValue()}
             onInput={(e) => setRenameValue(e.currentTarget.value)}
             onBlur={() => void submitRename()}
+            onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Enter") void submitRename();
               if (e.key === "Escape") cancelRename();
             }}
-            autofocus
           />
         </Show>
       </div>

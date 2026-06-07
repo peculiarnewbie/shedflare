@@ -14,12 +14,14 @@ export default function FileCard(props: { file: DriveFile }) {
   const previewUrl = () => `/api/files/${file.id}/preview`;
   const showPreview = () => isPreviewable(file.mimeType);
   const [renameValue, setRenameValue] = createSignal("");
+  let renameInput!: HTMLInputElement;
 
   const isEditing = () => ctx.editingId() === file.id;
 
   function startRename() {
     setRenameValue(file.name);
     ctx.setEditingId(file.id);
+    queueMicrotask(() => renameInput?.focus());
   }
 
   function cancelRename() {
@@ -82,15 +84,16 @@ export default function FileCard(props: { file: DriveFile }) {
       <div class="file-body">
         <Show when={isEditing()} fallback={<h2 onDblClick={startRename}>{file.name}</h2>}>
           <input
+            ref={renameInput}
             class="rename-input"
             value={renameValue()}
             onInput={(e) => setRenameValue(e.currentTarget.value)}
             onBlur={() => void submitRename()}
+            onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Enter") void submitRename();
               if (e.key === "Escape") cancelRename();
             }}
-            autofocus
           />
         </Show>
         <p>{file.description || file.mimeType}</p>
