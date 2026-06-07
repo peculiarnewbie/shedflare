@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "build": "tsc --noEmit",
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "deploy": "vp exec alchemy deploy alchemy.run.ts",
