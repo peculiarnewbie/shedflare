@@ -31,13 +31,38 @@ export default function RulesPage() {
   }
 
   function handleDelete(id: string) {
-    dispatch("delete_rule", { id });
+    const rule = rules().find((r) => r.id === id);
+    dispatch(
+      "delete_rule",
+      { id },
+      {
+        undoInfo: {
+          label: "Delete rule",
+          inverse: {
+            commandType: "create_rule",
+            payload: { rule: { conditions: rule?.conditions ?? [], actions: rule?.actions ?? "" } },
+          },
+        },
+      },
+    );
     setRules((prev) => prev.filter((r) => r.id !== id));
   }
 
   function handleToggleActive(rule: any) {
     const newActive = !rule.active;
-    dispatch("update_rule", { id: rule.id, fields: { active: newActive } });
+    dispatch(
+      "update_rule",
+      { id: rule.id, fields: { active: newActive } },
+      {
+        undoInfo: {
+          label: newActive ? "Enable rule" : "Disable rule",
+          inverse: {
+            commandType: "update_rule",
+            payload: { id: rule.id, fields: { active: rule.active } },
+          },
+        },
+      },
+    );
     setRules((prev) => prev.map((r) => (r.id === rule.id ? { ...r, active: newActive } : r)));
   }
 
@@ -482,9 +507,18 @@ function RuleForm(props: { onClose: () => void }) {
       actions = [{ op: actionOp(), value: actionValue().trim() }];
     }
 
-    dispatch("create_rule", {
-      rule: { conditions, actions: JSON.stringify(actions) },
-    });
+    dispatch(
+      "create_rule",
+      {
+        rule: { conditions, actions: JSON.stringify(actions) },
+      },
+      {
+        undoInfo: {
+          label: "Create rule",
+          inverse: (data) => ({ commandType: "delete_rule", payload: { id: data.id as string } }),
+        },
+      },
+    );
 
     setSaving(false);
     props.onClose();

@@ -2,6 +2,7 @@ import { createSignal, Show, For } from "solid-js";
 import { A, useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
 import { createHotkey } from "@tanstack/solid-hotkeys";
 import CommandBar from "./CommandBar";
+import { undo, redo, undoStack, redoStack } from "../lib/undo-stack";
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -45,6 +46,12 @@ export default function Layout(props: RouteSectionProps) {
   const [showMobileMenu, setShowMobileMenu] = createSignal(false);
   const [showCmdBar, setShowCmdBar] = createSignal(false);
   createHotkey("Mod+K", () => setShowCmdBar(true));
+  createHotkey("Mod+Z", async () => {
+    await undo();
+  });
+  createHotkey("Mod+Shift+Z", async () => {
+    await redo();
+  });
   const isActive = (path: string) => location.pathname === path;
 
   // Current month for header
@@ -72,6 +79,53 @@ export default function Layout(props: RouteSectionProps) {
           </For>
         </nav>
         <div class="sidebar-footer">
+          <div class="sidebar-undo">
+            <button
+              class="btn btn-icon btn-ghost btn-sm"
+              disabled={undoStack().length === 0}
+              onClick={async () => {
+                await undo();
+              }}
+              title="Undo (Ctrl+Z)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="width:16px;height:16px"
+              >
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+            </button>
+            <button
+              class="btn btn-icon btn-ghost btn-sm"
+              disabled={redoStack().length === 0}
+              onClick={async () => {
+                await redo();
+              }}
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="width:16px;height:16px"
+              >
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+            </button>
+            <span class="sidebar-undo-label">
+              {undoStack().length > 0 ? undoStack()[undoStack().length - 1].label : ""}
+            </span>
+          </div>
           <button
             class="btn btn-ghost btn-sm"
             style="width:100%;justify-content:flex-start;gap:8px;font-size:0.75rem;color:var(--text-muted)"

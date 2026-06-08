@@ -110,14 +110,34 @@ export default function ScheduleDetailPage() {
       if (endMode() === "on_date") rules.endDate = endDate();
     }
 
-    dispatch("update_schedule", {
-      id: params.id,
-      fields: {
-        name: name().trim(),
-        amount: parsedAmount || null,
-        recurrenceRules: JSON.stringify(rules),
+    const prevSchedule = schedule();
+    dispatch(
+      "update_schedule",
+      {
+        id: params.id,
+        fields: {
+          name: name().trim(),
+          amount: parsedAmount || null,
+          recurrenceRules: JSON.stringify(rules),
+        },
       },
-    });
+      {
+        undoInfo: {
+          label: "Update schedule",
+          inverse: {
+            commandType: "update_schedule",
+            payload: {
+              id: params.id,
+              fields: {
+                name: prevSchedule?.name ?? "",
+                amount: prevSchedule?.amount ?? null,
+                recurrenceRules: prevSchedule?.recurrenceRules ?? "",
+              },
+            },
+          },
+        },
+      },
+    );
 
     setSchedule((prev: any) => ({
       ...prev,
@@ -137,7 +157,29 @@ export default function ScheduleDetailPage() {
   }
 
   function handleDelete() {
-    dispatch("delete_schedule", { id: params.id });
+    const sched = schedule();
+    dispatch(
+      "delete_schedule",
+      { id: params.id },
+      {
+        undoInfo: {
+          label: "Delete schedule",
+          inverse: {
+            commandType: "create_schedule",
+            payload: {
+              schedule: {
+                accountId: sched?.accountId ?? "",
+                name: sched?.name ?? "",
+                startDate: sched?.startDate ?? "",
+                amount: sched?.amount ?? 0,
+                frequency: sched?.frequency ?? "monthly",
+                weekendHandling: sched?.weekendHandling ?? "before",
+              },
+            },
+          },
+        },
+      },
+    );
     navigate("/schedules");
   }
 

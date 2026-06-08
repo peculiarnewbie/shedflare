@@ -114,14 +114,26 @@ export default function AllTransactionsPage() {
             showAccount
             accountNames={accounts()}
             onCreateSchedule={(tx) => {
-              dispatch("create_schedule", {
-                schedule: {
-                  name: tx.payee ?? "From transaction",
-                  amount: tx.amount,
-                  recurrenceRules: JSON.stringify({ type: "monthly" }),
-                  startDate: new Date().toISOString().slice(0, 10),
+              dispatch(
+                "create_schedule",
+                {
+                  schedule: {
+                    name: tx.payee ?? "From transaction",
+                    amount: tx.amount,
+                    recurrenceRules: JSON.stringify({ type: "monthly" }),
+                    startDate: new Date().toISOString().slice(0, 10),
+                  },
                 },
-              });
+                {
+                  undoInfo: {
+                    label: "Create schedule from transaction",
+                    inverse: (data) => ({
+                      commandType: "delete_schedule",
+                      payload: { id: data.id as string },
+                    }),
+                  },
+                },
+              );
             }}
           />
         </Show>

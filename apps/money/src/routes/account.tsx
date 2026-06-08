@@ -163,17 +163,29 @@ export default function AccountPage() {
     const cents = fmt().parseInput(raw);
     if (cents === 0) return;
 
-    dispatch("create_transaction", {
-      row: {
-        accountId,
-        date: txDate(),
-        amount: cents,
-        payee: txPayee() || undefined,
-        notes: txNotes() || undefined,
-        categoryId: txCategory() || null,
-        cleared: true,
+    const row = {
+      accountId,
+      date: txDate(),
+      amount: cents,
+      payee: txPayee() || undefined,
+      notes: txNotes() || undefined,
+      categoryId: txCategory() || null,
+      cleared: true,
+    };
+
+    void dispatch(
+      "create_transaction",
+      { row },
+      {
+        undoInfo: {
+          label: "Add transaction",
+          inverse: (data) => ({
+            commandType: "delete_transaction",
+            payload: { id: data.id as string },
+          }),
+        },
       },
-    });
+    );
 
     setTxDate(new Date().toISOString().slice(0, 10));
     setTxPayee("");
@@ -342,14 +354,26 @@ export default function AccountPage() {
             tagList={tagList()}
             showBalance
             onCreateSchedule={(tx) => {
-              dispatch("create_schedule", {
-                schedule: {
-                  name: tx.payee ?? "From transaction",
-                  amount: tx.amount,
-                  recurrenceRules: JSON.stringify({ type: "monthly" }),
-                  startDate: new Date().toISOString().slice(0, 10),
+              dispatch(
+                "create_schedule",
+                {
+                  schedule: {
+                    name: tx.payee ?? "From transaction",
+                    amount: tx.amount,
+                    recurrenceRules: JSON.stringify({ type: "monthly" }),
+                    startDate: new Date().toISOString().slice(0, 10),
+                  },
                 },
-              });
+                {
+                  undoInfo: {
+                    label: "Create schedule from transaction",
+                    inverse: (data) => ({
+                      commandType: "delete_schedule",
+                      payload: { id: data.id as string },
+                    }),
+                  },
+                },
+              );
             }}
           />
         </Show>

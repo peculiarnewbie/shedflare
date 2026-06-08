@@ -99,8 +99,21 @@ export default function BudgetPage() {
   async function setBudget(categoryId: string, amount: number) {
     const [y, m] = monthKey().split("-").map(Number);
     const monthInt = y * 100 + m;
-    dispatch("set_budget_amount", { month: monthInt, categoryId, amount });
-    // Optimistic update
+    const prev = categories().find((c) => c.categoryId === categoryId);
+    const prevAmount = prev?.budgeted ?? 0;
+    dispatch(
+      "set_budget_amount",
+      { month: monthInt, categoryId, amount },
+      {
+        undoInfo: {
+          label: "Set budget",
+          inverse: {
+            commandType: "set_budget_amount",
+            payload: { month: monthInt, categoryId, amount: prevAmount },
+          },
+        },
+      },
+    );
     setCategories((prev) =>
       prev.map((c) => (c.categoryId === categoryId ? { ...c, budgeted: amount } : c)),
     );

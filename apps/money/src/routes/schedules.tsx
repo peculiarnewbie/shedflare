@@ -37,7 +37,29 @@ export default function SchedulesPage() {
   }
 
   function handleDelete(id: string) {
-    dispatch("delete_schedule", { id });
+    const sched = schedules().find((s) => s.id === id);
+    dispatch(
+      "delete_schedule",
+      { id },
+      {
+        undoInfo: {
+          label: "Delete schedule",
+          inverse: {
+            commandType: "create_schedule",
+            payload: {
+              schedule: {
+                accountId: sched?.accountId ?? "",
+                name: sched?.name ?? "",
+                startDate: sched?.startDate ?? "",
+                amount: sched?.amount ?? 0,
+                frequency: sched?.frequency ?? "monthly",
+                weekendHandling: sched?.weekendHandling ?? "before",
+              },
+            },
+          },
+        },
+      },
+    );
     setSchedules((prev) => prev.filter((s) => s.id !== id));
   }
 
@@ -136,14 +158,26 @@ export default function SchedulesPage() {
           onClose={() => setShowDiscover(false)}
           onCreateSchedule={(candidate) => {
             setShowDiscover(false);
-            dispatch("create_schedule", {
-              schedule: {
-                name: candidate.payee,
-                amount: candidate.amount || null,
-                recurrenceRules: JSON.stringify({ type: candidate.recurrenceType }),
-                startDate: new Date().toISOString().slice(0, 10),
+            dispatch(
+              "create_schedule",
+              {
+                schedule: {
+                  name: candidate.payee,
+                  amount: candidate.amount || null,
+                  recurrenceRules: JSON.stringify({ type: candidate.recurrenceType }),
+                  startDate: new Date().toISOString().slice(0, 10),
+                },
               },
-            });
+              {
+                undoInfo: {
+                  label: "Create schedule from discovery",
+                  inverse: (data) => ({
+                    commandType: "delete_schedule",
+                    payload: { id: data.id as string },
+                  }),
+                },
+              },
+            );
           }}
         />
       </Show>
@@ -266,24 +300,57 @@ function ScheduleForm(props: {
     const startDate = existing()?.startDate ?? new Date().toISOString().slice(0, 10);
 
     if (isEdit()) {
-      dispatch("update_schedule", {
-        id: existing().id,
-        fields: {
-          name: name().trim(),
-          amount: parsedAmount || null,
-          recurrenceRules: rulesJson,
-          startDate,
+      const old = existing();
+      dispatch(
+        "update_schedule",
+        {
+          id: old.id,
+          fields: {
+            name: name().trim(),
+            amount: parsedAmount || null,
+            recurrenceRules: rulesJson,
+            startDate,
+          },
         },
-      });
+        {
+          undoInfo: {
+            label: "Update schedule",
+            inverse: {
+              commandType: "update_schedule",
+              payload: {
+                id: old.id,
+                fields: {
+                  name: old.name,
+                  amount: old.amount ?? null,
+                  recurrenceRules: old.recurrenceRules,
+                  startDate: old.startDate,
+                },
+              },
+            },
+          },
+        },
+      );
     } else {
-      dispatch("create_schedule", {
-        schedule: {
-          name: name().trim(),
-          amount: parsedAmount || null,
-          recurrenceRules: rulesJson,
-          startDate,
+      dispatch(
+        "create_schedule",
+        {
+          schedule: {
+            name: name().trim(),
+            amount: parsedAmount || null,
+            recurrenceRules: rulesJson,
+            startDate,
+          },
         },
-      });
+        {
+          undoInfo: {
+            label: "Create schedule",
+            inverse: (data) => ({
+              commandType: "delete_schedule",
+              payload: { id: data.id as string },
+            }),
+          },
+        },
+      );
     }
 
     setSaving(false);

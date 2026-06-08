@@ -32,12 +32,34 @@ export default function TagsPage() {
   function handleCreate() {
     const name = newName().trim();
     if (!name) return;
-    dispatch("create_tag", { name, color: newColor() });
+    dispatch(
+      "create_tag",
+      { name, color: newColor() },
+      {
+        undoInfo: {
+          label: "Create tag",
+          inverse: (data) => ({ commandType: "delete_tag", payload: { id: data.id as string } }),
+        },
+      },
+    );
     setNewName("");
   }
 
   function handleDelete(id: string) {
-    dispatch("delete_tag", { id });
+    const tag = tags().find((t) => t.id === id);
+    dispatch(
+      "delete_tag",
+      { id },
+      {
+        undoInfo: {
+          label: "Delete tag",
+          inverse: {
+            commandType: "create_tag",
+            payload: { name: tag?.name ?? "", color: tag?.color ?? "#4f46e5" },
+          },
+        },
+      },
+    );
     setTags((prev) => prev.filter((t) => t.id !== id));
   }
 

@@ -155,6 +155,21 @@ button {
   gap: 8px;
 }
 
+.sidebar-undo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-undo-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
 /* Main content */
 .main-content {
   flex: 1;

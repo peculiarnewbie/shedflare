@@ -152,9 +152,19 @@ export default function CategoriesPage() {
     if (!validateGroup()) return;
     const name = valuesGroup.name.trim();
     setShowAddGroup(false);
-    void dispatch("create_category_group", { name, isIncome: valuesGroup.isIncome }).promise.then(
-      loadData,
-    );
+    void dispatch(
+      "create_category_group",
+      { name, isIncome: valuesGroup.isIncome },
+      {
+        undoInfo: {
+          label: "Create group",
+          inverse: (data) => ({
+            commandType: "delete_category_group",
+            payload: { id: data.id as string },
+          }),
+        },
+      },
+    ).promise.then(loadData);
     resetFormGroup();
   }
 
@@ -163,7 +173,19 @@ export default function CategoriesPage() {
     if (!validateCategory()) return;
     const name = valuesCategory.name.trim();
     setActiveGroupId(null);
-    void dispatch("create_category", { name, groupId }).promise.then(loadData);
+    void dispatch(
+      "create_category",
+      { name, groupId },
+      {
+        undoInfo: {
+          label: "Create category",
+          inverse: (data) => ({
+            commandType: "delete_category",
+            payload: { id: data.id as string },
+          }),
+        },
+      },
+    ).promise.then(loadData);
     resetFormCategory();
   }
 
@@ -178,8 +200,22 @@ export default function CategoriesPage() {
       cancelRenameGroup();
       return;
     }
+    const group = groups().find((g) => g.id === groupId);
+    const oldName = group?.name ?? "";
     setRenamingGroupId(null);
-    void dispatch("update_category_group", { id: groupId, name }).promise.then(loadData);
+    void dispatch(
+      "update_category_group",
+      { id: groupId, name },
+      {
+        undoInfo: {
+          label: "Rename group",
+          inverse: {
+            commandType: "update_category_group",
+            payload: { id: groupId, name: oldName },
+          },
+        },
+      },
+    ).promise.then(loadData);
   }
 
   function cancelRenameGroup() {
@@ -188,17 +224,39 @@ export default function CategoriesPage() {
   }
 
   function handleToggleGroupHidden(group: CategoryGroup) {
-    void dispatch("update_category_group", { id: group.id, hidden: !group.hidden }).promise.then(
-      loadData,
-    );
+    void dispatch(
+      "update_category_group",
+      { id: group.id, hidden: !group.hidden },
+      {
+        undoInfo: {
+          label: group.hidden ? "Unhide group" : "Hide group",
+          inverse: {
+            commandType: "update_category_group",
+            payload: { id: group.id, hidden: group.hidden },
+          },
+        },
+      },
+    ).promise.then(loadData);
     setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, hidden: !g.hidden } : g)));
   }
 
   function handleToggleGroupIsIncome(group: CategoryGroup) {
-    void dispatch("update_category_group", {
-      id: group.id,
-      isIncome: !group.isIncome,
-    }).promise.then(loadData);
+    void dispatch(
+      "update_category_group",
+      {
+        id: group.id,
+        isIncome: !group.isIncome,
+      },
+      {
+        undoInfo: {
+          label: group.isIncome ? "Set as expense" : "Set as income",
+          inverse: {
+            commandType: "update_category_group",
+            payload: { id: group.id, isIncome: group.isIncome },
+          },
+        },
+      },
+    ).promise.then(loadData);
     setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, isIncome: !g.isIncome } : g)));
   }
 
@@ -210,17 +268,35 @@ export default function CategoriesPage() {
   function handleDeleteGroup() {
     const groupId = deletingGroupId();
     if (!groupId) return;
+    const group = groups().find((g) => g.id === groupId);
     const payload: Record<string, string | null> = { id: groupId };
     if (deleteTransferGroupId()) {
       payload.transferToGroupId = deleteTransferGroupId();
     }
     setDeletingGroupId(null);
-    void dispatch("delete_category_group", payload).promise.then(loadData);
+    void dispatch("delete_category_group", payload, {
+      undoInfo: {
+        label: "Delete group",
+        inverse: {
+          commandType: "create_category_group",
+          payload: { name: group?.name ?? "", isIncome: group?.isIncome ?? false },
+        },
+      },
+    }).promise.then(loadData);
     setGroups((prev) => prev.filter((g) => g.id !== groupId));
   }
 
   function handleToggleCategoryHidden(cat: Category) {
-    void dispatch("update_category", { id: cat.id, hidden: !cat.hidden }).promise.then(loadData);
+    void dispatch(
+      "update_category",
+      { id: cat.id, hidden: !cat.hidden },
+      {
+        undoInfo: {
+          label: cat.hidden ? "Unhide category" : "Hide category",
+          inverse: { commandType: "update_category", payload: { id: cat.id, hidden: cat.hidden } },
+        },
+      },
+    ).promise.then(loadData);
     setCategories((prev) => prev.map((c) => (c.id === cat.id ? { ...c, hidden: !c.hidden } : c)));
   }
 
@@ -232,12 +308,21 @@ export default function CategoriesPage() {
   function handleDeleteCategory() {
     const catId = deletingCatId();
     if (!catId) return;
+    const cat = categories().find((c) => c.id === catId);
     const payload: Record<string, string | null | undefined> = { id: catId };
     if (catTransferTargetId()) {
       payload.transferToId = catTransferTargetId();
     }
     setDeletingCatId(null);
-    dispatch("delete_category", payload);
+    dispatch("delete_category", payload, {
+      undoInfo: {
+        label: "Delete category",
+        inverse: {
+          commandType: "create_category",
+          payload: { name: cat?.name ?? "", groupId: cat?.groupId ?? null },
+        },
+      },
+    });
     setCategories((prev) => prev.filter((c) => c.id !== catId));
   }
 
@@ -260,15 +345,41 @@ export default function CategoriesPage() {
   }
 
   function saveGoal(catId: string) {
+    const cat = categories().find((c) => c.id === catId);
+    const oldGoalDef = cat?.goalDef ?? null;
     if (goalType() === "percentage") {
       const pct = parseFloat(goalPercentage() || "0");
       if (pct <= 0 || pct > 100) {
-        dispatch("update_category", { id: catId, goalDef: null });
+        dispatch(
+          "update_category",
+          { id: catId, goalDef: null },
+          {
+            undoInfo: {
+              label: "Remove goal",
+              inverse: {
+                commandType: "update_category",
+                payload: { id: catId, goalDef: oldGoalDef },
+              },
+            },
+          },
+        );
       } else {
-        dispatch("update_category", {
-          id: catId,
-          goalDef: JSON.stringify({ type: "percentage", percentage: pct }),
-        });
+        dispatch(
+          "update_category",
+          {
+            id: catId,
+            goalDef: JSON.stringify({ type: "percentage", percentage: pct }),
+          },
+          {
+            undoInfo: {
+              label: "Set goal",
+              inverse: {
+                commandType: "update_category",
+                payload: { id: catId, goalDef: oldGoalDef },
+              },
+            },
+          },
+        );
       }
       setCategories((prev) =>
         prev.map((c) =>
@@ -283,7 +394,19 @@ export default function CategoriesPage() {
     } else {
       const amount = Math.round(parseFloat(goalAmount() || "0") * 100);
       if (amount <= 0) {
-        dispatch("update_category", { id: catId, goalDef: null });
+        dispatch(
+          "update_category",
+          { id: catId, goalDef: null },
+          {
+            undoInfo: {
+              label: "Remove goal",
+              inverse: {
+                commandType: "update_category",
+                payload: { id: catId, goalDef: oldGoalDef },
+              },
+            },
+          },
+        );
       } else {
         const goal: Record<string, unknown> = { type: goalType(), amount };
         if ((goalType() === "byDate" || goalType() === "refill") && goalTargetDate()) {
@@ -292,7 +415,19 @@ export default function CategoriesPage() {
         if (goalType() === "periodic") {
           goal.frequency = goalFrequency();
         }
-        dispatch("update_category", { id: catId, goalDef: JSON.stringify(goal) });
+        dispatch(
+          "update_category",
+          { id: catId, goalDef: JSON.stringify(goal) },
+          {
+            undoInfo: {
+              label: "Set goal",
+              inverse: {
+                commandType: "update_category",
+                payload: { id: catId, goalDef: oldGoalDef },
+              },
+            },
+          },
+        );
       }
       setCategories((prev) =>
         prev.map((c) =>

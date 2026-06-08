@@ -111,61 +111,155 @@ export default function TransactionTable(props: TransactionTableProps) {
     setEditingField(null);
   }
 
+  function undoUpdateTx(
+    tx: TransactionRow,
+    fields: Record<string, unknown>,
+  ): { commandType: string; payload: unknown } {
+    const oldFields: Record<string, unknown> = {};
+    if ("amount" in fields) oldFields.amount = tx.amount;
+    if ("date" in fields) oldFields.date = tx.date;
+    if ("payee" in fields) oldFields.payee = tx.payee ?? undefined;
+    if ("notes" in fields) oldFields.notes = tx.notes ?? undefined;
+    if ("categoryId" in fields) oldFields.categoryId = tx.categoryId;
+    if ("cleared" in fields) oldFields.cleared = tx.cleared;
+    if ("reconciled" in fields) oldFields.reconciled = tx.reconciled;
+    return { commandType: "update_transaction", payload: { id: tx.id, fields: oldFields } };
+  }
+
   function saveEdit(tx: TransactionRow, field: TxField, value: string) {
     if (field === "amount") {
       const cents = fmt().parseInput(value);
       if (cents !== tx.amount) {
-        dispatch("update_transaction", { id: tx.id, fields: { amount: cents } });
+        dispatch(
+          "update_transaction",
+          { id: tx.id, fields: { amount: cents } },
+          {
+            undoInfo: { label: "Update amount", inverse: undoUpdateTx(tx, { amount: cents }) },
+          },
+        );
       }
     } else if (field === "date") {
       if (value !== tx.date) {
-        dispatch("update_transaction", { id: tx.id, fields: { date: value } });
+        dispatch(
+          "update_transaction",
+          { id: tx.id, fields: { date: value } },
+          {
+            undoInfo: { label: "Update date", inverse: undoUpdateTx(tx, { date: value }) },
+          },
+        );
       }
     } else if (field === "payee") {
       if (value !== (tx.payee ?? "")) {
-        dispatch("update_transaction", { id: tx.id, fields: { payee: value || undefined } });
+        dispatch(
+          "update_transaction",
+          { id: tx.id, fields: { payee: value || undefined } },
+          {
+            undoInfo: { label: "Update payee", inverse: undoUpdateTx(tx, { payee: value }) },
+          },
+        );
         if (value.trim() && !tx.categoryId) {
-          void fetchCategorySuggestion(tx.id, value.trim());
+          void fetchCategorySuggestion(tx, value.trim());
         }
       }
     } else if (field === "notes") {
       if (value !== (tx.notes ?? "")) {
-        dispatch("update_transaction", { id: tx.id, fields: { notes: value || undefined } });
+        dispatch(
+          "update_transaction",
+          { id: tx.id, fields: { notes: value || undefined } },
+          {
+            undoInfo: { label: "Update notes", inverse: undoUpdateTx(tx, { notes: value }) },
+          },
+        );
       }
     } else if (field === "category") {
       const catId = value || null;
       if (catId !== tx.categoryId) {
-        dispatch("update_transaction", { id: tx.id, fields: { categoryId: catId } });
+        dispatch(
+          "update_transaction",
+          { id: tx.id, fields: { categoryId: catId } },
+          {
+            undoInfo: {
+              label: "Update category",
+              inverse: undoUpdateTx(tx, { categoryId: catId }),
+            },
+          },
+        );
       }
     }
     cancelEdit();
   }
 
-  async function fetchCategorySuggestion(txId: string, payee: string) {
+  async function fetchCategorySuggestion(tx: TransactionRow, payee: string) {
     try {
       const data = await api.payeeSuggestions(payee);
       if (data.suggestions.length > 0) {
-        dispatch("update_transaction", {
-          id: txId,
-          fields: { categoryId: data.suggestions[0].category_id },
-        });
+        dispatch(
+          "update_transaction",
+          {
+            id: tx.id,
+            fields: { categoryId: data.suggestions[0].category_id },
+          },
+          {
+            undoInfo: {
+              label: "Set category from payee",
+              inverse: undoUpdateTx(tx, { categoryId: data.suggestions[0].category_id }),
+            },
+          },
+        );
       }
     } catch {
       console.warn("[TransactionTable] failed to fetch category suggestion");
     }
   }
 
-  function handleDelete(txId: string) {
+  function handleDelete(tx: TransactionRow) {
     if (!confirm("Delete this transaction?")) return;
-    dispatch("delete_transaction", { id: txId });
+    dispatch(
+      "delete_transaction",
+      { id: tx.id },
+      {
+        undoInfo: {
+          label: "Delete transaction",
+          inverse: {
+            commandType: "create_transaction",
+            payload: {
+              row: {
+                accountId: tx.accountId,
+                date: tx.date,
+                amount: tx.amount,
+                payee: tx.payee ?? undefined,
+                notes: tx.notes ?? undefined,
+                categoryId: tx.categoryId ?? null,
+                cleared: tx.cleared,
+              },
+            },
+          },
+        },
+      },
+    );
   }
 
   function toggleCleared(tx: TransactionRow) {
-    dispatch("update_transaction", { id: tx.id, fields: { cleared: !tx.cleared } });
+    dispatch(
+      "update_transaction",
+      { id: tx.id, fields: { cleared: !tx.cleared } },
+      {
+        undoInfo: { label: "Toggle cleared", inverse: undoUpdateTx(tx, { cleared: !tx.cleared }) },
+      },
+    );
   }
 
   function toggleReconciled(tx: TransactionRow) {
-    dispatch("update_transaction", { id: tx.id, fields: { reconciled: !tx.reconciled } });
+    dispatch(
+      "update_transaction",
+      { id: tx.id, fields: { reconciled: !tx.reconciled } },
+      {
+        undoInfo: {
+          label: "Toggle reconciled",
+          inverse: undoUpdateTx(tx, { reconciled: !tx.reconciled }),
+        },
+      },
+    );
   }
 
   function initSplit(tx: TransactionRow) {
@@ -521,10 +615,7 @@ export default function TransactionTable(props: TransactionTableProps) {
                     >
                       📅
                     </button>
-                    <button
-                      class="btn btn-icon btn-ghost btn-xs"
-                      onClick={() => handleDelete(tx.id)}
-                    >
+                    <button class="btn btn-icon btn-ghost btn-xs" onClick={() => handleDelete(tx)}>
                       🗑️
                     </button>
                   </span>

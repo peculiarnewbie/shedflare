@@ -33,9 +33,17 @@ export default function PayeesPage() {
   function handleCreate() {
     const name = newName().trim();
     if (!name) return;
-    dispatch("create_payee", { name });
+    dispatch(
+      "create_payee",
+      { name },
+      {
+        undoInfo: {
+          label: "Create payee",
+          inverse: (data) => ({ commandType: "delete_payee", payload: { id: data.id as string } }),
+        },
+      },
+    );
     setNewName("");
-    // Refresh
     void loadPayees();
   }
 
@@ -48,7 +56,18 @@ export default function PayeesPage() {
   }
 
   function handleFavorite(id: string, favorite: boolean) {
-    dispatch("update_payee", { id, favorite });
+    const payee = payees().find((p) => p.id === id);
+    const oldFav = payee?.favorite ?? false;
+    dispatch(
+      "update_payee",
+      { id, favorite },
+      {
+        undoInfo: {
+          label: favorite ? "Favorite payee" : "Unfavorite payee",
+          inverse: { commandType: "update_payee", payload: { id, favorite: oldFav } },
+        },
+      },
+    );
   }
 
   return (
