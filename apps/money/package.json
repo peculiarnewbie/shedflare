@@ -27,11 +27,13 @@
     "d3": "^7.9.0",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "peculiar-charts": "catalog:",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "@shedflare/test-utils": "workspace:*",
     "@types/d3": "^7.4.3",
     "@typescript/native-preview": "catalog:",
     "drizzle-kit": "catalog:",

@@ -1,4 +1,5 @@
 import { and, or, sql, type SQL } from "drizzle-orm";
+import { SQLiteAsyncDialect } from "drizzle-orm/sqlite-core";
 
 // ── Discriminated union: only valid operator/value combos are representable ──
 
@@ -129,6 +130,6 @@ export function buildFilterWhereSql(
 ): { whereClause: string; params: unknown[] } {
   const sqlObj = buildFilterSql(conditions, conditionsOp);
   if (!sqlObj) return { whereClause: "", params: [] };
-  const built = (sqlObj as any).toSQL();
+  const built = new SQLiteAsyncDialect().sqlToQuery(sqlObj);
   return { whereClause: built.sql, params: built.params };
 }
