@@ -29,9 +29,7 @@ function Shell(props: { children: unknown }) {
       </header>
       {props.children}
       <footer class="footer">
-        <p>
-          Shedflare is a set of personal tools you deploy to your own Cloudflare account.
-        </p>
+        <p>Shedflare is a set of personal tools you deploy to your own Cloudflare account.</p>
       </footer>
     </>
   );
@@ -46,8 +44,8 @@ function Home() {
             <p class="eyebrow">Your own tools, your own cloud</p>
             <h1>Personal apps that live in your Cloudflare account.</h1>
             <p class="lede">
-              Shedflare is a set of private productivity apps — chat, file storage, budgeting, and
-              a link shortener — that deploy into your own Cloudflare account.
+              Shedflare is a set of private productivity apps — chat, file storage, budgeting, and a
+              link shortener — that deploy into your own Cloudflare account.
             </p>
             <div class="actions">
               <A class="button primary" href="/docs">
@@ -62,8 +60,8 @@ function Home() {
 
         <section class="statement">
           <p>
-            Built for one person. No sign-ups, no tenants, no pricing tiers. Just a repo you
-            deploy and tools you own.
+            Built for one person. No sign-ups, no tenants, no pricing tiers. Just a repo you deploy
+            and tools you own.
           </p>
         </section>
 
@@ -72,9 +70,7 @@ function Home() {
           <h2>Four apps, each built for a different job.</h2>
         </section>
 
-        <For each={apps}>
-          {(app, index) => <AppShowcase app={app} index={index()} />}
-        </For>
+        <For each={apps}>{(app, index) => <AppShowcase app={app} index={index()} />}</For>
 
         <section class="helpers-showcase">
           <div class="helpers-inner">
@@ -82,8 +78,8 @@ function Home() {
               <p class="eyebrow">Included helpers</p>
               <h2>Everything you need to run and manage the suite.</h2>
               <p class="helpers-blurb">
-                Auth keeps your apps private. Observability collects errors across all Workers.
-                CF Usage tracks your Cloudflare plan against limits.
+                Auth keeps your apps private. Observability collects errors across all Workers. CF
+                Usage tracks your Cloudflare plan against limits.
               </p>
             </div>
             <div class="helper-grid">
@@ -227,8 +223,8 @@ function DocsIndex() {
       <p class="eyebrow">Documentation</p>
       <h1>Deploy personal software to your own cloud account.</h1>
       <p class="doc-lede">
-        Shedflare is a single-owner self-hosting suite for Cloudflare. Deploy from source into
-        your account, with Alchemy managing the Workers and platform resources.
+        Shedflare is a single-owner self-hosting suite for Cloudflare. Deploy from source into your
+        account, with Alchemy managing the Workers and platform resources.
       </p>
       <div class="guide-list">
         <For each={guides}>{(guide) => <GuideCard guide={guide} />}</For>
@@ -243,8 +239,8 @@ function DeploymentDoc() {
       <p class="eyebrow">Deployment</p>
       <h1>How to deploy.</h1>
       <p class="doc-lede">
-        Each app lives under <code>apps/*</code> and has an Alchemy stack that declares its
-        Worker, assets, bindings, and Cloudflare resources.
+        Each app lives under <code>apps/*</code> and has an Alchemy stack that declares its Worker,
+        assets, bindings, and Cloudflare resources.
       </p>
       <div class="steps">
         <p>
@@ -274,7 +270,11 @@ function AppDoc(props: { app?: (typeof allTools)[number] }) {
     <Show when={props.app} fallback={<DocsIndex />}>
       {(app) => (
         <>
-          <p class="eyebrow">{app().id === "auth" || app().id === "cf-bill" || app().id === "observability" ? "Helper" : "App"}</p>
+          <p class="eyebrow">
+            {app().id === "auth" || app().id === "cf-bill" || app().id === "observability"
+              ? "Helper"
+              : "App"}
+          </p>
           <h1>Shedflare {app().name}</h1>
           <p class="doc-lede">{app().summary}</p>
           <dl class="facts">

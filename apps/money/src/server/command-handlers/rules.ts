@@ -40,6 +40,6 @@ export async function handleRuleCommands(
       return { ok: true, data: { id: pp.id } };
     }
     default:
-      return { ok: false, error: `Unknown rule command: ${c}` };
+      return { ok: false, error: "Unknown rule command: " + String(c) };
   }
 }

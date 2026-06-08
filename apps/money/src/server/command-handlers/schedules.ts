@@ -60,6 +60,6 @@ export async function handleScheduleCommands(
       return { ok: true, data: { id: pp.scheduleId } };
     }
     default:
-      return { ok: false, error: `Unknown schedule command: ${c}` };
+      return { ok: false, error: "Unknown schedule command: " + String(c) };
   }
 }

@@ -10,7 +10,7 @@ export async function handleDashboardCommands(
   db: Db,
 ): Promise<CommandResult> {
   if (commandType !== "update_dashboard") {
-    return { ok: false, error: `Unknown dashboard command: ${commandType}` };
+    return { ok: false, error: "Unknown dashboard command: " + String(commandType) };
   }
 
   const now = nowIso();

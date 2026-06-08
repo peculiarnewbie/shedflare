@@ -25,7 +25,7 @@ export const MoneyStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("MoneyWorker", {
       name: physicalName(stage, "money"),
       main: "apps/money/src/worker.ts",
-      assets: "apps/money/dist/client",
+      assets: "apps/money/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],

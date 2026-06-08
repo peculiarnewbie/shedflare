@@ -40,6 +40,6 @@ export async function handlePayeeCommands(
       return { ok: true, data: { targetId: pp.targetId } };
     }
     default:
-      return { ok: false, error: `Unknown payee command: ${c}` };
+      return { ok: false, error: "Unknown payee command: " + String(c) };
   }
 }

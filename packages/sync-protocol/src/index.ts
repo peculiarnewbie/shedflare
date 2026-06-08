@@ -12,14 +12,12 @@ export type {
   SyncClientHello,
   SyncClientCommand,
   SyncClientResume,
-  SyncClientPing,
   SyncServerEnvelope,
   SyncServerHelloAck,
   SyncServerAck,
   SyncServerReject,
   SyncServerEvent,
   SyncServerReset,
-  SyncServerPong,
   SyncSnapshot,
 } from "./sync-types";
 

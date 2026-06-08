@@ -48,6 +48,6 @@ export async function handleTagCommands(
       return { ok: true, data: { transactionId: pp.transactionId, tagId: pp.tagId } };
     }
     default:
-      return { ok: false, error: `Unknown tag command: ${c}` };
+      return { ok: false, error: "Unknown tag command: " + String(c) };
   }
 }

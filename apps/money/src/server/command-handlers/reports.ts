@@ -38,6 +38,6 @@ export async function handleReportCommands(
       return { ok: true, data: { id: pp.id } };
     }
     default:
-      return { ok: false, error: `Unknown report command: ${c}` };
+      return { ok: false, error: "Unknown report command: " + String(c) };
   }
 }

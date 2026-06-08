@@ -122,15 +122,15 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       for (const name of Object.keys(manifest.secrets)) {
         allRequiredSecrets.add(name);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   applySecretsToEnv({ ...flagSecrets, ...prompted });
 
   try {
-    const target = options.app
-      ? `apps/${options.app}/alchemy.run.ts`
-      : "alchemy.run.ts";
+    const target = options.app ? `apps/${options.app}/alchemy.run.ts` : "alchemy.run.ts";
 
     console.log(`Deploying via Alchemy: ${target}...`);
     await spawn("npx", ["alchemy", "deploy", target, "--yes"], {

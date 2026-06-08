@@ -26,6 +26,6 @@ const CREATE_ERROR_LOGS = `CREATE TABLE IF NOT EXISTS error_logs (
   created_at TEXT NOT NULL
 )`;
 
-export function initializeStorage(db: D1Database): Promise<void> {
-  return db.exec(CREATE_ERROR_LOGS);
+export async function initializeStorage(db: D1Database): Promise<void> {
+  await db.exec(CREATE_ERROR_LOGS);
 }

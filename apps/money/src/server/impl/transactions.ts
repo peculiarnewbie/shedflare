@@ -1,4 +1,4 @@
-import { eq, sql, and, type SQL } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi, transactionsGroup as group } from "../definitions";
 import { createDb } from "../d1-access";

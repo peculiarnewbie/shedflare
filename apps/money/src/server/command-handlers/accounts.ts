@@ -98,6 +98,6 @@ export async function handleAccountCommands(
     }
 
     default:
-      return { ok: false, error: `Unknown account command: ${commandType}` };
+      return { ok: false, error: "Unknown account command: " + String(commandType) };
   }
 }

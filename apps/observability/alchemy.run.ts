@@ -13,7 +13,7 @@ export const ObservabilityStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = yield* appConfig("observability");
 
-    const db = Cloudflare.D1Database("OBSERVABILITY_DB", {
+    const db = yield* Cloudflare.D1Database("OBSERVABILITY_DB", {
       name: physicalName(stage, "observability", "db"),
     });
 
@@ -39,7 +39,7 @@ export const ObservabilityStack = Alchemy.Stack(
       url: worker.url ?? config.url,
       configuredUrl: config.url,
       workerName: worker.workerName,
-      dbName: db.bindingName,
+      dbName: db.databaseName,
     };
   }),
 );

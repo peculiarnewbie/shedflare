@@ -132,6 +132,13 @@ export const BUILTIN_MANIFESTS: Record<string, AppManifest> = {
     defaultSubdomain: "observability",
     vars: {},
     secrets: {},
-    resources: [{ type: "d1", binding: "OBSERVABILITY_DB", name: "shedflare-observability", idField: "OBSERVABILITY_DB_ID" }],
+    resources: [
+      {
+        type: "d1",
+        binding: "OBSERVABILITY_DB",
+        name: "shedflare-observability",
+        idField: "OBSERVABILITY_DB_ID",
+      },
+    ],
   },
 };

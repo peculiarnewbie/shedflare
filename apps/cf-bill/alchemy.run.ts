@@ -8,7 +8,7 @@ import * as Option from "effect/Option";
 export const CfBillStack = Alchemy.Stack(
   "ShedflareCfBill",
   {
-    providers: Layer.mergeAll(Cloudflare.providers(), Shedflare.providers()),
+    providers: Shedflare.providers().pipe(Layer.provideMerge(Cloudflare.providers())),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {

@@ -9,7 +9,7 @@ export async function handleSettingCommands(
   p: CommandPayloadMap["update_setting"],
   db: Db,
 ): Promise<CommandResult> {
-  if (c !== "update_setting") return { ok: false, error: `Unknown setting command: ${c}` };
+  if (c !== "update_setting") return { ok: false, error: "Unknown setting command: " + String(c) };
   await db
     .insert(s.settings)
     .values({ id: `setting-${p.key}`, key: p.key, value: p.value, updatedAt: nowIso() })

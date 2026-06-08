@@ -95,6 +95,6 @@ export async function handleCategoryCommands(
     }
 
     default:
-      return { ok: false, error: `Unknown category command: ${commandType}` };
+      return { ok: false, error: "Unknown category command: " + String(commandType) };
   }
 }

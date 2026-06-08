@@ -7,7 +7,7 @@ import * as Layer from "effect/Layer";
 export const ShortStack = Alchemy.Stack(
   "ShedflareS",
   {
-    providers: Layer.mergeAll(Cloudflare.providers(), Shedflare.providers()),
+    providers: Shedflare.providers().pipe(Layer.provideMerge(Cloudflare.providers())),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {

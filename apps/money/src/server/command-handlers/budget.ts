@@ -305,6 +305,6 @@ export async function handleBudgetCommands(
     }
 
     default:
-      return { ok: false, error: `Unknown budget command: ${commandType}` };
+      return { ok: false, error: "Unknown budget command: " + String(commandType) };
   }
 }

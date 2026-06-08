@@ -67,6 +67,6 @@ export async function handleTransactionCommands(
     }
 
     default:
-      return { ok: false, error: `Unknown transaction command: ${commandType}` };
+      return { ok: false, error: "Unknown transaction command: " + String(commandType) };
   }
 }

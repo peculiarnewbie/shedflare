@@ -35,6 +35,6 @@ export async function handleFilterCommands(
       return { ok: true, data: { id: pp.id } };
     }
     default:
-      return { ok: false, error: `Unknown filter command: ${c}` };
+      return { ok: false, error: "Unknown filter command: " + String(c) };
   }
 }

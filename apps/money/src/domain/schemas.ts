@@ -8,10 +8,7 @@ import {
   CategoryGroupIdSchema,
   PayeeIdSchema,
   ScheduleIdSchema,
-  RuleIdSchema,
   TagIdSchema,
-  ReportIdSchema,
-  WidgetIdSchema,
 } from "./types";
 
 export const AccountSchema = createSelectSchema(schema.accounts);

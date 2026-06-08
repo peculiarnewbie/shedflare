@@ -200,8 +200,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
   // ── All transactions ─────────────────────────────────────────────────
   if (pathname === "/api/transactions" && method === "GET") {
     const filterId = url.searchParams.get("filter");
-    let whereExtra = sql``;
-    const allParams: unknown[] = [];
+    let whereClause: SQL<unknown> | undefined;
 
     if (filterId) {
       const [filterRow] = await db
@@ -214,83 +213,70 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
           (filterRow.conditions as string) ?? "[]",
         ) as FilterCondition[];
         const conditionsOp = (filterRow.conditionsOp as string) ?? "and";
-        const filterSql = buildFilterSql(conditions, conditionsOp as "and" | "or");
-        if (filterSql) {
-          const { whereClause, params } = buildFilterWhereSql(
-            conditions,
-            conditionsOp as "and" | "or",
-          );
-          if (whereClause) {
-            whereExtra = sql`${whereExtra} AND (${sql.raw(whereClause)})`;
-            allParams.push(...params);
-          } else {
-            void filterSql;
-          }
-        }
+        whereClause = buildFilterSql(conditions, conditionsOp as "and" | "or") ?? undefined;
       }
     }
 
-    const rows = await db.all<{
-      id: string;
-      account_id: string;
-      category_id: string | null;
-      amount: number;
-      payee: string | null;
-      notes: string | null;
-      date: string;
-      cleared: number;
-      reconciled: number;
-      imported_description: string | null;
-      starting_balance_flag: number;
-      sort_order: number | null;
-      is_parent: number;
-      is_child: number;
-      parent_id: string | null;
-      transfer_id: string | null;
-      schedule_id: string | null;
-      created_at: string;
-      updated_at: string;
-      category_name: string | null;
-      account_name: string | null;
-      schedule_name: string | null;
-    }>(
-      sql`SELECT t.id, t.account_id, t.category_id, t.amount, t.payee, t.notes, t.date,
-              t.cleared, t.reconciled, t.imported_description, t.starting_balance_flag,
-              t.sort_order, t.is_parent, t.is_child, t.parent_id, t.transfer_id,
-              t.schedule_id, t.created_at, t.updated_at,
-              c.name AS category_name, a.name AS account_name, sch.name AS schedule_name
-       FROM transactions t
-       LEFT JOIN categories c ON t.category_id = c.id
-       LEFT JOIN accounts a ON t.account_id = a.id
-       LEFT JOIN schedules sch ON t.schedule_id = sch.id
-       WHERE 1=1${whereExtra}
-       ORDER BY t.date DESC, t.created_at DESC`,
-      ...allParams,
-    );
+    const query = db
+      .select({
+        id: s.transactions.id,
+        accountId: s.transactions.accountId,
+        categoryId: s.transactions.categoryId,
+        amount: s.transactions.amount,
+        payee: s.transactions.payee,
+        notes: s.transactions.notes,
+        date: s.transactions.date,
+        cleared: s.transactions.cleared,
+        reconciled: s.transactions.reconciled,
+        importedDescription: s.transactions.importedDescription,
+        startingBalanceFlag: s.transactions.startingBalanceFlag,
+        sortOrder: s.transactions.sortOrder,
+        isParent: s.transactions.isParent,
+        isChild: s.transactions.isChild,
+        parentId: s.transactions.parentId,
+        transferId: s.transactions.transferId,
+        scheduleId: s.transactions.scheduleId,
+        createdAt: s.transactions.createdAt,
+        updatedAt: s.transactions.updatedAt,
+        categoryName: s.categories.name,
+        accountName: s.accounts.name,
+        scheduleName: s.schedules.name,
+      })
+      .from(s.transactions)
+      .leftJoin(s.categories, eq(s.transactions.categoryId, s.categories.id))
+      .leftJoin(s.accounts, eq(s.transactions.accountId, s.accounts.id))
+      .leftJoin(s.schedules, eq(s.transactions.scheduleId, s.schedules.id))
+      .orderBy(sql`${s.transactions.date} DESC, ${s.transactions.createdAt} DESC`);
+
+    if (whereClause) {
+      query.where(whereClause);
+    }
+
+    const rows = await query.all();
     return validatedJson(TransactionsResponseSchema, {
       transactions: rows.map((r) => ({
         id: r.id,
-        accountId: r.account_id,
-        categoryId: r.category_id,
+        accountId: r.accountId,
+        categoryId: r.categoryId,
         amount: r.amount,
         payee: r.payee,
         notes: r.notes,
         date: r.date,
-        cleared: r.cleared === 1,
-        reconciled: r.reconciled === 1,
-        importedDescription: r.imported_description,
-        startingBalanceFlag: r.starting_balance_flag === 1,
-        sortOrder: r.sort_order,
-        isParent: r.is_parent === 1,
-        isChild: r.is_child === 1,
-        parentId: r.parent_id,
-        transferId: r.transfer_id,
-        scheduleId: r.schedule_id,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-        categoryName: r.category_name,
-        accountName: r.account_name,
-        scheduleName: r.schedule_name,
+        cleared: r.cleared,
+        reconciled: r.reconciled,
+        importedDescription: r.importedDescription,
+        startingBalanceFlag: r.startingBalanceFlag,
+        sortOrder: r.sortOrder,
+        isParent: r.isParent,
+        isChild: r.isChild,
+        parentId: r.parentId,
+        transferId: r.transferId,
+        scheduleId: r.scheduleId,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        categoryName: r.categoryName,
+        accountName: r.accountName,
+        scheduleName: r.scheduleName,
       })),
     });
   }

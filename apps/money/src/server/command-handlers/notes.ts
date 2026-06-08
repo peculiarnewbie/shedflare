@@ -53,6 +53,6 @@ export async function handleNotesCommands(
       };
     }
     default:
-      return { ok: false, error: `Unknown note command: ${c}` };
+      return { ok: false, error: "Unknown note command: " + String(c) };
   }
 }
