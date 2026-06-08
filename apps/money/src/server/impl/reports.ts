@@ -19,7 +19,7 @@ import {
   computeNetWorthHistory,
   computeCashFlow,
   computeSpendingByCategory,
-  computeDailySpending,
+  computeDailyHeatmap,
   computeAgeOfMoney,
   computeCrossoverProjection,
   computeMonthBudget,
@@ -130,8 +130,8 @@ export function createReportsGroup(env: Env) {
         const db = createDb(env.MONEY_DB);
         const now = new Date();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-        const days = await computeDailySpending(db, monthKey);
-        return validatedJson(ReportsHeatmapResponseSchema, { monthKey, days });
+        const { income, expense } = await computeDailyHeatmap(db, monthKey);
+        return validatedJson(ReportsHeatmapResponseSchema, { monthKey, income, expense });
       }),
       isRaw: true,
       uninterruptible: false,

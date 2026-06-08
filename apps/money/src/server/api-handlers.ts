@@ -13,7 +13,7 @@ import {
   computeNetWorthHistory,
   computeCashFlow,
   computeSpendingByCategory,
-  computeDailySpending,
+  computeDailyHeatmap,
   computeAgeOfMoney,
   computeCrossoverProjection,
 } from "./budget-engine";
@@ -570,8 +570,8 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
   if (pathname === "/api/reports/calendar-heatmap" && method === "GET") {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const days = await computeDailySpending(db, monthKey);
-    return validatedJson(ReportsHeatmapResponseSchema, { monthKey, days });
+    const { income, expense } = await computeDailyHeatmap(db, monthKey);
+    return validatedJson(ReportsHeatmapResponseSchema, { monthKey, income, expense });
   }
 
   // ── Custom reports list ─────────────────────────────────────────────

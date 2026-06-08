@@ -299,25 +299,29 @@ export async function computeSpendingByCategory(
   }));
 }
 
-// -- Daily spending for calendar heatmap --------------------------------------
-export async function computeDailySpending(
+// -- Daily income/expense for calendar heatmap ---------------------------------
+export async function computeDailyHeatmap(
   db: Db,
   monthKey: string,
-): Promise<Record<string, number>> {
+): Promise<{ income: Record<string, number>; expense: Record<string, number> }> {
   const boundaries = monthBoundaries(monthKey);
-  const rows = await db.all<{ date: string; total: number }>(
-    sql`SELECT t.date, COALESCE(SUM(t.amount), 0) AS total
+  const rows = await db.all<{ date: string; income: number; expense: number }>(
+    sql`SELECT t.date,
+       COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
+       COALESCE(SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END), 0) AS expense
      FROM transactions t
      WHERE t.date >= ${boundaries.start} AND t.date < ${boundaries.end}
        AND t.is_child = 0
      GROUP BY t.date
      ORDER BY t.date`,
   );
-  const result: Record<string, number> = {};
+  const income: Record<string, number> = {};
+  const expense: Record<string, number> = {};
   for (const r of rows) {
-    result[String(r.date)] = Number(r.total);
+    income[String(r.date)] = Number(r.income);
+    expense[String(r.date)] = Number(r.expense);
   }
-  return result;
+  return { income, expense };
 }
 
 // -- Age of money ------------------------------------------------------------

@@ -2,7 +2,7 @@
  * Dashboard — dynamic widget grid with configurable cards and charts.
  * Reads widget layout from dashboard_widgets table, renders by widget type.
  */
-import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, onMount, For, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
@@ -10,7 +10,8 @@ import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { createId } from "../domain/types";
 import { settingsCollection } from "../lib/collections";
-import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
+import { Chart, Axis, AxisMark, AxisLabel, Area, Bar, Pie, Legend } from "peculiar-charts";
+import { BudgetBar } from "../charts";
 import { PageState } from "../components/PageState";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 
@@ -283,7 +284,11 @@ async function fetchCalendarHeatmap() {
   try {
     return await api.reports.calendarHeatmap();
   } catch {
-    return { monthKey: "", days: {} as Record<string, number> };
+    return {
+      monthKey: "",
+      income: {} as Record<string, number>,
+      expense: {} as Record<string, number>,
+    };
   }
 }
 
@@ -320,8 +325,9 @@ export default function Dashboard() {
   const [ageOfMoneyData, setAgeOfMoneyData] = createSignal<number | null>(null);
   const [calendarHeatmapData, setCalendarHeatmapData] = createSignal<{
     monthKey: string;
-    days: Record<string, number>;
-  }>({ monthKey: "", days: {} });
+    income: Record<string, number>;
+    expense: Record<string, number>;
+  }>({ monthKey: "", income: {}, expense: {} });
   const [crossoverData, setCrossoverData] = createSignal<CrossoverData | null>(null);
 
   // Add widget modal
@@ -378,6 +384,8 @@ export default function Dashboard() {
       setLoading(false);
     }
   }
+
+  onMount(() => loadAll());
 
   // -----------------------------------------------------------------------
   // Data hydrator — fetches chart data based on visible widgets
@@ -583,22 +591,54 @@ export default function Dashboard() {
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">Net Worth Over Time</div>
-            <AreaChart data={data} dimensions={{ width: 480, height: 220, marginBottom: 32 }} />
+            <Show
+              when={data.length > 1}
+              fallback={<div class="chart-empty">Not enough data to display chart</div>}
+            >
+              <Chart data={data} height={220}>
+                <Axis axis="x" position="bottom" dataKey="date" type="time">
+                  <AxisMark />
+                  <AxisLabel />
+                </Axis>
+                <Axis axis="y" position="left">
+                  <AxisMark />
+                  <AxisLabel format={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                </Axis>
+                <Area dataKey="value" color="var(--primary)" />
+              </Chart>
+            </Show>
           </div>
         );
       }
 
       case "cash-flow-card": {
         const data = cashFlowData();
+        const transformed = data.map((g) => ({
+          month: formatMonth(g.category),
+          income: g.values[0]?.value ?? 0,
+          expenses: Math.abs(g.values[1]?.value ?? 0),
+        }));
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">Cash Flow</div>
-            <BarChart
-              groups={data}
-              stacked={false}
-              dimensions={{ width: 480, height: 220, marginBottom: 32 }}
-              formatX={formatMonth}
-            />
+            <Show
+              when={transformed.length > 0}
+              fallback={<div class="chart-empty">Insufficient data for chart</div>}
+            >
+              <Chart data={transformed} height={220}>
+                <Axis axis="x" position="bottom" dataKey="month" type="point">
+                  <AxisMark />
+                  <AxisLabel />
+                </Axis>
+                <Axis axis="y" position="left">
+                  <AxisMark />
+                  <AxisLabel format={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                </Axis>
+                <Bar dataKey="income" name="Income" color="var(--positive)" />
+                <Bar dataKey="expenses" name="Expenses" color="var(--negative)" />
+                <Legend />
+              </Chart>
+            </Show>
           </div>
         );
       }
@@ -608,7 +648,15 @@ export default function Dashboard() {
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">Spending by Category</div>
-            <DonutChart slices={data} dimensions={{ width: 320, height: 220 }} />
+            <Show
+              when={data.length > 0}
+              fallback={<div class="chart-empty">No spending data for this period</div>}
+            >
+              <Chart data={data} height={280}>
+                <Pie dataKey="value" nameKey="label" innerRadius="50%" outerRadius="80%" />
+                <Legend />
+              </Chart>
+            </Show>
           </div>
         );
       }
@@ -796,7 +844,7 @@ export default function Dashboard() {
       }
 
       case "calendar-heatmap-card": {
-        const { monthKey, days } = calendarHeatmapData();
+        const { monthKey, income, expense } = calendarHeatmapData();
         if (!monthKey) {
           return (
             <div class="widget-chart" style={{ "text-align": "center", "padding-top": "16px" }}>
@@ -815,19 +863,18 @@ export default function Dashboard() {
           : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         const padCount = mondayFirst ? (firstDay + 6) % 7 : firstDay;
 
-        const maxAbs = Math.max(1, ...Object.values(days).map((v) => Math.abs(v)));
+        const allDates = [...new Set([...Object.keys(income), ...Object.keys(expense)])];
+        const maxIncome = Math.max(1, ...allDates.map((d) => income[d] ?? 0));
+        const maxExpense = Math.max(1, ...allDates.map((d) => Math.abs(expense[d] ?? 0)));
         const intensity = (day: number) => {
           const date = `${monthKey}-${String(day).padStart(2, "0")}`;
-          const val = days[date] ?? 0;
-          const absVal = Math.abs(val);
-          const pct = absVal / maxAbs;
-          const isExpense = val < 0;
-          const hue = isExpense ? 0 : 145;
-          const lightness = 30 + Math.round(pct * 35);
-          return {
-            background: `hsl(${hue}, 60%, ${lightness}%)`,
-            amount: val,
-          };
+          const inc = income[date] ?? 0;
+          const exp = expense[date] ?? 0;
+          const incPct = inc / maxIncome;
+          const expPct = Math.abs(exp) / maxExpense;
+          const incLight = 30 + Math.round(incPct * 35);
+          const expLight = 30 + Math.round(expPct * 35);
+          return { inc, exp, incLight, expLight };
         };
 
         const cells: { day: number; style: ReturnType<typeof intensity> }[] = [];
@@ -842,7 +889,7 @@ export default function Dashboard() {
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">
-              Spending &mdash;{" "}
+              Income vs Expenses &mdash;{" "}
               {new Date(year, mon - 1).toLocaleDateString("en-US", {
                 month: "long",
                 year: "numeric",
@@ -855,10 +902,23 @@ export default function Dashboard() {
               {padStart}
               {cells.map((c) => (
                 <div
-                  class="heatmap-cell"
-                  style={{ background: c.style.background }}
-                  title={`${c.day}: ${fmt().formatCents(c.style.amount)}`}
+                  class="heatmap-cell heatmap-cell-split"
+                  title={`${c.day}\nIncome: ${fmt().formatCents(c.style.inc)}\nExpenses: ${fmt().formatCents(c.style.exp)}\nNet: ${fmt().formatCents(c.style.inc + c.style.exp)}`}
                 >
+                  <div
+                    class="heatmap-cell-half heatmap-cell-income"
+                    style={{
+                      flex: c.style.incLight,
+                      background: `hsl(145, 60%, ${c.style.incLight}%)`,
+                    }}
+                  />
+                  <div
+                    class="heatmap-cell-half heatmap-cell-expense"
+                    style={{
+                      flex: c.style.expLight,
+                      background: `hsl(0, 60%, ${c.style.expLight}%)`,
+                    }}
+                  />
                   <span class="heatmap-cell-day">{c.day}</span>
                 </div>
               ))}

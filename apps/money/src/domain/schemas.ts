@@ -361,7 +361,13 @@ export const ReportsCrossoverResponseSchema = CrossoverSchema;
 
 export const ReportsHeatmapResponseSchema = Schema.Struct({
   monthKey: Schema.String,
-  days: Schema.Record(Schema.String, Schema.Number),
+  income: Schema.Record(Schema.String, Schema.Number),
+  expense: Schema.Record(Schema.String, Schema.Number),
+});
+
+export const ReportsHeatmapNavSchema = Schema.Struct({
+  previous: Schema.String,
+  next: Schema.String,
 });
 
 export const CustomReportRowSchema = Schema.Struct({
