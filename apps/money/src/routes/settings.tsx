@@ -5,6 +5,7 @@ import { createSignal, createEffect, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { settingsCollection } from "../lib/collections";
+import { setSetting } from "../lib/settings-store";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
 
@@ -87,36 +88,44 @@ export default function SettingsPage() {
   function updateBudgetType(value: BudgetType) {
     setBudgetType(value);
     dispatch("update_setting", { key: "budget_type", value });
+    setSetting("budget_type", value);
   }
 
   function updateCurrency(value: Currency) {
     setCurrency(value);
     dispatch("update_setting", { key: "display_currency", value });
+    setSetting("display_currency", value);
   }
 
   function updateDateFormat(value: DateFormat) {
     setDateFormat(value);
     dispatch("update_setting", { key: "date_format", value });
+    setSetting("date_format", value);
   }
 
   function togglePrivacy() {
-    dispatch("update_setting", { key: "privacy_mode", value: String(!privacy().enabled) });
+    const next = String(!privacy().enabled);
+    dispatch("update_setting", { key: "privacy_mode", value: next });
+    setSetting("privacy_mode", next);
   }
 
   function toggleHideClosed() {
     const next = !hideClosed();
     setHideClosed(next);
     dispatch("update_setting", { key: "hide_closed_accounts", value: String(next) });
+    setSetting("hide_closed_accounts", String(next));
   }
 
   function updateFirstDayOfWeek(value: "sunday" | "monday") {
     setFirstDayOfWeek(value);
     dispatch("update_setting", { key: "first_day_of_week", value });
+    setSetting("first_day_of_week", value);
   }
 
   function updateNumberFormat(value: NumberFormat) {
     setNumberFormat(value);
     dispatch("update_setting", { key: "number_format", value });
+    setSetting("number_format", value);
   }
 
   function handleExport() {

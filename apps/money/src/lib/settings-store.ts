@@ -27,6 +27,10 @@ export function getSetting(key: string, fallback: string): string {
   return settingsMap()[key] ?? fallback;
 }
 
+export function setSetting(key: string, value: string): void {
+  setSettingsMap((prev) => ({ ...prev, [key]: value }));
+}
+
 // Collection-like interface for compatibility (matches old TanStack DB usage)
 export const settingsCollection = {
   get state() {
