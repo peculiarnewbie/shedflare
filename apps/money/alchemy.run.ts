@@ -12,6 +12,9 @@ export const MoneyStack = Alchemy.Stack(
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
     const config = yield* appConfig("money");
+    const e2eAuthEmail = process.env.SHEDFLARE_MONEY_E2E_AUTH_EMAIL;
+    const e2eAuthToken = process.env.SHEDFLARE_MONEY_E2E_AUTH_TOKEN;
+    const isE2eStage = stage.startsWith("e2e-");
 
     const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
       name: physicalName(stage, "money", "uploads"),
@@ -37,8 +40,15 @@ export const MoneyStack = Alchemy.Stack(
         AUTH_ISSUER_URL: yield* authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-money`,
         OWNER_EMAIL: config.ownerEmail,
+        ...(e2eAuthEmail && e2eAuthToken
+          ? {
+              E2E_AUTH_EMAIL: e2eAuthEmail,
+              E2E_AUTH_TOKEN: e2eAuthToken,
+            }
+          : {}),
       },
-      domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
+      domain:
+        !isE2eStage && config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });
 
     return {

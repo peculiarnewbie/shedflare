@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "deploy": "npx wrangler deploy --env production",
     "db:generate": "drizzle-kit generate",
+    "test:e2e": "vp exec jiti e2e.run.ts",
     "prepare": "vp config"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "@playwright/test": "^1.60.0",
     "@shedflare/test-utils": "workspace:*",
     "@types/d3": "^7.4.3",
     "@typescript/native-preview": "catalog:",

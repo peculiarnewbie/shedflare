@@ -37,6 +37,8 @@
     "test:drive": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/drive/alchemy.test.ts",
     "test:e2e:drive": "vp exec jiti apps/drive/e2e.run.ts",
     "test:e2e:drive:destroy": "vp exec jiti apps/drive/e2e.run.ts --destroy-only",
+    "test:e2e:money": "vp exec jiti apps/money/e2e.run.ts",
+    "test:e2e:money:destroy": "vp exec jiti apps/money/e2e.run.ts --destroy-only",
     "test:chat": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/chat/alchemy.test.ts",
     "test:money": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/money/alchemy.test.ts",
     "test:youtube": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/youtube/alchemy.test.ts",

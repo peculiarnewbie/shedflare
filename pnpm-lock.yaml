@@ -63,6 +63,9 @@ catalogs:
     marked-highlight:
       specifier: ^2.2.4
       version: 2.2.4
+    peculiar-charts:
+      specifier: ^0.2.1
+      version: 0.2.1
     playwright:
       specifier: ^1.60.0
       version: 1.60.0
@@ -334,6 +337,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.75
+      peculiar-charts:
+        specifier: 'catalog:'
+        version: 0.2.1(solid-js@1.9.13)
       solid-js:
         specifier: ^1.9.12
         version: 1.9.13
@@ -344,6 +350,12 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20260415.1
         version: 4.20260604.1
+      '@playwright/test':
+        specifier: ^1.60.0
+        version: 1.60.0
+      '@shedflare/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
       '@types/d3':
         specifier: ^7.4.3
         version: 7.4.3
@@ -985,6 +997,11 @@ packages:
   '@cloudflare/workers-types@4.20260604.1':
     resolution: {integrity: sha512-nVTydUwPcz9WfwZ/6xAmqs8uUVeGbDVmyPvSYrYAo4CQTyi0122SoE1Suw8RvqnN60XXHPChAjDqSIjnr/mbmg==}
 
+  '@corvu/utils@0.4.2':
+    resolution: {integrity: sha512-Ox2kYyxy7NoXdKWdHeDEjZxClwzO4SKM8plAaVwmAJPxHMqA0rLOoAsa+hBDwRLpctf+ZRnAd/ykguuJidnaTA==}
+    peerDependencies:
+      solid-js: ^1.8
+
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
@@ -1453,6 +1470,15 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
+
+  '@floating-ui/core@1.7.5':
+    resolution: {integrity: sha512-1Ih4WTWyw0+lKyFMcBHGbb5U5FtuHJuujoyyr5zTaWS5EYMeT6Jb2AuDeftsCsEuchO+mM2ij5+q9crhydzLhQ==}
+
+  '@floating-ui/dom@1.7.6':
+    resolution: {integrity: sha512-9gZSAI5XM36880PPMm//9dfiEngYoC6Am2izES1FF406YFsjvyBMmeJ2g4SAju3xWwtuynNRFL2s9hgxpLI5SQ==}
+
+  '@floating-ui/utils@0.2.11':
+    resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
   '@hattip/adapter-node@0.0.49':
     resolution: {integrity: sha512-BE+Y8Q4U0YcH34FZUYU4DssGKOaZLbNL0zK57Z41UZp0m9kS79ZIolBmjjpPhTVpIlRY3Rs+uhXbVXKk7mUcJA==}
@@ -2443,6 +2469,16 @@ packages:
 
   '@solid-primitives/map@0.7.3':
     resolution: {integrity: sha512-2Ach52ANEWYUKFtlrKWljrCtAHJwXnfNEvNfQwA+80nS/Bdw9fSumWQiRJNoDQLN0k5iEggWRBHd6vC/uqYKcA==}
+    peerDependencies:
+      solid-js: ^1.6.12
+
+  '@solid-primitives/memo@1.5.0':
+    resolution: {integrity: sha512-nSMHpFdnOMP88t7lqtktUXJlhQdJk0BQs2v3jUqcn+OtFwUm27Oa/coKl1BHDxL/65jR5drjqxxvuhaIpiUi0w==}
+    peerDependencies:
+      solid-js: ^1.6.12
+
+  '@solid-primitives/scheduled@1.5.3':
+    resolution: {integrity: sha512-oNwLE6E6lxJAWrc8QXuwM0k2oU1BnANnkChwMw82aK1j3+mWGJkG1IFe5gCwbV+afYmjI76t9JJV3md/8tLw+g==}
     peerDependencies:
       solid-js: ^1.6.12
 
@@ -4209,6 +4245,11 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
+  peculiar-charts@0.2.1:
+    resolution: {integrity: sha512-F1l02krrVsnqzMbWu0A/I6SWwXCX18jjw34TedoaUa+XpwmsD4bSMzTX1G7D5Eek1Mi3FGeladfDxEIUdIX/7A==}
+    peerDependencies:
+      solid-js: ^1.8
+
   pend@1.2.0:
     resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
 
@@ -5473,6 +5514,11 @@ snapshots:
 
   '@cloudflare/workers-types@4.20260604.1': {}
 
+  '@corvu/utils@0.4.2(solid-js@1.9.13)':
+    dependencies:
+      '@floating-ui/dom': 1.7.6
+      solid-js: 1.9.13
+
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
@@ -5818,6 +5864,17 @@ snapshots:
   '@exodus/bytes@1.15.1': {}
 
   '@fastify/busboy@2.1.1': {}
+
+  '@floating-ui/core@1.7.5':
+    dependencies:
+      '@floating-ui/utils': 0.2.11
+
+  '@floating-ui/dom@1.7.6':
+    dependencies:
+      '@floating-ui/core': 1.7.5
+      '@floating-ui/utils': 0.2.11
+
+  '@floating-ui/utils@0.2.11': {}
 
   '@hattip/adapter-node@0.0.49':
     dependencies:
@@ -6547,6 +6604,16 @@ snapshots:
   '@solid-primitives/map@0.7.3(solid-js@1.9.13)':
     dependencies:
       '@solid-primitives/trigger': 1.2.3(solid-js@1.9.13)
+      solid-js: 1.9.13
+
+  '@solid-primitives/memo@1.5.0(solid-js@1.9.13)':
+    dependencies:
+      '@solid-primitives/scheduled': 1.5.3(solid-js@1.9.13)
+      '@solid-primitives/utils': 6.4.0(solid-js@1.9.13)
+      solid-js: 1.9.13
+
+  '@solid-primitives/scheduled@1.5.3(solid-js@1.9.13)':
+    dependencies:
       solid-js: 1.9.13
 
   '@solid-primitives/trigger@1.2.3(solid-js@1.9.13)':
@@ -8516,6 +8583,14 @@ snapshots:
   path-to-regexp@6.3.0: {}
 
   pathe@2.0.3: {}
+
+  peculiar-charts@0.2.1(solid-js@1.9.13):
+    dependencies:
+      '@corvu/utils': 0.4.2(solid-js@1.9.13)
+      '@solid-primitives/memo': 1.5.0(solid-js@1.9.13)
+      d3-scale: 4.0.2
+      d3-shape: 3.2.0
+      solid-js: 1.9.13
 
   pend@1.2.0: {}
 

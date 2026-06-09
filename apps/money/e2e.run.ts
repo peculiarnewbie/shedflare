@@ -1,0 +1,77 @@
+import * as Cloudflare from "alchemy/Cloudflare";
+import * as Core from "alchemy/Test/Core";
+import { loadShedflareConfig } from "@shedflare/alchemy";
+import { execSync } from "node:child_process";
+import { join } from "node:path";
+import MoneyStack from "./alchemy.run";
+
+const moneyRoot = process.cwd();
+const repoRoot = join(moneyRoot, "../..");
+process.chdir(repoRoot);
+
+const stage =
+  process.env.SHEDFLARE_MONEY_E2E_STAGE ??
+  `e2e-money-${process.env.GITHUB_RUN_ID ?? process.env.CI_JOB_ID ?? Date.now()}`;
+const authEmail = process.env.SHEDFLARE_MONEY_E2E_AUTH_EMAIL ?? loadShedflareConfig().ownerEmail;
+const authToken = process.env.SHEDFLARE_MONEY_E2E_AUTH_TOKEN ?? crypto.randomUUID();
+
+process.env.SHEDFLARE_MONEY_E2E_AUTH_EMAIL = authEmail;
+process.env.SHEDFLARE_MONEY_E2E_AUTH_TOKEN = authToken;
+
+const options = {
+  providers: Cloudflare.providers(),
+  state: Cloudflare.state(),
+};
+
+async function deployMoney() {
+  return await Core.run(Core.deploy(options, MoneyStack, { stage }), options);
+}
+
+async function destroyMoney() {
+  await Core.run(Core.destroy(options, MoneyStack, { stage }), options);
+}
+
+function runPlaywright(baseUrl: string) {
+  const extraArgs = process.argv
+    .slice(2)
+    .filter((a) => a !== "--destroy-only" && a !== "--")
+    .join(" ");
+  execSync(`npx playwright test ${extraArgs}`, {
+    cwd: moneyRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      BASE_URL: baseUrl,
+      E2E_AUTH_EMAIL: authEmail,
+      E2E_AUTH_TOKEN: authToken,
+    },
+  });
+}
+
+async function main() {
+  if (process.argv.includes("--destroy-only")) {
+    console.log(`Destroying money E2E stage ${stage}`);
+    await destroyMoney();
+    return;
+  }
+
+  console.log(`Deploying money E2E stage ${stage}`);
+  let deployed: Awaited<ReturnType<typeof deployMoney>> | null = null;
+  try {
+    deployed = await deployMoney();
+    if (!deployed?.url) {
+      throw new Error("Money deploy returned no URL");
+    }
+    console.log(`Testing ${deployed.url}`);
+    runPlaywright(deployed.url);
+    console.log("Money E2E passed");
+  } finally {
+    console.log(`Destroying money E2E stage ${stage}`);
+    await destroyMoney();
+  }
+}
+
+await main().catch((error) => {
+  console.error(error instanceof Error ? error.stack : error);
+  process.exitCode = 1;
+});
