@@ -106,7 +106,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     if (process.env.CI === "true" || process.env.CI === "1") {
       const flat = stillMissing.flatMap((e) => e.names.map((n) => `${e.appId}:${n}`));
       console.error(
-        `Missing required secrets (set env vars or pass --secret=NAME=value): ${flat.join(", ")}`,
+        `Missing required secrets (set as environment variables): ${flat.join(", ")}`,
       );
       process.exit(1);
     }

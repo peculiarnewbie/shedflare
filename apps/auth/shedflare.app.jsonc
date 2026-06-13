@@ -18,6 +18,10 @@
       "from": "ownerEmail",
       "description": "Deployment owner email",
     },
+    "ALLOWED_CLIENTS": {
+      "from": "computed",
+      "description": "JSON map of allowed client IDs to their redirect URI origins (built by Alchemy stack)",
+    },
   },
   "secrets": {},
   "resources": [

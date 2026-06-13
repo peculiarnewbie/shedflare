@@ -4,32 +4,29 @@
  */
 /// <reference types="node" />
 import { DatabaseSync } from "node:sqlite";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { drizzle } from "drizzle-orm/node-sqlite";
 import { describe, expect, test } from "vite-plus/test";
 import * as schema from "../db/schema";
-import { initializeStorage } from "../server/schema";
 import { computeMonthBudget, computeNetWorth, computeAgeOfMoney } from "../server/budget-engine";
 import type { Db } from "../server/d1-access";
+
+const MIGRATIONS_DIR = join(import.meta.dirname, "../migrations");
 
 function createTestDb(): Db {
   const sqlite = new DatabaseSync(":memory:");
   const db = drizzle({ client: sqlite, schema });
 
-  const exec = (query: string, ...params: unknown[]) => {
-    if (params.length > 0) {
-      sqlite.prepare(query).run(...(params as never[]));
-    } else {
-      sqlite.exec(query);
+  const dirs = readdirSync(MIGRATIONS_DIR).sort();
+  for (const dir of dirs) {
+    const raw = readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8");
+    const statements = raw.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
+    for (const stmt of statements) {
+      sqlite.exec(stmt);
     }
-  };
-  const queryOne = <T extends Record<string, unknown>>(
-    query: string,
-    ...params: unknown[]
-  ): T | null => {
-    const rows = sqlite.prepare(query).all(...(params as never[])) as T[];
-    return rows[0] ?? null;
-  };
-  initializeStorage(exec, queryOne, () => {});
+  }
+  sqlite.exec(`INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES ('latest', 16000, '${new Date().toISOString()}')`);
   sqlite.exec("PRAGMA foreign_keys = OFF");
   return db as unknown as Db;
 }

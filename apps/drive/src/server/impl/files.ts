@@ -52,30 +52,7 @@ async function getFile(db: Db, id: string) {
 
 type FileEnv = { DB: D1Database; FILES: R2Bucket };
 
-let publicSharingSchemaReady: Promise<void> | null = null;
-
-async function ensurePublicSharingSchema(env: FileEnv) {
-  publicSharingSchemaReady ??= (async () => {
-    try {
-      await env.DB.prepare(
-        "ALTER TABLE files ADD COLUMN is_public integer NOT NULL DEFAULT 0",
-      ).run();
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.toLowerCase().includes("duplicate column")) {
-        throw error;
-      }
-    }
-
-    await env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS idx_files_is_public_created_at ON files (is_public, created_at)",
-    ).run();
-  })();
-
-  return publicSharingSchemaReady;
-}
-
 export async function listPublicFiles(env: FileEnv, _request: Request) {
-  await ensurePublicSharingSchema(env);
   const db = drizzle(env.DB);
   const rows = await db
     .select({
@@ -107,7 +84,6 @@ export async function servePublicFile(
   id: string,
   disposition: "inline" | "download",
 ) {
-  await ensurePublicSharingSchema(env);
   const db = drizzle(env.DB);
   const row = await getFile(db, id);
   if (!row || !row.isPublic) return new Response("Not found", { status: 404 });
@@ -132,7 +108,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
     handlers
       .handle("list", (ctx) =>
         auth.createProtectedHandler(async (webReq) => {
-          await ensurePublicSharingSchema(env);
           const db = drizzle(env.DB);
           const url = new URL(webReq.url);
           const search = url.searchParams.get("search")?.trim() ?? "";
@@ -187,7 +162,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
       )
       .handle("create", (ctx) =>
         auth.createProtectedHandler(async (webReq) => {
-          await ensurePublicSharingSchema(env);
           const db = drizzle(env.DB);
           const form = await webReq.formData();
           const file = form.get("file");
@@ -250,7 +224,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
       )
       .handle("update", (ctx) =>
         auth.createProtectedHandler(async (webReq, _session, handlerCtx) => {
-          await ensurePublicSharingSchema(env);
           const db = drizzle(env.DB);
           const id = handlerCtx.params?.id as string;
           const current = await getFile(db, id);
@@ -292,7 +265,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
       )
       .handle("delete", (ctx) =>
         auth.createProtectedHandler(async (_webReq, _session, handlerCtx) => {
-          await ensurePublicSharingSchema(env);
           const db = drizzle(env.DB);
           const id = handlerCtx.params?.id as string;
           const row = await getFile(db, id);
@@ -304,7 +276,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
       )
       .handle("download", (ctx) =>
         auth.createProtectedHandler(async (_webReq, _session, handlerCtx) => {
-          await ensurePublicSharingSchema(env);
           const db = drizzle(env.DB);
           const id = handlerCtx.params?.id as string;
           const row = await getFile(db, id);
@@ -326,7 +297,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
       )
       .handle("preview", (ctx) =>
         auth.createProtectedHandler(async (_webReq, _session, handlerCtx) => {
-          await ensurePublicSharingSchema(env);
           const db = drizzle(env.DB);
           const id = handlerCtx.params?.id as string;
           const row = await getFile(db, id);

@@ -1,23 +1,26 @@
 import { describe, expect, test, beforeEach } from "vite-plus/test";
 import { DatabaseSync } from "node:sqlite";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { drizzle } from "drizzle-orm/node-sqlite";
 import * as schema from "../db/schema";
-import { initializeStorage } from "./schema";
 import type { Db } from "./d1-access";
 import { discoverSchedules } from "./discover-schedules";
+
+const MIGRATIONS_DIR = join(import.meta.dirname, "../migrations");
 
 function createTestDb(): Db {
   const sqlite = new DatabaseSync(":memory:");
   const db = drizzle({ client: sqlite, schema });
-  const exec = (query: string, ...params: unknown[]) => {
-    if (params.length > 0) sqlite.prepare(query).run(...(params as never[]));
-    else sqlite.exec(query);
-  };
-  initializeStorage(
-    exec,
-    () => null,
-    () => {},
-  );
+  const dirs = readdirSync(MIGRATIONS_DIR).sort();
+  for (const dir of dirs) {
+    const raw = readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8");
+    const statements = raw.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
+    for (const stmt of statements) {
+      sqlite.exec(stmt);
+    }
+  }
+  sqlite.exec(`INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES ('latest', 16000, '${new Date().toISOString()}')`);
   sqlite.exec("PRAGMA foreign_keys = OFF");
   return db as unknown as Db;
 }

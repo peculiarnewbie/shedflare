@@ -1,7 +1,15 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import { appConfig, physicalName, requireVar } from "../../infra/alchemy-env.ts";
+import {
+  type AppId,
+  appConfig,
+  loadShedflareConfig,
+  physicalName,
+  requireVar,
+} from "../../infra/alchemy-env.ts";
+
+const CLIENT_APPS: AppId[] = ["chat", "drive", "money", "cf-bill", "youtube", "s"];
 
 export const AuthStack = Alchemy.Stack(
   "ShedflareAuth",
@@ -12,6 +20,16 @@ export const AuthStack = Alchemy.Stack(
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
     const config = yield* appConfig("auth");
+    const rootConfig = loadShedflareConfig();
+
+    const allowedClients: Record<string, string[]> = {};
+    for (const appId of CLIENT_APPS) {
+      const app = rootConfig.apps[appId];
+      if (!app || app.enabled === false) continue;
+      const clientId = `shedflare-${appId}`;
+      const origin = `https://${app.subdomain}.${rootConfig.domain}`;
+      allowedClients[clientId] = [origin];
+    }
 
     const storage = yield* Cloudflare.KVNamespace("AuthStorage", {
       title: physicalName(stage, "auth", "storage"),
@@ -29,6 +47,7 @@ export const AuthStack = Alchemy.Stack(
         APP_PUBLIC_URL: config.url,
         GOOGLE_CLIENT_ID: requireVar(config, "GOOGLE_CLIENT_ID"),
         OWNER_EMAIL: config.ownerEmail,
+        ALLOWED_CLIENTS: JSON.stringify(allowedClients),
       },
       domain: config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
     });

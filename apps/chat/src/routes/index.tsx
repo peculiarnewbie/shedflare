@@ -3481,7 +3481,7 @@ export default function Home() {
           </div>
         </aside>
 
-        <main class="main-pane" classList={{ "header-hidden": !headerVisible() }}>
+        <main class="main-pane">
           <Show
             when={!settingsOpen()}
             fallback={

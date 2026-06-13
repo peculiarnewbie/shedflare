@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { openSync, readSync, closeSync } from "node:fs";
 import { APP_IDS, loadManifest, type AppId } from "../core/manifests.js";
 import { assertEnabledApp, physicalWorkerName } from "../core/worker-names.js";
 import * as wrangler from "../core/wrangler.js";
@@ -12,6 +13,35 @@ export interface SecretSetOptions {
 
 export interface SecretListOptions {
   app: string;
+}
+
+async function readSecret(prompt: string): Promise<string> {
+  output.write(prompt);
+  const tty = openSync("/dev/tty", "r");
+  let value = "";
+  const buf = Buffer.alloc(1);
+  try {
+    for (;;) {
+      const bytesRead = readSync(tty, buf, 0, 1, null);
+      if (bytesRead === 0) break;
+      const ch = buf[0];
+      if (ch === 0x0a || ch === 0x0d) break; // newline / carriage return
+      if (ch === 0x7f || ch === 0x08) {
+        // backspace / delete
+        if (value.length > 0) {
+          value = value.slice(0, -1);
+          output.write("\b \b");
+        }
+      } else if (ch >= 0x20) {
+        value += String.fromCharCode(ch);
+        output.write("*");
+      }
+    }
+  } finally {
+    closeSync(tty);
+  }
+  output.write("\n");
+  return value.trim();
 }
 
 export async function secretSetCommand(options: SecretSetOptions): Promise<void> {
@@ -37,9 +67,7 @@ export async function secretSetCommand(options: SecretSetOptions): Promise<void>
 
   let value = options.value;
   if (!value) {
-    const rl = createInterface({ input, output });
-    value = await rl.question(`Value for ${options.name}: `);
-    rl.close();
+    value = await readSecret(`Value for ${options.name}: `);
   }
 
   if (!value) {
@@ -82,6 +110,9 @@ export function parseSecretFlags(argv: string[]): Record<string, string> {
   const secrets: Record<string, string> = {};
   for (const arg of argv) {
     if (!arg.startsWith("--secret=")) continue;
+    console.warn(
+      "[shedflare] --secret=NAME=value is deprecated and exposes secrets in shell history and process listings. Use environment variables instead (e.g. SECRET_NAME=value pnpm deploy).",
+    );
     const pair = arg.slice("--secret=".length);
     const eq = pair.indexOf("=");
     if (eq <= 0) continue;
@@ -94,20 +125,17 @@ export async function promptMissingSecrets(
   missing: Array<{ appId: string; names: string[] }>,
 ): Promise<Record<string, string>> {
   const values: Record<string, string> = {};
-  const rl = createInterface({ input, output });
 
   for (const { appId, names } of missing) {
     for (const name of names) {
-      const answer = await rl.question(`${appId}: ${name}: `);
+      const answer = await readSecret(`${appId}: ${name}: `);
       if (!answer) {
-        rl.close();
         throw new Error(`Missing required secret ${name} for ${appId}`);
       }
       values[name] = answer;
     }
   }
 
-  rl.close();
   return values;
 }
 

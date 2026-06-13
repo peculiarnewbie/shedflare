@@ -26,6 +26,10 @@
       "enabled": true,
       "subdomain": "observability",
     },
+    "routines": {
+      "enabled": true,
+      "subdomain": "routines",
+    },
     "s": {
       "enabled": true,
       "subdomain": "s",
@@ -50,6 +54,7 @@
     "drive": {},
     "money": {},
     "observability": {},
+    "routines": {},
     "s": {},
     "youtube": {},
   },

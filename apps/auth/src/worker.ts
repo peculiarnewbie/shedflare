@@ -9,6 +9,7 @@ type Env = {
   APP_PUBLIC_URL: string;
   GOOGLE_CLIENT_ID: string;
   OWNER_EMAIL: string;
+  ALLOWED_CLIENTS: string;
   OPENAUTH_STORAGE: KVNamespace;
 };
 
@@ -35,6 +36,59 @@ function getCookieValue(cookieHeader: string | null, name: string): string | nul
   if (!cookieHeader) return null;
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+let parsedAllowedClients: Map<string, string[]> | null = null;
+
+function getAllowedClients(env: Env): Map<string, string[]> {
+  if (parsedAllowedClients) return parsedAllowedClients;
+  parsedAllowedClients = new Map();
+  try {
+    const raw = JSON.parse(env.ALLOWED_CLIENTS) as Record<string, string[]>;
+    for (const [clientId, origins] of Object.entries(raw)) {
+      if (Array.isArray(origins)) {
+        parsedAllowedClients.set(clientId, origins);
+      }
+    }
+  } catch {
+    // Empty map — all client validation will fail
+  }
+  return parsedAllowedClients;
+}
+
+function validateClientAndRedirectURI(
+  env: Env,
+  clientId: string,
+  redirectURI: string,
+): boolean {
+  const allowed = getAllowedClients(env);
+  const origins = allowed.get(clientId);
+  if (!origins) return false;
+  try {
+    const origin = new URL(redirectURI).origin;
+    return origins.includes(origin);
+  } catch {
+    return false;
+  }
+}
+
+function isValidRedirectPath(redirectURI: string): boolean {
+  try {
+    return new URL(redirectURI).pathname === "/api/auth/callback";
+  } catch {
+    return false;
+  }
+}
+
+async function verifyPKCE(codeVerifier: string, codeChallenge: string, method: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const computed = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return computed === codeChallenge;
 }
 
 function createIssuer(env: Env) {
@@ -126,7 +180,11 @@ async function handleTokenExchange(request: Request, env: Env): Promise<Response
 
   if (grantType === "authorization_code") {
     const code = params.get("code");
-    if (!code) return null;
+    const redirectURI = params.get("redirect_uri");
+    const clientId = params.get("client_id");
+    const codeVerifier = params.get("code_verifier");
+
+    if (!code || !redirectURI || !clientId) return null;
 
     const codeEntry = await env.OPENAUTH_STORAGE.get(`oauth:code\x1f${code}`, "json");
     if (
@@ -145,8 +203,23 @@ async function handleTokenExchange(request: Request, env: Env): Promise<Response
       properties: { email: string };
       redirectURI?: string;
       clientID?: string;
+      pkce?: { challenge: string; method: string };
       ttl?: { access: number; refresh: number };
     };
+
+    if (entry.redirectURI !== redirectURI || entry.clientID !== clientId) {
+      return new Response("redirect_uri or client_id mismatch", { status: 400 });
+    }
+
+    if (entry.pkce) {
+      if (!codeVerifier) {
+        return new Response("code_verifier required", { status: 400 });
+      }
+      const valid = await verifyPKCE(codeVerifier, entry.pkce.challenge, entry.pkce.method);
+      if (!valid) {
+        return new Response("invalid code_verifier", { status: 400 });
+      }
+    }
 
     const ttl = entry.ttl?.access ?? 60 * 60 * 24 * 365;
     const signingKey = await getSigningKey(env);
@@ -258,6 +331,23 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
 
   if (!auto) return null;
 
+  const responseType = url.searchParams.get("response_type");
+  const clientId = url.searchParams.get("client_id");
+  const state = url.searchParams.get("state");
+  const codeChallenge = url.searchParams.get("code_challenge");
+  const codeChallengeMethod = url.searchParams.get("code_challenge_method");
+
+  if (!redirectURI || responseType !== "code" || !clientId) return null;
+
+  if (!validateClientAndRedirectURI(env, clientId, redirectURI) || !isValidRedirectPath(redirectURI)) {
+    if (redirectURI) {
+      const location = new URL(redirectURI);
+      location.searchParams.set("error", "invalid_client");
+      return Response.redirect(location.toString(), 302);
+    }
+    return null;
+  }
+
   const sessionId = getCookieValue(request.headers.get("cookie"), SESSION_COOKIE);
   if (!sessionId) {
     if (redirectURI) {
@@ -277,14 +367,6 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
     }
     return null;
   }
-
-  const responseType = url.searchParams.get("response_type");
-  const clientId = url.searchParams.get("client_id");
-  const state = url.searchParams.get("state");
-  const codeChallenge = url.searchParams.get("code_challenge");
-  const codeChallengeMethod = url.searchParams.get("code_challenge_method");
-
-  if (!redirectURI || responseType !== "code" || !clientId) return null;
 
   const code = crypto.randomUUID();
   const email = (session as { email: string }).email;

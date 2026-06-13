@@ -394,6 +394,64 @@ importers:
         specifier: ^4.15.1
         version: 4.98.0(@cloudflare/workers-types@4.20260604.1)
 
+  apps/routines:
+    dependencies:
+      '@shedflare/auth-client':
+        specifier: workspace:*
+        version: link:../../packages/auth-client
+      '@solidjs/meta':
+        specifier: ^0.29.4
+        version: 0.29.4(solid-js@1.9.13)
+      '@solidjs/router':
+        specifier: ^0.15.4
+        version: 0.15.4(solid-js@1.9.13)
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 1.0.0-rc.4-5d5b77c(@cloudflare/workers-types@4.20260604.1)(@libsql/client@0.17.3)(effect@4.0.0-beta.78)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)(valibot@1.4.1(typescript@6.0.3))
+      peculiar-charts:
+        specifier: 'catalog:'
+        version: 0.2.1(solid-js@1.9.13)
+      solid-js:
+        specifier: ^1.9.12
+        version: 1.9.13
+    devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: ^1.32.3
+        version: 1.40.0(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(workerd@1.20260603.1)(wrangler@4.98.0(@cloudflare/workers-types@4.20260604.1))
+      '@cloudflare/workers-types':
+        specifier: ^4.20260415.1
+        version: 4.20260604.1
+      '@playwright/test':
+        specifier: ^1.60.0
+        version: 1.60.0
+      '@shedflare/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
+      '@solidjs/testing-library':
+        specifier: ^0.8.0
+        version: 0.8.10(@solidjs/router@0.15.4(solid-js@1.9.13))(solid-js@1.9.13)
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260421.2
+      drizzle-kit:
+        specifier: 'catalog:'
+        version: 1.0.0-rc.4-ca0f029
+      jsdom:
+        specifier: 'catalog:'
+        version: 29.1.1
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@latest
+        version: '@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)'
+      vite-plugin-solid:
+        specifier: ^2.11.12
+        version: 2.11.12(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(solid-js@1.9.13)
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.24(@types/node@25.9.1)(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.1)(esbuild@0.27.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(esbuild@0.27.3)(jiti@2.7.0)(jsdom@29.1.1)(typescript@6.0.3)(yaml@2.9.0)
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.98.0(@cloudflare/workers-types@4.20260604.1)
+
   apps/s:
     dependencies:
       '@shedflare/auth-client':

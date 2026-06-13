@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="night">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#2dd4a8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <title>Shedflare Routines</title>
+    <script>
+      (() => {
+        var href =
+          "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Mono:wght@400;500&display=swap";
+
+        var preconnectGoogle = document.createElement("link");
+        preconnectGoogle.rel = "preconnect";
+        preconnectGoogle.href = "https://fonts.googleapis.com";
+        document.head.append(preconnectGoogle);
+
+        var preconnectStatic = document.createElement("link");
+        preconnectStatic.rel = "preconnect";
+        preconnectStatic.href = "https://fonts.gstatic.com";
+        preconnectStatic.crossOrigin = "";
+        document.head.append(preconnectStatic);
+
+        var fontLink = document.createElement("link");
+        fontLink.rel = "stylesheet";
+        fontLink.href = href;
+        document.head.append(fontLink);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>

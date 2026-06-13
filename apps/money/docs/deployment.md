@@ -4,9 +4,9 @@ Deploy Shedflare Auth first, then deploy Money as an OpenAuth client.
 
 ## Architecture
 
-Money runs as a Cloudflare Worker backed by a Durable Object (DO) with SQLite storage. Data lives entirely in the DO — no D1 database involved.
+Money runs as a Cloudflare Worker backed by D1 (SQLite) for storage, with R2 for file uploads. The schema is managed via Drizzle ORM.
 
-The DO name is fixed: `shedflare-money-owner` (class `MoneyBudgetDO`). There is one DO instance per deployment.
+The Worker is deployed by Alchemy, which provisions the D1 database and R2 bucket automatically.
 
 ## Quick Start
 
@@ -67,7 +67,7 @@ App manifest declaring resources. Already configured for Money:
     "OWNER_EMAIL": { "from": "ownerEmail" },
   },
   "resources": [
-    { "type": "durable_object", "binding": "BUDGET_DO", "class": "MoneyBudgetDO" },
+    { "type": "d1", "binding": "MONEY_DB" },
     { "type": "r2", "binding": "UPLOADS", "name": "shedflare-money-uploads" },
   ],
 }
@@ -85,27 +85,20 @@ OWNER_EMAIL=dev@example.com
 
 Copy to `.dev.vars` for local development.
 
-## DO Setup
+## Resources
 
-The DO and R2 bucket are created automatically by the Alchemy stack:
+The D1 database and R2 bucket are created automatically by the Alchemy stack:
 
-- **DO:** `MoneyBudgetDO` at physical name `shedflare-money-owner`
+- **D1:** `shedflare-money-db` (bound as `MONEY_DB`)
 - **R2 bucket:** `shedflare-money-uploads` (for import file storage)
 
 No manual provision required.
 
 ## Migrations
 
-The schema is initialized on DO cold start. No separate migration step is needed.
+The schema is managed by Drizzle and applied via Alchemy's D1 migrations support (`apps/money/src/migrations`). No separate migration step is needed.
 
-The schema includes 32 tables covering accounts, categories, transactions, budgets, schedules, rules, tags, reports, dashboard widgets, settings, notes, events, and commands.
-
-On DO boot:
-
-1. Checks if `events` table exists
-2. Creates/ensures all tables
-3. Applies any pending migrations (e.g., `deleted` column on rules)
-4. Inserts default exchange rate (16000 USD→IDR)
+On Worker boot, the schema is initialized if needed.
 
 ## Local Development
 
@@ -114,7 +107,7 @@ On DO boot:
 pnpm dev:money
 ```
 
-This starts the Worker in dev mode with local DO storage. Set `DEV_AUTH_EMAIL` in `apps/money/.dev.vars` to bypass OAuth on localhost.
+This starts the Worker in dev mode with local D1 storage. Set `DEV_AUTH_EMAIL` in `apps/money/.dev.vars` to bypass OAuth on localhost.
 
 ## Testing
 
@@ -149,5 +142,4 @@ After deployment, verify:
 1. Visit `https://money.shedflare.example.com` — should load the SolidJS SPA
 2. Login via OpenAuth — should redirect to auth and back
 3. Dashboard should load with seeded default widgets
-4. WebSocket connection should be established (check browser console)
-5. Create a test account and transaction — should sync in real-time
+4. Create a test account and transaction — should persist and display correctly

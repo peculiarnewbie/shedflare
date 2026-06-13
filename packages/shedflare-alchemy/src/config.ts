@@ -9,6 +9,7 @@ export type AppId =
   | "drive"
   | "money"
   | "observability"
+  | "routines"
   | "s"
   | "youtube";
 
