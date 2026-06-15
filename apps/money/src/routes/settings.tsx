@@ -5,7 +5,7 @@ import { createSignal, createEffect, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { settingsCollection } from "../lib/collections";
-import { setSetting } from "../lib/settings-store";
+import { loadSettings as loadSettingsStore, setSetting } from "../lib/settings-store";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
 
@@ -28,7 +28,8 @@ export default function SettingsPage() {
   const [firstDayOfWeek, setFirstDayOfWeek] = createSignal<"sunday" | "monday">("sunday");
 
   createEffect(() => {
-    void loadSettings();
+    setLoading(true);
+    void loadPageData();
   });
 
   createEffect(() => {
@@ -69,16 +70,21 @@ export default function SettingsPage() {
     if (nf === "comma-dot" || nf === "dot-comma" || nf === "space-dot") setNumberFormat(nf);
   }
 
-  async function loadSettings() {
+  async function loadPageData() {
     setError(null);
     try {
-      const data = await api.rates();
-      setExchangeRate(data.usdToIdr ?? 16000);
+      loadSettingsStore();
+      await loadRates();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadRates() {
+    const data = await api.rates();
+    setExchangeRate(data.usdToIdr ?? 16000);
   }
 
   function handleRateUpdate() {
@@ -140,7 +146,7 @@ export default function SettingsPage() {
       <PageState
         loading={loading()}
         error={error()}
-        onRetry={loadSettings}
+        onRetry={loadPageData}
         loadingMessage="Loading..."
       >
         {/* Privacy Mode */}

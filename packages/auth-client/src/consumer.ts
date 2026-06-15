@@ -1,5 +1,6 @@
 import { createClient } from "@openauthjs/openauth/client";
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify } from "jose";
+import { AUTH_HINT_COOKIE } from "./client";
 
 export type AuthEnv = {
   AUTH_ISSUER_URL: string;
@@ -23,6 +24,8 @@ export type Session = {
 type AccessVerifyResult = { kind: "ok"; email: string } | { kind: "expired" } | { kind: "invalid" };
 
 const REFRESH_TIMEOUT_MS = 10_000;
+const AUTH_STATE_COOKIE = "auth_state";
+const STATE_TTL_SECONDS = 600;
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -53,7 +56,7 @@ export function serializeCookie(
   return cookie;
 }
 
-function getCookie(request: Request, name: string) {
+export function getCookie(request: Request, name: string): string | null {
   const cookie = request.headers.get("cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : null;
@@ -74,9 +77,99 @@ function envRefreshCookie(value: string) {
   return serializeCookie("auth_refresh_token", value, { maxAge: 60 * 60 * 24 * 365 });
 }
 
-function clearCookie(name: string) {
-  return serializeCookie(name, "", { maxAge: 0 });
+function clearCookie(name: string, opts?: { httpOnly?: boolean }) {
+  return serializeCookie(name, "", { maxAge: 0, httpOnly: opts?.httpOnly });
 }
+
+function hintCookie(value: string, maxAge?: number) {
+  return serializeCookie(AUTH_HINT_COOKIE, value, { maxAge, httpOnly: false });
+}
+
+function stateCookie(value: string) {
+  return serializeCookie(AUTH_STATE_COOKIE, value, { maxAge: STATE_TTL_SECONDS });
+}
+
+export function isDocumentRequest(request: Request): boolean {
+  const method = request.method;
+  if (method !== "GET" && method !== "HEAD") return false;
+  const dest = request.headers.get("sec-fetch-dest");
+  if (dest === "document") return true;
+  if (dest) return false;
+  const accept = request.headers.get("accept") ?? "";
+  return accept.includes("text/html");
+}
+
+export function validateReturnTo(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  // Decode first, then validate the result: validating the still-encoded form
+  // lets `/%2Fevil` slip through (it isn't "//…" until decoded), turning into a
+  // protocol-relative open redirect once used as a Location.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(input.trim());
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith("/")) return null;
+  if (decoded.startsWith("//")) return null;
+  if (decoded.startsWith("/api/")) return null;
+  return decoded;
+}
+
+function base64urlEncode(input: string): string {
+  return btoa(input).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64urlDecode(input: string): string | null {
+  try {
+    const padded =
+      input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
+    return atob(padded);
+  } catch {
+    return null;
+  }
+}
+
+function generateNonce(): string {
+  return crypto.randomUUID();
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
+type StatePayload = { nonce: string; returnTo: string | null };
+
+function encodeState(returnTo: string | null, nonce: string): string {
+  return base64urlEncode(JSON.stringify({ nonce, returnTo }));
+}
+
+function decodeState(state: string): StatePayload | null {
+  const decoded = base64urlDecode(state);
+  if (!decoded) return null;
+  try {
+    const parsed = JSON.parse(decoded) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    const nonce = typeof record.nonce === "string" ? record.nonce : "";
+    const returnTo = validateReturnTo(record.returnTo);
+    return { nonce, returnTo };
+  } catch {
+    return null;
+  }
+}
+
+export type HtmlGateResult =
+  | { kind: "proceed"; session: Session | null; setCookies: string[] }
+  | { kind: "redirect"; response: Response };
 
 export function createAuthHandlers(env: AuthEnv) {
   let jwksUrl: string | null = null;
@@ -218,27 +311,56 @@ export function createAuthHandlers(env: AuthEnv) {
     });
   }
 
-  async function loginRedirect(): Promise<Response> {
-    const client = createClient({ clientID: env.AUTH_CLIENT_ID, issuer: env.AUTH_ISSUER_URL });
-    const { url } = await client.authorize(`${env.APP_PUBLIC_URL}/api/auth/callback`, "code", {
-      provider: "google",
+  function withCookies(response: Response, cookies: string[]) {
+    if (cookies.length === 0) return response;
+    const headers = new Headers(response.headers);
+    for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
     });
-    return Response.redirect(url, 302);
   }
 
-  async function autoLoginRedirect(): Promise<Response> {
+  async function loginRedirect(returnTo?: string | null): Promise<Response> {
+    const validReturnTo = validateReturnTo(returnTo);
+    const nonce = generateNonce();
     const client = createClient({ clientID: env.AUTH_CLIENT_ID, issuer: env.AUTH_ISSUER_URL });
-    const { url } = await client.authorize(`${env.APP_PUBLIC_URL}/api/auth/callback`, "code", {
-      provider: "google",
-    });
-    const autoUrl = new URL(url);
-    autoUrl.searchParams.set("auto", "1");
-    return Response.redirect(autoUrl.toString(), 302);
+    const { url: authUrl } = await client.authorize(
+      `${env.APP_PUBLIC_URL}/api/auth/callback`,
+      "code",
+      { provider: "google" },
+    );
+    const redirectUrl = new URL(authUrl);
+    redirectUrl.searchParams.set("state", encodeState(validReturnTo, nonce));
+    const headers = new Headers({ Location: redirectUrl.toString() });
+    headers.append("Set-Cookie", stateCookie(nonce));
+    return new Response(null, { status: 302, headers });
+  }
+
+  async function autoLoginRedirect(returnTo?: string | null): Promise<Response> {
+    const response = await loginRedirect(returnTo);
+    const location = response.headers.get("Location");
+    if (!location) return response;
+    const redirectUrl = new URL(location);
+    redirectUrl.searchParams.set("auto", "1");
+    const headers = new Headers(response.headers);
+    headers.set("Location", redirectUrl.toString());
+    return new Response(null, { status: response.status, headers });
   }
 
   async function handleCallback(request: Request): Promise<Response> {
-    const code = new URL(request.url).searchParams.get("code");
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
     if (!code) return new Response("Missing code", { status: 400 });
+
+    const stateParam = url.searchParams.get("state") ?? "";
+    const stateCookieValue = getCookie(request, AUTH_STATE_COOKIE) ?? "";
+    const decoded = decodeState(stateParam);
+    const returnTo =
+      decoded && stateCookieValue && constantTimeEqual(decoded.nonce, stateCookieValue)
+        ? decoded.returnTo
+        : null;
 
     const response = await fetch(`${env.AUTH_ISSUER_URL}/token`, {
       method: "POST",
@@ -251,18 +373,31 @@ export function createAuthHandlers(env: AuthEnv) {
         code_verifier: "",
       }),
     });
+
+    const headers = new Headers();
+    headers.append("Set-Cookie", clearCookie(AUTH_STATE_COOKIE));
+
     if (!response.ok) {
+      headers.append("Set-Cookie", clearCookie(AUTH_HINT_COOKIE, { httpOnly: false }));
       return new Response(`Authentication failed: ${await response.text()}`, {
         status: response.status,
+        headers,
       });
     }
 
     const tokens = await parseTokenResponse(response);
-    if (!tokens) return new Response("Invalid token response", { status: 502 });
+    if (!tokens) {
+      headers.append("Set-Cookie", clearCookie(AUTH_HINT_COOKIE, { httpOnly: false }));
+      return new Response("Invalid token response", { status: 502, headers });
+    }
 
-    const headers = new Headers({ Location: "/" });
+    const verified = await verifyAccessToken(tokens.accessToken, false);
+    const hintValue = verified.kind === "ok" ? verified.email : "";
+
     headers.append("Set-Cookie", envAccessCookie(tokens.accessToken, tokens.expiresIn));
     headers.append("Set-Cookie", envRefreshCookie(tokens.refreshToken));
+    if (hintValue) headers.append("Set-Cookie", hintCookie(hintValue));
+    headers.set("Location", returnTo ?? "/");
     return new Response(null, { status: 302, headers });
   }
 
@@ -270,6 +405,8 @@ export function createAuthHandlers(env: AuthEnv) {
     const headers = new Headers({ Location: "/" });
     headers.append("Set-Cookie", clearCookie("auth_access_token"));
     headers.append("Set-Cookie", clearCookie("auth_refresh_token"));
+    headers.append("Set-Cookie", clearCookie(AUTH_HINT_COOKIE, { httpOnly: false }));
+    headers.append("Set-Cookie", clearCookie(AUTH_STATE_COOKIE));
     return new Response(null, { status: 302, headers });
   }
 
@@ -283,19 +420,81 @@ export function createAuthHandlers(env: AuthEnv) {
       );
       headers.append("Set-Cookie", envRefreshCookie(session.tokens.refresh));
     }
+    headers.append("Set-Cookie", hintCookie(session.email));
     return new Response(JSON.stringify({ user: { email: session.email } }), { headers });
+  }
+
+  async function gateHtml(
+    request: Request,
+    options?: { publicPaths?: string[] },
+  ): Promise<HtmlGateResult> {
+    const url = new URL(request.url);
+
+    if (!isDocumentRequest(request)) {
+      return { kind: "proceed", session: null, setCookies: [] };
+    }
+
+    const publicPaths = options?.publicPaths ?? [];
+    if (
+      publicPaths.some((prefix) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`))
+    ) {
+      return { kind: "proceed", session: null, setCookies: [] };
+    }
+
+    try {
+      const session = await authenticate(request, { refresh: true });
+      if (session) {
+        const setCookies: string[] = [];
+        if (session.tokens) {
+          setCookies.push(envAccessCookie(session.tokens.access, session.tokens.expiresIn));
+          setCookies.push(envRefreshCookie(session.tokens.refresh));
+        }
+        setCookies.push(hintCookie(session.email));
+        return { kind: "proceed", session, setCookies };
+      }
+    } catch {
+      // Verification failures collapse to the safe state: treat as unauthenticated.
+    }
+
+    const setCookies = [
+      clearCookie("auth_access_token"),
+      clearCookie("auth_refresh_token"),
+      clearCookie(AUTH_HINT_COOKIE, { httpOnly: false }),
+    ];
+
+    // Silent auth is one-shot. If the issuer already bounced us back with
+    // `no_session`, redirecting into another silent attempt would loop forever
+    // (gate → issuer → no_session → gate). Serve the SPA so the client can
+    // render its manual sign-in overlay instead.
+    if (url.searchParams.get("error") === "no_session") {
+      return { kind: "proceed", session: null, setCookies };
+    }
+
+    const returnTo = validateReturnTo(`${url.pathname}${url.search}`);
+    const redirectResponse = await autoLoginRedirect(returnTo);
+    const headers = new Headers(redirectResponse.headers);
+    for (const cookie of setCookies) headers.append("Set-Cookie", cookie);
+    return {
+      kind: "redirect",
+      response: new Response(null, { status: redirectResponse.status, headers }),
+    };
   }
 
   return {
     authenticate,
     requireSession,
     withSessionCookies,
+    withCookies,
     loginRedirect,
     autoLoginRedirect,
     handleCallback,
     logout,
     sessionEndpoint,
+    gateHtml,
     serializeCookie,
     normalizeEmail,
+    getCookie,
+    isDocumentRequest,
+    validateReturnTo,
   };
 }

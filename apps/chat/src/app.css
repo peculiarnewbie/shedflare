@@ -68,6 +68,16 @@ a {
   animation: fadeIn 0.2s ease;
 }
 
+.app-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  animation: fadeIn 0.2s ease;
+}
+
 .session-overlay-card {
   display: flex;
   flex-direction: column;
@@ -82,6 +92,15 @@ a {
   box-shadow: var(--shadow);
   text-align: center;
   animation: modalIn 0.22s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes modalIn {

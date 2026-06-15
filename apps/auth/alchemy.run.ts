@@ -9,7 +9,7 @@ import {
   requireVar,
 } from "../../infra/alchemy-env.ts";
 
-const CLIENT_APPS: AppId[] = ["chat", "drive", "money", "cf-bill", "youtube", "s"];
+const CLIENT_APPS: AppId[] = ["chat", "drive", "money", "cf-bill", "youtube", "s", "routines"];
 
 export const AuthStack = Alchemy.Stack(
   "ShedflareAuth",

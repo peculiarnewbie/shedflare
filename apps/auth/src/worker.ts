@@ -28,6 +28,34 @@ const SESSION_COOKIE = "sf_session";
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 const CODE_TTL = 60; // 60 seconds
 
+function serializeCookie(name: string, value: string, maxAge?: number) {
+  let cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
+  if (maxAge !== undefined) cookie += `; Max-Age=${maxAge}`;
+  cookie += "; Path=/; HttpOnly; SameSite=Lax";
+  return cookie;
+}
+
+function clearSessionCookie() {
+  return serializeCookie(SESSION_COOKIE, "", 0);
+}
+
+function validateReturnTo(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  // Decode first, then validate: validating the still-encoded form lets
+  // `/%2Fevil` slip through (it isn't "//…" until decoded), which becomes a
+  // protocol-relative open redirect when used directly as a Location below.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(input.trim());
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith("/") || decoded.startsWith("//") || decoded.startsWith("/api/")) {
+    return null;
+  }
+  return decoded;
+}
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -363,7 +391,9 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
     if (redirectURI) {
       const location = new URL(redirectURI);
       location.searchParams.set("error", "no_session");
-      return Response.redirect(location.toString(), 302);
+      const headers = new Headers({ Location: location.toString() });
+      headers.append("Set-Cookie", clearSessionCookie());
+      return new Response(null, { status: 302, headers });
     }
     return null;
   }
@@ -446,6 +476,13 @@ export default {
       return new Response("This Google account is not allowed for this Shedflare install.", {
         status: 403,
       });
+    }
+
+    if (url.pathname === "/logout" && request.method === "POST") {
+      const returnTo = validateReturnTo(url.searchParams.get("returnTo")) ?? "/";
+      const headers = new Headers({ Location: returnTo });
+      headers.append("Set-Cookie", clearSessionCookie());
+      return new Response(null, { status: 302, headers });
     }
 
     if (url.pathname === "/authorize") {

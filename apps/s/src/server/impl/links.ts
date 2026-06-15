@@ -5,9 +5,9 @@ import { links } from "../../db/schema";
 import { shortApi } from "../definitions";
 import type { HttpApiAuth } from "@shedflare/auth-client/http-api";
 
-const RESERVED = new Set(["api", "favicon.ico", "robots.txt", "index.html"]);
+export const RESERVED = new Set(["api", "favicon.ico", "robots.txt", "index.html"]);
 
-function isValidSlug(slug: string): boolean {
+export function isValidSlug(slug: string): boolean {
   if (slug.length === 0 || slug.length > 64) return false;
   if (RESERVED.has(slug)) return false;
   return /^[a-zA-Z0-9_-]+$/.test(slug);

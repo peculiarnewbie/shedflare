@@ -1,4 +1,4 @@
-const CACHE_NAME = "shedflare-drive-v3";
+const CACHE_NAME = "shedflare-routines-v1";
 
 function shouldCache(request) {
   if (request.mode === "navigate") return false;

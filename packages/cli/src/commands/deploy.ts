@@ -105,9 +105,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   if (stillMissing.length > 0) {
     if (process.env.CI === "true" || process.env.CI === "1") {
       const flat = stillMissing.flatMap((e) => e.names.map((n) => `${e.appId}:${n}`));
-      console.error(
-        `Missing required secrets (set as environment variables): ${flat.join(", ")}`,
-      );
+      console.error(`Missing required secrets (set as environment variables): ${flat.join(", ")}`);
       process.exit(1);
     }
     console.log("Provide values for secrets not yet on Cloudflare:");

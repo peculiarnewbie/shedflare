@@ -254,6 +254,43 @@ input {
   }
 }
 
+/* ─── Skeletons ─── */
+
+.skeleton {
+  background: var(--panel-strong);
+  border-radius: var(--radius-sm);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.skeleton-text {
+  height: 14px;
+  border-radius: 4px;
+}
+
+.skeleton-thumb {
+  width: 120px;
+  height: 68px;
+  flex-shrink: 0;
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 /* ─── Buttons ─── */
 
 .btn {
@@ -743,6 +780,14 @@ input {
 }
 
 /* ─── Loading ─── */
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg);
+}
 
 .loading-spinner {
   display: flex;

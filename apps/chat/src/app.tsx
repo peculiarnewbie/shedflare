@@ -4,6 +4,7 @@ import { Router, Route } from "@solidjs/router";
 import "./app.css";
 import Home from "./routes/index";
 import Forbidden from "./routes/forbidden";
+import NotFound from "./routes/not-found";
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
         <Router>
           <Route path="/" component={Home} />
           <Route path="/forbidden" component={Forbidden} />
+          <Route path="*path" component={NotFound} />
         </Router>
       </ErrorBoundary>
     </MetaProvider>

@@ -207,142 +207,145 @@ export default function AccountPage() {
 
   return (
     <div class="page">
-      <div class="page-header">
-        <button class="btn btn-ghost btn-sm" onClick={() => navigate("/accounts")}>
-          ← Back
-        </button>
-        <h1 class="page-title">{account()?.name ?? params.id}</h1>
-        <div class="page-actions">
-          <button class="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>
-            Import CSV
-          </button>
-          <button class="btn btn-secondary btn-sm" onClick={() => setShowAddTx(!showAddTx())}>
-            {showAddTx() ? "Cancel" : "+ Add Transaction"}
-          </button>
-          <button class="btn btn-secondary btn-sm" onClick={() => setShowReconcile(true)}>
-            Reconcile
-          </button>
-          <button class="btn btn-ghost btn-sm" onClick={handleCloseAccount}>
-            Close Account
-          </button>
-        </div>
-      </div>
-
-      <Show when={account()}>
-        <div class="account-header">
-          <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
-            {fmt().formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
-          </div>
-          <Show when={account().lastReconciled}>
-            <div class="account-reconciled-info">Last reconciled: {account().lastReconciled}</div>
-          </Show>
-        </div>
-      </Show>
-
-      <TransactionFilters
-        accountId={params.id}
-        activeConditions={filterConditions()}
-        onConditionsChange={handleFilterChange}
-      />
-
-      <Show when={showAddTx()}>
-        <div class="section">
-          <form
-            onSubmit={handleAddTransaction}
-            class="settings-section"
-            style={{ display: "flex", "flex-direction": "column", gap: "12px" }}
-          >
-            <div class="form-row">
-              <div class="form-group" style={{ flex: "0 0 140px" }}>
-                <label>Date</label>
-                <input
-                  type="date"
-                  value={txDate()}
-                  onInput={(e) => setTxDate(e.currentTarget.value)}
-                  required
-                />
-              </div>
-              <div class="form-group" style={{ flex: "1" }}>
-                <label>Payee</label>
-                <input
-                  type="text"
-                  list="tx-payee-list"
-                  placeholder="e.g. Grocery Store"
-                  value={txPayee()}
-                  onInput={(e) => handlePayeeInput(e.currentTarget.value)}
-                />
-              </div>
-              <div class="form-group" style={{ flex: "0 0 160px" }}>
-                <label>Amount</label>
-                <input
-                  type="number"
-                  step={fmt().code === "IDR" ? "1" : "0.01"}
-                  placeholder="0"
-                  value={txAmount()}
-                  onInput={(e) => setTxAmount(e.currentTarget.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group" style={{ flex: "1" }}>
-                <label>Category</label>
-                <select value={txCategory()} onChange={(e) => setTxCategory(e.currentTarget.value)}>
-                  <option value="">Uncategorized</option>
-                  <For each={categories()}>
-                    {(cat) => (
-                      <option value={cat.id}>
-                        {cat.groupName ? `${cat.groupName}: ` : ""}
-                        {cat.name}
-                      </option>
-                    )}
-                  </For>
-                </select>
-              </div>
-              <div class="form-group" style={{ flex: "1" }}>
-                <label>Notes</label>
-                <input
-                  type="text"
-                  placeholder="Optional notes"
-                  value={txNotes()}
-                  onInput={(e) => setTxNotes(e.currentTarget.value)}
-                />
-              </div>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary">
-                Add Transaction
-              </button>
-            </div>
-          </form>
-        </div>
-      </Show>
-
-      <Show when={showImport()}>
-        <ImportModal accountId={params.id} onClose={() => setShowImport(false)} />
-      </Show>
-
-      <Show when={showReconcile()}>
-        <ReconcileModal
-          accountId={params.id}
-          runningBalance={runningBalance()}
-          transactions={reconciliableTransactions()}
-          onClose={() => {
-            setShowReconcile(false);
-          }}
-          onFinish={() => {
-            setShowReconcile(false);
-            void loadAccount();
-          }}
-        />
-      </Show>
-
       <PageState
         loading={loading()}
         error={error()}
         onRetry={loadAccount}
-        loadingMessage="Loading transactions..."
+        loadingMessage="Loading account..."
       >
+        <div class="page-header">
+          <button class="btn btn-ghost btn-sm" onClick={() => navigate("/accounts")}>
+            ← Back
+          </button>
+          <h1 class="page-title">{account()?.name ?? params.id}</h1>
+          <div class="page-actions">
+            <button class="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>
+              Import CSV
+            </button>
+            <button class="btn btn-secondary btn-sm" onClick={() => setShowAddTx(!showAddTx())}>
+              {showAddTx() ? "Cancel" : "+ Add Transaction"}
+            </button>
+            <button class="btn btn-secondary btn-sm" onClick={() => setShowReconcile(true)}>
+              Reconcile
+            </button>
+            <button class="btn btn-ghost btn-sm" onClick={handleCloseAccount}>
+              Close Account
+            </button>
+          </div>
+        </div>
+
+        <Show when={account()}>
+          <div class="account-header">
+            <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
+              {fmt().formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
+            </div>
+            <Show when={account().lastReconciled}>
+              <div class="account-reconciled-info">Last reconciled: {account().lastReconciled}</div>
+            </Show>
+          </div>
+        </Show>
+
+        <TransactionFilters
+          accountId={params.id}
+          activeConditions={filterConditions()}
+          onConditionsChange={handleFilterChange}
+        />
+
+        <Show when={showAddTx()}>
+          <div class="section">
+            <form
+              onSubmit={handleAddTransaction}
+              class="settings-section"
+              style={{ display: "flex", "flex-direction": "column", gap: "12px" }}
+            >
+              <div class="form-row">
+                <div class="form-group" style={{ flex: "0 0 140px" }}>
+                  <label>Date</label>
+                  <input
+                    type="date"
+                    value={txDate()}
+                    onInput={(e) => setTxDate(e.currentTarget.value)}
+                    required
+                  />
+                </div>
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Payee</label>
+                  <input
+                    type="text"
+                    list="tx-payee-list"
+                    placeholder="e.g. Grocery Store"
+                    value={txPayee()}
+                    onInput={(e) => handlePayeeInput(e.currentTarget.value)}
+                  />
+                </div>
+                <div class="form-group" style={{ flex: "0 0 160px" }}>
+                  <label>Amount</label>
+                  <input
+                    type="number"
+                    step={fmt().code === "IDR" ? "1" : "0.01"}
+                    placeholder="0"
+                    value={txAmount()}
+                    onInput={(e) => setTxAmount(e.currentTarget.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Category</label>
+                  <select
+                    value={txCategory()}
+                    onChange={(e) => setTxCategory(e.currentTarget.value)}
+                  >
+                    <option value="">Uncategorized</option>
+                    <For each={categories()}>
+                      {(cat) => (
+                        <option value={cat.id}>
+                          {cat.groupName ? `${cat.groupName}: ` : ""}
+                          {cat.name}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </div>
+                <div class="form-group" style={{ flex: "1" }}>
+                  <label>Notes</label>
+                  <input
+                    type="text"
+                    placeholder="Optional notes"
+                    value={txNotes()}
+                    onInput={(e) => setTxNotes(e.currentTarget.value)}
+                  />
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  Add Transaction
+                </button>
+              </div>
+            </form>
+          </div>
+        </Show>
+
+        <Show when={showImport()}>
+          <ImportModal accountId={params.id} onClose={() => setShowImport(false)} />
+        </Show>
+
+        <Show when={showReconcile()}>
+          <ReconcileModal
+            accountId={params.id}
+            runningBalance={runningBalance()}
+            transactions={reconciliableTransactions()}
+            onClose={() => {
+              setShowReconcile(false);
+            }}
+            onFinish={() => {
+              setShowReconcile(false);
+              void loadAccount();
+            }}
+          />
+        </Show>
+
         <Show
           when={transactions().length > 0}
           fallback={<div class="empty-state">No transactions yet.</div>}

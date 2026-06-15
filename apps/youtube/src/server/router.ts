@@ -13,12 +13,6 @@ type Env = AuthEnv & {
   SYNC_SECRET: string;
 };
 
-function getCookie(request: Request, name: string): string | null {
-  const cookie = request.headers.get("cookie") ?? "";
-  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 export function createRouter(env: Env) {
   const auth = createHttpApiAuth(env);
 
@@ -37,15 +31,18 @@ export function createRouter(env: Env) {
 
       try {
         if (pathname === "/api/auth/login" && method === "GET") {
+          const returnTo = auth.validateReturnTo(url.searchParams.get("returnTo"));
           return url.searchParams.get("auto") === "1"
-            ? await auth.autoLoginRedirect()
-            : await auth.loginRedirect();
+            ? await auth.autoLoginRedirect(returnTo)
+            : await auth.loginRedirect(returnTo);
         }
         if (pathname === "/api/auth/callback" && method === "GET") {
           if (url.searchParams.get("error") === "no_session") {
             const redirectUrl = new URL("/", url.origin);
             redirectUrl.searchParams.set("error", "no_session");
-            return Response.redirect(redirectUrl.toString(), 302);
+            const headers = new Headers({ Location: redirectUrl.toString() });
+            headers.append("Set-Cookie", auth.serializeCookie("auth_state", "", { maxAge: 0 }));
+            return new Response(null, { status: 302, headers });
           }
           return await auth.handleCallback(request);
         }
@@ -57,15 +54,14 @@ export function createRouter(env: Env) {
           return await wh.handler(request);
         }
 
-        if (!getCookie(request, "auth_access_token")) {
-          return Response.redirect(new URL("/api/auth/login?auto=1", url.origin).toString(), 302);
-        }
+        const gate = await auth.gateHtml(request, { publicPaths: ["/forbidden"] });
+        if (gate.kind === "redirect") return gate.response;
 
-        const assetResponse = await env.ASSETS.fetch(request);
-        if (assetResponse.status === 404) {
-          return env.ASSETS.fetch(new Request(new URL("/index.html", url.origin)));
+        let assetResponse = await env.ASSETS.fetch(request);
+        if (assetResponse.status === 404 && auth.isDocumentRequest(request)) {
+          assetResponse = await env.ASSETS.fetch(new Request(new URL("/index.html", url.origin)));
         }
-        return assetResponse;
+        return auth.withCookies(assetResponse, gate.setCookies);
       } catch (error) {
         if (error instanceof Response) return error;
         return new Response("Internal Server Error", { status: 500 });

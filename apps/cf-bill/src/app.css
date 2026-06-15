@@ -192,6 +192,71 @@ button {
   line-height: 1.6;
 }
 
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.loading-screen-inner {
+  text-align: center;
+}
+
+.loading-screen-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+.loading-screen-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  margin: 0 auto;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.not-found {
+  text-align: center;
+  padding: 80px 24px;
+}
+
+.not-found h1 {
+  font-size: 56px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.not-found-desc {
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;

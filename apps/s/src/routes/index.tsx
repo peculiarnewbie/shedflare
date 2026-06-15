@@ -146,14 +146,14 @@ export default function Dashboard() {
         </Show>
       </form>
 
-      <div class="link-list-header">
-        <span class="link-list-title">All Links</span>
-        <span class="link-list-count">
-          {links().length} {links().length === 1 ? "link" : "links"}
-        </span>
-      </div>
-
       <Show when={!loading()} fallback={<div class="loading-spinner" />}>
+        <div class="link-list-header">
+          <span class="link-list-title">All Links</span>
+          <span class="link-list-count">
+            {links().length} {links().length === 1 ? "link" : "links"}
+          </span>
+        </div>
+
         <Show
           when={links().length > 0}
           fallback={

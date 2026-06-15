@@ -6,7 +6,8 @@
   "exports": {
     "./consumer": "./src/consumer.ts",
     "./issuer": "./src/issuer.ts",
-    "./http-api": "./src/http-api.ts"
+    "./http-api": "./src/http-api.ts",
+    "./client": "./src/client.ts"
   },
   "scripts": {
     "check": "vp check src",

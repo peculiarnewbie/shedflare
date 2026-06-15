@@ -1,6 +1,6 @@
 import { createHttpApiWebHandler } from "@shedflare/alchemy";
-import { createClient } from "@openauthjs/openauth/client";
-import { decodeTokenResponse, setRuntimeEnv } from "#/runtime";
+import { createAuthHandlers } from "@shedflare/auth-client/consumer";
+import { setRuntimeEnv } from "#/runtime";
 import { chatApi } from "./definitions";
 import { createBootstrapGroup, createModelsGroup, createUploadsGroup } from "./impl/all";
 import { handleSync } from "../api/sync";
@@ -16,36 +16,11 @@ const withVersionHeader = (response: Response) => {
   return wrapped;
 };
 
-function serializeCookie(
-  name: string,
-  value: string,
-  opts: {
-    maxAge?: number;
-    path?: string;
-    secure?: boolean;
-    httpOnly?: boolean;
-    sameSite?: string;
-  } = {},
-) {
-  let cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
-  if (opts.maxAge !== undefined) cookie += `; Max-Age=${opts.maxAge}`;
-  cookie += `; Path=${opts.path ?? "/"}`;
-  if (opts.secure !== false) cookie += `; Secure`;
-  if (opts.httpOnly !== false) cookie += `; HttpOnly`;
-  cookie += `; SameSite=${opts.sameSite ?? "Lax"}`;
-  return cookie;
-}
-
-function getCookie(request: Request, name: string): string | null {
-  const cookie = request.headers.get("cookie") ?? "";
-  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 type RawEnv = {
   APP_PUBLIC_URL: string;
   AUTH_ISSUER_URL?: string;
   AUTH_CLIENT_ID?: string;
+  OWNER_EMAIL: string;
   OPENCODE_GO_API_KEY: string;
   UPLOAD_TOKEN_SECRET: string;
   EXA_API_KEY?: string;
@@ -56,6 +31,13 @@ type RawEnv = {
 };
 
 export function createRouter(env: RawEnv) {
+  const auth = createAuthHandlers({
+    AUTH_ISSUER_URL: env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL,
+    AUTH_CLIENT_ID: env.AUTH_CLIENT_ID ?? "shedflare-chat",
+    APP_PUBLIC_URL: env.APP_PUBLIC_URL,
+    OWNER_EMAIL: env.OWNER_EMAIL,
+  });
+
   const wh = createHttpApiWebHandler(chatApi, [
     createBootstrapGroup(),
     createModelsGroup(),
@@ -84,97 +66,35 @@ export function createRouter(env: RawEnv) {
         if (pathname.startsWith("/api/")) {
           if (pathname === "/api/auth/login" && method === "GET") {
             const startedAt = Date.now();
-            const client = createClient({
-              clientID: env.AUTH_CLIENT_ID ?? "shedflare-chat",
-              issuer: env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL,
-            });
-            const { url: authUrl } = await client.authorize(
-              `${env.APP_PUBLIC_URL}/api/auth/callback`,
-              "code",
-              { provider: "google" },
-            );
-            const finalUrl =
+            const returnTo = auth.validateReturnTo(url.searchParams.get("returnTo"));
+            const response =
               url.searchParams.get("auto") === "1"
-                ? (() => {
-                    const u = new URL(authUrl);
-                    u.searchParams.set("auto", "1");
-                    return u.toString();
-                  })()
-                : authUrl;
+                ? await auth.autoLoginRedirect(returnTo)
+                : await auth.loginRedirect(returnTo);
             logger.log("auth_login_redirect_created", { durationMs: Date.now() - startedAt });
-            return withVersionHeader(Response.redirect(finalUrl, 302));
+            return withVersionHeader(response);
           }
 
           if (pathname === "/api/auth/callback" && method === "GET") {
             if (url.searchParams.get("error") === "no_session") {
               const redirectUrl = new URL("/", url.origin);
               redirectUrl.searchParams.set("error", "no_session");
-              return withVersionHeader(Response.redirect(redirectUrl.toString(), 302));
+              const headers = new Headers({ Location: redirectUrl.toString() });
+              headers.append("Set-Cookie", auth.serializeCookie("auth_state", "", { maxAge: 0 }));
+              return withVersionHeader(new Response(null, { status: 302, headers }));
             }
             const startedAt = Date.now();
-            const code = url.searchParams.get("code");
-            if (!code) {
-              return withVersionHeader(new Response("Missing code", { status: 400 }));
-            }
-            const tokenResponse = await fetch(
-              new Request(`${env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL}/token`, {
-                method: "POST",
-                headers: { "content-type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({
-                  code,
-                  redirect_uri: `${env.APP_PUBLIC_URL}/api/auth/callback`,
-                  grant_type: "authorization_code",
-                  client_id: env.AUTH_CLIENT_ID ?? "shedflare-chat",
-                  code_verifier: "",
-                }),
-              }),
-            );
-            if (!tokenResponse.ok) {
-              const errorText = await tokenResponse.text();
-              logger.log(
-                "auth_callback_token_exchange_failed",
-                { status: tokenResponse.status, durationMs: Date.now() - startedAt },
-                "warn",
-              );
-              return withVersionHeader(
-                new Response(`Authentication failed: ${errorText}`, {
-                  status: tokenResponse.status,
-                }),
-              );
-            }
-            const tokens = decodeTokenResponse(await tokenResponse.json());
-            if (!tokens) {
-              logger.log(
-                "auth_callback_token_response_invalid",
-                { durationMs: Date.now() - startedAt },
-                "warn",
-              );
-              return withVersionHeader(new Response("Authentication failed", { status: 502 }));
-            }
-            const headers = new Headers();
-            headers.append(
-              "Set-Cookie",
-              serializeCookie("auth_access_token", tokens.access_token, {
-                maxAge: tokens.expires_in,
-              }),
-            );
-            headers.append(
-              "Set-Cookie",
-              serializeCookie("auth_refresh_token", tokens.refresh_token, {
-                maxAge: 60 * 60 * 24 * 365,
-              }),
-            );
-            headers.set("Location", "/");
+            const response = await auth.handleCallback(request);
             logger.log("auth_callback_completed", { durationMs: Date.now() - startedAt });
-            return withVersionHeader(new Response(null, { status: 302, headers }));
+            return withVersionHeader(response);
           }
 
           if (pathname === "/api/auth/logout" && method === "POST") {
-            const headers = new Headers();
-            headers.append("Set-Cookie", serializeCookie("auth_access_token", "", { maxAge: 0 }));
-            headers.append("Set-Cookie", serializeCookie("auth_refresh_token", "", { maxAge: 0 }));
-            headers.set("Location", "/");
-            return withVersionHeader(new Response(null, { status: 302, headers }));
+            return withVersionHeader(auth.logout());
+          }
+
+          if (pathname === "/api/session" && method === "GET") {
+            return withVersionHeader(await auth.sessionEndpoint(request));
           }
 
           if (pathname.startsWith("/api/sync/")) {
@@ -190,20 +110,16 @@ export function createRouter(env: RawEnv) {
           return wh.handler(request);
         }
 
-        if (!getCookie(request, "auth_access_token")) {
-          return withVersionHeader(
-            Response.redirect(new URL("/api/auth/login?auto=1", url.origin).toString(), 302),
-          );
-        }
+        const gate = await auth.gateHtml(request, { publicPaths: ["/forbidden"] });
+        if (gate.kind === "redirect") return withVersionHeader(gate.response);
 
-        const assetResponse = await env.ASSETS.fetch(request);
-        if (assetResponse.status === 404) {
-          return withVersionHeader(
-            await env.ASSETS.fetch(new Request(new URL("/index.html", url.origin))),
-          );
+        let assetResponse = await env.ASSETS.fetch(request);
+        if (assetResponse.status === 404 && auth.isDocumentRequest(request)) {
+          assetResponse = await env.ASSETS.fetch(new Request(new URL("/index.html", url.origin)));
         }
 
         const headers = new Headers(assetResponse.headers);
+        for (const cookie of gate.setCookies) headers.append("Set-Cookie", cookie);
         headers.set("cache-control", "public, max-age=31536000, immutable");
         headers.set("x-shedflare-version", BUILD_INFO.version);
         return new Response(assetResponse.body, {

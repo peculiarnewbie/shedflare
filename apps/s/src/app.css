@@ -447,6 +447,14 @@ a {
   font-size: 14px;
 }
 
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg);
+}
+
 .loading-spinner {
   display: flex;
   align-items: center;

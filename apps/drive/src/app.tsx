@@ -3,6 +3,7 @@ import { Route, Router } from "@solidjs/router";
 import "./app.css";
 import Home from "./routes/index";
 import PublicFiles from "./routes/public";
+import NotFound from "./routes/not-found";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Router>
         <Route path="/" component={Home} />
         <Route path="/public" component={PublicFiles} />
+        <Route path="*" component={NotFound} />
       </Router>
     </MetaProvider>
   );

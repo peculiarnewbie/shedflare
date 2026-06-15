@@ -13,6 +13,7 @@ import {
 } from "solid-js";
 import { createStore } from "solid-js/store";
 import { useLiveQuery } from "@tanstack/solid-db";
+import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import {
   DEFAULT_SEARCHES_PER_TURN,
   SEARCHES_PER_TURN_OPTIONS,
@@ -413,8 +414,12 @@ const fetchBootstrap = async () => {
   }
   const payload = (await response.json()) as BootstrapPayload;
   const url = new URL(window.location.href);
-  if (!payload.session && url.searchParams.get("error") !== "no_session") {
-    window.location.replace("/api/auth/login?auto=1");
+  if (!payload.session) {
+    // Probe contradicts the hint: drop it so it can't paint a stale shell.
+    clearAuthHint();
+    if (url.searchParams.get("error") !== "no_session") {
+      window.location.replace("/api/auth/login?auto=1");
+    }
   }
   return payload;
 };
@@ -447,7 +452,15 @@ function LazyMarkdownBlock(props: { text: string; streaming?: boolean; citations
 
 export default function Home() {
   const [bootstrap] = createResource(fetchBootstrap);
-  const session = createMemo(() => bootstrap()?.session ?? null);
+  // Seed session from the auth hint while bootstrap is in flight so a
+  // known-signed-in user paints the chat shell immediately instead of the
+  // "Checking session…" loader. Once bootstrap resolves it always wins.
+  const hintEmail = readAuthHint();
+  const session = createMemo(() =>
+    bootstrap.loading && hintEmail
+      ? ({ user: { email: hintEmail } } as SessionPayload)
+      : (bootstrap()?.session ?? null),
+  );
   const exaApiKeyConfigured = createMemo(() => bootstrap()?.exaApiKeyConfigured ?? false);
   const [modelsResource] = createResource(() => Boolean(session()), fetchModels);
   const models = createMemo(() => modelsResource() ?? null);
@@ -3258,621 +3271,552 @@ export default function Home() {
 
   return (
     <>
-      <div class="shell">
-        <Show when={sidebarOpen()}>
-          <div class="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
-        </Show>
-        <aside classList={{ sidebar: true, open: sidebarOpen() }}>
-          <div class="sidebar-top">
-            <div class="brand">
-              <span class="brand-mark">shedflare</span>
-              <div style="min-width:0">
-                <h1>shedflare.chat</h1>
-                <p class="brand-email">{session()?.user?.email}</p>
+      <Show when={session()}>
+        <div class="shell">
+          <Show when={sidebarOpen()}>
+            <div class="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+          </Show>
+          <aside classList={{ sidebar: true, open: sidebarOpen() }}>
+            <div class="sidebar-top">
+              <div class="brand">
+                <span class="brand-mark">shedflare</span>
+                <div style="min-width:0">
+                  <h1>shedflare.chat</h1>
+                  <p class="brand-email">{session()?.user?.email}</p>
+                </div>
+              </div>
+              <div class="sidebar-actions">
+                <button class="btn btn-primary" onClick={createNewThread}>
+                  + Chat
+                </button>
+                <button class="btn" onClick={createNewWorkspace}>
+                  + Space
+                </button>
               </div>
             </div>
-            <div class="sidebar-actions">
-              <button class="btn btn-primary" onClick={createNewThread}>
-                + Chat
-              </button>
-              <button class="btn" onClick={createNewWorkspace}>
-                + Space
-              </button>
-            </div>
-          </div>
 
-          <div class="sidebar-scroll">
-            <p class="section-label">Workspaces</p>
-            <For each={workspaces()}>
-              {(workspace) => (
-                <div
-                  classList={{
-                    "nav-item": true,
-                    active: workspace.id === activeWorkspace()?.id,
-                  }}
-                  onClick={() => {
-                    if (editingWorkspaceId() === workspace.id) return;
-                    setActiveWorkspaceId(workspace.id);
-                    const wsThreads = (allThreads() as Thread[])
-                      .filter((t) => t.workspaceId === workspace.id && !t.archivedAt)
-                      .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
-                    if (wsThreads[0]) {
-                      setActiveThreadId(wsThreads[0].id);
-                    }
-                    setSidebarOpen(false);
-                  }}
-                >
-                  <Show
-                    when={editingWorkspaceId() === workspace.id}
-                    fallback={
-                      <div class="nav-item-row">
-                        <strong>{workspace.name}</strong>
-                        <div class="nav-item-actions">
-                          <button
-                            class="action-btn"
-                            title="Rename workspace"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEditingWorkspace(workspace.id, workspace.name);
-                            }}
-                          >
-                            ✎
-                          </button>
-                          <Show when={workspaces().length > 1}>
+            <div class="sidebar-scroll">
+              <p class="section-label">Workspaces</p>
+              <For each={workspaces()}>
+                {(workspace) => (
+                  <div
+                    classList={{
+                      "nav-item": true,
+                      active: workspace.id === activeWorkspace()?.id,
+                    }}
+                    onClick={() => {
+                      if (editingWorkspaceId() === workspace.id) return;
+                      setActiveWorkspaceId(workspace.id);
+                      const wsThreads = (allThreads() as Thread[])
+                        .filter((t) => t.workspaceId === workspace.id && !t.archivedAt)
+                        .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+                      if (wsThreads[0]) {
+                        setActiveThreadId(wsThreads[0].id);
+                      }
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <Show
+                      when={editingWorkspaceId() === workspace.id}
+                      fallback={
+                        <div class="nav-item-row">
+                          <strong>{workspace.name}</strong>
+                          <div class="nav-item-actions">
                             <button
-                              class="action-btn action-btn-danger"
-                              title="Delete workspace"
+                              class="action-btn"
+                              title="Rename workspace"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                requestWorkspaceDelete(workspace.id, workspace.name);
+                                startEditingWorkspace(workspace.id, workspace.name);
                               }}
                             >
-                              ×
+                              ✎
                             </button>
-                          </Show>
+                            <Show when={workspaces().length > 1}>
+                              <button
+                                class="action-btn action-btn-danger"
+                                title="Delete workspace"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  requestWorkspaceDelete(workspace.id, workspace.name);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </Show>
+                          </div>
                         </div>
-                      </div>
-                    }
-                  >
-                    <input
-                      class="inline-edit"
-                      value={editValue()}
-                      onInput={(e) => setEditValue(e.currentTarget.value)}
-                      onBlur={() => commitWorkspaceRename(workspace.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitWorkspaceRename(workspace.id);
-                        if (e.key === "Escape") setEditingWorkspaceId(null);
-                      }}
-                      ref={(el) => requestAnimationFrame(() => el.focus())}
-                    />
+                      }
+                    >
+                      <input
+                        class="inline-edit"
+                        value={editValue()}
+                        onInput={(e) => setEditValue(e.currentTarget.value)}
+                        onBlur={() => commitWorkspaceRename(workspace.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitWorkspaceRename(workspace.id);
+                          if (e.key === "Escape") setEditingWorkspaceId(null);
+                        }}
+                        ref={(el) => requestAnimationFrame(() => el.focus())}
+                      />
+                    </Show>
+                  </div>
+                )}
+              </For>
+
+              <div class="sidebar-section-divider" />
+
+              <div class="thread-filter-wrap">
+                <input
+                  class="thread-filter"
+                  type="search"
+                  placeholder="Search threads"
+                  value={threadFilter()}
+                  onInput={(e) => setThreadFilter(e.currentTarget.value)}
+                />
+              </div>
+
+              <Show
+                when={filteredThreads().length > 0}
+                fallback={
+                  <Show when={threadFilter().trim()}>
+                    <div class="sidebar-empty">No matching threads</div>
                   </Show>
-                </div>
-              )}
-            </For>
-
-            <div class="sidebar-section-divider" />
-
-            <div class="thread-filter-wrap">
-              <input
-                class="thread-filter"
-                type="search"
-                placeholder="Search threads"
-                value={threadFilter()}
-                onInput={(e) => setThreadFilter(e.currentTarget.value)}
-              />
+                }
+              >
+                <For each={groupThreadsByDate(filteredThreads())}>
+                  {(group) => (
+                    <>
+                      <p class="section-label">{group.label}</p>
+                      <For each={group.threads}>
+                        {(thread) => (
+                          <div
+                            title={thread.title}
+                            classList={{
+                              "nav-item": true,
+                              active: !isDraftViewActive() && thread.id === activeThread()?.id,
+                            }}
+                            onClick={() => {
+                              if (editingThreadId() === thread.id) return;
+                              activateWorkspaceThreadView(thread.workspaceId);
+                              setActiveThreadId(thread.id);
+                              setSettingsOpen(false);
+                              setSidebarOpen(false);
+                            }}
+                          >
+                            <Show
+                              when={editingThreadId() === thread.id}
+                              fallback={
+                                <div class="nav-item-row">
+                                  <Show when={busyThreadIds().has(thread.id)}>
+                                    <span class="thread-spinner" />
+                                  </Show>
+                                  <Show when={(thread as any).forkedFromThreadId}>
+                                    <span
+                                      class="fork-badge"
+                                      title="Forked from another thread"
+                                      aria-label="Forked thread"
+                                    >
+                                      ⑂
+                                    </span>
+                                  </Show>
+                                  <Show when={(thread as any).threadType === "comparison"}>
+                                    <span
+                                      class="comparison-badge"
+                                      title="Comparison thread"
+                                      aria-label="Comparison thread"
+                                    >
+                                      ⧉
+                                    </span>
+                                  </Show>
+                                  <strong>{thread.title}</strong>
+                                  <div class="nav-item-actions">
+                                    <span
+                                      class="action-btn"
+                                      title="Rename thread"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        startEditingThread(thread.id, thread.title);
+                                      }}
+                                    >
+                                      ✎
+                                    </span>
+                                    <span
+                                      class="action-btn action-btn-danger"
+                                      title="Delete thread"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void deleteThread(thread.id);
+                                      }}
+                                    >
+                                      ×
+                                    </span>
+                                  </div>
+                                </div>
+                              }
+                            >
+                              <input
+                                class="inline-edit"
+                                value={editValue()}
+                                onInput={(e) => setEditValue(e.currentTarget.value)}
+                                onBlur={() => commitThreadRename(thread.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") commitThreadRename(thread.id);
+                                  if (e.key === "Escape") setEditingThreadId(null);
+                                }}
+                                ref={(el) => requestAnimationFrame(() => el.focus())}
+                              />
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+                    </>
+                  )}
+                </For>
+              </Show>
             </div>
 
+            <div class="sidebar-footer">
+              <div class="sidebar-footer-controls">
+                <button
+                  classList={{ "theme-btn": true, active: settingsOpen() }}
+                  onClick={() => {
+                    setSettingsOpen(!settingsOpen());
+                    setSidebarOpen(false);
+                  }}
+                  title="Settings"
+                >
+                  Settings
+                </button>
+              </div>
+              <div class="sidebar-version" title={BUILD_INFO.tooltip}>
+                {BUILD_INFO.label}
+              </div>
+            </div>
+          </aside>
+
+          <main class="main-pane">
             <Show
-              when={filteredThreads().length > 0}
+              when={!settingsOpen()}
               fallback={
-                <Show when={threadFilter().trim()}>
-                  <div class="sidebar-empty">No matching threads</div>
-                </Show>
+                <Suspense fallback={null}>
+                  <SettingsPage
+                    workspaceName={activeWorkspace()?.name}
+                    systemPromptDraft={systemPromptDraft()}
+                    onSystemPromptInput={setSystemPromptDraft}
+                    onBack={() => setSettingsOpen(false)}
+                    onCancel={() => setSettingsOpen(false)}
+                    onSave={saveSystemPrompt}
+                    expandReasoningByDefault={effectiveExpandReasoningByDefault()}
+                    onExpandReasoningChange={handleExpandReasoningSettingChange}
+                    preferFreeSearch={effectivePreferFreeSearch()}
+                    onPreferFreeSearchChange={handlePreferFreeSearchSettingChange}
+                    exaApiKeyConfigured={exaApiKeyConfigured()}
+                    showTraces={effectiveShowTraces()}
+                    onShowTracesChange={handleShowTracesSettingChange}
+                    models={models()?.models ?? []}
+                    titleGenerationModelId={accountSettings()?.titleGenerationModelId ?? null}
+                    onTitleGenerationModelChange={handleTitleGenerationModelChange}
+                    onResetAllData={() => {
+                      if (confirm("Delete ALL data? This cannot be undone.")) {
+                        resetAllData();
+                      }
+                    }}
+                    archivedThreads={archivedThreads()}
+                    onDeleteThreadPermanently={(threadId) => {
+                      deleteThreadAction(threadId);
+                    }}
+                  />
+                </Suspense>
               }
             >
-              <For each={groupThreadsByDate(filteredThreads())}>
-                {(group) => (
-                  <>
-                    <p class="section-label">{group.label}</p>
-                    <For each={group.threads}>
-                      {(thread) => (
-                        <div
-                          title={thread.title}
+              <Show when={!headerVisible()}>
+                <button class="menu-btn-floating" onClick={() => setSidebarOpen(true)} title="Menu">
+                  ☰
+                </button>
+              </Show>
+              <header class="thread-header" classList={{ "is-hidden": !headerVisible() }}>
+                <button class="menu-btn" onClick={() => setSidebarOpen(true)}>
+                  ☰
+                </button>
+                <span class="workspace-label">{activeWorkspace()?.name}</span>
+                <h2>{selectedConversationThread()?.title ?? "New Chat"}</h2>
+                <Show when={activeWorkspace()?.systemPrompt}>
+                  <span class="system-prompt" title={activeWorkspace()?.systemPrompt}>
+                    {activeWorkspace()?.systemPrompt}
+                  </span>
+                </Show>
+              </header>
+
+              <Show
+                when={isComparisonThread()}
+                fallback={
+                  <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
+                    <For each={messageIds()}>{renderMessage}</For>
+                    <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
+                  </section>
+                }
+              >
+                <div class="comparison-view">
+                  <div class="comparison-tabs">
+                    <For each={comparisonSiblingThreads()}>
+                      {(sibling, index) => (
+                        <button
                           classList={{
-                            "nav-item": true,
-                            active: !isDraftViewActive() && thread.id === activeThread()?.id,
+                            "comparison-tab": true,
+                            "is-active": activeComparisonTab() === index(),
                           }}
                           onClick={() => {
-                            if (editingThreadId() === thread.id) return;
-                            activateWorkspaceThreadView(thread.workspaceId);
-                            setActiveThreadId(thread.id);
-                            setSettingsOpen(false);
-                            setSidebarOpen(false);
+                            setActiveComparisonTab(index());
+                            setActiveThreadId(sibling.id);
+                          }}
+                        >
+                          {sibling.modelId ?? `Model ${index() + 1}`}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                  <div class="comparison-columns">
+                    <For each={comparisonSiblingThreads()}>
+                      {(sibling, index) => {
+                        const siblingMessageIds = createMemo(() =>
+                          resolveThreadMessagePath(
+                            (allMessages() as Message[]).filter((m) => m.threadId === sibling.id),
+                            sibling.headMessageId ?? null,
+                          ).map((m) => m.id),
+                        );
+                        return (
+                          <div
+                            classList={{
+                              "comparison-column": true,
+                              "is-active": activeComparisonTab() === index(),
+                            }}
+                          >
+                            <div class="comparison-column-header">
+                              <span class="comparison-column-model">
+                                {sibling.modelId ?? `Model ${index() + 1}`}
+                              </span>
+                              <button
+                                type="button"
+                                class="msg-action-btn fork-btn"
+                                aria-label="Fork this comparison thread"
+                                title="Fork as standalone thread"
+                                onClick={() =>
+                                  forkThreadAction({
+                                    sourceThreadId: sibling.id,
+                                    sourceMessageId: sibling.headMessageId ?? "",
+                                    workspaceId: activeWorkspace()?.id ?? sibling.id,
+                                  })
+                                }
+                              >
+                                <svg
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  stroke-width="2"
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <line x1="6" y1="3" x2="6" y2="15" />
+                                  <circle cx="18" cy="6" r="3" />
+                                  <circle cx="6" cy="21" r="3" />
+                                  <line x1="15" y1="9" x2="9" y2="17" />
+                                </svg>
+                              </button>
+                            </div>
+                            <div class="comparison-column-timeline">
+                              <For each={siblingMessageIds()}>{renderMessage}</For>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+
+              <Show when={!isConnected()}>
+                <div class="connection-banner">Connecting…</div>
+              </Show>
+
+              <footer
+                class="composer"
+                classList={{ "composer-dragging": isDragging() }}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                <Show when={showScrollBtn()}>
+                  <button
+                    class="scroll-to-bottom"
+                    onClick={scrollToBottom}
+                    title="Scroll to bottom"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M8 3v10M4 9l4 4 4-4"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </Show>
+
+                <Show when={imageAttachmentsWarning()}>
+                  <div class="composer-warning">
+                    <span class="composer-warning-icon">⚠</span>
+                    <span>
+                      {selectedModel()?.name ?? "This model"} doesn't support image uploads.{" "}
+                      <button
+                        type="button"
+                        class="composer-warning-link"
+                        onClick={() => {
+                          const compatible = (models()?.models ?? []).find(
+                            (m) => m.attachment && m.id !== composerModelId(),
+                          );
+                          if (compatible) handleModelChange(compatible.id);
+                        }}
+                      >
+                        Switch to a compatible model
+                      </button>{" "}
+                      or remove the images.
+                    </span>
+                  </div>
+                </Show>
+                <Show when={composerAttachments().length > 0}>
+                  <div class="attachment-strip">
+                    <For each={composerAttachments()}>
+                      {(att) => (
+                        <div
+                          class="attachment-chip"
+                          classList={{
+                            "attachment-chip-uploading": att.status === "uploading",
+                            "attachment-chip-failed": att.status === "failed",
                           }}
                         >
                           <Show
-                            when={editingThreadId() === thread.id}
+                            when={att.previewUrl}
                             fallback={
-                              <div class="nav-item-row">
-                                <Show when={busyThreadIds().has(thread.id)}>
-                                  <span class="thread-spinner" />
-                                </Show>
-                                <Show when={(thread as any).forkedFromThreadId}>
-                                  <span
-                                    class="fork-badge"
-                                    title="Forked from another thread"
-                                    aria-label="Forked thread"
-                                  >
-                                    ⑂
-                                  </span>
-                                </Show>
-                                <Show when={(thread as any).threadType === "comparison"}>
-                                  <span
-                                    class="comparison-badge"
-                                    title="Comparison thread"
-                                    aria-label="Comparison thread"
-                                  >
-                                    ⧉
-                                  </span>
-                                </Show>
-                                <strong>{thread.title}</strong>
-                                <div class="nav-item-actions">
-                                  <span
-                                    class="action-btn"
-                                    title="Rename thread"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      startEditingThread(thread.id, thread.title);
-                                    }}
-                                  >
-                                    ✎
-                                  </span>
-                                  <span
-                                    class="action-btn action-btn-danger"
-                                    title="Delete thread"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void deleteThread(thread.id);
-                                    }}
-                                  >
-                                    ×
-                                  </span>
-                                </div>
-                              </div>
+                              <span class="attachment-chip-ext">
+                                {att.fileName.split(".").pop()?.toUpperCase().slice(0, 4) || "FILE"}
+                              </span>
                             }
                           >
-                            <input
-                              class="inline-edit"
-                              value={editValue()}
-                              onInput={(e) => setEditValue(e.currentTarget.value)}
-                              onBlur={() => commitThreadRename(thread.id)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") commitThreadRename(thread.id);
-                                if (e.key === "Escape") setEditingThreadId(null);
-                              }}
-                              ref={(el) => requestAnimationFrame(() => el.focus())}
-                            />
+                            <img class="attachment-chip-thumb" src={att.previewUrl} alt="" />
                           </Show>
+                          <span class="attachment-chip-name">{att.fileName}</span>
+                          <Show when={att.status === "uploading"}>
+                            <span class="attachment-chip-spinner" />
+                          </Show>
+                          <button
+                            class="attachment-chip-remove"
+                            onClick={() => removeAttachment(att.localId)}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
                         </div>
                       )}
                     </For>
-                  </>
-                )}
-              </For>
-            </Show>
-          </div>
+                  </div>
+                </Show>
 
-          <div class="sidebar-footer">
-            <div class="sidebar-footer-controls">
-              <button
-                classList={{ "theme-btn": true, active: settingsOpen() }}
-                onClick={() => {
-                  setSettingsOpen(!settingsOpen());
-                  setSidebarOpen(false);
-                }}
-                title="Settings"
-              >
-                Settings
-              </button>
-            </div>
-            <div class="sidebar-version" title={BUILD_INFO.tooltip}>
-              {BUILD_INFO.label}
-            </div>
-          </div>
-        </aside>
-
-        <main class="main-pane">
-          <Show
-            when={!settingsOpen()}
-            fallback={
-              <Suspense fallback={null}>
-                <SettingsPage
-                  workspaceName={activeWorkspace()?.name}
-                  systemPromptDraft={systemPromptDraft()}
-                  onSystemPromptInput={setSystemPromptDraft}
-                  onBack={() => setSettingsOpen(false)}
-                  onCancel={() => setSettingsOpen(false)}
-                  onSave={saveSystemPrompt}
-                  expandReasoningByDefault={effectiveExpandReasoningByDefault()}
-                  onExpandReasoningChange={handleExpandReasoningSettingChange}
-                  preferFreeSearch={effectivePreferFreeSearch()}
-                  onPreferFreeSearchChange={handlePreferFreeSearchSettingChange}
-                  exaApiKeyConfigured={exaApiKeyConfigured()}
-                  showTraces={effectiveShowTraces()}
-                  onShowTracesChange={handleShowTracesSettingChange}
-                  models={models()?.models ?? []}
-                  titleGenerationModelId={accountSettings()?.titleGenerationModelId ?? null}
-                  onTitleGenerationModelChange={handleTitleGenerationModelChange}
-                  onResetAllData={() => {
-                    if (confirm("Delete ALL data? This cannot be undone.")) {
-                      resetAllData();
-                    }
+                <textarea
+                  ref={composerInputRef!}
+                  class="composer-input"
+                  value={composerText()}
+                  onInput={(event) => {
+                    setComposerTextValue(event.currentTarget.value);
+                    const el = event.currentTarget;
+                    el.style.height = "auto";
+                    el.style.height = Math.min(el.scrollHeight, 160) + "px";
                   }}
-                  archivedThreads={archivedThreads()}
-                  onDeleteThreadPermanently={(threadId) => {
-                    deleteThreadAction(threadId);
-                  }}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder={
+                    composerAttachments().length > 0 ? "Add a message (optional)..." : "Message..."
+                  }
+                  rows={1}
                 />
-              </Suspense>
-            }
-          >
-            <Show when={!headerVisible()}>
-              <button class="menu-btn-floating" onClick={() => setSidebarOpen(true)} title="Menu">
-                ☰
-              </button>
-            </Show>
-            <header class="thread-header" classList={{ "is-hidden": !headerVisible() }}>
-              <button class="menu-btn" onClick={() => setSidebarOpen(true)}>
-                ☰
-              </button>
-              <span class="workspace-label">{activeWorkspace()?.name}</span>
-              <h2>{selectedConversationThread()?.title ?? "New Chat"}</h2>
-              <Show when={activeWorkspace()?.systemPrompt}>
-                <span class="system-prompt" title={activeWorkspace()?.systemPrompt}>
-                  {activeWorkspace()?.systemPrompt}
-                </span>
-              </Show>
-            </header>
-
-            <Show
-              when={isComparisonThread()}
-              fallback={
-                <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
-                  <For each={messageIds()}>{renderMessage}</For>
-                  <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
-                </section>
-              }
-            >
-              <div class="comparison-view">
-                <div class="comparison-tabs">
-                  <For each={comparisonSiblingThreads()}>
-                    {(sibling, index) => (
-                      <button
-                        classList={{
-                          "comparison-tab": true,
-                          "is-active": activeComparisonTab() === index(),
-                        }}
-                        onClick={() => {
-                          setActiveComparisonTab(index());
-                          setActiveThreadId(sibling.id);
-                        }}
-                      >
-                        {sibling.modelId ?? `Model ${index() + 1}`}
-                      </button>
-                    )}
-                  </For>
-                </div>
-                <div class="comparison-columns">
-                  <For each={comparisonSiblingThreads()}>
-                    {(sibling, index) => {
-                      const siblingMessageIds = createMemo(() =>
-                        resolveThreadMessagePath(
-                          (allMessages() as Message[]).filter((m) => m.threadId === sibling.id),
-                          sibling.headMessageId ?? null,
-                        ).map((m) => m.id),
-                      );
-                      return (
-                        <div
-                          classList={{
-                            "comparison-column": true,
-                            "is-active": activeComparisonTab() === index(),
-                          }}
+                <div class="composer-row">
+                  <input
+                    ref={fileInputRef!}
+                    type="file"
+                    multiple
+                    accept="image/*,text/*,.json,.csv,.pdf"
+                    style={{ display: "none" }}
+                    onChange={(e) => handleFileSelect(e.currentTarget.files)}
+                  />
+                  <div class="composer-context-controls">
+                    <Show
+                      when={comparisonMode() && isDraftViewActive()}
+                      fallback={
+                        <select
+                          class="composer-model"
+                          value={composerModelId()}
+                          onChange={(event) => handleModelChange(event.currentTarget.value)}
                         >
-                          <div class="comparison-column-header">
-                            <span class="comparison-column-model">
-                              {sibling.modelId ?? `Model ${index() + 1}`}
-                            </span>
-                            <button
-                              type="button"
-                              class="msg-action-btn fork-btn"
-                              aria-label="Fork this comparison thread"
-                              title="Fork as standalone thread"
-                              onClick={() =>
-                                forkThreadAction({
-                                  sourceThreadId: sibling.id,
-                                  sourceMessageId: sibling.headMessageId ?? "",
-                                  workspaceId: activeWorkspace()?.id ?? sibling.id,
-                                })
-                              }
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                              >
-                                <line x1="6" y1="3" x2="6" y2="15" />
-                                <circle cx="18" cy="6" r="3" />
-                                <circle cx="6" cy="21" r="3" />
-                                <line x1="15" y1="9" x2="9" y2="17" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div class="comparison-column-timeline">
-                            <For each={siblingMessageIds()}>{renderMessage}</For>
-                          </div>
-                        </div>
-                      );
-                    }}
-                  </For>
-                </div>
-              </div>
-            </Show>
-
-            <Show when={!isConnected()}>
-              <div class="connection-banner">Connecting…</div>
-            </Show>
-
-            <footer
-              class="composer"
-              classList={{ "composer-dragging": isDragging() }}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-            >
-              <Show when={showScrollBtn()}>
-                <button class="scroll-to-bottom" onClick={scrollToBottom} title="Scroll to bottom">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path
-                      d="M8 3v10M4 9l4 4 4-4"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </button>
-              </Show>
-
-              <Show when={imageAttachmentsWarning()}>
-                <div class="composer-warning">
-                  <span class="composer-warning-icon">⚠</span>
-                  <span>
-                    {selectedModel()?.name ?? "This model"} doesn't support image uploads.{" "}
-                    <button
-                      type="button"
-                      class="composer-warning-link"
-                      onClick={() => {
-                        const compatible = (models()?.models ?? []).find(
-                          (m) => m.attachment && m.id !== composerModelId(),
-                        );
-                        if (compatible) handleModelChange(compatible.id);
-                      }}
-                    >
-                      Switch to a compatible model
-                    </button>{" "}
-                    or remove the images.
-                  </span>
-                </div>
-              </Show>
-              <Show when={composerAttachments().length > 0}>
-                <div class="attachment-strip">
-                  <For each={composerAttachments()}>
-                    {(att) => (
-                      <div
-                        class="attachment-chip"
-                        classList={{
-                          "attachment-chip-uploading": att.status === "uploading",
-                          "attachment-chip-failed": att.status === "failed",
-                        }}
-                      >
-                        <Show
-                          when={att.previewUrl}
-                          fallback={
-                            <span class="attachment-chip-ext">
-                              {att.fileName.split(".").pop()?.toUpperCase().slice(0, 4) || "FILE"}
-                            </span>
-                          }
-                        >
-                          <img class="attachment-chip-thumb" src={att.previewUrl} alt="" />
-                        </Show>
-                        <span class="attachment-chip-name">{att.fileName}</span>
-                        <Show when={att.status === "uploading"}>
-                          <span class="attachment-chip-spinner" />
-                        </Show>
-                        <button
-                          class="attachment-chip-remove"
-                          onClick={() => removeAttachment(att.localId)}
-                          title="Remove"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </Show>
-
-              <textarea
-                ref={composerInputRef!}
-                class="composer-input"
-                value={composerText()}
-                onInput={(event) => {
-                  setComposerTextValue(event.currentTarget.value);
-                  const el = event.currentTarget;
-                  el.style.height = "auto";
-                  el.style.height = Math.min(el.scrollHeight, 160) + "px";
-                }}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder={
-                  composerAttachments().length > 0 ? "Add a message (optional)..." : "Message..."
-                }
-                rows={1}
-              />
-              <div class="composer-row">
-                <input
-                  ref={fileInputRef!}
-                  type="file"
-                  multiple
-                  accept="image/*,text/*,.json,.csv,.pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => handleFileSelect(e.currentTarget.files)}
-                />
-                <div class="composer-context-controls">
-                  <Show
-                    when={comparisonMode() && isDraftViewActive()}
-                    fallback={
-                      <select
-                        class="composer-model"
-                        value={composerModelId()}
-                        onChange={(event) => handleModelChange(event.currentTarget.value)}
-                      >
-                        <For each={models()?.models ?? []}>
-                          {(model) => <option value={model.id}>{model.name}</option>}
-                        </For>
-                      </select>
-                    }
-                  >
-                    <div class="comparison-model-picker">
-                      <For each={models()?.models ?? []}>
-                        {(model) => (
-                          <label
-                            classList={{
-                              "comparison-model-chip": true,
-                              "is-selected": comparisonModelIds().includes(model.id),
-                              "is-disabled":
-                                !comparisonModelIds().includes(model.id) &&
-                                comparisonModelIds().length >= 3,
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={comparisonModelIds().includes(model.id)}
-                              disabled={
-                                !comparisonModelIds().includes(model.id) &&
-                                comparisonModelIds().length >= 3
-                              }
-                              onChange={() => toggleComparisonModel(model.id)}
-                            />
-                            {model.name}
-                          </label>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                  <Show when={isDraftViewActive()}>
-                    <button
-                      type="button"
-                      class="composer-action-btn comparison-toggle"
-                      classList={{ "is-active": comparisonMode() }}
-                      title={
-                        comparisonMode()
-                          ? "Disable comparison mode"
-                          : "Compare 2-3 models side-by-side"
+                          <For each={models()?.models ?? []}>
+                            {(model) => <option value={model.id}>{model.name}</option>}
+                          </For>
+                        </select>
                       }
-                      onClick={() => {
-                        setComparisonMode(!comparisonMode());
-                        if (!comparisonMode()) {
-                          setComparisonModelIds(
-                            composerModelId()
-                              ? [composerModelId()]
-                              : [models()?.models?.[0]?.id ?? ""].filter(Boolean),
-                          );
-                        } else {
-                          setComparisonModelIds([]);
-                        }
-                      }}
                     >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <rect x="3" y="3" width="7" height="18" rx="1" />
-                        <rect x="14" y="3" width="7" height="18" rx="1" />
-                      </svg>
-                    </button>
-                  </Show>
-                  <button
-                    type="button"
-                    class="composer-action-btn"
-                    classList={{ "is-active": composerSearch() }}
-                    title={
-                      composerSearch()
-                        ? `Disable search (up to ${composerSearchLimit()} searches)`
-                        : `Enable search (up to ${composerSearchLimit()} searches)`
-                    }
-                    onClick={() => handleSearchChange(!composerSearch())}
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="2" y1="12" x2="22" y2="12" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
-                  </button>
-                  <select
-                    class="composer-search-limit"
-                    value={composerSearchLimit()}
-                    aria-label="Searches per response"
-                    title={`Allow up to ${composerSearchLimit()} searches per response`}
-                    onChange={(event) => handleSearchLimitChange(Number(event.currentTarget.value))}
-                  >
-                    <For each={SEARCHES_PER_TURN_OPTIONS}>
-                      {(value) => <option value={value}>{value}</option>}
-                    </For>
-                  </select>
-                  <ComposerOptions />
-                </div>
-                <div class="composer-actions">
-                  <button
-                    class="attach-btn"
-                    onClick={() => fileInputRef?.click()}
-                    title="Attach files"
-                  >
-                    +
-                  </button>
-                  <Show
-                    when={isSelectedThreadBusy() && streamingAssistantMessageId()}
-                    fallback={
+                      <div class="comparison-model-picker">
+                        <For each={models()?.models ?? []}>
+                          {(model) => (
+                            <label
+                              classList={{
+                                "comparison-model-chip": true,
+                                "is-selected": comparisonModelIds().includes(model.id),
+                                "is-disabled":
+                                  !comparisonModelIds().includes(model.id) &&
+                                  comparisonModelIds().length >= 3,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={comparisonModelIds().includes(model.id)}
+                                disabled={
+                                  !comparisonModelIds().includes(model.id) &&
+                                  comparisonModelIds().length >= 3
+                                }
+                                onChange={() => toggleComparisonModel(model.id)}
+                              />
+                              {model.name}
+                            </label>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                    <Show when={isDraftViewActive()}>
                       <button
                         type="button"
-                        class="composer-send-btn"
-                        disabled={!isConnected() || composer.sending}
-                        onClick={sendMessage}
+                        class="composer-action-btn comparison-toggle"
+                        classList={{ "is-active": comparisonMode() }}
                         title={
-                          !isConnected() ? "Connecting…" : composer.sending ? "Sending…" : "Send"
+                          comparisonMode()
+                            ? "Disable comparison mode"
+                            : "Compare 2-3 models side-by-side"
                         }
+                        onClick={() => {
+                          setComparisonMode(!comparisonMode());
+                          if (!comparisonMode()) {
+                            setComparisonModelIds(
+                              composerModelId()
+                                ? [composerModelId()]
+                                : [models()?.models?.[0]?.id ?? ""].filter(Boolean),
+                            );
+                          } else {
+                            setComparisonModelIds([]);
+                          }
+                        }}
                       >
                         <svg
                           width="16"
@@ -3884,76 +3828,147 @@ export default function Home() {
                           stroke-linecap="round"
                           stroke-linejoin="round"
                         >
-                          <line x1="22" y1="2" x2="11" y2="13" />
-                          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                          <rect x="3" y="3" width="7" height="18" rx="1" />
+                          <rect x="14" y="3" width="7" height="18" rx="1" />
                         </svg>
                       </button>
-                    }
-                  >
+                    </Show>
                     <button
                       type="button"
-                      class="composer-stop-btn"
-                      aria-label="Stop response"
-                      title="Stop response"
-                      onClick={cancelActiveResponse}
+                      class="composer-action-btn"
+                      classList={{ "is-active": composerSearch() }}
+                      title={
+                        composerSearch()
+                          ? `Disable search (up to ${composerSearchLimit()} searches)`
+                          : `Enable search (up to ${composerSearchLimit()} searches)`
+                      }
+                      onClick={() => handleSearchChange(!composerSearch())}
                     >
                       <svg
                         width="16"
                         height="16"
                         viewBox="0 0 24 24"
-                        fill="currentColor"
-                        stroke="none"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
                       >
-                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="2" y1="12" x2="22" y2="12" />
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                       </svg>
                     </button>
-                  </Show>
+                    <select
+                      class="composer-search-limit"
+                      value={composerSearchLimit()}
+                      aria-label="Searches per response"
+                      title={`Allow up to ${composerSearchLimit()} searches per response`}
+                      onChange={(event) =>
+                        handleSearchLimitChange(Number(event.currentTarget.value))
+                      }
+                    >
+                      <For each={SEARCHES_PER_TURN_OPTIONS}>
+                        {(value) => <option value={value}>{value}</option>}
+                      </For>
+                    </select>
+                    <ComposerOptions />
+                  </div>
+                  <div class="composer-actions">
+                    <button
+                      class="attach-btn"
+                      onClick={() => fileInputRef?.click()}
+                      title="Attach files"
+                    >
+                      +
+                    </button>
+                    <Show
+                      when={isSelectedThreadBusy() && streamingAssistantMessageId()}
+                      fallback={
+                        <button
+                          type="button"
+                          class="composer-send-btn"
+                          disabled={!isConnected() || composer.sending}
+                          onClick={sendMessage}
+                          title={
+                            !isConnected() ? "Connecting…" : composer.sending ? "Sending…" : "Send"
+                          }
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                          </svg>
+                        </button>
+                      }
+                    >
+                      <button
+                        type="button"
+                        class="composer-stop-btn"
+                        aria-label="Stop response"
+                        title="Stop response"
+                        onClick={cancelActiveResponse}
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          stroke="none"
+                        >
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                        </svg>
+                      </button>
+                    </Show>
+                  </div>
+                </div>
+              </footer>
+            </Show>
+          </main>
+          <Show when={workspaceDeleteTarget()}>
+            {(target) => (
+              <div class="modal-backdrop" onClick={closeWorkspaceDeleteModal}>
+                <div
+                  class="modal-card"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="workspace-delete-title"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 id="workspace-delete-title">Delete workspace?</h3>
+                  <p class="modal-copy">
+                    <strong>{target().name}</strong> will be removed from your sidebar. This action
+                    cannot be undone.
+                  </p>
+                  <div class="modal-actions">
+                    <button class="btn" onClick={closeWorkspaceDeleteModal}>
+                      Cancel
+                    </button>
+                    <button class="btn btn-danger" onClick={confirmWorkspaceDelete}>
+                      Delete workspace
+                    </button>
+                  </div>
                 </div>
               </div>
-            </footer>
+            )}
           </Show>
-        </main>
-        <Show when={workspaceDeleteTarget()}>
-          {(target) => (
-            <div class="modal-backdrop" onClick={closeWorkspaceDeleteModal}>
-              <div
-                class="modal-card"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="workspace-delete-title"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h3 id="workspace-delete-title">Delete workspace?</h3>
-                <p class="modal-copy">
-                  <strong>{target().name}</strong> will be removed from your sidebar. This action
-                  cannot be undone.
-                </p>
-                <div class="modal-actions">
-                  <button class="btn" onClick={closeWorkspaceDeleteModal}>
-                    Cancel
-                  </button>
-                  <button class="btn btn-danger" onClick={confirmWorkspaceDelete}>
-                    Delete workspace
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </Show>
-      </div>
+        </div>
+      </Show>
 
-      <Show when={bootstrap.loading}>
-        <div class="session-overlay">
+      <Show when={bootstrap.loading && !hintEmail}>
+        <div class="app-loader">
           <div class="session-overlay-card">
             <div class="session-spinner" />
-            <p class="eyebrow" style="margin-bottom:4px">
-              Personal deployment
-            </p>
-            <h1 class="session-title">shedflare chat</h1>
+            <h1 class="session-title">Shedflare Chat</h1>
             <p>Checking session…</p>
-            <p class="app-version" title={BUILD_INFO.tooltip}>
-              {BUILD_INFO.label}
-            </p>
           </div>
         </div>
       </Show>

@@ -69,7 +69,7 @@ export default function FileList() {
       <Show
         when={ctx.sortedFiles().length > 0}
         fallback={
-          <Show when={ctx.checkingSession() || false} fallback={<EmptyState />}>
+          <Show when={ctx.filesLoading()} fallback={<EmptyState />}>
             <ShimmerSkeleton />
           </Show>
         }

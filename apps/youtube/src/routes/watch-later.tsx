@@ -1,18 +1,49 @@
-import { createMemo, createSignal, onMount } from "solid-js";
+import { createMemo, createSignal, onMount, Show } from "solid-js";
 import type { VideoRow } from "../api";
 import { fetchWatchLater, pruneVideo, unpruneVideo } from "../api";
+import { useCounts } from "../app-context";
 import VideoRowComponent from "../components/video-row";
 
+type Filter = "all" | "unpruned" | "pruned";
+
+function VideoRowSkeleton() {
+  return (
+    <div class="skeleton-row">
+      <div class="skeleton" style={{ width: "18px", height: "18px", "border-radius": "4px" }} />
+      <div class="skeleton skeleton-thumb" />
+      <div
+        style={{
+          flex: "1",
+          "min-width": "0",
+          display: "flex",
+          "flex-direction": "column",
+          gap: "6px",
+        }}
+      >
+        <div class="skeleton skeleton-text" style={{ width: "60%" }} />
+        <div class="skeleton skeleton-text" style={{ width: "120px", height: "12px" }} />
+      </div>
+    </div>
+  );
+}
+
 export default function WatchLater() {
+  const counts = useCounts();
   const [videos, setVideos] = createSignal<VideoRow[]>([]);
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
-  const [filter, setFilter] = createSignal<"all" | "unpruned" | "pruned">("unpruned");
+  const [filter, setFilter] = createSignal<Filter>("unpruned");
+  const [loading, setLoading] = createSignal(true);
 
   onMount(async () => {
     try {
       const data = await fetchWatchLater();
       setVideos(data.videos);
-    } catch {}
+      counts.setWlCount(data.videos.filter((v) => !v.pruned).length);
+    } catch {
+      // keep empty list
+    } finally {
+      setLoading(false);
+    }
   });
 
   const filtered = createMemo(() => {
@@ -45,14 +76,22 @@ export default function WatchLater() {
   async function handlePrune(videoId: string) {
     try {
       await pruneVideo(videoId);
-      setVideos((prev) => prev.map((v) => (v.videoId === videoId ? { ...v, pruned: true } : v)));
+      setVideos((prev) => {
+        const next = prev.map((v) => (v.videoId === videoId ? { ...v, pruned: true } : v));
+        counts.setWlCount(next.filter((v) => !v.pruned).length);
+        return next;
+      });
     } catch {}
   }
 
   async function handleUnprune(videoId: string) {
     try {
       await unpruneVideo(videoId);
-      setVideos((prev) => prev.map((v) => (v.videoId === videoId ? { ...v, pruned: false } : v)));
+      setVideos((prev) => {
+        const next = prev.map((v) => (v.videoId === videoId ? { ...v, pruned: false } : v));
+        counts.setWlCount(next.filter((v) => !v.pruned).length);
+        return next;
+      });
     } catch {}
   }
 
@@ -80,7 +119,7 @@ export default function WatchLater() {
             }}
             value={filter()}
             onChange={(e) => {
-              setFilter(e.currentTarget.value as any);
+              setFilter(e.currentTarget.value as Filter);
               deselectAll();
             }}
           >
@@ -110,39 +149,50 @@ export default function WatchLater() {
         </div>
       )}
 
-      <div class="wl-list">
-        {filtered().length === 0 ? (
-          <div class="empty-state">
-            <svg
-              width="40"
-              height="40"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1"
-            >
-              <rect x="2" y="4" width="20" height="16" rx="2" />
-              <polygon points="10,9 15,12 10,15" fill="currentColor" stroke="none" />
-            </svg>
-            <div class="empty-state-title">Nothing here</div>
-            <div class="empty-state-desc">
-              {filter() === "pruned"
-                ? "No pruned videos."
-                : "Your Watch Later is empty. Sync to load videos."}
-            </div>
+      <Show
+        when={!loading()}
+        fallback={
+          <div class="wl-list">
+            {[1, 2, 3, 4, 5].map(() => (
+              <VideoRowSkeleton />
+            ))}
           </div>
-        ) : (
-          filtered().map((v) => (
-            <VideoRowComponent
-              video={v}
-              selected={selected().has(v.videoId)}
-              onToggle={() => toggleSelect(v.videoId)}
-              onPrune={() => handlePrune(v.videoId)}
-              onUnprune={() => handleUnprune(v.videoId)}
-            />
-          ))
-        )}
-      </div>
+        }
+      >
+        <div class="wl-list">
+          {filtered().length === 0 ? (
+            <div class="empty-state">
+              <svg
+                width="40"
+                height="40"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1"
+              >
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <polygon points="10,9 15,12 10,15" fill="currentColor" stroke="none" />
+              </svg>
+              <div class="empty-state-title">Nothing here</div>
+              <div class="empty-state-desc">
+                {filter() === "pruned"
+                  ? "No pruned videos."
+                  : "Your Watch Later is empty. Sync to load videos."}
+              </div>
+            </div>
+          ) : (
+            filtered().map((v) => (
+              <VideoRowComponent
+                video={v}
+                selected={selected().has(v.videoId)}
+                onToggle={() => toggleSelect(v.videoId)}
+                onPrune={() => handlePrune(v.videoId)}
+                onUnprune={() => handleUnprune(v.videoId)}
+              />
+            ))
+          )}
+        </div>
+      </Show>
     </div>
   );
 }

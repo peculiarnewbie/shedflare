@@ -1,7 +1,10 @@
-import { createMemo, createSignal, onMount } from "solid-js";
+import { createMemo, createSignal, onMount, Show } from "solid-js";
 import type { NotifRow } from "../api";
 import { fetchNotifications, markNotifRead, markAllNotifsRead } from "../api";
+import { useCounts } from "../app-context";
 import NotifItem from "../components/notif-item";
+
+type Filter = "all" | "unread";
 
 function groupByDate(notifs: NotifRow[]): Map<string, NotifRow[]> {
   const groups = new Map<string, NotifRow[]>();
@@ -23,15 +26,43 @@ function groupByDate(notifs: NotifRow[]): Map<string, NotifRow[]> {
   return groups;
 }
 
+function NotifSkeleton() {
+  return (
+    <div class="notif-item">
+      <div class="skeleton" style={{ width: "6px", height: "6px", "border-radius": "50%" }} />
+      <div
+        style={{
+          flex: "1",
+          "min-width": "0",
+          display: "flex",
+          "flex-direction": "column",
+          gap: "6px",
+        }}
+      >
+        <div class="skeleton skeleton-text" style={{ width: "100px", height: "12px" }} />
+        <div class="skeleton skeleton-text" style={{ width: "70%" }} />
+        <div class="skeleton skeleton-text" style={{ width: "80px", height: "11px" }} />
+      </div>
+    </div>
+  );
+}
+
 export default function Notifications() {
+  const counts = useCounts();
   const [notifs, setNotifs] = createSignal<NotifRow[]>([]);
-  const [filter, setFilter] = createSignal<"all" | "unread">("all");
+  const [filter, setFilter] = createSignal<Filter>("all");
+  const [loading, setLoading] = createSignal(true);
 
   onMount(async () => {
     try {
       const data = await fetchNotifications();
       setNotifs(data.notifications);
-    } catch {}
+      counts.setNotifCount(data.notifications.filter((n) => !n.read).length);
+    } catch {
+      // keep empty list
+    } finally {
+      setLoading(false);
+    }
   });
 
   const filtered = createMemo(() => {
@@ -48,14 +79,22 @@ export default function Notifications() {
   async function handleRead(id: string) {
     try {
       await markNotifRead(id);
-      setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      setNotifs((prev) => {
+        const next = prev.map((n) => (n.id === id ? { ...n, read: true } : n));
+        counts.setNotifCount(next.filter((n) => !n.read).length);
+        return next;
+      });
     } catch {}
   }
 
   async function handleReadAll() {
     try {
       await markAllNotifsRead();
-      setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+      setNotifs((prev) => {
+        const next = prev.map((n) => ({ ...n, read: true }));
+        counts.setNotifCount(0);
+        return next;
+      });
     } catch {}
   }
 
@@ -74,7 +113,7 @@ export default function Notifications() {
               "font-size": "13px",
             }}
             value={filter()}
-            onChange={(e) => setFilter(e.currentTarget.value as any)}
+            onChange={(e) => setFilter(e.currentTarget.value as Filter)}
           >
             <option value="all">All</option>
             <option value="unread">Unread ({unreadCount()})</option>
@@ -87,38 +126,49 @@ export default function Notifications() {
         </div>
       </div>
 
-      {filtered().length === 0 ? (
-        <div class="empty-state">
-          <svg
-            width="40"
-            height="40"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1"
-          >
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </svg>
-          <div class="empty-state-title">All caught up</div>
-          <div class="empty-state-desc">
-            {filter() === "unread"
-              ? "No unread notifications."
-              : "No notifications yet. Sync to load them."}
+      <Show
+        when={!loading()}
+        fallback={
+          <div class="notif-feed">
+            {[1, 2, 3, 4, 5].map(() => (
+              <NotifSkeleton />
+            ))}
           </div>
-        </div>
-      ) : (
-        [...grouped().entries()].map(([dateLabel, items]) => (
-          <div class="notif-date-group">
-            <div class="notif-date-header">{dateLabel}</div>
-            <div class="notif-feed">
-              {items.map((n) => (
-                <NotifItem notif={n} onRead={() => handleRead(n.id)} />
-              ))}
+        }
+      >
+        {filtered().length === 0 ? (
+          <div class="empty-state">
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1"
+            >
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <div class="empty-state-title">All caught up</div>
+            <div class="empty-state-desc">
+              {filter() === "unread"
+                ? "No unread notifications."
+                : "No notifications yet. Sync to load them."}
             </div>
           </div>
-        ))
-      )}
+        ) : (
+          [...grouped().entries()].map(([dateLabel, items]) => (
+            <div class="notif-date-group">
+              <div class="notif-date-header">{dateLabel}</div>
+              <div class="notif-feed">
+                {items.map((n) => (
+                  <NotifItem notif={n} onRead={() => handleRead(n.id)} />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </Show>
     </div>
   );
 }

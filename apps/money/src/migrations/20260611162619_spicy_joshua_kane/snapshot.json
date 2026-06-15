@@ -2,9 +2,7 @@
   "version": "7",
   "dialect": "sqlite",
   "id": "4cc8a1ec-2ff2-421b-87ba-019c044aa4a7",
-  "prevIds": [
-    "00000000-0000-0000-0000-000000000000"
-  ],
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
       "name": "accounts",
@@ -1535,13 +1533,9 @@
       "table": "transactions"
     },
     {
-      "columns": [
-        "category_id"
-      ],
+      "columns": ["category_id"],
       "tableTo": "categories",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1550,13 +1544,9 @@
       "table": "budgets"
     },
     {
-      "columns": [
-        "group_id"
-      ],
+      "columns": ["group_id"],
       "tableTo": "category_groups",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1565,13 +1555,9 @@
       "table": "categories"
     },
     {
-      "columns": [
-        "transfer_account_id"
-      ],
+      "columns": ["transfer_account_id"],
       "tableTo": "accounts",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1580,13 +1566,9 @@
       "table": "payees"
     },
     {
-      "columns": [
-        "account_id"
-      ],
+      "columns": ["account_id"],
       "tableTo": "accounts",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1595,13 +1577,9 @@
       "table": "schedules"
     },
     {
-      "columns": [
-        "payee_id"
-      ],
+      "columns": ["payee_id"],
       "tableTo": "payees",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1610,13 +1588,9 @@
       "table": "schedules"
     },
     {
-      "columns": [
-        "category_id"
-      ],
+      "columns": ["category_id"],
       "tableTo": "categories",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1625,13 +1599,9 @@
       "table": "schedules"
     },
     {
-      "columns": [
-        "transaction_id"
-      ],
+      "columns": ["transaction_id"],
       "tableTo": "transactions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1640,13 +1610,9 @@
       "table": "transaction_tags"
     },
     {
-      "columns": [
-        "tag_id"
-      ],
+      "columns": ["tag_id"],
       "tableTo": "tags",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1655,13 +1621,9 @@
       "table": "transaction_tags"
     },
     {
-      "columns": [
-        "account_id"
-      ],
+      "columns": ["account_id"],
       "tableTo": "accounts",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1670,13 +1632,9 @@
       "table": "transactions"
     },
     {
-      "columns": [
-        "category_id"
-      ],
+      "columns": ["category_id"],
       "tableTo": "categories",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1685,154 +1643,119 @@
       "table": "transactions"
     },
     {
-      "columns": [
-        "transaction_id",
-        "tag_id"
-      ],
+      "columns": ["transaction_id", "tag_id"],
       "nameExplicit": false,
       "name": "transaction_tags_pk",
       "entityType": "pks",
       "table": "transaction_tags"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "accounts_pk",
       "table": "accounts",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "budget_months_pk",
       "table": "budget_months",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "budgets_pk",
       "table": "budgets",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "categories_pk",
       "table": "categories",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "category_groups_pk",
       "table": "category_groups",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "custom_reports_pk",
       "table": "custom_reports",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "dashboard_widgets_pk",
       "table": "dashboard_widgets",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "exchange_rates_pk",
       "table": "exchange_rates",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "notes_pk",
       "table": "notes",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "payees_pk",
       "table": "payees",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "rules_pk",
       "table": "rules",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "schedules_pk",
       "table": "schedules",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "settings_pk",
       "table": "settings",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "tags_pk",
       "table": "tags",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "transaction_filters_pk",
       "table": "transaction_filters",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "transactions_pk",
       "table": "transactions",
@@ -1951,18 +1874,14 @@
       "table": "transactions"
     },
     {
-      "columns": [
-        "name"
-      ],
+      "columns": ["name"],
       "nameExplicit": false,
       "name": "category_groups_name_unique",
       "entityType": "uniques",
       "table": "category_groups"
     },
     {
-      "columns": [
-        "key"
-      ],
+      "columns": ["key"],
       "nameExplicit": false,
       "name": "settings_key_unique",
       "entityType": "uniques",

@@ -1,9 +1,9 @@
 {
-  "name": "Shedflare Drive",
-  "short_name": "Drive",
+  "name": "Shedflare Routines",
+  "short_name": "Routines",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#863bff",
+  "theme_color": "#2dd4a8",
   "background_color": "#0f0f17",
   "icons": [
     {

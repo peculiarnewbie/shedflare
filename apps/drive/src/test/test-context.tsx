@@ -13,6 +13,7 @@ export function createMockContext(overrides?: Partial<DriveContextValue>): Drive
   const [sortOrder, setSortOrder] = createSignal<"asc" | "desc">("desc");
   const [offset] = createSignal(0);
   const [hasMore] = createSignal(false);
+  const [filesLoading] = createSignal(false);
   const [checkingSession] = createSignal(false);
   const [unauthorized] = createSignal(false);
   const [userEmail] = createSignal("test@example.com");
@@ -50,6 +51,7 @@ export function createMockContext(overrides?: Partial<DriveContextValue>): Drive
     offset,
     hasMore,
     loadMore: noopAsync,
+    filesLoading,
     checkingSession,
     unauthorized,
     userEmail,

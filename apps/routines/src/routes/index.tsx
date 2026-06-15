@@ -11,8 +11,8 @@ export default function Home() {
 
   return (
     <div class="app">
-      <TopBar />
       <Show when={!ctx.loading()} fallback={<div class="loading">Loading…</div>}>
+        <TopBar />
         <main class="home">
           <section class="home-calendar reveal" style={{ "animation-delay": "0ms" }}>
             <Calendar />

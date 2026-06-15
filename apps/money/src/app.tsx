@@ -1,6 +1,7 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Route, Router } from "@solidjs/router";
 import { createResource, Show } from "solid-js";
+import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import "./app.css";
 
 // Lazy-load route components
@@ -17,6 +18,7 @@ import RulesPage from "./routes/rules";
 import TagsPage from "./routes/tags";
 import SettingsPage from "./routes/settings";
 import CategoriesPage from "./routes/categories";
+import NotFound from "./routes/not-found";
 import Layout from "./components/layout";
 
 type SessionPayload = {
@@ -31,6 +33,8 @@ const fetchSession = async (): Promise<SessionPayload> => {
   const response = await fetch("/api/session");
   if (!response.ok) {
     if (response.status === 401) {
+      // Probe contradicts the hint: drop it so it can't paint a stale shell.
+      clearAuthHint();
       if (shouldAttemptAutoLogin()) {
         window.location.replace("/api/auth/login?auto=1");
       }
@@ -95,13 +99,20 @@ function LoginScreen() {
 }
 
 export default function App() {
-  const [session] = createResource(fetchSession);
+  // Seed from the auth hint so a known-signed-in user paints the app shell
+  // immediately. Gate on the value (not loading) so the seed short-circuits the
+  // loading screen; the probe still reconciles.
+  const hint = readAuthHint();
+  const [session] = createResource(
+    fetchSession,
+    hint ? { initialValue: { user: { email: hint } } } : undefined,
+  );
 
   return (
     <MetaProvider>
       <Title>Shedflare Money</Title>
       <Show
-        when={!session.loading && session()?.user}
+        when={session()?.user}
         fallback={
           <Show when={session.loading} fallback={<LoginScreen />}>
             <LoadingScreen />
@@ -122,6 +133,7 @@ export default function App() {
           <Route path="/rules" component={RulesPage} />
           <Route path="/tags" component={TagsPage} />
           <Route path="/settings" component={SettingsPage} />
+          <Route path="*" component={NotFound} />
         </Router>
       </Show>
     </MetaProvider>

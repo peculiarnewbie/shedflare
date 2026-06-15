@@ -4,6 +4,7 @@ import "./app.css";
 import { RoutinesProvider } from "./context";
 import Home from "./routes/index";
 import Analytics from "./routes/analytics";
+import NotFound from "./routes/not-found";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Router>
           <Route path="/" component={Home} />
           <Route path="/analytics" component={Analytics} />
+          <Route path="*404" component={NotFound} />
         </Router>
       </RoutinesProvider>
     </MetaProvider>

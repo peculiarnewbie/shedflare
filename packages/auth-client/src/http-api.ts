@@ -50,9 +50,15 @@ export function createHttpApiAuth(env: AuthEnv) {
     handleCallback: auth.handleCallback,
     logout: auth.logout,
     sessionEndpoint: auth.sessionEndpoint,
+    gateHtml: auth.gateHtml,
     requireSession,
-    withSessionCookies: auth.withSessionCookies,
     createProtectedHandler,
+    withSessionCookies: auth.withSessionCookies,
+    withCookies: auth.withCookies,
+    getCookie: auth.getCookie,
+    isDocumentRequest: auth.isDocumentRequest,
+    validateReturnTo: auth.validateReturnTo,
+    serializeCookie: auth.serializeCookie,
   } as const;
 }
 

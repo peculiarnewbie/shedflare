@@ -1,4 +1,5 @@
 import { createContext, createEffect, createMemo, createSignal, useContext } from "solid-js";
+import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import * as Schema from "effect/Schema";
 import type { ContextMenuState, SortBy, SortOrder, Toast, ViewMode } from "./types";
 import {
@@ -71,6 +72,9 @@ export type DriveContextValue = {
   userEmail: () => string;
   signIn: () => void;
 
+  // ── Loading ──────────────────────────────
+  filesLoading: () => boolean;
+
   // ── Feedback ─────────────────────────────
   error: () => string;
   setError: (v: string) => void;
@@ -135,9 +139,16 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   const [hasMore, setHasMore] = createSignal(false);
 
   // ── Session ───────────────────────────────
-  const [checkingSession, setCheckingSession] = createSignal(true);
+  // Seed from the auth hint so a known-signed-in user paints the drive shell
+  // immediately instead of the "Checking session…" overlay. bootstrap() below
+  // reconciles against /api/session.
+  const sessionHint = readAuthHint();
+  const [checkingSession, setCheckingSession] = createSignal(!sessionHint);
   const [unauthorized, setUnauthorized] = createSignal(false);
-  const [userEmail, setUserEmail] = createSignal("");
+  const [userEmail, setUserEmail] = createSignal(sessionHint);
+
+  // ── Loading ───────────────────────────────
+  const [filesLoading, setFilesLoading] = createSignal(false);
 
   // ── Feedback ──────────────────────────────
   const [error, setError] = createSignal("");
@@ -171,13 +182,18 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   // ── API ───────────────────────────────────
 
   async function loadFiles(append = false, pageOffset = 0) {
-    const base = query() ? `?${query()}&` : "?";
-    const data = await requestJson<FilesResponse>(
-      `/api/files${base}limit=30&offset=${pageOffset}`,
-      FilesResponse,
-    );
-    setFiles((prev) => (append ? [...prev, ...data.files] : [...data.files]));
-    setHasMore(data.nextOffset !== null);
+    setFilesLoading(true);
+    try {
+      const base = query() ? `?${query()}&` : "?";
+      const data = await requestJson<FilesResponse>(
+        `/api/files${base}limit=30&offset=${pageOffset}`,
+        FilesResponse,
+      );
+      setFiles((prev) => (append ? [...prev, ...data.files] : [...data.files]));
+      setHasMore(data.nextOffset !== null);
+    } finally {
+      setFilesLoading(false);
+    }
   }
 
   async function loadTags() {
@@ -193,6 +209,10 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       await Promise.all([loadFiles(false, 0), loadTags()]);
     } catch (err) {
       if (err instanceof Error && err.message.includes("Unauthorized")) {
+        // Hint was stale (or this is the post-silent-auth sign-in screen): drop
+        // it and the optimistic email so we don't keep painting the shell.
+        clearAuthHint();
+        setUserEmail("");
         const url = new URL(window.location.href);
         if (url.searchParams.get("error") !== "no_session") {
           window.location.replace("/api/auth/login?auto=1");
@@ -378,6 +398,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     unauthorized,
     userEmail,
     signIn,
+    filesLoading,
     error,
     setError,
     toasts,

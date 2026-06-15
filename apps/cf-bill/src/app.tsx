@@ -1,21 +1,49 @@
 import { MetaProvider, Title } from "@solidjs/meta";
-import { createEffect, createSignal, type JSX, Show } from "solid-js";
+import { Route, Router } from "@solidjs/router";
+import type { RouteSectionProps } from "@solidjs/router";
+import {
+  createContext,
+  createEffect,
+  createSignal,
+  type Accessor,
+  type JSX,
+  type Setter,
+  Show,
+  useContext,
+} from "solid-js";
+import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import "./app.css";
 import Dashboard from "./routes/index";
+import NotFound from "./routes/not-found";
 
 type Session = { email: string } | null;
+
+interface SessionCtrl {
+  session: Accessor<Session>;
+  setSession: Setter<Session>;
+  loading: Accessor<boolean>;
+}
+
+const SessionContext = createContext<SessionCtrl | undefined>(undefined);
 
 function shouldAttemptAutoLogin() {
   return new URL(window.location.href).searchParams.get("error") !== "no_session";
 }
 
 export function useSession() {
-  return (globalThis as any).__shedflareSession as ReturnType<typeof createSessionSignal>;
+  const ctx = useContext(SessionContext);
+  if (!ctx) {
+    throw new Error("useSession must be used within a SessionContext.Provider");
+  }
+  return ctx;
 }
 
-function createSessionSignal() {
-  const [session, setSession] = createSignal<Session>(null);
-  const [loading, setLoading] = createSignal(true);
+function createSessionSignal(): SessionCtrl {
+  // Seed from the auth hint so a known-signed-in user paints the app shell
+  // immediately instead of the loading screen. The probe below reconciles.
+  const hint = readAuthHint();
+  const [session, setSession] = createSignal<Session>(hint ? { email: hint } : null);
+  const [loading, setLoading] = createSignal(!hint);
 
   createEffect(async () => {
     try {
@@ -23,17 +51,37 @@ function createSessionSignal() {
       if (res.ok) {
         const data = (await res.json()) as { user: { email: string } };
         setSession(data.user);
-      } else if (res.status === 401 && shouldAttemptAutoLogin()) {
-        window.location.replace("/api/auth/login?auto=1");
-        return;
+      } else if (res.status === 401) {
+        // Probe contradicts the hint: drop it so it can't paint a stale shell.
+        clearAuthHint();
+        setSession(null);
+        if (shouldAttemptAutoLogin()) {
+          window.location.replace("/api/auth/login?auto=1");
+          return;
+        }
       }
     } catch {
+      // ignore network/session errors and show the login state
     } finally {
       setLoading(false);
     }
   });
 
   return { session, setSession, loading };
+}
+
+function LoadingScreen() {
+  return (
+    <div class="loading-screen">
+      <div class="loading-screen-inner">
+        <div class="loading-screen-brand">
+          <div class="loading-screen-brand-dot" />
+          <span>CF Usage</span>
+        </div>
+        <div class="spinner" aria-label="Loading" />
+      </div>
+    </div>
+  );
 }
 
 function AppLayout(props: { children?: JSX.Element }) {
@@ -62,35 +110,40 @@ function AppLayout(props: { children?: JSX.Element }) {
   );
 }
 
+function AuthenticatedLayout(props: RouteSectionProps) {
+  return <AppLayout>{props.children}</AppLayout>;
+}
+
+function LoginOverlay() {
+  return (
+    <div class="session-overlay">
+      <div class="session-overlay-card">
+        <h2>CF Usage</h2>
+        <p class="session-overlay-desc">Cloudflare usage estimate vs plan limits dashboard.</p>
+        <a href="/api/auth/login" class="btn btn-primary">
+          Sign in with Google
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const sessionCtrl = createSessionSignal();
-  (globalThis as any).__shedflareSession = sessionCtrl;
 
   return (
     <MetaProvider>
       <Title>Shedflare CF Usage</Title>
-      <Show when={!sessionCtrl.loading()}>
-        <Show
-          when={sessionCtrl.session()}
-          fallback={
-            <div class="session-overlay">
-              <div class="session-overlay-card">
-                <h2>CF Usage</h2>
-                <p class="session-overlay-desc">
-                  Cloudflare usage estimate vs plan limits dashboard.
-                </p>
-                <a href="/api/auth/login" class="btn btn-primary">
-                  Sign in with Google
-                </a>
-              </div>
-            </div>
-          }
-        >
-          <AppLayout>
-            <Dashboard />
-          </AppLayout>
+      <SessionContext.Provider value={sessionCtrl}>
+        <Show when={!sessionCtrl.loading()} fallback={<LoadingScreen />}>
+          <Show when={sessionCtrl.session()} fallback={<LoginOverlay />}>
+            <Router root={AuthenticatedLayout}>
+              <Route path="/" component={Dashboard} />
+              <Route path="*404" component={NotFound} />
+            </Router>
+          </Show>
         </Show>
-      </Show>
+      </SessionContext.Provider>
     </MetaProvider>
   );
 }

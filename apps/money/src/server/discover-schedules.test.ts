@@ -15,12 +15,17 @@ function createTestDb(): Db {
   const dirs = readdirSync(MIGRATIONS_DIR).sort();
   for (const dir of dirs) {
     const raw = readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8");
-    const statements = raw.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
+    const statements = raw
+      .split("--> statement-breakpoint")
+      .map((s) => s.trim())
+      .filter(Boolean);
     for (const stmt of statements) {
       sqlite.exec(stmt);
     }
   }
-  sqlite.exec(`INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES ('latest', 16000, '${new Date().toISOString()}')`);
+  sqlite.exec(
+    `INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES ('latest', 16000, '${new Date().toISOString()}')`,
+  );
   sqlite.exec("PRAGMA foreign_keys = OFF");
   return db as unknown as Db;
 }

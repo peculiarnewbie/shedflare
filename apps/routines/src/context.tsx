@@ -1,5 +1,20 @@
 import { createContext, createEffect, createSignal, useContext, type JSX } from "solid-js";
+import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import type { Routine, RoutineCompletion } from "./types";
+
+function shouldAttemptAutoLogin() {
+  return new URL(window.location.href).searchParams.get("error") !== "no_session";
+}
+
+/**
+ * Sends an unauthenticated user to sign in without looping. After silent auth
+ * has already bounced back with `?error=no_session`, retrying it would loop
+ * (gate → issuer → no_session → gate), so fall back to interactive login.
+ */
+function redirectToLogin() {
+  clearAuthHint();
+  window.location.replace(shouldAttemptAutoLogin() ? "/api/auth/login?auto=1" : "/api/auth/login");
+}
 
 export function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -39,8 +54,11 @@ interface RoutinesContextValue {
 const RoutinesContext = createContext<RoutinesContextValue>();
 
 export function RoutinesProvider(props: { children: JSX.Element }) {
-  const [userEmail, setUserEmail] = createSignal("");
-  const [loading, setLoading] = createSignal(true);
+  // Seed from the auth hint so a known-signed-in user paints the app shell
+  // immediately instead of the loading state. bootstrap() reconciles below.
+  const sessionHint = readAuthHint();
+  const [userEmail, setUserEmail] = createSignal(sessionHint);
+  const [loading, setLoading] = createSignal(!sessionHint);
   const [selectedDate, setSelectedDate] = createSignal(toDateStr(new Date()));
 
   const [routines, setRoutines] = createSignal<Routine[]>([]);
@@ -52,7 +70,7 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
   async function loadDay(date: string) {
     const resp = await fetch(`/api/routines/day?date=${date}`);
     if (resp.status === 401 || resp.status === 403) {
-      window.location.replace("/api/auth/login?auto=1");
+      redirectToLogin();
       return;
     }
     if (!resp.ok) return;
@@ -79,7 +97,8 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
     try {
       const session = await fetch("/api/session");
       if (!session.ok) {
-        window.location.replace("/api/auth/login?auto=1");
+        setUserEmail("");
+        redirectToLogin();
         return;
       }
       const user = (await session.json()) as { user: { email: string } };

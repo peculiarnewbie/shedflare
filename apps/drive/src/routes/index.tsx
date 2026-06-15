@@ -20,7 +20,7 @@ function DriveShell() {
           <span class="top-bar-dot" />
           <span class="top-bar-title">Shedflare Drive</span>
         </div>
-        <Show when={ctx.userEmail()}>
+        <Show when={!ctx.checkingSession() && ctx.userEmail()}>
           <div class="top-bar-owner">
             <a class="btn top-bar-signout" href="/public">
               Public files
@@ -34,7 +34,7 @@ function DriveShell() {
       </header>
 
       {/* ── Main Layout ─────────────────────── */}
-      <Show when={ctx.userEmail()}>
+      <Show when={!ctx.checkingSession() && ctx.userEmail()}>
         <div class="drive-layout">
           <LeftSidebar />
 

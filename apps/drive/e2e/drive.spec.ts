@@ -36,6 +36,68 @@ async function closeSidebar(page: Page) {
 }
 
 test.describe("Drive E2E", () => {
+  test("paints the drive shell from the auth hint before the session probe resolves", async ({
+    page,
+  }) => {
+    // Hold the session probe open so it cannot be what unblocks the UI.
+    let releaseSession: (() => void) | undefined;
+    const sessionPromise = new Promise<void>((resolve) => {
+      releaseSession = resolve;
+    });
+    let sessionReleased = false;
+
+    await page.route("/api/session", async (route) => {
+      await sessionPromise;
+      sessionReleased = true;
+      await route.continue();
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    // The auth-hint cookie (set on the document response for an authenticated
+    // request) lets the real layout paint immediately — no "Checking session"
+    // overlay — while the probe is still pending. This is the optimistic
+    // Layer-2 paint; the probe still reconciles afterward.
+    await expect(page.locator(".drive-layout")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("text=Checking your Shedflare Drive session")).not.toBeVisible();
+    expect(sessionReleased).toBe(false); // it painted before the probe resolved
+
+    releaseSession?.();
+    await expect(page.locator(".drive-layout")).toBeVisible();
+  });
+
+  test("falls back to the neutral session loader when there is no auth hint", async ({ page }) => {
+    // Drop the optimistic auth hint before the app bundle reads it (init scripts
+    // run after the document commits its Set-Cookie but before page scripts),
+    // forcing the honest no-hint path so we exercise the safety-net loader
+    // rather than the wrong shell.
+    await page.addInitScript(() => {
+      document.cookie = "auth_hint=; Max-Age=0; Path=/";
+    });
+
+    let releaseSession: (() => void) | undefined;
+    const sessionPromise = new Promise<void>((resolve) => {
+      releaseSession = resolve;
+    });
+
+    await page.route("/api/session", async (route) => {
+      await sessionPromise;
+      await route.continue();
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    // With no hint and the probe pending, show the neutral loader — never the
+    // authenticated layout or file grid.
+    await expect(page.locator(".session-overlay")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("text=Checking your Shedflare Drive session")).toBeVisible();
+    await expect(page.locator(".drive-layout")).not.toBeVisible();
+    await expect(page.locator(".file-grid, .file-list")).not.toBeVisible();
+
+    releaseSession?.();
+    await expect(page.locator(".drive-layout")).toBeVisible({ timeout: 15_000 });
+  });
+
   test("full drive lifecycle", async ({ page, context }) => {
     const ts = Date.now();
     const fileName = `e2e-lifecycle-${ts}.txt`;

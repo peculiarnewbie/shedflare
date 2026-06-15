@@ -124,98 +124,105 @@ export default function Analytics() {
 
   return (
     <div class="app">
-      <TopBar />
-      <main class="analytics">
-        <div class="analytics-head reveal">
-          <div>
-            <p class="status-eyebrow">Looking back</p>
-            <h1 class="page-title">Your rhythm</h1>
-          </div>
-          <div class="period-tabs">
-            <For each={["week", "month", "year"] as Period[]}>
-              {(p) => (
-                <button
-                  class="period-tab"
-                  classList={{ active: period() === p }}
-                  onClick={() => setPeriod(p)}
-                >
-                  {p}
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
-
-        <div class="analytics-card reveal" style={{ "animation-delay": "60ms" }}>
-          <div class="analytics-bar">
-            <div class="period-nav">
-              <button class="cal-arrow" onClick={() => step(-1)} aria-label="Previous">
-                ‹
-              </button>
-              <span class="period-label">{label()}</span>
-              <button class="cal-arrow" onClick={() => step(1)} aria-label="Next">
-                ›
-              </button>
-              <button class="cal-today" onClick={() => setAnchor(new Date())}>
-                Now
-              </button>
+      <Show when={!ctx.loading()} fallback={<div class="loading">Loading…</div>}>
+        <TopBar />
+        <main class="analytics">
+          <div class="analytics-head reveal">
+            <div>
+              <p class="status-eyebrow">Looking back</p>
+              <h1 class="page-title">Your rhythm</h1>
             </div>
-            <span class="analytics-total">
-              <b>{totalDone()}</b> completions
-            </span>
+            <div class="period-tabs">
+              <For each={["week", "month", "year"] as Period[]}>
+                {(p) => (
+                  <button
+                    class="period-tab"
+                    classList={{ active: period() === p }}
+                    onClick={() => setPeriod(p)}
+                  >
+                    {p}
+                  </button>
+                )}
+              </For>
+            </div>
           </div>
 
-          <Show
-            when={activeRoutines().length > 0}
-            fallback={<div class="chart-empty">No routines selected.</div>}
-          >
-            <div class="chart-box">
-              <Chart data={rows()} height={300}>
-                <Axis axis="x" position="bottom" dataKey="label" type="point">
-                  <AxisMark />
-                  <AxisLabel />
-                  <AxisTooltip />
-                </Axis>
-                <Axis axis="y" position="left">
-                  <AxisMark />
-                  <AxisLabel />
-                </Axis>
-                <For each={activeRoutines()}>
+          <div class="analytics-card reveal" style={{ "animation-delay": "60ms" }}>
+            <Show
+              when={!completions.loading}
+              fallback={<div class="chart-empty">Loading history…</div>}
+            >
+              <div class="analytics-bar">
+                <div class="period-nav">
+                  <button class="cal-arrow" onClick={() => step(-1)} aria-label="Previous">
+                    ‹
+                  </button>
+                  <span class="period-label">{label()}</span>
+                  <button class="cal-arrow" onClick={() => step(1)} aria-label="Next">
+                    ›
+                  </button>
+                  <button class="cal-today" onClick={() => setAnchor(new Date())}>
+                    Now
+                  </button>
+                </div>
+                <span class="analytics-total">
+                  <b>{totalDone()}</b> completions
+                </span>
+              </div>
+
+              <Show
+                when={activeRoutines().length > 0}
+                fallback={<div class="chart-empty">No routines selected.</div>}
+              >
+                <div class="chart-box">
+                  <Chart data={rows()} height={300}>
+                    <Axis axis="x" position="bottom" dataKey="label" type="point">
+                      <AxisMark />
+                      <AxisLabel />
+                      <AxisTooltip />
+                    </Axis>
+                    <Axis axis="y" position="left">
+                      <AxisMark />
+                      <AxisLabel />
+                    </Axis>
+                    <For each={activeRoutines()}>
+                      {(r) => (
+                        <Bar
+                          dataKey={r.id}
+                          name={r.name}
+                          color={r.color}
+                          fill={r.color}
+                          stackId="routines"
+                        />
+                      )}
+                    </For>
+                  </Chart>
+                </div>
+              </Show>
+
+              <div class="filter-chips">
+                <span class="filter-label">Filter:</span>
+                <For each={ctx.routines()}>
                   {(r) => (
-                    <Bar
-                      dataKey={r.id}
-                      name={r.name}
-                      color={r.color}
-                      fill={r.color}
-                      stackId="routines"
-                    />
+                    <button
+                      class="chip"
+                      classList={{ off: excluded().has(r.id) }}
+                      style={{ "--c": r.color }}
+                      onClick={() => toggleRoutine(r.id)}
+                    >
+                      <span class="chip-dot" />
+                      {r.name}
+                    </button>
                   )}
                 </For>
-              </Chart>
-            </div>
-          </Show>
-
-          <div class="filter-chips">
-            <span class="filter-label">Filter:</span>
-            <For each={ctx.routines()}>
-              {(r) => (
-                <button
-                  class="chip"
-                  classList={{ off: excluded().has(r.id) }}
-                  style={{ "--c": r.color }}
-                  onClick={() => toggleRoutine(r.id)}
-                >
-                  <span class="chip-dot" />
-                  {r.name}
-                </button>
-              )}
-            </For>
-            <Show when={ctx.routines().length === 0}>
-              <span class="filter-label">No routines yet.</span>
+                <Show when={ctx.routines().length === 0}>
+                  <span class="filter-label">No routines yet.</span>
+                </Show>
+              </div>
             </Show>
           </div>
-        </div>
-      </main>
+        </main>
+      </Show>
     </div>
   );
 }

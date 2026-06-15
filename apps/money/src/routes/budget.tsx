@@ -134,24 +134,24 @@ export default function BudgetPage() {
         </div>
       </div>
 
-      <div class="budget-summary">
-        <div class="summary-item">
-          <span class="summary-label">To Budget</span>
-          <span
-            class={`summary-value ${privacyBlur().blurClass()}`}
-            classList={{ positive: toBudget() >= 0, negative: toBudget() < 0 }}
-          >
-            {fmt().formatCents(toBudget())}
-          </span>
-        </div>
-      </div>
-
       <PageState
         loading={loading()}
         error={error()}
         onRetry={loadBudget}
         loadingMessage="Loading budget..."
       >
+        <div class="budget-summary">
+          <div class="summary-item">
+            <span class="summary-label">To Budget</span>
+            <span
+              class={`summary-value ${privacyBlur().blurClass()}`}
+              classList={{ positive: toBudget() >= 0, negative: toBudget() < 0 }}
+            >
+              {fmt().formatCents(toBudget())}
+            </span>
+          </div>
+        </div>
+
         <Show
           when={grouped().length > 0}
           fallback={
