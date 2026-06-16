@@ -21,7 +21,7 @@ export const RoutinesStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("RoutinesWorker", {
       name: physicalName(stage, "routines"),
       main: "apps/routines/src/worker.ts",
-      assets: "apps/routines/dist/client",
+      assets: "apps/routines/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],

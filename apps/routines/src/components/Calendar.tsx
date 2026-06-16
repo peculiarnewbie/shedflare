@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { useRoutines, toDateStr } from "../context";
 
 const MONTH_NAMES = [
@@ -31,19 +31,22 @@ export default function Calendar() {
     return map;
   });
 
-  // Completed routine ids per date for the visible month. Re-fetches on month
-  // change or any mutation (revision).
-  const [dots] = createResource(
-    () => ({ y: viewYear(), m: viewMonth(), rev: ctx.revision() }),
-    async ({ y, m }) => {
-      const from = toDateStr(new Date(y, m, 1));
-      const to = toDateStr(new Date(y, m + 1, 0));
-      const completions = await ctx.fetchCompletions(from, to);
-      const byDate: Record<string, string[]> = {};
-      for (const c of completions) (byDate[c.date] ??= []).push(c.routineId);
-      return byDate;
-    },
-  );
+  // Derived dots from the context's month-level completions — always in sync
+  // with the routines list and completions, no independent fetch needed.
+  const dots = createMemo(() => {
+    const y = viewYear();
+    const m = viewMonth();
+    // Filter to the visible month (context loads the selected date's month,
+    // which is the same month when navigating via date clicks).
+    const monthPrefix = `${y}-${String(m + 1).padStart(2, "0")}-`;
+    const byDate: Record<string, string[]> = {};
+    for (const c of ctx.monthCompletions()) {
+      if (c.date.startsWith(monthPrefix) && c.completed) {
+        (byDate[c.date] ??= []).push(c.routineId);
+      }
+    }
+    return byDate;
+  });
 
   const cells = createMemo(() => {
     const y = viewYear();

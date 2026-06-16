@@ -130,6 +130,17 @@ button {
   color: var(--text-muted);
 }
 
+.build-marker {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

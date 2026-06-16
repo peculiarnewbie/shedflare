@@ -8,6 +8,7 @@ import FileList from "../components/FileList";
 import DeleteConfirm from "../components/DeleteConfirm";
 import ToastContainer from "../components/ToastContainer";
 import ContextMenu from "../components/ContextMenu";
+import { BUILD_INFO } from "../lib/build-info";
 
 function DriveShell() {
   const ctx = useDrive();
@@ -25,6 +26,9 @@ function DriveShell() {
             <a class="btn top-bar-signout" href="/public">
               Public files
             </a>
+            <span class="build-marker" title={BUILD_INFO.tooltip}>
+              {BUILD_INFO.label}
+            </span>
             <span class="top-bar-email">{ctx.userEmail()}</span>
             <form method="post" action="/api/auth/logout">
               <button class="btn top-bar-signout">Sign out</button>

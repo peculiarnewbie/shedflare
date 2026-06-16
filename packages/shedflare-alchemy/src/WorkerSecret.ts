@@ -45,7 +45,7 @@ export const WorkerSecretProvider = () =>
   Provider.succeed(WorkerSecret, {
     reconcile: Effect.fn(function* ({ news }) {
       const resolved = news as ResolvedNews;
-      const credentials = yield* CloudflareEnvironment;
+      const credentials = yield* yield* CloudflareEnvironment;
       const { accountId } = credentials;
       const { workerName, binding } = resolved;
 
@@ -84,7 +84,7 @@ export const WorkerSecretProvider = () =>
 
     read: Effect.fn(function* ({ olds, output }) {
       if (!output?.present) return undefined;
-      const credentials = yield* CloudflareEnvironment;
+      const credentials = yield* yield* CloudflareEnvironment;
       const { accountId } = credentials;
       const existing = yield* Effect.tryPromise({
         try: () => listWorkerSecretNames(credentials, accountId, olds.workerName as string),

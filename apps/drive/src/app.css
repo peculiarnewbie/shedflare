@@ -188,6 +188,17 @@ select {
   white-space: nowrap;
 }
 
+.build-marker {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .top-bar-signout {
   font-size: 0.72rem;
   padding: 5px 10px;

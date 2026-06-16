@@ -169,6 +169,17 @@ button {
   font-size: 0.8rem;
 }
 
+.build-marker {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Page shells ──────────────────────────────────── */
 
 .app {

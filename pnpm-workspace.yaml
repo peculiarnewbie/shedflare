@@ -5,7 +5,7 @@ packages:
 
 catalog:
   "@better-auth/infra": ^0.1.14
-  "@effect/platform-node": 4.0.0-beta.75
+  "@effect/platform-node": 4.0.0-beta.83
   "@tanstack/db": ^0.6.5
   "@tanstack/solid-db": ^0.2.19
   "@tanstack/solid-form": ^1.32.0
@@ -13,12 +13,12 @@ catalog:
   "@types/better-sqlite3": ^7.6.13
   "@types/node": ^24.12.2
   "@typescript/native-preview": beta
-  alchemy: 2.0.0-beta.51
+  alchemy: 2.0.0-beta.55
   better-sqlite3: ^12.9.0
   dompurify: ^3.4.0
-  drizzle-kit: 1.0.0-rc.4-ca0f029
-  drizzle-orm: 1.0.0-rc.4-5d5b77c
-  effect: 4.0.0-beta.75
+  drizzle-kit: 1.0.0-rc.3
+  drizzle-orm: 1.0.0-rc.3
+  effect: 4.0.0-beta.83
   highlight.js: ^11.11.1
   jiti: ^2.7.0
   jose: ^6.2.2
@@ -38,6 +38,8 @@ catalogMode: prefer
 overrides:
   vite: "catalog:"
   vitest: "catalog:"
+  drizzle-orm: "catalog:"
+  drizzle-kit: "catalog:"
 peerDependencyRules:
   allowAny:
     - vite

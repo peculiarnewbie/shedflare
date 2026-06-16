@@ -1,5 +1,6 @@
 import { useLocation } from "@solidjs/router";
 import { createMemo } from "solid-js";
+import { BUILD_INFO } from "../lib/build-info";
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
@@ -29,6 +30,9 @@ export default function TopBar(props: { syncedAt: string | null }) {
       <div class="top-bar-separator" />
       <span class="top-bar-title">{title()}</span>
       <span class="top-bar-sync">{syncLabel()}</span>
+      <span class="build-marker" title={BUILD_INFO.tooltip}>
+        {BUILD_INFO.label}
+      </span>
     </header>
   );
 }

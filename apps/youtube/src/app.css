@@ -144,6 +144,17 @@ input {
   color: var(--text-muted);
 }
 
+.build-marker {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ─── Sidebar ─── */
 
 .sidebar {

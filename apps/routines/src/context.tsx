@@ -1,4 +1,11 @@
-import { createContext, createEffect, createSignal, useContext, type JSX } from "solid-js";
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  useContext,
+  type JSX,
+} from "solid-js";
 import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import type { Routine, RoutineCompletion } from "./types";
 
@@ -35,6 +42,9 @@ interface RoutinesContextValue {
   setSelectedDate: (date: string) => void;
 
   routines: () => Routine[];
+  /** All completed completions for the selected date's month. */
+  monthCompletions: () => RoutineCompletion[];
+  /** Completions for the selected date only (derived from monthCompletions). */
   completions: () => RoutineCompletion[];
   /** Completed count this week (Sun–Sat of the selected date) per routine id. */
   weekCounts: () => Record<string, number>;
@@ -62,28 +72,62 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
   const [selectedDate, setSelectedDate] = createSignal(toDateStr(new Date()));
 
   const [routines, setRoutines] = createSignal<Routine[]>([]);
-  const [completions, setCompletions] = createSignal<RoutineCompletion[]>([]);
-  const [weekCounts, setWeekCounts] = createSignal<Record<string, number>>({});
+  const [monthCompletions, setMonthCompletions] = createSignal<RoutineCompletion[]>([]);
   const [sleepTime, setSleepTime] = createSignal("22:00");
   const [revision, setRevision] = createSignal(0);
 
+  /** Completions for the selected date, derived from the month-level data. */
+  const completions = createMemo(() => {
+    const date = selectedDate();
+    return monthCompletions().filter((c) => c.date === date);
+  });
+
+  /** Completed count per routine for the Sun–Sat week of the selected date. */
+  const weekCounts = createMemo(() => {
+    const [y, m, d] = selectedDate().split("-").map(Number);
+    const dow = new Date(y, m - 1, d).getDay();
+    const weekStart = new Date(y, m - 1, d - dow);
+    const fmt = (dt: Date) =>
+      `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    const start = fmt(weekStart);
+    const end = fmt(new Date(weekStart.getTime() + 6 * 86_400_000));
+    const counts: Record<string, number> = {};
+    for (const c of monthCompletions()) {
+      if (c.completed && c.date >= start && c.date <= end) {
+        counts[c.routineId] = (counts[c.routineId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  });
+
   async function loadDay(date: string) {
-    const resp = await fetch(`/api/routines/day?date=${date}`);
-    if (resp.status === 401 || resp.status === 403) {
+    const [y, m] = date.split("-").map(Number);
+    const monthStart = `${y}-${String(m).padStart(2, "0")}-01`;
+    const monthEnd = new Date(y, m, 0);
+    const monthEndStr = `${y}-${String(m).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+
+    const [dayResp, compsResp] = await Promise.all([
+      fetch(`/api/routines/day?date=${date}`),
+      fetch(`/api/routines/completions?from=${monthStart}&to=${monthEndStr}`),
+    ]);
+
+    if (dayResp.status === 401 || dayResp.status === 403) {
       redirectToLogin();
       return;
     }
-    if (!resp.ok) return;
-    const data = (await resp.json()) as {
+    if (!dayResp.ok) return;
+
+    const data = (await dayResp.json()) as {
       routines: Routine[];
-      completions: RoutineCompletion[];
-      weekCounts: Record<string, number>;
       sleepTime: string;
     };
     setRoutines(data.routines);
-    setCompletions(data.completions);
-    setWeekCounts(data.weekCounts ?? {});
     setSleepTime(data.sleepTime);
+
+    if (compsResp.ok) {
+      const comps = (await compsResp.json()) as { completions: RoutineCompletion[] };
+      setMonthCompletions(comps.completions);
+    }
   }
 
   async function fetchCompletions(from: string, to: string): Promise<RoutineCompletion[]> {
@@ -111,65 +155,146 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
     }
   }
 
+  let lastLoadedMonth = "";
+
   createEffect(() => {
     const date = selectedDate();
     if (!userEmail()) return;
-    void loadDay(date);
+    const monthKey = date.slice(0, 7);
+    if (monthKey !== lastLoadedMonth) {
+      lastLoadedMonth = monthKey;
+      void loadDay(date);
+    }
   });
 
   const bump = () => setRevision((r) => r + 1);
 
+  const rollback = () => {
+    lastLoadedMonth = "";
+    void loadDay(selectedDate());
+  };
+
   const addRoutine = async (input: RoutineInput) => {
+    const tempId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const optimistic: Routine = {
+      id: tempId,
+      name: input.name,
+      color: input.color,
+      durationMinutes: input.durationMinutes,
+      weeklyTarget: input.weeklyTarget,
+      sortOrder: routines().length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setRoutines((prev) => [...prev, optimistic]);
+    bump();
+
     const resp = await fetch("/api/routines", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     });
     if (resp.ok) {
-      await loadDay(selectedDate());
-      bump();
+      const data = (await resp.json()) as { id: string };
+      setRoutines((prev) => prev.map((r) => (r.id === tempId ? { ...r, id: data.id } : r)));
+    } else {
+      rollback();
     }
   };
 
   const updateRoutine = async (id: string, input: RoutineInput) => {
+    const prev = routines();
+    setRoutines((r) =>
+      r.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              name: input.name,
+              color: input.color,
+              durationMinutes: input.durationMinutes,
+              weeklyTarget: input.weeklyTarget,
+              updatedAt: new Date().toISOString(),
+            }
+          : r,
+      ),
+    );
+    bump();
+
     const resp = await fetch(`/api/routines/${id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     });
-    if (resp.ok) {
-      await loadDay(selectedDate());
-      bump();
+    if (!resp.ok) {
+      setRoutines(prev);
+      rollback();
     }
   };
 
   const deleteRoutine = async (id: string) => {
+    const prevRoutines = routines();
+    const prevMonthCompletions = monthCompletions();
+    setRoutines((r) => r.filter((r) => r.id !== id));
+    setMonthCompletions((c) => c.filter((c) => c.routineId !== id));
+    bump();
+
     const resp = await fetch(`/api/routines/${id}`, { method: "DELETE" });
-    if (resp.ok) {
-      await loadDay(selectedDate());
-      bump();
+    if (!resp.ok) {
+      setRoutines(prevRoutines);
+      setMonthCompletions(prevMonthCompletions);
+      rollback();
     }
   };
 
   const toggleCompletion = async (routineId: string) => {
+    const date = selectedDate();
+    const existing = monthCompletions().find((c) => c.routineId === routineId && c.date === date);
+    const now = new Date().toISOString();
+
+    // Optimistically flip completion in month-level data.
+    // completions and weekCounts are derived memos that recompute automatically.
+    if (existing) {
+      const newCompleted = !existing.completed;
+      setMonthCompletions((c) =>
+        c.map((c) =>
+          c.id === existing.id ? { ...c, completed: newCompleted, updatedAt: now } : c,
+        ),
+      );
+    } else {
+      const tempId = crypto.randomUUID();
+      setMonthCompletions((c) => [
+        ...c,
+        {
+          id: tempId,
+          routineId,
+          date,
+          completed: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+    }
+    bump();
+
     const resp = await fetch("/api/routines/completion", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ routineId, date: selectedDate() }),
+      body: JSON.stringify({ routineId, date }),
     });
-    if (resp.ok) {
-      await loadDay(selectedDate());
-      bump();
-    }
+    if (!resp.ok) rollback();
   };
 
   const updateSleepTime = async (value: string) => {
+    const prev = sleepTime();
+    setSleepTime(value);
+
     const resp = await fetch("/api/routines/settings/sleep-time", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sleepTime: value }),
     });
-    if (resp.ok) setSleepTime(value);
+    if (!resp.ok) setSleepTime(prev);
   };
 
   void bootstrap();
@@ -182,6 +307,7 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
         selectedDate,
         setSelectedDate,
         routines,
+        monthCompletions,
         completions,
         weekCounts,
         sleepTime,

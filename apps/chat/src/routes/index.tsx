@@ -25,6 +25,7 @@ import {
 import type {
   AccountSettings,
   Attachment,
+  ComparisonGroup,
   ExtractRun,
   Message,
   MessagePart,
@@ -542,37 +543,6 @@ export default function Home() {
   // Active comparison tab (for mobile view)
   const [activeComparisonTab, setActiveComparisonTab] = createSignal(0);
 
-  // Check if current thread is a comparison thread
-  const isComparisonThread = createMemo(() => {
-    const thread = selectedConversationThread();
-    return thread?.threadType === "comparison" && thread?.comparisonGroupId;
-  });
-
-  // Get comparison group for current thread
-  const currentComparisonGroup = createMemo(() => {
-    const thread = selectedConversationThread();
-    if (!thread?.comparisonGroupId) return null;
-    return (
-      (allComparisonGroups() as any[]).find((cg: any) => cg.id === thread.comparisonGroupId) ?? null
-    );
-  });
-
-  // Get sibling threads in the same comparison group
-  const comparisonSiblingThreads = createMemo(() => {
-    const group = currentComparisonGroup();
-    if (!group) return [];
-    const threadIds: string[] = (() => {
-      try {
-        return JSON.parse(group.threadIds);
-      } catch {
-        return [];
-      }
-    })();
-    return threadIds
-      .map((id: string) => (allThreads() as Thread[]).find((t) => t.id === id))
-      .filter((t): t is Thread => !!t && !t.archivedAt);
-  });
-
   // Inline editing state
   const [editingThreadId, setEditingThreadId] = createSignal<string | null>(null);
   const [editingWorkspaceId, setEditingWorkspaceId] = createSignal<string | null>(null);
@@ -668,6 +638,38 @@ export default function Home() {
   const selectedConversationThread = createMemo(
     () => (isDraftViewActive() ? activeDraft()?.thread : activeThread()) ?? null,
   );
+  // Check if current thread is a comparison thread
+  const isComparisonThread = createMemo(() => {
+    const thread = selectedConversationThread();
+    return thread?.threadType === "comparison" && thread?.comparisonGroupId;
+  });
+
+  // Get comparison group for current thread
+  const currentComparisonGroup = createMemo(() => {
+    const thread = selectedConversationThread();
+    if (!thread?.comparisonGroupId) return null;
+    return (
+      (allComparisonGroups() as ComparisonGroup[]).find(
+        (group) => group.id === thread.comparisonGroupId,
+      ) ?? null
+    );
+  });
+
+  // Get sibling threads in the same comparison group
+  const comparisonSiblingThreads = createMemo(() => {
+    const group = currentComparisonGroup();
+    if (!group) return [];
+    const threadIds: string[] = (() => {
+      try {
+        return JSON.parse(group.threadIds) as string[];
+      } catch {
+        return [];
+      }
+    })();
+    return threadIds
+      .map((id) => (allThreads() as Thread[]).find((thread) => thread.id === id))
+      .filter((thread): thread is Thread => !!thread && !thread.archivedAt);
+  });
   const composerText = () => (isDraftViewActive() ? (activeDraft()?.text ?? "") : composer.text);
   const composerAttachments = () =>
     isDraftViewActive() ? (activeDraft()?.attachments ?? []) : composer.attachments;

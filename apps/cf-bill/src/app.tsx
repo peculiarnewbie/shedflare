@@ -13,6 +13,7 @@ import {
 } from "solid-js";
 import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import "./app.css";
+import { BUILD_INFO } from "./lib/build-info";
 import Dashboard from "./routes/index";
 import NotFound from "./routes/not-found";
 
@@ -97,6 +98,9 @@ function AppLayout(props: { children?: JSX.Element }) {
         <div class="top-bar-separator" />
         <span class="top-bar-title">Estimated Usage vs Plan Limits</span>
         <div class="top-bar-right">
+          <span class="build-marker" title={BUILD_INFO.tooltip}>
+            {BUILD_INFO.label}
+          </span>
           <span class="top-bar-email">{sessionCtrl.session()?.email}</span>
           <form action="/api/auth/logout" method="post">
             <button type="submit" class="btn btn-ghost btn-sm">

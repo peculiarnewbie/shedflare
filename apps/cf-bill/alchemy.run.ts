@@ -18,7 +18,7 @@ export const CfBillStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("CfBillWorker", {
       name: Shedflare.physicalName(stage, "cf-bill"),
       main: "apps/cf-bill/src/worker.ts",
-      assets: "apps/cf-bill/dist/client",
+      assets: "apps/cf-bill/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],

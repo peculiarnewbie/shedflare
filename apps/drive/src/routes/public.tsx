@@ -1,5 +1,6 @@
 import { For, Show, createResource } from "solid-js";
 import { fileGlyph, formatSize } from "../context";
+import { BUILD_INFO } from "../lib/build-info";
 import type { DriveFile } from "../types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +95,9 @@ export default function PublicFiles() {
           <span class="top-bar-dot" />
           <span class="top-bar-title">Shedflare Drive</span>
         </a>
+        <span class="build-marker" title={BUILD_INFO.tooltip}>
+          {BUILD_INFO.label}
+        </span>
         <a class="btn top-bar-signout" href="/">
           Private drive
         </a>

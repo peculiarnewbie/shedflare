@@ -28,7 +28,7 @@ export const DriveStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("DriveWorker", {
       name: physicalName(stage, "drive"),
       main: "apps/drive/src/worker.ts",
-      assets: "apps/drive/dist/client",
+      assets: "apps/drive/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],

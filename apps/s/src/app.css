@@ -97,6 +97,17 @@ a {
   font-size: 13px;
 }
 
+.build-marker {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .main-content {
   flex: 1;
   overflow-y: auto;

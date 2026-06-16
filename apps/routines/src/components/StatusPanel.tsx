@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { useRoutines, toDateStr } from "../context";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -77,6 +77,7 @@ export default function StatusPanel() {
   });
 
   const overbooked = createMemo(() => isToday() && remainingMins() > minsUntilSleep());
+  const freeTime = createMemo(() => Math.max(0, minsUntilSleep() - remainingMins()));
   const fillPercent = createMemo(() => {
     const win = minsUntilSleep();
     if (win === 0) return 100;
@@ -95,15 +96,20 @@ export default function StatusPanel() {
     }
     return days;
   });
-  const [recent] = createResource(
-    () => ({ rev: ctx.revision(), from: week()[0].date, to: week()[6].date }),
-    async ({ from, to }) => {
-      const completions = await ctx.fetchCompletions(from, to);
-      const byDate: Record<string, string[]> = {};
-      for (const c of completions) (byDate[c.date] ??= []).push(c.routineId);
-      return byDate;
-    },
-  );
+  // Derived from the context's month-level completions — always in sync.
+  // Days outside the loaded month (rare edge case) show no dots.
+  const recent = createMemo(() => {
+    const byDate: Record<string, string[]> = {};
+    const mc = ctx.monthCompletions();
+    for (const d of week()) {
+      for (const c of mc) {
+        if (c.date === d.date && c.completed) {
+          (byDate[d.date] ??= []).push(c.routineId);
+        }
+      }
+    }
+    return byDate;
+  });
 
   return (
     <div class="status">
@@ -191,9 +197,9 @@ export default function StatusPanel() {
       <Show when={isToday()}>
         <div class="status-progress">
           <div class="status-progress-head">
-            <span>{fmt(remainingMins())} of routines left</span>
+            <span>{fmt(remainingMins())} left</span>
             <span classList={{ warn: overbooked() }}>
-              {overbooked() ? "not enough time!" : `${fmt(minsUntilSleep())} of runway`}
+              {overbooked() ? "no time left!" : `${fmt(freeTime())} free`}
             </span>
           </div>
           <div class="bar">

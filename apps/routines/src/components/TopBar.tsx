@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { A, useLocation } from "@solidjs/router";
 import { useRoutines } from "../context";
+import { BUILD_INFO } from "../lib/build-info";
 
 export default function TopBar() {
   const ctx = useRoutines();
@@ -28,6 +29,9 @@ export default function TopBar() {
 
       <Show when={ctx.userEmail()}>
         <div class="topbar-end">
+          <span class="build-marker" title={BUILD_INFO.tooltip}>
+            {BUILD_INFO.label}
+          </span>
           <span class="topbar-email">{ctx.userEmail()}</span>
           <form method="post" action="/api/auth/logout">
             <button class="btn btn-ghost">Sign out</button>

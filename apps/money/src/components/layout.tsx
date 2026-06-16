@@ -3,6 +3,7 @@ import { A, useLocation, useNavigate, type RouteSectionProps } from "@solidjs/ro
 import { createHotkey } from "@tanstack/solid-hotkeys";
 import CommandBar from "./CommandBar";
 import { undo, redo, undoStack, redoStack } from "../lib/undo-stack";
+import { BUILD_INFO } from "../lib/build-info";
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -79,6 +80,9 @@ export default function Layout(props: RouteSectionProps) {
           </For>
         </nav>
         <div class="sidebar-footer">
+          <div class="build-marker" title={BUILD_INFO.tooltip}>
+            {BUILD_INFO.label}
+          </div>
           <div class="sidebar-undo">
             <button
               class="btn btn-icon btn-ghost btn-sm"

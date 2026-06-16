@@ -22,7 +22,7 @@ export const ShortStack = Alchemy.Stack(
     const worker = yield* Cloudflare.Worker("SWorker", {
       name: Shedflare.physicalName(stage, "s"),
       main: "apps/s/src/worker.ts",
-      assets: "apps/s/dist/client",
+      assets: "apps/s/dist",
       compatibility: {
         date: "2026-03-22",
         flags: ["nodejs_compat"],
