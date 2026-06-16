@@ -18,7 +18,7 @@ import {
 } from "#/domain";
 import { DataAccess as SyncDataAccess, SyncEventStore } from "@shedflare/sync-protocol";
 import { boolToSql } from "./sync-utils";
-import { DATA_TABLES } from "./schema";
+import { DATA_TABLES } from "./schema-helpers";
 import { type DataAccess } from "./data-access";
 
 export class EventStore {

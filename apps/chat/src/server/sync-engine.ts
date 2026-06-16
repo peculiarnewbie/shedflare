@@ -18,7 +18,9 @@ import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlit
 import { eq } from "drizzle-orm";
 import { SyncEngineDO } from "@shedflare/sync-protocol";
 import { json, parseJsonRequest, parseInternalCommandBody, syncLog } from "./sync-utils";
-import { initializeStorage } from "./schema";
+import migrationManifest from "../../drizzle/migrations";
+import { runMigrations } from "./migrator";
+import { resetForProtocolVersion } from "./schema-helpers";
 import { DataAccess } from "./data-access";
 import { EventStore } from "./event-store";
 import {
@@ -86,6 +88,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   private readonly assistantTurnControllers = new Map<string, AbortController>();
   private readonly activeTurnMessageIds = new Set<string>();
   private readonly chatHandlers = new Map<SyncCommandType, ChatHandlerFn>();
+  private readonly initialized: Promise<void>;
 
   constructor(ctx: DurableObjectState, env: AppEnv) {
     super(ctx, env);
@@ -94,18 +97,29 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     this.eventStore = new EventStore(this.chatAccess);
     this.registerChatHandlers();
 
-    const _raw = env as unknown as Record<string, unknown>;
-    void ctx.blockConcurrencyWhile(async () => {
-      initializeStorage(
-        (query, ...params) => {
-          ctx.storage.sql.exec(query, ...params);
-        },
-        <T extends Record<string, unknown>>(query: string, ...params: any[]): T | null => {
-          const rows = ctx.storage.sql.exec(query, ...params).toArray() as T[];
-          return rows[0] ?? null;
-        },
-        (message) => syncLog(message),
+    this.initialized = ctx.blockConcurrencyWhile(async () => {
+      syncLog("migrate_start");
+      runMigrations(this.db, migrationManifest);
+      syncLog("migrate_done");
+
+      const version = this.access.queryOne<{ value: string }>(
+        `SELECT value FROM metadata WHERE key = 'sync_protocol_version'`,
       );
+      if (version?.value !== SYNC_PROTOCOL_VERSION) {
+        syncLog("protocol_version_reset", {
+          previous: version?.value ?? null,
+          current: SYNC_PROTOCOL_VERSION,
+        });
+        this.db.transaction(() => {
+          resetForProtocolVersion((query, ...params) => {
+            this.ctx.storage.sql.exec(query, ...params);
+          });
+          this.ctx.storage.sql.exec(
+            `INSERT OR REPLACE INTO metadata (key, value) VALUES ('sync_protocol_version', ?)`,
+            SYNC_PROTOCOL_VERSION,
+          );
+        });
+      }
     });
   }
 
@@ -152,12 +166,13 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   }
 
   protected executeTransaction<T>(fn: () => T): T {
-    return (this.db as any).transaction(fn);
+    return (this.db as { transaction<T>(fn: () => T): T }).transaction(fn);
   }
 
   // ─── Fetch ──────────────────────────────────────────────────────
 
   async fetch(request: Request): Promise<Response> {
+    await this.initialized;
     const url = new URL(request.url);
     syncLog("fetch", { path: url.pathname, method: request.method });
 
@@ -185,6 +200,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   // ─── WebSocket ──────────────────────────────────────────────────
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    await this.initialized;
     const text = typeof message === "string" ? message : new TextDecoder().decode(message);
     let envelope: any;
     try {
@@ -231,6 +247,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   }
 
   async webSocketClose(_ws: WebSocket) {
+    await this.initialized;
     if (this.activeTurnMessageIds.size > 0) {
       syncLog("ws_close_pending_turns", {
         count: this.activeTurnMessageIds.size,
@@ -243,6 +260,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   // ─── Alarm ──────────────────────────────────────────────────────
 
   async alarm() {
+    await this.initialized;
     syncLog("alarm_fired");
     const turns = this.loadAllTurnParams();
     if (turns.size === 0) {

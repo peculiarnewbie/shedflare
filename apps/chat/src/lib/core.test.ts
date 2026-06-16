@@ -65,6 +65,7 @@ import { resetPendingOps } from "./pending-ops";
 import { processEnvelopes } from "./sync-adapter";
 import { getLastServerSeq, setLastServerSeq } from "./ws-connection";
 import { normalizeAssistantError } from "../server/error-normalization";
+import { createVersionedResponseInit } from "../server/router";
 
 beforeEach(() => {
   resetCollections();
@@ -77,6 +78,14 @@ beforeEach(() => {
 });
 
 describe("domain helpers", () => {
+  it("preserves Worker WebSocket handles when wrapping responses", () => {
+    const response = new Response(null, { status: 200 });
+    const socket = {} as WebSocket;
+    Object.defineProperty(response, "webSocket", { value: socket });
+
+    expect(createVersionedResponseInit(response).webSocket).toBe(socket);
+  });
+
   it("slugifies workspace names", () => {
     expect(slugify("  My Personal Workspace!! ")).toBe("my-personal-workspace");
   });

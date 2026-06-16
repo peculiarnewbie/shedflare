@@ -10,8 +10,22 @@ import { createStructuredLogger } from "#/effect";
 
 const logger = createStructuredLogger("chat-worker");
 
+type WorkerResponseInit = ResponseInit & { webSocket?: WebSocket };
+type WorkerResponse = Response & { readonly webSocket?: WebSocket };
+
+export const createVersionedResponseInit = (response: Response): WorkerResponseInit => {
+  const init: WorkerResponseInit = {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  };
+  const webSocket = (response as WorkerResponse).webSocket;
+  if (webSocket) init.webSocket = webSocket;
+  return init;
+};
+
 const withVersionHeader = (response: Response) => {
-  const wrapped = new Response(response.body, response);
+  const wrapped = new Response(response.body, createVersionedResponseInit(response));
   wrapped.headers.set("x-shedflare-version", BUILD_INFO.version);
   return wrapped;
 };

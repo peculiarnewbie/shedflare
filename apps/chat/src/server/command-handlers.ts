@@ -14,7 +14,7 @@ import {
   type Message,
 } from "#/domain";
 import { getDefaultModelId, type AppEnv } from "#/runtime";
-import { deleteAllData } from "./schema";
+import { deleteAllData } from "./schema-helpers";
 import type { DataAccess } from "./data-access";
 import {
   normalizeWorkspace,
