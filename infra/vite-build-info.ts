@@ -20,10 +20,25 @@ function gitCommit(cwd: string) {
   }
 }
 
+function gitDirty(cwd: string) {
+  try {
+    return (
+      execSync("git status --short", {
+        cwd,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim().length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function buildInfoDefines(metaUrl: string) {
   const appDir = path.dirname(fileURLToPath(metaUrl));
   const pkg = JSON.parse(readFileSync(path.join(appDir, "package.json"), "utf8")) as PackageJson;
-  const commit = gitCommit(appDir);
+  const commit = `${gitCommit(appDir)}${gitDirty(appDir) ? "-dirty" : ""}`;
   const builtAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const buildStamp = builtAt.replace(/[:]/g, "");
   const version =
