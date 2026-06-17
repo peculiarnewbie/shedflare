@@ -2956,12 +2956,13 @@ export default function Home() {
       }));
     } else {
       setComposer("modelId", modelId);
-      // Save to current thread for per-thread persistence
+      // Save to current thread for per-thread persistence only. The workspace
+      // default is intentionally not updated here; it should be changed from
+      // settings, not by switching models inside a thread.
       if (thread) {
         updateThreadAction({ ...thread, modelId, updatedAt: nowIso() });
       }
     }
-    updateWorkspacePreferences({ defaultModelId: modelId });
   };
 
   const handleSearchChange = (search: boolean) => {
@@ -3309,12 +3310,9 @@ export default function Home() {
                     onClick={() => {
                       if (editingWorkspaceId() === workspace.id) return;
                       setActiveWorkspaceId(workspace.id);
-                      const wsThreads = (allThreads() as Thread[])
-                        .filter((t) => t.workspaceId === workspace.id && !t.archivedAt)
-                        .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
-                      if (wsThreads[0]) {
-                        setActiveThreadId(wsThreads[0].id);
-                      }
+                      // The active thread resolves automatically from the
+                      // per-workspace store; fall back to the most recent thread
+                      // if no selection is recorded for this workspace.
                       setSidebarOpen(false);
                     }}
                   >
