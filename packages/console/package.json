@@ -1,0 +1,24 @@
+{
+  "name": "@shedflare/console",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check src vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@shedflare/alchemy": "workspace:*",
+    "effect": "catalog:",
+    "@solidjs/router": "^0.15.4",
+    "jsonc-parser": "catalog:",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plugin-solid": "^2.11.6",
+    "vite-plus": "catalog:"
+  }
+}
