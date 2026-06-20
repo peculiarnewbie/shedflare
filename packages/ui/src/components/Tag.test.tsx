@@ -1,0 +1,32 @@
+// @vitest-environment jsdom
+import { describe, expect, test } from "vite-plus/test";
+import { Tag } from "./Tag";
+import { tag } from "./tag.styles";
+import { renderWithTheme } from "../test/render-with-theme";
+
+describe("Tag", () => {
+  test("renders label text", () => {
+    const { getByText } = renderWithTheme(() => <Tag>Work</Tag>);
+    expect(getByText("Work")).toBeTruthy();
+  });
+
+  test("merges class prop", () => {
+    const { getByText } = renderWithTheme(() => <Tag class="pill">Draft</Tag>);
+    expect(getByText("Draft").className).toContain("pill");
+  });
+
+  test.each([
+    ["accent", "Accent"],
+    ["neutral", "Neutral"],
+  ] as const)("renders %s tone", (tone, label) => {
+    const { getByText } = renderWithTheme(() => <Tag tone={tone}>{label}</Tag>);
+    expect(getByText(label)).toBeTruthy();
+  });
+});
+
+describe("tag recipe", () => {
+  test("neutral tone uses secondary text color token", () => {
+    const [, styleFn] = tag({ tone: "neutral" });
+    expect(styleFn()["--color"]).toBe("var(--color_text-secondary)");
+  });
+});

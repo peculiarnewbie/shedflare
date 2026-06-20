@@ -8,5 +8,5 @@
     "plugins": [{ "name": "tokenami" }],
     "noEmit": true
   },
-  "include": [".tokenami/tokenami.env.d.ts", "src"]
+  "include": [".tokenami/tokenami.env.d.ts", "src", "dev", "vite.config.ts"]
 }

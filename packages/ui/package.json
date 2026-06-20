@@ -16,18 +16,26 @@
   "scripts": {
     "build": "tokenami --config .tokenami/tokenami.config.ts --output dist/tokenami.css",
     "build:watch": "tokenami --config .tokenami/tokenami.config.ts --output dist/tokenami.css --watch",
-    "check": "vp fmt src .tokenami && tokenami check --config .tokenami/tokenami.config.ts",
-    "typecheck": "tokenami check --config .tokenami/tokenami.config.ts"
+    "dev": "vp dev",
+    "predev": "pnpm run build",
+    "test": "vp test",
+    "pretest": "pnpm run build",
+    "check": "vp fmt src dev .tokenami vite.config.ts && tokenami check --config .tokenami/tokenami.config.ts",
+    "typecheck": "tokenami check --config .tokenami/tokenami.config.ts",
+    "prepare": "vp config"
   },
   "dependencies": {
     "@tokenami/css": "catalog:"
   },
   "devDependencies": {
+    "@solidjs/testing-library": "^0.8.0",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "jsdom": "catalog:",
     "solid-js": "^1.9.12",
     "tokenami": "catalog:",
     "typescript": "^5.9.3",
+    "vite-plugin-solid": "^2.11.12",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

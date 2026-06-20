@@ -226,6 +226,8 @@ Do **not** mix unscoped new Tokenami styles with old class-based rules on the sa
 |------|---------|
 | Regenerate shared CSS | `pnpm --filter @shedflare/ui build` |
 | Watch shared CSS | `pnpm --filter @shedflare/ui build:watch` |
+| Dev playground (variants) | `pnpm --filter @shedflare/ui dev` |
+| Component tests | `pnpm --filter @shedflare/ui test` |
 | Lint + format package | `pnpm --filter @shedflare/ui check` |
 | Typecheck + Tokenami validate | `pnpm --filter @shedflare/ui typecheck` |
 

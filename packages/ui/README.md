@@ -10,7 +10,11 @@ Tokenami-based design system for the Shedflare suite. Shared theme tokens, `css(
 pnpm install
 pnpm --filter @shedflare/ui build    # generates dist/tokenami.css
 pnpm --filter @shedflare/ui check
+pnpm --filter @shedflare/ui test
+pnpm --filter @shedflare/ui dev      # local variant playground at :5175
 ```
+
+The dev playground lives in `dev/` and is not published — use it to eyeball variants while changing theme tokens or recipes.
 
 ## Exports
 
