@@ -36,7 +36,7 @@ import {
   DashboardExportSchema,
   RatesResponseSchema,
   CommandResponseSchema,
-} from "../domain/schemas";
+} from "../domain/schemas-client";
 
 const BASE = ""; // same-origin
 
@@ -76,130 +76,143 @@ export async function execute(commandType: string, payload: unknown): Promise<Co
 
 export const api = {
   accounts: () =>
-    fetchApi<import("../domain/schemas").AccountsResponse>(AccountsResponseSchema, "/api/accounts"),
+    fetchApi<import("../domain/schemas-client").AccountsResponse>(
+      AccountsResponseSchema,
+      "/api/accounts",
+    ),
   account: (id: string) =>
-    fetchApi<import("../domain/schemas").AccountApi>(AccountApiSchema, `/api/accounts/${id}`),
+    fetchApi<import("../domain/schemas-client").AccountApi>(
+      AccountApiSchema,
+      `/api/accounts/${id}`,
+    ),
   accountTransactions: (id: string, filterId?: string) => {
     const params = filterId ? `?filter=${encodeURIComponent(filterId)}` : "";
-    return fetchApi<import("../domain/schemas").AccountTransactionsResponse>(
+    return fetchApi<import("../domain/schemas-client").AccountTransactionsResponse>(
       AccountTransactionsResponseSchema,
       `/api/accounts/${id}/transactions${params}`,
     );
   },
   accountTags: (id: string) =>
-    fetchApi<import("../domain/schemas").AccountTagsResponse>(
+    fetchApi<import("../domain/schemas-client").AccountTagsResponse>(
       AccountTagsResponseSchema,
       `/api/accounts/${id}/tags`,
     ),
 
   transactions: (filterId?: string) => {
     const params = filterId ? `?filter=${encodeURIComponent(filterId)}` : "";
-    return fetchApi<import("../domain/schemas").TransactionsResponse>(
+    return fetchApi<import("../domain/schemas-client").TransactionsResponse>(
       TransactionsResponseSchema,
       `/api/transactions${params}`,
     );
   },
 
   categories: () =>
-    fetchApi<import("../domain/schemas").CategoriesResponse>(
+    fetchApi<import("../domain/schemas-client").CategoriesResponse>(
       CategoriesResponseSchema,
       "/api/categories",
     ),
   categoryGroups: () =>
-    fetchApi<import("../domain/schemas").CategoryGroupsResponse>(
+    fetchApi<import("../domain/schemas-client").CategoryGroupsResponse>(
       CategoryGroupsResponseSchema,
       "/api/category-groups",
     ),
   goalProgress: () =>
-    fetchApi<import("../domain/schemas").GoalProgressResponse>(
+    fetchApi<import("../domain/schemas-client").GoalProgressResponse>(
       GoalProgressResponseSchema,
       "/api/categories/goal-progress",
     ),
 
   budgetOverview: () =>
-    fetchApi<import("../domain/schemas").BudgetOverview>(
+    fetchApi<import("../domain/schemas-client").BudgetOverview>(
       BudgetOverviewResponseSchema,
       "/api/budget/overview",
     ),
   budgetMonth: (monthInt: number) =>
-    fetchApi<import("../domain/schemas").MonthBudget>(
+    fetchApi<import("../domain/schemas-client").MonthBudget>(
       MonthBudgetResponseSchema,
       `/api/budget/${monthInt}`,
     ),
 
   payees: () =>
-    fetchApi<import("../domain/schemas").PayeesResponse>(PayeesResponseSchema, "/api/payees"),
+    fetchApi<import("../domain/schemas-client").PayeesResponse>(
+      PayeesResponseSchema,
+      "/api/payees",
+    ),
   payeeSuggestions: (payee: string) =>
-    fetchApi<import("../domain/schemas").PayeeSuggestionsResponse>(
+    fetchApi<import("../domain/schemas-client").PayeeSuggestionsResponse>(
       PayeeSuggestionsResponseSchema,
       `/api/payees/category-suggestions?payee=${encodeURIComponent(payee)}`,
     ),
 
   schedules: () =>
-    fetchApi<import("../domain/schemas").SchedulesResponse>(
+    fetchApi<import("../domain/schemas-client").SchedulesResponse>(
       SchedulesResponseSchema,
       "/api/schedules",
     ),
   schedule: (id: string) =>
-    fetchApi<import("../domain/schemas").ScheduleResponse>(
+    fetchApi<import("../domain/schemas-client").ScheduleResponse>(
       ScheduleResponseSchema,
       `/api/schedules/${id}`,
     ),
   schedulesDiscover: () =>
-    fetchApi<import("../domain/schemas").SchedulesDiscoverResponse>(
+    fetchApi<import("../domain/schemas-client").SchedulesDiscoverResponse>(
       SchedulesDiscoverResponseSchema,
       "/api/schedules/discover",
     ),
 
   rules: () =>
-    fetchApi<import("../domain/schemas").RulesResponse>(RulesResponseSchema, "/api/rules"),
-  tags: () => fetchApi<import("../domain/schemas").TagsResponse>(TagsResponseSchema, "/api/tags"),
+    fetchApi<import("../domain/schemas-client").RulesResponse>(RulesResponseSchema, "/api/rules"),
+  tags: () =>
+    fetchApi<import("../domain/schemas-client").TagsResponse>(TagsResponseSchema, "/api/tags"),
   filters: () =>
-    fetchApi<import("../domain/schemas").FiltersResponse>(FiltersResponseSchema, "/api/filters"),
+    fetchApi<import("../domain/schemas-client").FiltersResponse>(
+      FiltersResponseSchema,
+      "/api/filters",
+    ),
 
   reports: {
     netWorth: () =>
-      fetchApi<import("../domain/schemas").ReportsNetWorthResponse>(
+      fetchApi<import("../domain/schemas-client").ReportsNetWorthResponse>(
         ReportsNetWorthResponseSchema,
         "/api/reports/net-worth",
       ),
     cashFlow: () =>
-      fetchApi<import("../domain/schemas").ReportsCashFlowResponse>(
+      fetchApi<import("../domain/schemas-client").ReportsCashFlowResponse>(
         ReportsCashFlowResponseSchema,
         "/api/reports/cash-flow",
       ),
     spending: () =>
-      fetchApi<import("../domain/schemas").ReportsSpendingResponse>(
+      fetchApi<import("../domain/schemas-client").ReportsSpendingResponse>(
         ReportsSpendingResponseSchema,
         "/api/reports/spending",
       ),
     budgetAnalysis: () =>
-      fetchApi<import("../domain/schemas").ReportsBudgetAnalysisResponse>(
+      fetchApi<import("../domain/schemas-client").ReportsBudgetAnalysisResponse>(
         ReportsBudgetAnalysisResponseSchema,
         "/api/reports/budget-analysis",
       ),
     ageOfMoney: () =>
-      fetchApi<import("../domain/schemas").ReportsAgeOfMoneyResponse>(
+      fetchApi<import("../domain/schemas-client").ReportsAgeOfMoneyResponse>(
         ReportsAgeOfMoneyResponseSchema,
         "/api/reports/age-of-money",
       ),
     crossover: () =>
-      fetchApi<import("../domain/schemas").Crossover>(
+      fetchApi<import("../domain/schemas-client").Crossover>(
         ReportsCrossoverResponseSchema,
         "/api/reports/crossover",
       ),
     calendarHeatmap: () =>
-      fetchApi<import("../domain/schemas").ReportsHeatmapResponse>(
+      fetchApi<import("../domain/schemas-client").ReportsHeatmapResponse>(
         ReportsHeatmapResponseSchema,
         "/api/reports/calendar-heatmap",
       ),
     custom: () =>
-      fetchApi<import("../domain/schemas").CustomReportsResponse>(
+      fetchApi<import("../domain/schemas-client").CustomReportsResponse>(
         CustomReportsResponseSchema,
         "/api/reports/custom",
       ),
     customExecute: (id: string) =>
-      fetchApi<import("../domain/schemas").CustomReportResult>(
+      fetchApi<import("../domain/schemas-client").CustomReportResult>(
         CustomReportResultSchema,
         `/api/reports/custom/${id}/execute`,
       ),
@@ -207,17 +220,17 @@ export const api = {
 
   dashboard: {
     widgets: () =>
-      fetchApi<import("../domain/schemas").DashboardWidgetsResponse>(
+      fetchApi<import("../domain/schemas-client").DashboardWidgetsResponse>(
         DashboardWidgetsResponseSchema,
         "/api/dashboard/widgets",
       ),
     export: () =>
-      fetchApi<import("../domain/schemas").DashboardExport>(
+      fetchApi<import("../domain/schemas-client").DashboardExport>(
         DashboardExportSchema,
         "/api/dashboard/export",
       ),
   },
 
   rates: () =>
-    fetchApi<import("../domain/schemas").ExchangeRateApi>(RatesResponseSchema, "/api/rates"),
+    fetchApi<import("../domain/schemas-client").ExchangeRateApi>(RatesResponseSchema, "/api/rates"),
 };

@@ -4,6 +4,7 @@ import { createHotkey } from "@tanstack/solid-hotkeys";
 import CommandBar from "./CommandBar";
 import { undo, redo, undoStack, redoStack } from "../lib/undo-stack";
 import { BUILD_INFO } from "../lib/build-info";
+import { loadSettings } from "../lib/settings-store";
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -46,6 +47,11 @@ export default function Layout(props: RouteSectionProps) {
   const navigate = useNavigate();
   const [showMobileMenu, setShowMobileMenu] = createSignal(false);
   const [showCmdBar, setShowCmdBar] = createSignal(false);
+
+  // Load settings from the server on mount so currency/privacy/formatting
+  // are available to all pages, not just the settings page.
+  loadSettings();
+
   createHotkey("Mod+K", () => setShowCmdBar(true));
   createHotkey("Mod+Z", async () => {
     await undo();
