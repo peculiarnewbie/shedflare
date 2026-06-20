@@ -1,0 +1,14 @@
+{
+  "name": "Arif Rahman",
+  "nickname": "Bolt",
+  "title": "Web and Game Developer",
+  "tagline": "Helping craft useful tools and meaningful experiences",
+  "bio": [
+    "I'm a software developer. I do full stack web development, game programming, and automation.",
+  ],
+  "socials": [
+    { "platform": "github", "url": "https://github.com/you" },
+    { "platform": "bluesky", "url": "https://bsky.app/profile/you.com" },
+  ],
+  "siteTitle": "Arif Rahman — Web and Game Developer",
+}

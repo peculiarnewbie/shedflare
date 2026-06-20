@@ -1,0 +1,372 @@
+/* ── Theme tokens (Shedflare night — shared with chat, drive) ── */
+
+:root,
+[data-theme="night"] {
+  --bg: #0f1117;
+  --panel: #1a1d27;
+  --panel-strong: #232733;
+  --text: #e4e4e8;
+  --text-secondary: #7f8394;
+  --line: rgba(255, 255, 255, 0.06);
+  --accent: #2dd4a8;
+  --accent-hover: #3ee8bb;
+  --accent-soft: rgba(45, 212, 168, 0.1);
+  --radius: 10px;
+  --radius-lg: 14px;
+  --font: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-handwriting: "Caveat", cursive;
+  --font-size-4xl: 2.25rem;
+  --font-size-lg: 1.125rem;
+  --font-size-sm: 0.875rem;
+  --font-size-xl: 1.25rem;
+  --weight-bold: 700;
+  --weight-light: 300;
+  --weight-medium: 500;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: var(--bg);
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+.shine {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    600px circle at var(--shine-x, 50%) var(--shine-y, 50%),
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    transparent 40%
+  );
+}
+
+.home-layout {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+  padding-block: 3rem;
+  position: relative;
+  z-index: 1;
+}
+
+.two-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.left-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-block: 0;
+}
+
+.left-col header {
+  padding-top: 3rem;
+}
+
+.right-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-top: 6rem;
+}
+
+.name-heading {
+  font-size: var(--font-size-4xl);
+  font-weight: var(--weight-bold);
+  color: var(--text);
+}
+
+.name-nickname {
+  position: absolute;
+  top: -1.25rem;
+  right: -3.25rem;
+  font-family: var(--font-handwriting);
+  font-size: 2.25rem;
+  font-weight: 500;
+  color: var(--accent-hover);
+  white-space: nowrap;
+  opacity: 0;
+  transform: rotate(-8deg);
+  pointer-events: none;
+}
+
+.title-text {
+  font-size: var(--font-size-lg);
+  padding-top: 0.75rem;
+  color: var(--text);
+}
+
+.tagline-text {
+  color: var(--text-secondary);
+  padding-top: 1rem;
+  max-width: 240px;
+}
+
+.social-footer {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 2rem;
+}
+
+.social-btn {
+  display: flex;
+  width: 48px;
+  height: 48px;
+  padding: 8px;
+  transition: fill 0.15s;
+}
+
+.social-btn:hover svg {
+  fill: var(--accent-hover);
+}
+
+.social-btn svg {
+  transition: fill 0.15s;
+}
+
+.social-icon {
+  width: 32px;
+  height: 32px;
+  fill: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+.bio-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 2rem;
+  padding-top: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.bio-link {
+  color: var(--text);
+}
+
+.section-heading {
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-light);
+  padding-bottom: 2rem;
+  padding-top: 3rem;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+.section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+.exp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.exp-meta {
+  max-width: 160px;
+  min-width: 96px;
+  flex-basis: 25%;
+}
+
+.exp-title {
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.exp-date {
+  font-weight: var(--weight-light);
+  color: var(--text-secondary);
+  padding-top: 0.25rem;
+}
+
+.exp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-grow: 1;
+  flex-basis: 75%;
+}
+
+.exp-body-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.exp-workplace-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--text);
+  transition: color 0.15s;
+}
+
+.exp-workplace-link:hover {
+  color: var(--accent-hover);
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag-pill {
+  font-size: var(--font-size-sm);
+  background-color: var(--accent-soft);
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  color: var(--accent-hover);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.proj-row {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1rem;
+}
+
+.proj-media {
+  display: flex;
+  flex-direction: row;
+  flex-grow: 1;
+  gap: 0.5rem;
+}
+
+.proj-image {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  width: 100%;
+  max-width: 208px;
+  overflow: clip;
+}
+
+.proj-icon-row {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.proj-icon-btn {
+  display: flex;
+  font-weight: var(--weight-medium);
+  padding: 8px;
+  gap: 0;
+}
+
+.proj-icon-btn:hover svg {
+  fill: var(--accent-hover);
+}
+
+.proj-icon-btn svg {
+  transition: fill 0.15s;
+}
+
+.proj-icon-svg {
+  fill: color-mix(in srgb, var(--text) 45%, transparent);
+  width: 28px;
+  height: 28px;
+}
+
+.proj-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-basis: 75%;
+}
+
+.proj-body-title {
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.proj-body-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.blog-soon {
+  color: var(--text-secondary);
+}
+
+@media (width >= 40rem) {
+  .exp-row {
+    flex-direction: row;
+    gap: 1.5rem;
+  }
+
+  .proj-row {
+    flex-direction: row;
+    gap: 1.5rem;
+  }
+
+  .proj-media {
+    max-width: 200px;
+    flex-basis: 25%;
+    flex-direction: column;
+    transform: translateY(0.25rem);
+  }
+
+  .proj-icon-row {
+    flex-direction: row;
+  }
+}
+
+@media (width >= 64rem) {
+  .two-col {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .left-col {
+    position: sticky;
+    top: 0;
+    max-height: 100dvh;
+    width: 50%;
+    padding-block: 6rem;
+  }
+
+  .left-col header {
+    padding-top: 0;
+  }
+
+  .right-col {
+    width: 50%;
+    padding-top: 6rem;
+  }
+}
