@@ -13,6 +13,7 @@ import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { RoutinesStack } from "./apps/routines/alchemy.run.ts";
 import { ShortStack } from "./apps/s/alchemy.run.ts";
 import { YouTubeStack } from "./apps/youtube/alchemy.run.ts";
+import { HomepageStack } from "./apps/homepage/alchemy.run.ts";
 import { SiteStack } from "./site/alchemy.run.ts";
 import { physicalName } from "./packages/shedflare-alchemy/src/index.ts";
 
@@ -55,6 +56,7 @@ export default Alchemy.Stack(
     const youtube = yield* YouTubeStack;
     const short = yield* ShortStack;
     const routines = yield* RoutinesStack;
+    const homepage = yield* HomepageStack;
     const observability = yield* Effect.option(ObservabilityStack);
     const site = yield* SiteStack;
 
@@ -65,6 +67,7 @@ export default Alchemy.Stack(
         "cf-bill",
         "chat",
         "drive",
+        "homepage",
         "money",
         "routines",
         "s",
@@ -94,6 +97,7 @@ export default Alchemy.Stack(
     return {
       stage,
       authUrl: auth.url,
+      homepageUrl: homepage.url,
       cfBillUrl: cfBill.url,
       driveUrl: drive.url,
       chatUrl: chat.url,

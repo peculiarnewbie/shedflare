@@ -15,6 +15,7 @@ catalog:
   "@typescript/native-preview": beta
   alchemy: 2.0.0-beta.55
   better-sqlite3: ^12.9.0
+  buffer: ^6.0.3
   dompurify: ^3.4.0
   drizzle-kit: 1.0.0-rc.3
   drizzle-orm: 1.0.0-rc.3
@@ -36,10 +37,12 @@ catalog:
 
 catalogMode: prefer
 overrides:
+  drizzle-kit: "catalog:"
+  drizzle-orm: "catalog:"
   vite: "catalog:"
   vitest: "catalog:"
-  drizzle-orm: "catalog:"
-  drizzle-kit: "catalog:"
+patchedDependencies:
+  drizzle-orm@1.0.0-rc.3: patches/drizzle-orm@1.0.0-rc.3.patch
 peerDependencyRules:
   allowAny:
     - vite

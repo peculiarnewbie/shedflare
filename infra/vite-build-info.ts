@@ -2,9 +2,11 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadAppConfig } from "./app-config.ts";
 
 type PackageJson = {
   version?: string;
+  name?: string;
 };
 
 function gitCommit(cwd: string) {
@@ -44,9 +46,13 @@ export function buildInfoDefines(metaUrl: string) {
   const version =
     process.env.VITE_APP_VERSION || `${pkg.version ?? "0.0.0"}+deploy.${buildStamp}.${commit}`;
 
+  const appId = pkg.name?.replace(/^@[^/]+\//, "") ?? path.basename(appDir);
+  const appConfig = loadAppConfig<Record<string, unknown>>(metaUrl, appId);
+
   return {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(version),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VITE_GIT_SHA || commit),
     "import.meta.env.VITE_BUILD_TIME": JSON.stringify(process.env.VITE_BUILD_TIME || builtAt),
+    "import.meta.env.VITE_APP_CONFIG": JSON.stringify(appConfig ?? {}),
   } satisfies Record<string, string>;
 }

@@ -7,6 +7,7 @@ export type AppId =
   | "cf-bill"
   | "chat"
   | "drive"
+  | "homepage"
   | "money"
   | "observability"
   | "routines"

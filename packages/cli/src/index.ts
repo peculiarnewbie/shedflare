@@ -5,6 +5,14 @@ import { cac } from "cac";
 const cli = cac("shedflare");
 
 cli
+  .command("dashboard", "Open the local Shedflare console")
+  .option("--port <port>", "Port for the dev server", { default: 5174 })
+  .action(async (options: { port?: number }) => {
+    const { dashboardCommand } = await import("./commands/dashboard.js");
+    await dashboardCommand({ port: Number(options.port ?? 5174) });
+  });
+
+cli
   .command("init", "Create a new Shedflare workspace and configure apps for deployment")
   .option("--apps <apps>", "Comma-separated list of apps to include (auth,chat,drive)")
   .option("--owner-email <email>", "Email address of the deployment owner")

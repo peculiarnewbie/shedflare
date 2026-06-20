@@ -24,6 +24,7 @@ yarn-error.log*
 pnpm-debug.log*
 shedflare.config.jsonc
 apps/*/wrangler.jsonc
+apps/*/config.jsonc
 
 # OpenAuth storage — must never be committed
 apps/auth/keys.json

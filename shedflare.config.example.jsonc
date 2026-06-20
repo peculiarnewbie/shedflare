@@ -18,6 +18,10 @@
       "enabled": true,
       "subdomain": "drive",
     },
+    "homepage": {
+      "enabled": true,
+      "subdomain": "home",
+    },
     "money": {
       "enabled": true,
       "subdomain": "money",
@@ -52,6 +56,7 @@
       "EXA_API_KEY": "",
     },
     "drive": {},
+    "homepage": {},
     "money": {},
     "observability": {},
     "routines": {},
