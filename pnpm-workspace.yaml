@@ -34,6 +34,9 @@ catalog:
   vite-plus: ^0.1.18
   vitest: npm:@voidzero-dev/vite-plus-test@latest
   wrangler: ^4.83.0
+  "@tokenami/css": ^0.0.98
+  "@tokenami/unplugin": ^0.0.98
+  tokenami: ^0.0.98
 
 catalogMode: prefer
 overrides:

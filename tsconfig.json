@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["apps", "infra", "packages/shedflare-alchemy", "site", "alchemy.run.ts", "scripts"]
+  "include": ["apps", "infra", "packages", "site", "alchemy.run.ts", "scripts"]
 }

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "plugins": [{ "name": "tokenami" }],
+    "noEmit": true
+  },
+  "include": [".tokenami/tokenami.env.d.ts", "src"]
+}
