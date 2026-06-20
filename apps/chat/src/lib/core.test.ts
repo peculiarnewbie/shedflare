@@ -66,6 +66,11 @@ import { processEnvelopes } from "./sync-adapter";
 import { getLastServerSeq, setLastServerSeq } from "./ws-connection";
 import { normalizeAssistantError } from "../server/error-normalization";
 import { createVersionedResponseInit } from "../server/router";
+import {
+  createChatBackupKey,
+  parseChatBackupKeyTimestamp,
+  selectExpiredChatBackupKeys,
+} from "../api/backups";
 
 beforeEach(() => {
   resetCollections();
@@ -533,6 +538,34 @@ describe("domain helpers", () => {
     expect(getLastServerSeq()).toBe(4);
   });
 
+  it("does not advance the sync cursor from hello_ack before replayed events apply", () => {
+    const workspace = createWorkspace({
+      name: "Writing",
+      defaultModelId: "openai/gpt-4.1",
+    });
+
+    setLastServerSeq(3);
+    processEnvelopes([
+      {
+        type: "hello_ack",
+        protocolVersion: "test",
+        serverTime: "2026-04-24T00:00:00.000Z",
+        lastServerSeq: 10,
+      },
+      {
+        type: "event",
+        serverSeq: 4,
+        eventId: "evt_workspace",
+        eventType: "workspace_upserted",
+        payload: { row: workspace },
+        causedByOpId: null,
+      },
+    ]);
+
+    expect(workspaces.get(workspace.id)?.id).toBe(workspace.id);
+    expect(getLastServerSeq()).toBe(4);
+  });
+
   it("applies message completion after same-batch message creation", () => {
     const message = createMessage({
       threadId: "thread_1",
@@ -710,6 +743,23 @@ describe("server helpers", () => {
 
   it("normalizes email addresses", () => {
     expect(normalizeEmail(" Owner@Example.com ")).toBe("owner@example.com");
+  });
+
+  it("creates sortable chat backup keys", () => {
+    const key = createChatBackupKey(new Date("2026-06-18T19:30:00.000Z"));
+
+    expect(key).toBe("backups/chat/snapshots/2026-06-18T19-30-00-000Z.json.gz");
+    expect(parseChatBackupKeyTimestamp(key)?.toISOString()).toBe("2026-06-18T19:30:00.000Z");
+  });
+
+  it("selects only chat backups older than two months for deletion", () => {
+    const expired = "backups/chat/snapshots/2026-03-17T12-00-00-000Z.json.gz";
+    const recent = "backups/chat/snapshots/2026-05-19T12-00-00-000Z.json.gz";
+    const invalid = "backups/chat/snapshots/manual.json.gz";
+
+    expect(
+      selectExpiredChatBackupKeys([expired, recent, invalid], new Date("2026-06-18T12:00:00.000Z")),
+    ).toEqual([expired]);
   });
 
   it("filters model catalog data to the allowlist", () => {

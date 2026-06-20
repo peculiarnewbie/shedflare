@@ -14,6 +14,40 @@ import * as pendingOps from "./pending-ops";
 
 const CLIENT_ID_KEY = "shedflare.clientId";
 const LAST_SERVER_SEQ_KEY = "shedflare.lastServerSeq";
+const STUCK_DEBUG_PREFIX = "CHAT_DEBUG_STUCK_GENERATING";
+
+function rawByteLength(value: string) {
+  return new TextEncoder().encode(value).length;
+}
+
+function frameDebugSummary(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { envelopeType: typeof value };
+  }
+  const record = value as Record<string, unknown>;
+  const payload =
+    record.payload && typeof record.payload === "object" && !Array.isArray(record.payload)
+      ? (record.payload as Record<string, unknown>)
+      : null;
+  return {
+    envelopeType: record.type ?? null,
+    eventType: record.eventType ?? null,
+    serverSeq: record.serverSeq ?? null,
+    eventId: record.eventId ?? null,
+    opId: record.opId ?? null,
+    messageId: typeof payload?.messageId === "string" ? payload.messageId : null,
+    textLength: typeof payload?.text === "string" ? payload.text.length : null,
+    deltaLength: typeof payload?.delta === "string" ? payload.delta.length : null,
+  };
+}
+
+function shouldLogFrame(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+  const record = value as Record<string, unknown>;
+  if (record.type !== "event") return true;
+  if (record.eventType !== "message_delta") return true;
+  return typeof record.serverSeq === "number" && record.serverSeq % 25 === 0;
+}
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;
@@ -134,16 +168,62 @@ function connect() {
   });
 
   ws.addEventListener("message", ({ data }) => {
+    const raw = String(data);
+    let parsed: unknown;
     try {
-      const envelope = decodeSyncServerEnvelope(JSON.parse(String(data)));
-      if (envelope) enqueueEnvelope(envelope);
-    } catch {
-      console.warn("[ws] malformed sync frame dropped");
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      console.warn(`[${STUCK_DEBUG_PREFIX}] ws_frame_json_parse_error`, {
+        rawBytes: rawByteLength(raw),
+        preview: raw.slice(0, 300),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    if (shouldLogFrame(parsed)) {
+      console.log(`[${STUCK_DEBUG_PREFIX}] ws_frame_received`, {
+        ...frameDebugSummary(parsed),
+        rawBytes: rawByteLength(raw),
+        lastServerSeq,
+      });
+    }
+
+    try {
+      const envelope = decodeSyncServerEnvelope(parsed);
+      if (envelope) {
+        enqueueEnvelope(envelope);
+        return;
+      }
+      console.warn(`[${STUCK_DEBUG_PREFIX}] ws_frame_decode_returned_null`, {
+        ...frameDebugSummary(parsed),
+        rawBytes: rawByteLength(raw),
+      });
+    } catch (error) {
+      console.warn(`[${STUCK_DEBUG_PREFIX}] ws_frame_decode_error`, {
+        ...frameDebugSummary(parsed),
+        rawBytes: rawByteLength(raw),
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
-  ws.addEventListener("close", () => {
-    syncLog("close");
+  ws.addEventListener("close", (event) => {
+    syncLog("close", {
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+      lastServerSeq,
+      queuedFrames: incomingQueue.length,
+    });
+    console.warn(`[${STUCK_DEBUG_PREFIX}] ws_close`, {
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+      lastServerSeq,
+      queuedFrames: incomingQueue.length,
+      pendingOps: pendingOps.unackedOpIds(),
+    });
     setIsConnected(false);
     scheduleReconnect();
   });

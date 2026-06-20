@@ -31,6 +31,7 @@ export const ChatStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
+      crons: ["0 3 * * 0"],
       env: {
         UPLOADS: uploads,
         SYNC_ENGINE: syncEngine,

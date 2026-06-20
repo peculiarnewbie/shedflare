@@ -5,7 +5,9 @@ export async function handleSync(request: Request): Promise<Response> {
   await requireSession(request, env, { refresh: false });
   const stub = await getSyncStub(env);
   const url = new URL(request.url);
-  const suffix = url.pathname.split("/").pop() ?? "";
-  url.pathname = suffix === "ws" ? "/ws" : `/${suffix}`;
+  const syncPrefix = "/api/sync";
+  const suffix = url.pathname.startsWith(syncPrefix) ? url.pathname.slice(syncPrefix.length) : "";
+  if (suffix.startsWith("/backup/")) return new Response("Not found", { status: 404 });
+  url.pathname = suffix || "/";
   return stub.fetch(new Request(url.toString(), request));
 }

@@ -242,6 +242,14 @@ export async function consumeAssistantStream(
     const ttftMs = firstTokenAt !== null ? firstTokenAt - streamStartedAt : null;
 
     await trace("assistant.message.complete", "sync", { messageId, durationMs }, async () => {
+      log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_append_start", {
+        assistantMessageId: messageId,
+        textLength: accumulated.length,
+        durationMs,
+        ttftMs,
+        chunkCount,
+        deltaCount,
+      });
       const completed = await appendServerEvent(null, "message_completed", {
         messageId,
         text: accumulated,
@@ -251,7 +259,18 @@ export async function consumeAssistantStream(
         promptTokens: sawUsage ? promptTokens : null,
         completionTokens: sawUsage ? completionTokens : null,
       });
+      log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_appended", {
+        assistantMessageId: messageId,
+        serverSeq: completed.type === "event" ? completed.serverSeq : null,
+        eventId: completed.type === "event" ? completed.eventId : null,
+        textLength: accumulated.length,
+      });
       broadcast(completed);
+      log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_broadcast_called", {
+        assistantMessageId: messageId,
+        serverSeq: completed.type === "event" ? completed.serverSeq : null,
+        eventId: completed.type === "event" ? completed.eventId : null,
+      });
       await reportActivity({
         label: "Response complete",
         state: "completed",
@@ -594,6 +613,15 @@ export async function consumeAssistantStream(
     // Still emit completion since we have accumulated visible text.
     if (accumulated.trim()) {
       await trace("assistant.message.complete", "sync", { messageId, durationMs }, async () => {
+        log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_append_start", {
+          assistantMessageId: messageId,
+          textLength: accumulated.length,
+          durationMs,
+          ttftMs,
+          chunkCount,
+          deltaCount,
+          endedWithoutRunFinished: true,
+        });
         const completed = await appendServerEvent(null, "message_completed", {
           messageId,
           text: accumulated,
@@ -603,7 +631,20 @@ export async function consumeAssistantStream(
           promptTokens: sawUsage ? promptTokens : null,
           completionTokens: sawUsage ? completionTokens : null,
         });
+        log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_appended", {
+          assistantMessageId: messageId,
+          serverSeq: completed.type === "event" ? completed.serverSeq : null,
+          eventId: completed.type === "event" ? completed.eventId : null,
+          textLength: accumulated.length,
+          endedWithoutRunFinished: true,
+        });
         broadcast(completed);
+        log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_broadcast_called", {
+          assistantMessageId: messageId,
+          serverSeq: completed.type === "event" ? completed.serverSeq : null,
+          eventId: completed.type === "event" ? completed.eventId : null,
+          endedWithoutRunFinished: true,
+        });
       });
     } else {
       return failMessage(noVisibleAnswerError());

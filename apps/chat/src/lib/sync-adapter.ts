@@ -31,6 +31,33 @@ import { reconcileDraftState } from "./draft-state";
 import { confirmOp, rollbackOp } from "./actions";
 import { readCachedSnapshot, writeCachedSnapshot } from "./offline-cache";
 
+const STUCK_DEBUG_PREFIX = "CHAT_DEBUG_STUCK_GENERATING";
+
+function isBusyStatus(status: Message["status"]) {
+  return status === "queued" || status === "pending" || status === "streaming";
+}
+
+function debugSync(event: string, details?: Record<string, unknown>) {
+  console.log(`[${STUCK_DEBUG_PREFIX}] ${event}`, details ?? {});
+}
+
+function debugMessageSnapshot(messageId: string) {
+  const row = messages.get(messageId) as Message | undefined;
+  return row
+    ? {
+        exists: true,
+        id: row.id,
+        threadId: row.threadId,
+        role: row.role,
+        status: row.status,
+        textLength: row.text?.length ?? 0,
+        updatedAt: row.updatedAt,
+        optimistic: row.optimistic ?? null,
+        opId: row.opId ?? null,
+      }
+    : { exists: false, id: messageId };
+}
+
 // ---------------------------------------------------------------------------
 // Delta coalescing
 // ---------------------------------------------------------------------------
@@ -247,6 +274,14 @@ function applyEvent(eventType: string, payload: unknown) {
     }
     case "message_upserted": {
       const event = payload as SyncEventPayloadMap["message_upserted"];
+      if (event.row.role === "assistant" || isBusyStatus(event.row.status)) {
+        debugSync("message_upserted_apply", {
+          messageId: event.row.id,
+          incomingStatus: event.row.status,
+          incomingTextLength: event.row.text?.length ?? 0,
+          before: debugMessageSnapshot(event.row.id),
+        });
+      }
       syncUpsert("messages", event.row.id, event.row);
       break;
     }
@@ -257,12 +292,24 @@ function applyEvent(eventType: string, payload: unknown) {
         (messages.get(event.messageId) as Message | undefined);
       if (existing) {
         // Guard: don't regress completed → streaming
-        if (existing.status === "completed") break;
+        if (existing.status === "completed") {
+          debugSync("message_delta_ignored_completed", {
+            messageId: event.messageId,
+            deltaLength: event.delta.length,
+            existing: debugMessageSnapshot(event.messageId),
+          });
+          break;
+        }
         syncUpdate("messages", event.messageId, {
           ...existing,
           text: `${existing.text}${event.delta}`,
           status: "streaming",
           updatedAt: event.updatedAt,
+        });
+      } else {
+        debugSync("message_delta_ignored_missing_message", {
+          messageId: event.messageId,
+          deltaLength: event.delta.length,
         });
       }
       break;
@@ -272,6 +319,22 @@ function applyEvent(eventType: string, payload: unknown) {
       const existing =
         getPendingBatchValue<Message>("messages", event.messageId) ??
         (messages.get(event.messageId) as Message | undefined);
+      debugSync("message_completed_apply_start", {
+        messageId: event.messageId,
+        incomingTextLength: event.text.length,
+        incomingDurationMs: event.durationMs ?? null,
+        incomingTtftMs: event.ttftMs ?? null,
+        existing: existing
+          ? {
+              status: existing.status,
+              textLength: existing.text?.length ?? 0,
+              updatedAt: existing.updatedAt,
+              optimistic: existing.optimistic ?? null,
+              opId: existing.opId ?? null,
+            }
+          : null,
+        pendingBatchHadMessage: Boolean(getPendingBatchValue<Message>("messages", event.messageId)),
+      });
       if (existing) {
         syncUpdate("messages", event.messageId, {
           ...existing,
@@ -283,6 +346,11 @@ function applyEvent(eventType: string, payload: unknown) {
           promptTokens: event.promptTokens ?? null,
           completionTokens: event.completionTokens ?? null,
         });
+      } else {
+        debugSync("message_completed_ignored_missing_message", {
+          messageId: event.messageId,
+          incomingTextLength: event.text.length,
+        });
       }
       break;
     }
@@ -291,6 +359,17 @@ function applyEvent(eventType: string, payload: unknown) {
       const existing =
         getPendingBatchValue<Message>("messages", event.messageId) ??
         (messages.get(event.messageId) as Message | undefined);
+      debugSync("message_failed_apply_start", {
+        messageId: event.messageId,
+        errorCode: event.errorCode,
+        existing: existing
+          ? {
+              status: existing.status,
+              textLength: existing.text?.length ?? 0,
+              updatedAt: existing.updatedAt,
+            }
+          : null,
+      });
       if (existing) {
         syncUpdate("messages", event.messageId, {
           ...existing,
@@ -401,6 +480,25 @@ function applyEvent(eventType: string, payload: unknown) {
 // Snapshot replacement — sync_reset and server_state_rebased
 // ---------------------------------------------------------------------------
 
+export function applyPartialSnapshot(tables: SyncTables | undefined) {
+  if (!tables) return;
+  for (const [tableName, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
+    const writer = getSyncWriter(collectionId);
+    if (!writer) continue;
+    const rows = tables[tableName as keyof SyncTables];
+    if (!rows) continue;
+    writer.begin({ immediate: true });
+    for (const [key, value] of Object.entries(rows)) {
+      writer.write({
+        type: hasRow(collectionId, key) ? "update" : "insert",
+        value: value as object,
+      });
+    }
+    writer.commit();
+    writer.markReady();
+  }
+}
+
 function applySnapshot(tables: SyncTables | undefined) {
   if (!tables) return;
   for (const [tableName, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
@@ -449,12 +547,33 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
       const coalesced = coalesceDeltas(events);
       beginBatch();
       for (const evt of coalesced) {
+        if (evt.eventType !== "message_delta" || evt.serverSeq % 25 === 0) {
+          debugSync("event_apply", {
+            eventType: evt.eventType,
+            serverSeq: evt.serverSeq,
+            eventId: evt.eventId,
+            causedByOpId: evt.causedByOpId ?? null,
+          });
+        }
         applyEvent(evt.eventType, evt.payload);
         if (evt.eventType !== "message_delta") {
           shouldRefreshCachedSnapshot = true;
         }
       }
       flushBatch();
+      for (const evt of coalesced) {
+        if (evt.eventType === "message_completed" || evt.eventType === "message_failed") {
+          const payload = evt.payload as
+            | SyncEventPayloadMap["message_completed"]
+            | SyncEventPayloadMap["message_failed"];
+          debugSync("terminal_event_applied", {
+            eventType: evt.eventType,
+            serverSeq: evt.serverSeq,
+            messageId: payload.messageId,
+            after: debugMessageSnapshot(payload.messageId),
+          });
+        }
+      }
       conn.setLastServerSeq(events.at(-1)!.serverSeq);
       needsSelectionCheck = true;
       continue;
@@ -474,9 +593,8 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
           window.location.reload();
           break;
         }
-        if (envelope.lastServerSeq > conn.getLastServerSeq()) {
-          conn.setLastServerSeq(envelope.lastServerSeq);
-        }
+        // hello_ack announces the server head before replay events arrive. Advancing
+        // here can skip replay on reconnect if the socket closes mid-catch-up.
         pendingOps.flushAll();
         break;
 
@@ -543,6 +661,29 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
 
 export async function init() {
   conn.setOnEnvelopes(processEnvelopes);
+  if (typeof window !== "undefined") {
+    window.setInterval(() => {
+      const busy = [...messages.state.values()]
+        .map((message) => message as Message)
+        .filter((message) => message.role === "assistant" && isBusyStatus(message.status))
+        .map((message) => ({
+          id: message.id,
+          threadId: message.threadId,
+          status: message.status,
+          textLength: message.text?.length ?? 0,
+          updatedAt: message.updatedAt,
+          opId: message.opId ?? null,
+          traceStatuses: [...traceRuns.state.values()]
+            .filter((run) => run.messageId === message.id)
+            .map((run) => ({ id: run.id, status: run.status, endedAt: run.endedAt ?? null })),
+        }));
+      if (busy.length === 0) return;
+      debugSync("busy_message_watchdog", {
+        lastServerSeq: conn.getLastServerSeq(),
+        busy,
+      });
+    }, 10_000);
+  }
 
   // Mark all collections as ready immediately — with empty data — so the UI
   // renders without waiting for IndexedDB. Data hydrates async afterwards.

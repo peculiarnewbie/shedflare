@@ -95,6 +95,7 @@ import {
 import { start as startConnection, isConnected } from "../lib/ws-connection";
 import { init as initSyncAdapter } from "../lib/sync-adapter";
 import { authFetch } from "../lib/auth-fetch";
+import { loadOlderThreads, loadThreadDetail } from "../lib/history";
 
 type SessionPayload = {
   user?: {
@@ -152,6 +153,19 @@ type TraceTreeView = {
   copyText: string;
 };
 
+type ThreadHistoryState = {
+  cursor: string | null;
+  checked: boolean;
+  loading: boolean;
+  error: string | null;
+};
+
+type ThreadDetailLoadState = {
+  loading: boolean;
+  loaded: boolean;
+  error: string | null;
+};
+
 const Markdown = lazy(() => import("../components/Markdown"));
 const SettingsPage = lazy(() => import("../components/SettingsPage"));
 const MessageAttachments = lazy(() => import("../components/MessageAttachments"));
@@ -187,6 +201,10 @@ function groupThreadsByDate(threads: any[]): { label: string; threads: any[] }[]
   return order
     .filter((label) => groups[label]?.length)
     .map((label) => ({ label, threads: groups[label] }));
+}
+
+function formatThreadHistoryCursor(thread: Thread): string {
+  return JSON.stringify({ lastMessageAt: thread.lastMessageAt, threadId: thread.id });
 }
 
 function isBusyMessageStatus(status: Message["status"] | undefined) {
@@ -503,6 +521,12 @@ export default function Home() {
   const [collapsedTraceByMessage, setCollapsedTraceByMessage] = createStore<
     Record<string, boolean>
   >({});
+  const [threadHistoryByWorkspace, setThreadHistoryByWorkspace] = createStore<
+    Record<string, ThreadHistoryState>
+  >({});
+  const [threadDetailById, setThreadDetailById] = createStore<
+    Record<string, ThreadDetailLoadState>
+  >({});
   /**
    * Per-chip collapse state for the interleaved-layout message parts
    * (search chips, thinking chips). Keys are `${messageId}:${chipId}`.
@@ -625,6 +649,18 @@ export default function Home() {
   const activeThread = createMemo(
     () => threads().find((thread) => thread.id === activeThreadId()) ?? threads()[0],
   );
+  const currentThreadHistoryState = createMemo<ThreadHistoryState>(() => {
+    const workspaceId = activeWorkspace()?.id;
+    return workspaceId && threadHistoryByWorkspace[workspaceId]
+      ? threadHistoryByWorkspace[workspaceId]
+      : { cursor: null, checked: false, loading: false, error: null };
+  });
+  const hasThreadHistoryButton = createMemo(
+    () =>
+      !threadFilter().trim() &&
+      threads().length > 0 &&
+      (!currentThreadHistoryState().checked || Boolean(currentThreadHistoryState().cursor)),
+  );
   const activeDraft = createMemo(() => {
     const workspace = activeWorkspace();
     if (!workspace) return null;
@@ -638,6 +674,10 @@ export default function Home() {
   const selectedConversationThread = createMemo(
     () => (isDraftViewActive() ? activeDraft()?.thread : activeThread()) ?? null,
   );
+  const selectedThreadDetailState = createMemo(() => {
+    const threadId = selectedConversationThread()?.id;
+    return threadId ? threadDetailById[threadId] : null;
+  });
   // Check if current thread is a comparison thread
   const isComparisonThread = createMemo(() => {
     const thread = selectedConversationThread();
@@ -696,6 +736,38 @@ export default function Home() {
       return;
     }
     setComposer("text", text);
+  };
+
+  const handleLoadOlderThreads = async () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    const state = currentThreadHistoryState();
+    if (state.loading) return;
+    const oldestThread = threads().at(-1);
+    const before = state.cursor ?? (oldestThread ? formatThreadHistoryCursor(oldestThread) : null);
+
+    setThreadHistoryByWorkspace(workspace.id, {
+      cursor: state.cursor,
+      checked: state.checked,
+      loading: true,
+      error: null,
+    });
+    try {
+      const page = await loadOlderThreads({ workspaceId: workspace.id, before, limit: 50 });
+      setThreadHistoryByWorkspace(workspace.id, {
+        cursor: page.nextCursor,
+        checked: true,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      setThreadHistoryByWorkspace(workspace.id, {
+        cursor: state.cursor,
+        checked: state.checked,
+        loading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   };
 
   // File upload handlers
@@ -996,6 +1068,44 @@ export default function Home() {
     return byId;
   });
   const messageById = (messageId: string) => messagesById().get(messageId);
+  const selectedThreadHasDetail = createMemo(() => {
+    const thread = selectedConversationThread();
+    if (!thread) return true;
+    if (!thread.headMessageId) return true;
+    return (allMessages() as Message[]).some((message) => message.threadId === thread.id);
+  });
+
+  createEffect(() => {
+    if (isDraftViewActive()) return;
+    const thread = selectedConversationThread();
+    if (!thread) return;
+    if (selectedThreadHasDetail()) {
+      const current = threadDetailById[thread.id];
+      if (!current?.loaded) {
+        setThreadDetailById(thread.id, {
+          loading: false,
+          loaded: true,
+          error: null,
+        });
+      }
+      return;
+    }
+
+    const current = threadDetailById[thread.id];
+    if (current?.loading || current?.loaded) return;
+    setThreadDetailById(thread.id, { loading: true, loaded: false, error: null });
+    void loadThreadDetail(thread.id)
+      .then(() => {
+        setThreadDetailById(thread.id, { loading: false, loaded: true, error: null });
+      })
+      .catch((error) => {
+        setThreadDetailById(thread.id, {
+          loading: false,
+          loaded: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  });
   const terminalTraceStatusByMessage = createMemo(() => {
     const byMessage = new Map<string, "completed" | "failed" | "cancelled">();
     const startedAtByMessage = new Map<string, string>();
@@ -3474,6 +3584,20 @@ export default function Home() {
                   )}
                 </For>
               </Show>
+              <Show when={hasThreadHistoryButton()}>
+                <button
+                  class="load-older-threads-btn"
+                  disabled={currentThreadHistoryState().loading}
+                  onClick={() => void handleLoadOlderThreads()}
+                >
+                  {currentThreadHistoryState().loading
+                    ? "Loading older threads..."
+                    : "Load older threads"}
+                </button>
+              </Show>
+              <Show when={currentThreadHistoryState().error}>
+                {(error) => <div class="sidebar-error">{error()}</div>}
+              </Show>
             </div>
 
             <div class="sidebar-footer">
@@ -3552,7 +3676,15 @@ export default function Home() {
                 when={isComparisonThread()}
                 fallback={
                   <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
-                    <For each={messageIds()}>{renderMessage}</For>
+                    <Show
+                      when={!selectedThreadDetailState()?.loading}
+                      fallback={<div class="timeline-loading">Loading thread history...</div>}
+                    >
+                      <For each={messageIds()}>{renderMessage}</For>
+                    </Show>
+                    <Show when={selectedThreadDetailState()?.error}>
+                      {(error) => <div class="timeline-error">{error()}</div>}
+                    </Show>
                     <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
                   </section>
                 }

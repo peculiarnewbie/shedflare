@@ -537,6 +537,18 @@ export function sendMessageAction(input: {
     searchEnabled: input.search,
     status: "pending",
   });
+  console.log("[CHAT_DEBUG_STUCK_GENERATING] send_message_action_created", {
+    opId,
+    threadId: input.thread.id,
+    userMessageId: userMessage.id,
+    assistantMessageId: assistantMessage.id,
+    parentMessageId: userMessage.parentMessageId,
+    modelId: input.modelId,
+    reasoningLevel: input.reasoningLevel,
+    search: input.search,
+    promptLength: input.text.length,
+    attachmentCount: input.attachmentIds?.length ?? 0,
+  });
   const threadUpdate: Thread = {
     ...input.thread,
     title: input.thread.title,

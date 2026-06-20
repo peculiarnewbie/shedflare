@@ -1,5 +1,6 @@
 import { createRouter } from "./server/router";
 import type { AppEnv } from "#/effect";
+import { createChatBackup } from "./api/backups";
 
 export { SyncEngineDurableObject } from "./server/sync-engine";
 
@@ -13,5 +14,8 @@ export default {
   fetch(request: Request, env: Env): Promise<Response> {
     const router = createRouter(env);
     return router.fetch(request);
+  },
+  scheduled(_event, env, ctx) {
+    ctx.waitUntil(createChatBackup(env));
   },
 } satisfies ExportedHandler<Env>;
