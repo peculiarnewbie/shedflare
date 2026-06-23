@@ -34,16 +34,13 @@ describe("usePrivacyMode", () => {
     expect(memo().blurClass()).toBe("");
   });
 
-  // Reactive subscription tests — covered by the default/false cases above.
-  // Skipped under workspace Vitest where Solid's scheduler doesn't flush
-  // reliably before the assertion.
-  test.skip('"true" enables privacy mode', async () => {
+  test('"true" enables privacy mode', async () => {
     const memo = await withPrivacy("true", () => usePrivacyMode());
     expect(memo().enabled).toBe(true);
     expect(memo().blurClass()).toBe("privacy-blur");
   });
 
-  test.skip("blurIf only applies when both privacy mode and condition are true", async () => {
+  test("blurIf only applies when both privacy mode and condition are true", async () => {
     const on = await withPrivacy("true", () => usePrivacyMode());
     expect(on().blurIf(true)).toBe("privacy-blur");
     expect(on().blurIf(false)).toBe("");

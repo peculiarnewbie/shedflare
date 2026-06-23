@@ -2,7 +2,7 @@
  * REST API handlers — typed read endpoints using Drizzle query builder.
  * All responses are validated against Effect schemas from domain/schemas.ts.
  */
-import { eq, sql, and, type SQL } from "drizzle-orm";
+import { eq, sql, and, inArray, type SQL } from "drizzle-orm";
 import * as S from "effect/Schema";
 import * as s from "../db/schema";
 import type { Db } from "./d1-access";
@@ -63,6 +63,10 @@ function validatedJson(
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }
 
 export async function handleApiRequest(url: URL, method: string, db: Db): Promise<Response | null> {
@@ -253,6 +257,35 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
     }
 
     const rows = await query.all();
+    const missingCategoryIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.categoryId && !r.categoryName)
+          .map((r) => r.categoryId)
+          .filter(isString),
+      ),
+    ];
+    const missingAccountIds = [
+      ...new Set(rows.filter((r) => r.accountId && !r.accountName).map((r) => r.accountId)),
+    ];
+    const categoryNames = new Map<string, string>();
+    if (missingCategoryIds.length > 0) {
+      const cats = await db
+        .select({ id: s.categories.id, name: s.categories.name })
+        .from(s.categories)
+        .where(inArray(s.categories.id, missingCategoryIds))
+        .all();
+      for (const cat of cats) categoryNames.set(cat.id, cat.name);
+    }
+    const accountNames = new Map<string, string>();
+    if (missingAccountIds.length > 0) {
+      const accounts = await db
+        .select({ id: s.accounts.id, name: s.accounts.name })
+        .from(s.accounts)
+        .where(inArray(s.accounts.id, missingAccountIds))
+        .all();
+      for (const account of accounts) accountNames.set(account.id, account.name);
+    }
     return validatedJson(TransactionsResponseSchema, {
       transactions: rows.map((r) => ({
         id: r.id,
@@ -274,8 +307,9 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
         scheduleId: r.scheduleId,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
-        categoryName: r.categoryName,
-        accountName: r.accountName,
+        categoryName:
+          r.categoryName ?? (r.categoryId ? (categoryNames.get(r.categoryId) ?? null) : null),
+        accountName: r.accountName ?? accountNames.get(r.accountId) ?? null,
         scheduleName: r.scheduleName,
       })),
     });

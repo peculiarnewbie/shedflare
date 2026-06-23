@@ -280,7 +280,7 @@ function ScheduleForm(props: {
 
     setSaving(true);
     const parsedAmount = Math.round(parseFloat(amount() || "0") * 100);
-    const rules: any = { type: recurrence };
+    const rules: any = { type: recurrence() };
 
     if (skipWeekend()) {
       rules.skipWeekend = true;

@@ -2,7 +2,9 @@
 
 Envelope-budgeting personal finance app — self-hosted, single-user, web-only.
 
-Built on Cloudflare Durable Objects + SQLite with real-time WebSocket sync, offline-first IndexedDB cache, and a SolidJS SPA frontend.
+Currently built as a Cloudflare Worker-backed SolidJS SPA with REST APIs, D1 SQLite, R2 upload storage, and local browser caching for selected settings.
+
+Durable Objects, WebSocket sync, TanStack DB collections, and IndexedDB offline snapshots are target architecture ideas from the replacement plan, not shipped behavior today.
 
 ---
 
@@ -60,10 +62,10 @@ Shedflare Money is a zero-based budgeting (envelope budgeting) app for personal 
 
 ### Sync & Offline
 
-- **WebSocket sync** — real-time events between server and all connected clients
-- **Snapshot + replay** — on reconnect, get full snapshot or replay missed events
-- **Offline cache** — IndexedDB fallback, pending ops queue, disconnect/reconnect banners
-- **Optimistic UI** — changes show immediately, resolve on server ack or reject
+- **Current behavior** — REST requests against D1-backed API handlers
+- **Local settings cache** — selected settings are read from localStorage before server refresh
+- **Pending command helper** — command dispatch supports undo metadata, but there is no global offline queue or server event replay
+- **Target only** — WebSocket sync, snapshot/replay, IndexedDB offline cache, and TanStack DB collections are not implemented yet
 
 ### Settings
 
@@ -87,32 +89,25 @@ Shedflare Money is a zero-based budgeting (envelope budgeting) app for personal 
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Cloudflare Durable Object (MoneyBudgetDO)          │
-│  - SQLite database (single instance)                │
-│  - 13 command handlers (49 commands)               │
-│  - Event store (audit trail, sequence numbers)      │
-│  - Budget engine (SQL-computed derived values)      │
-│                                                     │
-│  WebSocket sync (hello → ack → event)              │
-│  REST API (GET endpoints for dashboard, reports)   │
-└──────────┬──────────────────────────────────────────┘
-           │ WebSocket
+│  Cloudflare Worker                                  │
+│  - Auth gate via @shedflare/auth                    │
+│  - REST routes under /api/*                         │
+│  - Serves static assets (SolidJS SPA)              │
+└─────────────────────────────────────────────────────┘
+           │
            ▼
 ┌─────────────────────────────────────────────────────┐
-│  Cloudflare Worker (HTTP gateway + auth)            │
-│  - Routes /api/* → DO                              │
-│  - Routes /ws → DO                                  │
-│  - Serves static assets (SolidJS SPA)              │
-│                                                     │
-│  Auth: OpenAuth OAuth flow with @shedflare/auth     │
+│  Cloudflare D1 + R2                                 │
+│  - D1 stores accounts, transactions, budgets, etc.  │
+│  - R2 stores uploaded import files                  │
+│  - Drizzle schema and generated migrations          │
 └─────────────────────────────────────────────────────┘
            │
            ▼
 ┌─────────────────────────────────────────────────────┐
 │  SolidJS SPA (client)                               │
-│  - TanStack DB collections (reactive state)         │
-│  - WebSocket sync adapter                           │
-│  - IndexedDB offline cache                          │
+│  - Route-local REST data loading                    │
+│  - Settings signal backed by localStorage           │
 │  - Undo/redo (keyboard: Ctrl+Z / Ctrl+Y)           │
 │  - D3-based chart components                        │
 └─────────────────────────────────────────────────────┘
@@ -122,17 +117,15 @@ Shedflare Money is a zero-based budgeting (envelope budgeting) app for personal 
 
 ```
 User adds transaction:
-  1. Client optimistically updates TanStack DB
-  2. Client creates PendingSyncOp, sends via WebSocket
-  3. DO processes command in SQLite transaction
-  4. DO generates events, broadcasts to all clients
-  5. Client receives ack + events, resolves pending op
+  1. Client dispatches a command to POST /api/command
+  2. Server validates and handles the command against D1
+  3. Route reloads or locally patches the affected data
+  4. Undo metadata is stored client-side when provided
 
-Page load (offline-first):
-  1. Client reads IndexedDB cache → shows data instantly
-  2. Connects WebSocket → sends hello with lastServerSeq
-  3. If stale → DO sends full snapshot
-  4. If valid → DO replays events since lastServerSeq
+Page load:
+  1. SPA route mounts
+  2. Route fetches data from /api/* endpoints
+  3. Settings read localStorage immediately, then refresh from /api/settings
 ```
 
 ### Database Schema (32 tables)

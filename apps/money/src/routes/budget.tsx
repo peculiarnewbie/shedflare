@@ -101,7 +101,7 @@ export default function BudgetPage() {
     const monthInt = y * 100 + m;
     const prev = categories().find((c) => c.categoryId === categoryId);
     const prevAmount = prev?.budgeted ?? 0;
-    dispatch(
+    const op = dispatch(
       "set_budget_amount",
       { month: monthInt, categoryId, amount },
       {
@@ -117,6 +117,8 @@ export default function BudgetPage() {
     setCategories((prev) =>
       prev.map((c) => (c.categoryId === categoryId ? { ...c, budgeted: amount } : c)),
     );
+    await op.promise;
+    await loadBudget();
   }
 
   return (

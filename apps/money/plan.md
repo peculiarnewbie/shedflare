@@ -1,8 +1,9 @@
 # Plan: Replace `@shedflare/money` with Full Actual Budget Engine
 
-**Status:** Design finalized — ready for implementation
+**Status:** Historical target plan. The current implementation is REST + D1 + R2, not Durable Objects/WebSocket/TanStack DB/offline-first.
 **Reference:** [Actual Budget](https://github.com/actualbudget/actual) — MIT-licensed personal finance app
-**Stack:** SolidJS, TanStack DB, Durable Objects + SQLite, Effect/Schema, Drizzle ORM, Cloudflare Workers
+**Target Stack:** SolidJS, TanStack DB, Durable Objects + SQLite, Effect/Schema, Drizzle ORM, Cloudflare Workers
+**Current Stack:** SolidJS, REST API handlers, D1, R2, Effect/Schema, Drizzle ORM, Cloudflare Workers
 **Target:** A full envelope-budgeting personal finance app on the shedflare Cloudflare stack.
 
 ---

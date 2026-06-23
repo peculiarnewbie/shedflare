@@ -91,10 +91,8 @@ export default function AccountsPage() {
   // Separate on-budget and off-budget accounts
   const onBudgetAccounts = createMemo(() => accounts().filter((a) => !a.offbudget && !a.closed));
   const offBudgetAccounts = createMemo(() => accounts().filter((a) => a.offbudget && !a.closed));
-  const closedAccounts = createMemo(() => {
-    const all = accounts().filter((a) => a.closed);
-    return hideClosed() ? [] : all;
-  });
+  const allClosedAccounts = createMemo(() => accounts().filter((a) => a.closed));
+  const closedAccounts = createMemo(() => (hideClosed() ? [] : allClosedAccounts()));
 
   return (
     <div class="page">
@@ -105,10 +103,10 @@ export default function AccountsPage() {
         </button>
       </div>
 
-      <Show when={hideClosed() && closedAccounts().length > 0}>
+      <Show when={hideClosed() && allClosedAccounts().length > 0}>
         <div class="section" style={{ "margin-bottom": "8px" }}>
           <p style={{ "font-size": "0.8rem", color: "var(--text-muted)" }}>
-            {closedAccounts().length} closed account{closedAccounts().length !== 1 ? "s" : ""}{" "}
+            {allClosedAccounts().length} closed account{allClosedAccounts().length !== 1 ? "s" : ""}{" "}
             hidden (configure in Settings)
           </p>
         </div>

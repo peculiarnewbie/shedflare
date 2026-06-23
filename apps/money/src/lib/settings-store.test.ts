@@ -40,6 +40,42 @@ describe("settings-store", () => {
     expect(settingsCollection.get("k")).toEqual({ key: "k", value: "v" });
   });
 
+  test("settingsCollection.subscribeChanges notifies on local settings changes", () => {
+    let calls = 0;
+    const sub = settingsCollection.subscribeChanges(() => {
+      calls += 1;
+    });
+    setSetting("display_currency", "USD");
+    sub.unsubscribe();
+    setSetting("display_currency", "IDR");
+    expect(calls).toBe(1);
+  });
+
+  test("loadSettings decodes settings and notifies subscribers", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            settings: [{ id: "s1", key: "privacy_mode", value: "true", updatedAt: "now" }],
+          }),
+        ),
+      )) as typeof fetch;
+    const sub = settingsCollection.subscribeChanges(() => {
+      calls += 1;
+    });
+    try {
+      loadSettings();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(getSetting("privacy_mode", "false")).toBe("true");
+      expect(calls).toBe(1);
+    } finally {
+      sub.unsubscribe();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("loadSettings swallows a failing fetch without throwing", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (() => Promise.reject(new Error("network down"))) as typeof fetch;

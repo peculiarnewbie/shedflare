@@ -421,3 +421,4 @@ export type DashboardExport = S.Schema.Type<typeof DashboardExportSchema>;
 export type Crossover = S.Schema.Type<typeof CrossoverSchema>;
 export type ExchangeRateApi = S.Schema.Type<typeof ExchangeRateApiSchema>;
 export type CommandResponse = S.Schema.Type<typeof CommandResponseSchema>;
+export type SettingsResponse = S.Schema.Type<typeof SettingsResponseSchema>;

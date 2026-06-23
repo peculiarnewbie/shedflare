@@ -6,11 +6,43 @@ import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import type { TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
+import type {
+  CategoriesResponse,
+  TagsResponse,
+  TransactionsResponse,
+} from "../domain/schemas-client";
+
+type CategoryRow = Pick<CategoriesResponse["categories"][number], "id" | "name"> & {
+  groupName: string | null;
+};
+type TagRow = Pick<TagsResponse["tags"][number], "id" | "name" | "color">;
+type ApiTransactionRow = TransactionsResponse["transactions"][number];
+
+function toTransactionRow(tx: ApiTransactionRow): TransactionRow {
+  return {
+    id: tx.id,
+    accountId: tx.accountId,
+    accountName: tx.accountName ?? undefined,
+    date: tx.date,
+    amount: tx.amount,
+    payee: tx.payee,
+    categoryId: tx.categoryId,
+    categoryName: tx.categoryName ?? null,
+    notes: tx.notes,
+    cleared: tx.cleared,
+    reconciled: tx.reconciled,
+    isParent: tx.isParent,
+    isChild: tx.isChild,
+    parentId: tx.parentId,
+    scheduleId: tx.scheduleId,
+    scheduleName: tx.scheduleName ?? null,
+  };
+}
 
 export default function AllTransactionsPage() {
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
-  const [categories, setCategories] = createSignal<any[]>([]);
-  const [tagList, setTagList] = createSignal<any[]>([]);
+  const [categories, setCategories] = createSignal<CategoryRow[]>([]);
+  const [tagList, setTagList] = createSignal<TagRow[]>([]);
   const [txTags, _setTxTags] = createSignal<
     Record<string, { id: string; name: string; color: string | null }[]>
   >({});
@@ -31,7 +63,6 @@ export default function AllTransactionsPage() {
     setFilterConditionsOp(conditionsOp);
     setFilterId(fId);
     setLoading(true);
-    void loadData();
   }
 
   createEffect(() => {
@@ -46,7 +77,7 @@ export default function AllTransactionsPage() {
     try {
       const fId = filterId();
       const data = await api.transactions(fId ?? undefined);
-      setTransactions([...data.transactions] as any);
+      setTransactions(data.transactions.map(toTransactionRow));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load transactions");
     } finally {
@@ -57,7 +88,9 @@ export default function AllTransactionsPage() {
   async function loadCategories() {
     try {
       const data = await api.categories();
-      setCategories([...data.categories]);
+      setCategories(
+        data.categories.map((c) => ({ id: c.id, name: c.name, groupName: c.group_name ?? null })),
+      );
     } catch {
       console.warn("[transactions] failed to load categories");
     }

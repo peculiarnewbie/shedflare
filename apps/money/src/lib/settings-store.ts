@@ -4,10 +4,15 @@
  */
 
 import { createSignal } from "solid-js";
+import * as S from "effect/Schema";
+import { SettingsResponseSchema, type SettingsResponse } from "../domain/schemas-client";
 
 type SettingsMap = Record<string, string>;
+type SettingsListener = () => void;
 
 const STORAGE_KEY = "shedflare.money.settings";
+const listeners = new Set<SettingsListener>();
+const decodeSettings = S.decodeUnknownSync(SettingsResponseSchema);
 
 function readStorage(): SettingsMap {
   try {
@@ -23,6 +28,18 @@ function writeStorage(map: SettingsMap) {
   } catch {}
 }
 
+function notifyListeners() {
+  for (const listener of listeners) listener();
+}
+
+function toSettingsMap(response: SettingsResponse): SettingsMap {
+  const map: SettingsMap = {};
+  for (const setting of response.settings) {
+    map[setting.key] = setting.value;
+  }
+  return map;
+}
+
 // Seed from localStorage so values are available instantly on page load
 // without waiting for the server fetch.
 const [settingsMap, setSettingsMap] = createSignal<SettingsMap>(readStorage());
@@ -30,13 +47,11 @@ const [settingsMap, setSettingsMap] = createSignal<SettingsMap>(readStorage());
 export function loadSettings() {
   fetch("/api/settings")
     .then((r) => r.json())
-    .then((data: any) => {
-      const map: Record<string, string> = {};
-      for (const s of data.settings ?? []) {
-        map[s.key] = s.value;
-      }
+    .then((data: unknown) => {
+      const map = toSettingsMap(decodeSettings(data));
       setSettingsMap(map);
       writeStorage(map);
+      notifyListeners();
     })
     .catch(() => {
       console.warn("[settings-store] failed to load settings");
@@ -53,6 +68,7 @@ export function setSetting(key: string, value: string): void {
     writeStorage(next);
     return next;
   });
+  notifyListeners();
 }
 
 // Collection-like interface for compatibility (matches old TanStack DB usage)
@@ -74,7 +90,8 @@ export const settingsCollection = {
   get(key: string) {
     return { key, value: settingsMap()[key] ?? "" };
   },
-  subscribeChanges(_fn: () => void) {
-    return { unsubscribe: () => {} };
+  subscribeChanges(fn: SettingsListener) {
+    listeners.add(fn);
+    return { unsubscribe: () => listeners.delete(fn) };
   },
 };
