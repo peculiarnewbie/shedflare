@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parse } from "jsonc-parser";
 
 export type AppId =
+  | "anki"
   | "auth"
   | "cf-bill"
   | "chat"

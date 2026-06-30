@@ -4,6 +4,7 @@ import { CloudflareEnvironment } from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import { AnkiStack } from "./apps/anki/alchemy.run.ts";
 import { AuthStack } from "./apps/auth/alchemy.run.ts";
 import { CfBillStack } from "./apps/cf-bill/alchemy.run.ts";
 import { ChatStack } from "./apps/chat/alchemy.run.ts";
@@ -49,6 +50,7 @@ export default Alchemy.Stack(
     const { accountId, apiToken } = yield* CloudflareEnvironment;
 
     const auth = yield* AuthStack;
+    const anki = yield* AnkiStack;
     const cfBill = yield* CfBillStack;
     const drive = yield* DriveStack;
     const chat = yield* ChatStack;
@@ -64,6 +66,7 @@ export default Alchemy.Stack(
       const obsWorker = physicalName(stage, "observability");
       const apps = [
         "auth",
+        "anki",
         "cf-bill",
         "chat",
         "drive",
@@ -97,6 +100,7 @@ export default Alchemy.Stack(
     return {
       stage,
       authUrl: auth.url,
+      ankiUrl: anki.url,
       homepageUrl: homepage.url,
       cfBillUrl: cfBill.url,
       driveUrl: drive.url,

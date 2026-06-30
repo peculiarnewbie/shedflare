@@ -2,6 +2,10 @@
   "domain": "example.com",
   "ownerEmail": "you@example.com",
   "apps": {
+    "anki": {
+      "enabled": true,
+      "subdomain": "anki",
+    },
     "auth": {
       "enabled": true,
       "subdomain": "auth",
@@ -44,6 +48,7 @@
     },
   },
   "vars": {
+    "anki": {},
     "auth": {},
     "cf-bill": {
       "CLOUDFLARE_ACCOUNT_ID": "",

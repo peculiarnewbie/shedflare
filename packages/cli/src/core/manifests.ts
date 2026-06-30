@@ -4,6 +4,7 @@ import { parse } from "jsonc-parser";
 import { BUILTIN_MANIFESTS } from "./manifests-data.js";
 
 export type AppId =
+  | "anki"
   | "auth"
   | "cf-bill"
   | "chat"
@@ -16,6 +17,7 @@ export type AppId =
   | "youtube";
 
 export const APP_IDS: AppId[] = [
+  "anki",
   "auth",
   "cf-bill",
   "chat",
