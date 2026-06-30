@@ -25,6 +25,8 @@ export interface DonutChartProps {
   thickness?: number;
   /** Whether to show legend (default true) */
   showLegend?: boolean;
+  /** Format money values in labels and tooltips */
+  formatValue?: (v: number) => string;
 }
 
 export default function DonutChart(props: DonutChartProps) {
@@ -104,7 +106,7 @@ export default function DonutChart(props: DonutChartProps) {
                   opacity="0.9"
                 >
                   <title>
-                    {`${arc.data.label}: ${formatChartTooltip(arc.data.value)} (${((arc.data.value / total()) * 100).toFixed(1)}%)`}
+                    {`${arc.data.label}: ${formatChartTooltip(arc.data.value, props.formatValue)} (${((arc.data.value / total()) * 100).toFixed(1)}%)`}
                   </title>
                 </path>
               </g>
@@ -120,7 +122,7 @@ export default function DonutChart(props: DonutChartProps) {
             font-size="22"
             font-weight="700"
           >
-            {formatChartTooltip(total())}
+            {formatChartTooltip(total(), props.formatValue)}
           </text>
           <text x={cx} y={cy + 14} text-anchor="middle" fill="var(--text-secondary)" font-size="12">
             Total

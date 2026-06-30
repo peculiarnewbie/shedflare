@@ -953,7 +953,11 @@ export default function Home() {
     if (!timelineRef) return;
     _isProgrammaticScroll = true;
     timelineRef.scrollTo({ top: timelineRef.scrollHeight, behavior: "smooth" });
-    _isProgrammaticScroll = false;
+    setIsNearBottom(true);
+    setShowScrollBtn(false);
+    requestAnimationFrame(() => {
+      _isProgrammaticScroll = false;
+    });
   };
 
   // Apply theme to document
@@ -1869,6 +1873,32 @@ export default function Home() {
   const userFileAttachments = (messageId: string) =>
     userAttachments(messageId).filter((attachment) => !isImageMime(attachment.mimeType));
 
+  const userMessageMarkers = createMemo(() => {
+    const ids = messageIds();
+    const total = Math.max(ids.length - 1, 1);
+    return ids
+      .map((id, index) => {
+        const message = messageById(id);
+        if (!message || message.role !== "user") return null;
+        const text = message.text.trim();
+        return {
+          id: message.id,
+          label: text || "Attachment message",
+          preview: text ? text.replace(/\s+/g, " ").slice(0, 120) : "Attachment message",
+          top: `${(index / total) * 100}%`,
+        };
+      })
+      .filter((marker): marker is { id: string; label: string; preview: string; top: string } =>
+        Boolean(marker),
+      );
+  });
+
+  const scrollToMessage = (messageId: string) => {
+    const target = timelineRef?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+    if (!target) return;
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
   const renderMessage = (messageId: string) => {
     const message = () => messageById(messageId);
 
@@ -1879,6 +1909,7 @@ export default function Home() {
             const status = () => effectiveMessageStatus(message());
             return (
               <article
+                data-message-id={message().id}
                 classList={{
                   msg: true,
                   assistant: message().role === "assistant",
@@ -1888,7 +1919,10 @@ export default function Home() {
                 <div class="msg-meta">
                   <span class="msg-role">{message().role === "assistant" ? "AI" : "You"}</span>
                   <Show when={status() && status() !== "completed"}>
-                    <span class="msg-status">{status()}</span>
+                    <span class="chat-marker chat-marker-inline msg-status">
+                      <span class="chat-marker-dot" aria-hidden="true" />
+                      <span>{status()}</span>
+                    </span>
                   </Show>
                 </div>
                 <Show
@@ -2043,7 +2077,7 @@ export default function Home() {
                             allTimelineItemsFinished(assistantTimeline(message().id)))
                         }
                       >
-                        <div class="thinking-indicator">
+                        <div class="chat-marker thinking-indicator">
                           <span class="thinking-spinner" />
                           <span>Generating…</span>
                         </div>
@@ -3675,18 +3709,52 @@ export default function Home() {
               <Show
                 when={isComparisonThread()}
                 fallback={
-                  <section class="timeline" ref={timelineRef} onScroll={handleTimelineScroll}>
-                    <Show
-                      when={!selectedThreadDetailState()?.loading}
-                      fallback={<div class="timeline-loading">Loading thread history...</div>}
+                  <div class="timeline-shell">
+                    <Show when={userMessageMarkers().length > 1}>
+                      <nav class="message-minimap" aria-label="User messages in this thread">
+                        <For each={userMessageMarkers()}>
+                          {(marker) => (
+                            <button
+                              type="button"
+                              class="message-minimap-marker"
+                              style={{ top: marker.top }}
+                              aria-label={`Scroll to: ${marker.label}`}
+                              onClick={() => scrollToMessage(marker.id)}
+                            >
+                              <span class="message-minimap-tick" aria-hidden="true" />
+                              <span class="message-minimap-card">
+                                <strong>{marker.label}</strong>
+                                <span>{marker.preview}</span>
+                              </span>
+                            </button>
+                          )}
+                        </For>
+                      </nav>
+                    </Show>
+                    <section
+                      class="timeline"
+                      classList={{ "is-scrollable-away": showScrollBtn() }}
+                      ref={timelineRef}
+                      onScroll={handleTimelineScroll}
                     >
-                      <For each={messageIds()}>{renderMessage}</For>
-                    </Show>
-                    <Show when={selectedThreadDetailState()?.error}>
-                      {(error) => <div class="timeline-error">{error()}</div>}
-                    </Show>
-                    <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
-                  </section>
+                      <Show
+                        when={!selectedThreadDetailState()?.loading}
+                        fallback={
+                          <div class="chat-marker chat-marker-separator timeline-loading">
+                            <span>Loading thread history...</span>
+                          </div>
+                        }
+                      >
+                        <For each={messageIds()}>{renderMessage}</For>
+                      </Show>
+                      <Show when={selectedThreadDetailState()?.error}>
+                        {(error) => (
+                          <div class="chat-marker chat-marker-border timeline-error">{error()}</div>
+                        )}
+                      </Show>
+                      <div class="timeline-anchor" classList={{ active: isNearBottom() }} />
+                    </section>
+                  </div>
                 }
               >
                 <div class="comparison-view">
@@ -3782,23 +3850,27 @@ export default function Home() {
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
               >
-                <Show when={showScrollBtn()}>
-                  <button
-                    class="scroll-to-bottom"
-                    onClick={scrollToBottom}
-                    title="Scroll to bottom"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path
-                        d="M8 3v10M4 9l4 4 4-4"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </Show>
+                <button
+                  type="button"
+                  class="scroll-to-bottom"
+                  classList={{ "is-active": showScrollBtn() }}
+                  disabled={!showScrollBtn()}
+                  aria-hidden={!showScrollBtn()}
+                  tabIndex={showScrollBtn() ? 0 : -1}
+                  onClick={scrollToBottom}
+                  title="Scroll to bottom"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M8 3v10M4 9l4 4 4-4"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <span class="sr-only">Scroll to bottom</span>
+                </button>
 
                 <Show when={imageAttachmentsWarning()}>
                   <div class="composer-warning">
@@ -3826,28 +3898,43 @@ export default function Home() {
                     <For each={composerAttachments()}>
                       {(att) => (
                         <div
-                          class="attachment-chip"
+                          class="attachment-card composer-attachment-card"
                           classList={{
-                            "attachment-chip-uploading": att.status === "uploading",
-                            "attachment-chip-failed": att.status === "failed",
+                            "attachment-card-uploading": att.status === "uploading",
+                            "attachment-card-failed": att.status === "failed",
                           }}
                         >
                           <Show
                             when={att.previewUrl}
                             fallback={
-                              <span class="attachment-chip-ext">
-                                {att.fileName.split(".").pop()?.toUpperCase().slice(0, 4) || "FILE"}
+                              <span class="attachment-media">
+                                <span class="attachment-ext">
+                                  {att.fileName.split(".").pop()?.toUpperCase().slice(0, 4) ||
+                                    "FILE"}
+                                </span>
                               </span>
                             }
                           >
-                            <img class="attachment-chip-thumb" src={att.previewUrl} alt="" />
+                            <span class="attachment-media attachment-media-image">
+                              <img src={att.previewUrl} alt="" />
+                            </span>
                           </Show>
-                          <span class="attachment-chip-name">{att.fileName}</span>
+                          <span class="attachment-content">
+                            <span class="attachment-title">{att.fileName}</span>
+                            <span class="attachment-description">
+                              {att.status === "uploading"
+                                ? "Uploading"
+                                : att.status === "failed"
+                                  ? "Upload failed"
+                                  : "Ready"}
+                            </span>
+                          </span>
                           <Show when={att.status === "uploading"}>
-                            <span class="attachment-chip-spinner" />
+                            <span class="attachment-spinner" />
                           </Show>
                           <button
-                            class="attachment-chip-remove"
+                            type="button"
+                            class="attachment-action"
                             onClick={() => removeAttachment(att.localId)}
                             title="Remove"
                           >

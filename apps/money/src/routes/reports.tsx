@@ -479,6 +479,7 @@ export default function ReportsPage() {
           dimensions={{ width: 700, height: 300, marginBottom: 40 }}
           fillColor={colors?.balance ?? colors?.expense}
           strokeColor={colors?.balance ?? colors?.expense}
+          formatValue={fmt().formatCents}
         />
       );
     }
@@ -512,6 +513,7 @@ export default function ReportsPage() {
           stacked={false}
           dimensions={{ width: 700, height: 300, marginBottom: 40 }}
           formatX={formatMonth}
+          formatValue={fmt().formatCents}
         />
       );
     }
@@ -538,7 +540,13 @@ export default function ReportsPage() {
           color: categoryColor(i++),
         }));
       }
-      return <DonutChart slices={slices} dimensions={{ width: 500, height: 350 }} />;
+      return (
+        <DonutChart
+          slices={slices}
+          dimensions={{ width: 500, height: 350 }}
+          formatValue={fmt().formatCents}
+        />
+      );
     }
 
     return <div class="chart-placeholder">Unsupported graph type</div>;
@@ -661,6 +669,7 @@ export default function ReportsPage() {
                 <AreaChart
                   data={netWorthData()}
                   dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+                  formatValue={fmt().formatCents}
                 />
               </div>
             </Show>
@@ -674,6 +683,7 @@ export default function ReportsPage() {
                   stacked={false}
                   dimensions={{ width: 700, height: 300, marginBottom: 40 }}
                   formatX={formatMonth}
+                  formatValue={fmt().formatCents}
                 />
               </div>
             </Show>
@@ -682,7 +692,11 @@ export default function ReportsPage() {
               <div class="report-card">
                 <h2 class="report-title">Spending by Category</h2>
                 <p class="report-description">Where your money went this period.</p>
-                <DonutChart slices={spendingData()} dimensions={{ width: 500, height: 350 }} />
+                <DonutChart
+                  slices={spendingData()}
+                  dimensions={{ width: 500, height: 350 }}
+                  formatValue={fmt().formatCents}
+                />
               </div>
             </Show>
 
@@ -690,7 +704,7 @@ export default function ReportsPage() {
               <div class="report-card">
                 <h2 class="report-title">Budget vs Actuals</h2>
                 <p class="report-description">How each category compares to its budget.</p>
-                <BudgetBar data={budgetData()} maxCategories={15} />
+                <BudgetBar data={budgetData()} maxCategories={15} formatValue={fmt().formatCents} />
               </div>
             </Show>
 

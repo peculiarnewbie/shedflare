@@ -1,5 +1,12 @@
 import { createSignal, createEffect, For, Show, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
+import { api } from "../lib/api";
+import type { JSX } from "solid-js";
+import type {
+  AccountsResponse,
+  CategoriesResponse,
+  FiltersResponse,
+} from "../domain/schemas-client";
 
 type CondOp =
   | "is"
@@ -13,30 +20,22 @@ type CondOp =
   | "isbetween"
   | "oneOf";
 
-interface Condition {
+export interface Condition {
   field: string;
   op: CondOp;
   value: unknown;
   value2?: unknown;
 }
 
-interface SavedFilter {
-  id: string;
-  name: string;
-  conditions: string;
-  conditions_op: "and" | "or";
-}
+type SavedFilter = Pick<FiltersResponse["filters"][number], "id" | "name" | "conditions"> & {
+  conditionsOp: "and" | "or";
+};
 
-interface Account {
-  id: string;
-  name: string;
-}
+type Account = Pick<AccountsResponse["accounts"][number], "id" | "name">;
 
-interface Category {
-  id: string;
-  name: string;
+type Category = Pick<CategoriesResponse["categories"][number], "id" | "name"> & {
   groupName?: string | null;
-}
+};
 
 type FieldConfig = {
   label: string;
@@ -46,7 +45,7 @@ type FieldConfig = {
     onChange: (v: unknown) => void,
     value2?: unknown,
     onChange2?: (v: unknown) => void,
-  ) => any;
+  ) => JSX.Element;
 };
 
 const FIELD_CONFIGS: Record<string, FieldConfig> = {
@@ -56,9 +55,9 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
     render: (value, onChange) => {
       const [accounts, setAccounts] = createSignal<Account[]>([]);
       createEffect(() => {
-        fetch("/api/accounts")
-          .then((r) => r.json())
-          .then((d: any) => setAccounts(d.accounts ?? []))
+        void api
+          .accounts()
+          .then((data) => setAccounts(data.accounts.map(({ id, name }) => ({ id, name }))))
           .catch(() => {
             console.warn("[TransactionFilters] failed to load accounts");
           });
@@ -77,9 +76,17 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
     render: (value, onChange) => {
       const [cats, setCats] = createSignal<Category[]>([]);
       createEffect(() => {
-        fetch("/api/categories")
-          .then((r) => r.json())
-          .then((d: any) => setCats(d.categories ?? []))
+        void api
+          .categories()
+          .then((data) =>
+            setCats(
+              data.categories.map((category) => ({
+                id: category.id,
+                name: category.name,
+                groupName: category.group_name ?? null,
+              })),
+            ),
+          )
           .catch(() => {
             console.warn("[TransactionFilters] failed to load categories");
           });
@@ -240,9 +247,18 @@ export default function TransactionFilters(props: {
   const [showSave, setShowSave] = createSignal(false);
 
   createEffect(() => {
-    fetch("/api/filters")
-      .then((r) => r.json())
-      .then((d: any) => setSavedFilters(d.filters ?? []))
+    void api
+      .filters()
+      .then((data) =>
+        setSavedFilters(
+          data.filters.map((filter) => ({
+            id: filter.id,
+            name: filter.name,
+            conditions: filter.conditions,
+            conditionsOp: filter.conditionsOp === "or" ? "or" : "and",
+          })),
+        ),
+      )
       .catch(() => {
         console.warn("[TransactionFilters] failed to load saved filters");
       });
@@ -282,7 +298,7 @@ export default function TransactionFilters(props: {
       console.warn("[TransactionFilters] failed to parse saved filter conditions");
       conditions = [];
     }
-    props.onConditionsChange(conditions, filter.conditions_op, filter.id);
+    props.onConditionsChange(conditions, filter.conditionsOp, filter.id);
     setShowSavedMenu(false);
   }
 
@@ -517,4 +533,4 @@ export default function TransactionFilters(props: {
   );
 }
 
-export type { Condition, SavedFilter, CondOp };
+export type { SavedFilter, CondOp };

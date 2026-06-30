@@ -602,7 +602,7 @@ export default function Dashboard() {
                 </Axis>
                 <Axis axis="y" position="left">
                   <AxisMark />
-                  <AxisLabel format={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                  <AxisLabel format={(v: number) => fmt().formatCents(v)} />
                 </Axis>
                 <Area dataKey="value" color="var(--primary)" />
               </Chart>
@@ -632,7 +632,7 @@ export default function Dashboard() {
                 </Axis>
                 <Axis axis="y" position="left">
                   <AxisMark />
-                  <AxisLabel format={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                  <AxisLabel format={(v: number) => fmt().formatCents(v)} />
                 </Axis>
                 <Bar dataKey="income" name="Income" color="var(--positive)" />
                 <Bar dataKey="expenses" name="Expenses" color="var(--negative)" />
@@ -666,7 +666,7 @@ export default function Dashboard() {
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">Budget vs Actuals</div>
-            <BudgetBar data={data} maxCategories={10} />
+            <BudgetBar data={data} maxCategories={10} formatValue={fmt().formatCents} />
           </div>
         );
       }
@@ -784,13 +784,6 @@ export default function Dashboard() {
           .map((d, i) => `${i === 0 ? "M" : "L"}${xScale(i)},${yScale(d.expenses)}`)
           .join(" ");
 
-        const fmt = (cents: number) => {
-          const abs = Math.abs(cents);
-          const sign = cents < 0 ? "-" : "";
-          if (abs >= 100000) return `${sign}$${(abs / 100 / 1000).toFixed(1)}K`;
-          return `${sign}$${(abs / 100).toFixed(0)}`;
-        };
-
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">FI-RE Crossover Projection</div>
@@ -798,7 +791,7 @@ export default function Dashboard() {
               <div class="crossover-stat">
                 <span class="crossover-stat-label">Nest Egg</span>
                 <span class={`crossover-stat-value ${privacyBlur().blurClass()}`}>
-                  {fmt(data.currentBalance)}
+                  {fmt().formatCents(data.currentBalance)}
                 </span>
               </div>
               <div class="crossover-stat">
@@ -808,13 +801,13 @@ export default function Dashboard() {
                 <span class={`crossover-stat-value highlight ${privacyBlur().blurClass()}`}>
                   {data.yearsToRetire !== null
                     ? data.yearsToRetireFormatted
-                    : fmt(data.targetNestEgg)}
+                    : fmt().formatCents(data.targetNestEgg)}
                 </span>
               </div>
               <div class="crossover-stat">
                 <span class="crossover-stat-label">Monthly</span>
                 <span class={`crossover-stat-value ${privacyBlur().blurClass()}`}>
-                  {fmt(data.medianExpense)}
+                  {fmt().formatCents(data.medianExpense)}
                 </span>
               </div>
               <div class="crossover-stat">

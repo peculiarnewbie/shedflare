@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { formatCentsValue } from "./currency";
+import { formatChartAmount, formatChartTooltip } from "../charts/types";
 
 describe("formatCentsValue", () => {
   test("USD formats with 2 decimals and a $ sign", () => {
@@ -27,5 +28,12 @@ describe("formatCentsValue", () => {
 
   test("does not crash on huge values", () => {
     expect(formatCentsValue(1_000_000_000_00, "USD")).toBe("$1,000,000,000.00");
+  });
+
+  test("chart formatters can use the selected display currency", () => {
+    const formatIdr = (cents: number) => formatCentsValue(cents, "IDR");
+
+    expect(formatChartAmount(123_456, formatIdr)).toBe("Rp1,235");
+    expect(formatChartTooltip(-123_456, formatIdr)).toBe("-Rp1,235");
   });
 });

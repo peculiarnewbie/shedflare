@@ -28,6 +28,8 @@ export interface BarChartProps {
   barPadding?: number;
   /** Format for y-axis labels */
   formatY?: (v: number) => string;
+  /** Format money values in tooltips and default axis labels */
+  formatValue?: (v: number) => string;
   /** Format for x-axis labels */
   formatX?: (label: string) => string;
   /** Chart-level label when there's only one value per group */
@@ -92,7 +94,7 @@ export default function BarChart(props: BarChartProps) {
     return ys.ticks(5).map((v) => ({
       value: v,
       y: ys(v),
-      label: props.formatY ? props.formatY(v) : formatChartAmount(v),
+      label: props.formatY ? props.formatY(v) : formatChartAmount(v, props.formatValue),
     }));
   });
 
@@ -280,7 +282,7 @@ export default function BarChart(props: BarChartProps) {
                   rx="2"
                   opacity="0.85"
                 >
-                  <title>{`${bar.label}: ${bar.value >= 0 ? "" : "-"}$${Math.abs(bar.value / 100).toFixed(2)}`}</title>
+                  <title>{`${bar.label}: ${(props.formatValue ?? formatChartAmount)(bar.value)}`}</title>
                 </rect>
               </g>
             )}

@@ -25,6 +25,8 @@ export interface BudgetBarProps {
   showAxis?: boolean;
   /** Max categories to show (default 15) */
   maxCategories?: number;
+  /** Format money values in labels and tooltips */
+  formatValue?: (v: number) => string;
 }
 
 export default function BudgetBar(props: BudgetBarProps) {
@@ -167,7 +169,7 @@ export default function BudgetBar(props: BudgetBarProps) {
                 {/* Actual bar */}
                 <rect {...row.actualBar} rx="2" opacity="0.85">
                   <title>
-                    {`${row.item.category}: Budgeted ${formatChartTooltip(row.item.budgeted)}, Spent ${formatChartTooltip(row.item.actual)}`}
+                    {`${row.item.category}: Budgeted ${formatChartTooltip(row.item.budgeted, props.formatValue)}, Spent ${formatChartTooltip(row.item.actual, props.formatValue)}`}
                   </title>
                 </rect>
 
@@ -178,7 +180,7 @@ export default function BudgetBar(props: BudgetBarProps) {
                   fill="var(--text-secondary)"
                   font-size="10"
                 >
-                  B: {formatChartAmount(row.item.budgeted)}
+                  B: {formatChartAmount(row.item.budgeted, props.formatValue)}
                 </text>
                 <text
                   x={labelWidth + barAreaWidth + 6}
@@ -186,7 +188,7 @@ export default function BudgetBar(props: BudgetBarProps) {
                   fill="var(--text)"
                   font-size="10"
                 >
-                  S: {formatChartAmount(row.item.actual)}
+                  S: {formatChartAmount(row.item.actual, props.formatValue)}
                 </text>
               </g>
             )}

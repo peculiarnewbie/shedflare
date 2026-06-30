@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, For, Show, onCleanup } from "solid-js";
+import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { execute, api } from "../lib/api";
@@ -7,19 +7,44 @@ import { usePrivacyMode } from "../lib/privacy";
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
-import type { TransactionRow } from "../components/TransactionTable";
+import AddTransactionModal from "../components/AddTransactionModal";
+import type { TagInfo, TransactionPatch, TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
+import type {
+  AccountApi,
+  AccountTransactionsResponse,
+  CategoriesResponse,
+} from "../domain/schemas-client";
 
-interface CategoryRow {
-  id: string;
-  name: string;
+type CategoryRow = Pick<CategoriesResponse["categories"][number], "id" | "name"> & {
   groupName: string | null;
+};
+type ApiTransactionRow = AccountTransactionsResponse["transactions"][number];
+
+function toTransactionRow(tx: ApiTransactionRow): TransactionRow {
+  return {
+    id: tx.id,
+    accountId: tx.accountId,
+    date: tx.date,
+    amount: tx.amount,
+    payee: tx.payee,
+    categoryId: tx.categoryId,
+    categoryName: tx.categoryName ?? null,
+    notes: tx.notes,
+    cleared: tx.cleared,
+    reconciled: tx.reconciled,
+    isParent: tx.isParent,
+    isChild: tx.isChild,
+    parentId: tx.parentId,
+    scheduleId: tx.scheduleId,
+    scheduleName: tx.scheduleName ?? null,
+  };
 }
 
 export default function AccountPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [account, setAccount] = createSignal<any>(null);
+  const [account, setAccount] = createSignal<AccountApi | null>(null);
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
   const [categories, setCategories] = createSignal<CategoryRow[]>([]);
   const [loading, setLoading] = createSignal(true);
@@ -35,7 +60,7 @@ export default function AccountPage() {
   const [filterConditions, setFilterConditions] = createSignal<Condition[]>([]);
   const [_filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
 
-  const [tagList, setTagList] = createSignal<any[]>([]);
+  const [tagList, setTagList] = createSignal<TagInfo[]>([]);
   const [txTags, setTxTags] = createSignal<
     Record<string, { id: string; name: string; color: string | null }[]>
   >({});
@@ -43,52 +68,6 @@ export default function AccountPage() {
   const reconciliableTransactions = createMemo(() =>
     transactions().filter((tx) => tx.cleared && !tx.reconciled && !tx.isChild),
   );
-
-  const [txDate, setTxDate] = createSignal(new Date().toISOString().slice(0, 10));
-  const [txPayee, setTxPayee] = createSignal("");
-  const [txAmount, setTxAmount] = createSignal("");
-  const [txCategory, setTxCategory] = createSignal("");
-  const [txNotes, setTxNotes] = createSignal("");
-  const [autoCategory, setAutoCategory] = createSignal<string | null>(null);
-
-  let payeeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  onCleanup(() => {
-    if (payeeDebounceTimer) clearTimeout(payeeDebounceTimer);
-  });
-
-  function handlePayeeInput(value: string) {
-    setTxPayee(value);
-
-    if (payeeDebounceTimer) clearTimeout(payeeDebounceTimer);
-
-    if (!value.trim()) {
-      setAutoCategory(null);
-      return;
-    }
-
-    payeeDebounceTimer = setTimeout(async () => {
-      try {
-        const data = await api.payeeSuggestions(value.trim());
-        const suggestions = data.suggestions ?? [];
-        if (suggestions.length > 0) {
-          setAutoCategory(suggestions[0].category_id);
-        } else {
-          setAutoCategory(null);
-        }
-      } catch {
-        console.warn("[account] failed to fetch category suggestion");
-        setAutoCategory(null);
-      }
-    }, 300);
-  }
-
-  createEffect(() => {
-    const autoCat = autoCategory();
-    if (autoCat && (!txCategory() || txCategory() === "")) {
-      setTxCategory(autoCat);
-    }
-  });
 
   function handleFilterChange(
     conditions: Condition[],
@@ -120,7 +99,7 @@ export default function AccountPage() {
         api.accountTags(accountId),
       ]);
       setAccount(acctData);
-      setTransactions([...txData.transactions] as any);
+      setTransactions(txData.transactions.map(toTransactionRow));
       const map: Record<string, { id: string; name: string; color: string | null }[]> = {};
       for (const tt of txTagsData.transactionTags ?? []) {
         const txId = tt.transactionId;
@@ -142,7 +121,13 @@ export default function AccountPage() {
   async function loadCategories() {
     try {
       const data = await api.categories();
-      setCategories([...data.categories] as any);
+      setCategories(
+        data.categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          groupName: category.group_name ?? null,
+        })),
+      );
     } catch {
       console.warn("[account] failed to load categories");
     }
@@ -157,48 +142,37 @@ export default function AccountPage() {
     }
   }
 
-  function handleAddTransaction(e: Event) {
-    e.preventDefault();
-    const raw = txAmount();
-    const cents = fmt().parseInput(raw);
-    if (cents === 0) return;
-
-    const row = {
-      accountId,
-      date: txDate(),
-      amount: cents,
-      payee: txPayee() || undefined,
-      notes: txNotes() || undefined,
-      categoryId: txCategory() || null,
-      cleared: true,
-    };
-
-    void dispatch(
-      "create_transaction",
-      { row },
-      {
-        undoInfo: {
-          label: "Add transaction",
-          inverse: (data) => ({
-            commandType: "delete_transaction",
-            payload: { id: data.id as string },
-          }),
-        },
-      },
-    );
-
-    setTxDate(new Date().toISOString().slice(0, 10));
-    setTxPayee("");
-    setTxAmount("");
-    setTxCategory("");
-    setTxNotes("");
-    setShowAddTx(false);
-  }
-
   function handleCloseAccount() {
     if (!confirm("Close this account? It will be hidden from most views.")) return;
     dispatch("close_account", { id: accountId });
     navigate("/accounts");
+  }
+
+  function patchTransaction(id: string, patch: TransactionPatch) {
+    setTransactions((prev) => prev.map((tx) => (tx.id === id ? { ...tx, ...patch } : tx)));
+  }
+
+  function removeTransaction(id: string) {
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+  }
+
+  function restoreTransaction(tx: TransactionRow) {
+    setTransactions((prev) => (prev.some((item) => item.id === tx.id) ? prev : [tx, ...prev]));
+  }
+
+  function addTransactionTag(txId: string, tag: TagInfo) {
+    setTxTags((prev) => {
+      const tags = prev[txId] ?? [];
+      if (tags.some((item) => item.id === tag.id)) return prev;
+      return { ...prev, [txId]: [...tags, tag] };
+    });
+  }
+
+  function removeTransactionTag(txId: string, tagId: string) {
+    setTxTags((prev) => ({
+      ...prev,
+      [txId]: (prev[txId] ?? []).filter((tag) => tag.id !== tagId),
+    }));
   }
 
   const runningBalance = createMemo(() =>
@@ -222,8 +196,8 @@ export default function AccountPage() {
             <button class="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>
               Import CSV
             </button>
-            <button class="btn btn-secondary btn-sm" onClick={() => setShowAddTx(!showAddTx())}>
-              {showAddTx() ? "Cancel" : "+ Add Transaction"}
+            <button class="btn btn-primary btn-sm" onClick={() => setShowAddTx(true)}>
+              + Add Transaction
             </button>
             <button class="btn btn-secondary btn-sm" onClick={() => setShowReconcile(true)}>
               Reconcile
@@ -237,10 +211,12 @@ export default function AccountPage() {
         <Show when={account()}>
           <div class="account-header">
             <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
-              {fmt().formatCents(runningBalance() || (account().balanceCurrent ?? 0))}
+              {fmt().formatCents(runningBalance() || (account()?.balanceCurrent ?? 0))}
             </div>
-            <Show when={account().lastReconciled}>
-              <div class="account-reconciled-info">Last reconciled: {account().lastReconciled}</div>
+            <Show when={account()?.lastReconciled}>
+              {(lastReconciled) => (
+                <div class="account-reconciled-info">Last reconciled: {lastReconciled()}</div>
+              )}
             </Show>
           </div>
         </Show>
@@ -252,79 +228,13 @@ export default function AccountPage() {
         />
 
         <Show when={showAddTx()}>
-          <div class="section">
-            <form
-              onSubmit={handleAddTransaction}
-              class="settings-section"
-              style={{ display: "flex", "flex-direction": "column", gap: "12px" }}
-            >
-              <div class="form-row">
-                <div class="form-group" style={{ flex: "0 0 140px" }}>
-                  <label>Date</label>
-                  <input
-                    type="date"
-                    value={txDate()}
-                    onInput={(e) => setTxDate(e.currentTarget.value)}
-                    required
-                  />
-                </div>
-                <div class="form-group" style={{ flex: "1" }}>
-                  <label>Payee</label>
-                  <input
-                    type="text"
-                    list="tx-payee-list"
-                    placeholder="e.g. Grocery Store"
-                    value={txPayee()}
-                    onInput={(e) => handlePayeeInput(e.currentTarget.value)}
-                  />
-                </div>
-                <div class="form-group" style={{ flex: "0 0 160px" }}>
-                  <label>Amount</label>
-                  <input
-                    type="number"
-                    step={fmt().code === "IDR" ? "1" : "0.01"}
-                    placeholder="0"
-                    value={txAmount()}
-                    onInput={(e) => setTxAmount(e.currentTarget.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group" style={{ flex: "1" }}>
-                  <label>Category</label>
-                  <select
-                    value={txCategory()}
-                    onChange={(e) => setTxCategory(e.currentTarget.value)}
-                  >
-                    <option value="">Uncategorized</option>
-                    <For each={categories()}>
-                      {(cat) => (
-                        <option value={cat.id}>
-                          {cat.groupName ? `${cat.groupName}: ` : ""}
-                          {cat.name}
-                        </option>
-                      )}
-                    </For>
-                  </select>
-                </div>
-                <div class="form-group" style={{ flex: "1" }}>
-                  <label>Notes</label>
-                  <input
-                    type="text"
-                    placeholder="Optional notes"
-                    value={txNotes()}
-                    onInput={(e) => setTxNotes(e.currentTarget.value)}
-                  />
-                </div>
-              </div>
-              <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                  Add Transaction
-                </button>
-              </div>
-            </form>
-          </div>
+          <AddTransactionModal
+            accounts={[]}
+            categories={categories()}
+            initialAccountId={accountId}
+            onClose={() => setShowAddTx(false)}
+            onCreated={loadAccount}
+          />
         </Show>
 
         <Show when={showImport()}>
@@ -356,6 +266,11 @@ export default function AccountPage() {
             txTags={txTags()}
             tagList={tagList()}
             showBalance
+            onTransactionPatch={patchTransaction}
+            onTransactionRemove={removeTransaction}
+            onTransactionRestore={restoreTransaction}
+            onTagAdd={addTransactionTag}
+            onTagRemove={removeTransactionTag}
             onCreateSchedule={(tx) => {
               dispatch(
                 "create_schedule",

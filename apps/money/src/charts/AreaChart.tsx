@@ -29,6 +29,8 @@ export interface AreaChartProps {
   yTicks?: number;
   /** Format for y-axis labels */
   formatY?: (v: number) => string;
+  /** Format money values in summaries and default axis labels */
+  formatValue?: (v: number) => string;
   /** Format for x-axis labels */
   formatX?: (d: string) => string;
   /** Minimum height of the SVG */
@@ -109,7 +111,7 @@ export default function AreaChart(props: AreaChartProps) {
     return ys.ticks(count).map((v) => ({
       value: v,
       y: ys(v),
-      label: props.formatY ? props.formatY(v) : formatChartAmount(v),
+      label: props.formatY ? props.formatY(v) : formatChartAmount(v, props.formatValue),
     }));
   });
 
@@ -182,7 +184,7 @@ export default function AreaChart(props: AreaChartProps) {
                 color: "var(--text)",
               }}
             >
-              {formatChartTooltip(lastValue()?.value ?? 0)}
+              {formatChartTooltip(lastValue()?.value ?? 0, props.formatValue)}
             </div>
             <Show when={change() !== null}>
               <div
@@ -192,7 +194,7 @@ export default function AreaChart(props: AreaChartProps) {
                 }}
               >
                 {(change() ?? 0) >= 0 ? "+" : ""}
-                {formatChartTooltip(change() ?? 0)} this period
+                {formatChartTooltip(change() ?? 0, props.formatValue)} this period
               </div>
             </Show>
           </Show>

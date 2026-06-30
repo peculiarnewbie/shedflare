@@ -115,7 +115,11 @@ export interface BudgetPair {
 // Utility: format cents for chart axis labels
 // ---------------------------------------------------------------------------
 
-export function formatChartAmount(cents: number): string {
+export type MoneyFormatter = (cents: number) => string;
+
+export function formatChartAmount(cents: number, formatValue?: MoneyFormatter): string {
+  if (formatValue) return formatValue(cents);
+
   const abs = Math.abs(cents);
   const sign = cents < 0 ? "-" : "";
 
@@ -129,7 +133,9 @@ export function formatChartAmount(cents: number): string {
 }
 
 /** Format cents as full dollar string for tooltips */
-export function formatChartTooltip(cents: number): string {
+export function formatChartTooltip(cents: number, formatValue?: MoneyFormatter): string {
+  if (formatValue) return formatValue(cents);
+
   const abs = Math.abs(cents);
   const sign = cents < 0 ? "-" : "";
   return `${sign}$${(abs / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;

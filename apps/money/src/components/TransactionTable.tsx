@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
+import type { CommandPayloadMap } from "../domain/commands";
 
 export interface TransactionRow {
   id: string;
@@ -26,7 +27,7 @@ export interface TransactionRow {
   tags?: { id: string; name: string; color: string | null }[];
 }
 
-interface TagInfo {
+export interface TagInfo {
   id: string;
   name: string;
   color: string | null;
@@ -46,6 +47,13 @@ interface SplitChild {
 }
 
 type TxField = "date" | "payee" | "amount" | "category" | "notes";
+export type TransactionPatch = Partial<
+  Pick<
+    TransactionRow,
+    "date" | "payee" | "amount" | "categoryId" | "categoryName" | "notes" | "cleared" | "reconciled"
+  >
+>;
+type TransactionUpdateFields = CommandPayloadMap["update_transaction"]["fields"];
 
 interface TransactionTableProps {
   transactions: TransactionRow[];
@@ -56,6 +64,11 @@ interface TransactionTableProps {
   showAccount?: boolean;
   accountNames?: Record<string, string>;
   onCreateSchedule?: (tx: TransactionRow) => void;
+  onTransactionPatch?: (id: string, patch: TransactionPatch) => void;
+  onTransactionRemove?: (id: string) => void;
+  onTransactionRestore?: (tx: TransactionRow) => void;
+  onTagAdd?: (txId: string, tag: TagInfo) => void;
+  onTagRemove?: (txId: string, tagId: string) => void;
 }
 
 export default function TransactionTable(props: TransactionTableProps) {
@@ -90,7 +103,7 @@ export default function TransactionTable(props: TransactionTableProps) {
   const transactionsWithBalance = createMemo(() => {
     if (!props.showBalance) return props.transactions;
     const txs = [...props.transactions].sort(
-      (a, _b) => new Date(a.date).getTime() - new Date(a.date).getTime(),
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
     const result: Array<TransactionRow & { balance: number }> = [];
     let balance = 0;
@@ -100,6 +113,38 @@ export default function TransactionTable(props: TransactionTableProps) {
     }
     return result.reverse();
   });
+
+  function rollbackPatch(tx: TransactionRow, patch: TransactionPatch): TransactionPatch {
+    const previous: TransactionPatch = {};
+    for (const key of Object.keys(patch) as Array<keyof TransactionPatch>) {
+      previous[key] = tx[key] as never;
+    }
+    return previous;
+  }
+
+  function categoryNameFor(id: string | null): string | null {
+    return id ? (props.categories.find((cat) => cat.id === id)?.name ?? null) : null;
+  }
+
+  function applyOptimisticPatch(
+    tx: TransactionRow,
+    commandFields: TransactionUpdateFields,
+    optimisticPatch: TransactionPatch,
+    undoLabel: string,
+  ) {
+    const { promise } = dispatch(
+      "update_transaction",
+      { id: tx.id, fields: commandFields },
+      {
+        undoInfo: { label: undoLabel, inverse: undoUpdateTx(tx, commandFields) },
+      },
+    );
+    props.onTransactionPatch?.(tx.id, optimisticPatch);
+    void promise.catch((err) => {
+      props.onTransactionPatch?.(tx.id, rollbackPatch(tx, optimisticPatch));
+      console.warn("[TransactionTable] transaction update failed", err);
+    });
+  }
 
   function startEdit(txId: string, field: TxField) {
     setEditingId(txId);
@@ -113,9 +158,9 @@ export default function TransactionTable(props: TransactionTableProps) {
 
   function undoUpdateTx(
     tx: TransactionRow,
-    fields: Record<string, unknown>,
+    fields: TransactionUpdateFields,
   ): { commandType: string; payload: unknown } {
-    const oldFields: Record<string, unknown> = {};
+    const oldFields: TransactionUpdateFields = {};
     if ("amount" in fields) oldFields.amount = tx.amount;
     if ("date" in fields) oldFields.date = tx.date;
     if ("payee" in fields) oldFields.payee = tx.payee ?? undefined;
@@ -130,59 +175,33 @@ export default function TransactionTable(props: TransactionTableProps) {
     if (field === "amount") {
       const cents = fmt().parseInput(value);
       if (cents !== tx.amount) {
-        dispatch(
-          "update_transaction",
-          { id: tx.id, fields: { amount: cents } },
-          {
-            undoInfo: { label: "Update amount", inverse: undoUpdateTx(tx, { amount: cents }) },
-          },
-        );
+        applyOptimisticPatch(tx, { amount: cents }, { amount: cents }, "Update amount");
       }
     } else if (field === "date") {
       if (value !== tx.date) {
-        dispatch(
-          "update_transaction",
-          { id: tx.id, fields: { date: value } },
-          {
-            undoInfo: { label: "Update date", inverse: undoUpdateTx(tx, { date: value }) },
-          },
-        );
+        applyOptimisticPatch(tx, { date: value }, { date: value }, "Update date");
       }
     } else if (field === "payee") {
       if (value !== (tx.payee ?? "")) {
-        dispatch(
-          "update_transaction",
-          { id: tx.id, fields: { payee: value || undefined } },
-          {
-            undoInfo: { label: "Update payee", inverse: undoUpdateTx(tx, { payee: value }) },
-          },
-        );
+        const payee = value || null;
+        applyOptimisticPatch(tx, { payee: value || undefined }, { payee }, "Update payee");
         if (value.trim() && !tx.categoryId) {
           void fetchCategorySuggestion(tx, value.trim());
         }
       }
     } else if (field === "notes") {
       if (value !== (tx.notes ?? "")) {
-        dispatch(
-          "update_transaction",
-          { id: tx.id, fields: { notes: value || undefined } },
-          {
-            undoInfo: { label: "Update notes", inverse: undoUpdateTx(tx, { notes: value }) },
-          },
-        );
+        const notes = value || null;
+        applyOptimisticPatch(tx, { notes: value || undefined }, { notes }, "Update notes");
       }
     } else if (field === "category") {
       const catId = value || null;
       if (catId !== tx.categoryId) {
-        dispatch(
-          "update_transaction",
-          { id: tx.id, fields: { categoryId: catId } },
-          {
-            undoInfo: {
-              label: "Update category",
-              inverse: undoUpdateTx(tx, { categoryId: catId }),
-            },
-          },
+        applyOptimisticPatch(
+          tx,
+          { categoryId: catId },
+          { categoryId: catId, categoryName: categoryNameFor(catId) },
+          "Update category",
         );
       }
     }
@@ -193,18 +212,12 @@ export default function TransactionTable(props: TransactionTableProps) {
     try {
       const data = await api.payeeSuggestions(payee);
       if (data.suggestions.length > 0) {
-        dispatch(
-          "update_transaction",
-          {
-            id: tx.id,
-            fields: { categoryId: data.suggestions[0].category_id },
-          },
-          {
-            undoInfo: {
-              label: "Set category from payee",
-              inverse: undoUpdateTx(tx, { categoryId: data.suggestions[0].category_id }),
-            },
-          },
+        const categoryId = data.suggestions[0].category_id;
+        applyOptimisticPatch(
+          tx,
+          { categoryId },
+          { categoryId, categoryName: categoryNameFor(categoryId) },
+          "Set category from payee",
         );
       }
     } catch {
@@ -214,7 +227,7 @@ export default function TransactionTable(props: TransactionTableProps) {
 
   function handleDelete(tx: TransactionRow) {
     if (!confirm("Delete this transaction?")) return;
-    dispatch(
+    const { promise } = dispatch(
       "delete_transaction",
       { id: tx.id },
       {
@@ -237,29 +250,21 @@ export default function TransactionTable(props: TransactionTableProps) {
         },
       },
     );
+    props.onTransactionRemove?.(tx.id);
+    void promise.catch((err) => {
+      props.onTransactionRestore?.(tx);
+      console.warn("[TransactionTable] transaction delete failed", err);
+    });
   }
 
   function toggleCleared(tx: TransactionRow) {
-    dispatch(
-      "update_transaction",
-      { id: tx.id, fields: { cleared: !tx.cleared } },
-      {
-        undoInfo: { label: "Toggle cleared", inverse: undoUpdateTx(tx, { cleared: !tx.cleared }) },
-      },
-    );
+    const cleared = !tx.cleared;
+    applyOptimisticPatch(tx, { cleared }, { cleared }, "Toggle cleared");
   }
 
   function toggleReconciled(tx: TransactionRow) {
-    dispatch(
-      "update_transaction",
-      { id: tx.id, fields: { reconciled: !tx.reconciled } },
-      {
-        undoInfo: {
-          label: "Toggle reconciled",
-          inverse: undoUpdateTx(tx, { reconciled: !tx.reconciled }),
-        },
-      },
-    );
+    const reconciled = !tx.reconciled;
+    applyOptimisticPatch(tx, { reconciled }, { reconciled }, "Toggle reconciled");
   }
 
   function initSplit(tx: TransactionRow) {
@@ -313,12 +318,24 @@ export default function TransactionTable(props: TransactionTableProps) {
   }
 
   function handleAddTag(txId: string, tagId: string) {
-    dispatch("add_transaction_tag", { transactionId: txId, tagId });
+    const tag = props.tagList.find((item) => item.id === tagId);
+    const { promise } = dispatch("add_transaction_tag", { transactionId: txId, tagId });
+    if (tag) props.onTagAdd?.(txId, tag);
+    void promise.catch((err) => {
+      props.onTagRemove?.(txId, tagId);
+      console.warn("[TransactionTable] add tag failed", err);
+    });
     setShowTagPicker(null);
   }
 
   function handleRemoveTag(txId: string, tagId: string) {
-    dispatch("remove_transaction_tag", { transactionId: txId, tagId });
+    const tag = props.txTags[txId]?.find((item) => item.id === tagId);
+    const { promise } = dispatch("remove_transaction_tag", { transactionId: txId, tagId });
+    props.onTagRemove?.(txId, tagId);
+    void promise.catch((err) => {
+      if (tag) props.onTagAdd?.(txId, tag);
+      console.warn("[TransactionTable] remove tag failed", err);
+    });
   }
 
   function formatCents(cents: number): string {

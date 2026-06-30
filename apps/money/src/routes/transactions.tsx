@@ -2,11 +2,13 @@ import { createSignal, createEffect, Show } from "solid-js";
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
+import AddTransactionModal from "../components/AddTransactionModal";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
-import type { TransactionRow } from "../components/TransactionTable";
+import type { TransactionPatch, TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
 import type {
+  AccountsResponse,
   CategoriesResponse,
   TagsResponse,
   TransactionsResponse,
@@ -15,6 +17,7 @@ import type {
 type CategoryRow = Pick<CategoriesResponse["categories"][number], "id" | "name"> & {
   groupName: string | null;
 };
+type AccountRow = Pick<AccountsResponse["accounts"][number], "id" | "name" | "closed">;
 type TagRow = Pick<TagsResponse["tags"][number], "id" | "name" | "color">;
 type ApiTransactionRow = TransactionsResponse["transactions"][number];
 
@@ -43,10 +46,11 @@ export default function AllTransactionsPage() {
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
   const [categories, setCategories] = createSignal<CategoryRow[]>([]);
   const [tagList, setTagList] = createSignal<TagRow[]>([]);
-  const [txTags, _setTxTags] = createSignal<
+  const [txTags, setTxTags] = createSignal<
     Record<string, { id: string; name: string; color: string | null }[]>
   >({});
-  const [accounts, setAccounts] = createSignal<Record<string, string>>({});
+  const [accounts, setAccounts] = createSignal<AccountRow[]>([]);
+  const [showAddTx, setShowAddTx] = createSignal(false);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -108,21 +112,75 @@ export default function AllTransactionsPage() {
   async function loadAccounts() {
     try {
       const data = await api.accounts();
-      const map: Record<string, string> = {};
-      for (const a of data.accounts) {
-        map[a.id] = a.name;
-      }
-      setAccounts(map);
+      setAccounts(
+        data.accounts.map((account) => ({
+          id: account.id,
+          name: account.name,
+          closed: account.closed,
+        })),
+      );
     } catch {
       console.warn("[transactions] failed to load accounts");
     }
+  }
+
+  function patchTransaction(id: string, patch: TransactionPatch) {
+    setTransactions((prev) => prev.map((tx) => (tx.id === id ? { ...tx, ...patch } : tx)));
+  }
+
+  function removeTransaction(id: string) {
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+  }
+
+  function restoreTransaction(tx: TransactionRow) {
+    setTransactions((prev) => (prev.some((item) => item.id === tx.id) ? prev : [tx, ...prev]));
+  }
+
+  function accountNames(): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const account of accounts()) {
+      map[account.id] = account.name;
+    }
+    return map;
+  }
+
+  function addTransactionTag(
+    txId: string,
+    tag: { id: string; name: string; color: string | null },
+  ) {
+    setTxTags((prev) => {
+      const tags = prev[txId] ?? [];
+      if (tags.some((item) => item.id === tag.id)) return prev;
+      return { ...prev, [txId]: [...tags, tag] };
+    });
+  }
+
+  function removeTransactionTag(txId: string, tagId: string) {
+    setTxTags((prev) => ({
+      ...prev,
+      [txId]: (prev[txId] ?? []).filter((tag) => tag.id !== tagId),
+    }));
   }
 
   return (
     <div class="page">
       <div class="page-header">
         <h1 class="page-title">All Transactions</h1>
+        <div class="page-actions">
+          <button class="btn btn-primary btn-sm" onClick={() => setShowAddTx(true)}>
+            + Add Transaction
+          </button>
+        </div>
       </div>
+
+      <Show when={showAddTx()}>
+        <AddTransactionModal
+          accounts={accounts()}
+          categories={categories()}
+          onClose={() => setShowAddTx(false)}
+          onCreated={loadData}
+        />
+      </Show>
 
       <TransactionFilters
         activeConditions={filterConditions()}
@@ -145,7 +203,12 @@ export default function AllTransactionsPage() {
             txTags={txTags()}
             tagList={tagList()}
             showAccount
-            accountNames={accounts()}
+            accountNames={accountNames()}
+            onTransactionPatch={patchTransaction}
+            onTransactionRemove={removeTransaction}
+            onTransactionRestore={restoreTransaction}
+            onTagAdd={addTransactionTag}
+            onTagRemove={removeTransactionTag}
             onCreateSchedule={(tx) => {
               dispatch(
                 "create_schedule",
