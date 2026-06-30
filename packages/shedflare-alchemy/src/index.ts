@@ -6,6 +6,7 @@ export {
   loadShedflareConfig,
   optionalVar,
   requireVar,
+  stageSubdomain,
 } from "./config.ts";
 export {
   CfApiError,
@@ -15,6 +16,7 @@ export {
   listWorkerSecretNames,
   putWorkerSecret,
 } from "./cf-secrets-api.ts";
+export { loadDotEnvFile, loadRepoDotEnv, parseDotEnv } from "./dotenv.ts";
 export { optionalSecretConfig } from "./optional-secret-config.ts";
 export { physicalName } from "./physical-name.ts";
 export { providers, ShedflareProviders } from "./providers.ts";

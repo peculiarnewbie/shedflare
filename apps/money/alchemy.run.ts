@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import { appConfig, authIssuerUrl, physicalName } from "../../infra/alchemy-env.ts";
 
 export const MoneyStack = Alchemy.Stack(
   "ShedflareMoney",
@@ -11,22 +11,22 @@ export const MoneyStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("money");
+    const config = yield* Shedflare.appConfig("money");
     const e2eAuthEmail = process.env.SHEDFLARE_MONEY_E2E_AUTH_EMAIL;
     const e2eAuthToken = process.env.SHEDFLARE_MONEY_E2E_AUTH_TOKEN;
     const isE2eStage = stage.startsWith("e2e-");
 
-    const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
-      name: physicalName(stage, "money", "uploads"),
+    const uploads = yield* Cloudflare.R2.Bucket("UPLOADS", {
+      name: Shedflare.physicalName(stage, "money", "uploads"),
     });
 
-    const moneyDb = Cloudflare.D1Database("MONEY_DB", {
-      name: physicalName(stage, "money", "db"),
+    const moneyDb = yield* Cloudflare.D1.Database("MONEY_DB", {
+      name: Shedflare.physicalName(stage, "money", "db"),
       migrationsDir: "apps/money/src/migrations",
     });
 
     const worker = yield* Cloudflare.Worker("MoneyWorker", {
-      name: physicalName(stage, "money"),
+      name: Shedflare.physicalName(stage, "money"),
       main: "apps/money/src/worker.ts",
       assets: "apps/money/dist",
       compatibility: {
@@ -37,7 +37,7 @@ export const MoneyStack = Alchemy.Stack(
         UPLOADS: uploads,
         MONEY_DB: moneyDb,
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: yield* authIssuerUrl(),
+        AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-money`,
         OWNER_EMAIL: config.ownerEmail,
         ...(e2eAuthEmail && e2eAuthToken

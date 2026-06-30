@@ -28,18 +28,29 @@ packages/cli/           # Shedflare CLI (init, configure, doctor — deprecated)
 
 ### Deploy Commands
 
-| Command            | What it does                     |
-| ------------------ | -------------------------------- |
-| `pnpm deploy:auth` | Deploy auth app standalone       |
-| `pnpm deploy`      | Deploy the full suite (all apps) |
-| `pnpm destroy`     | Destroy the full suite           |
-| `pnpm test:auth`   | Run auth live smoke test         |
+| Command            | What it does                         |
+| ------------------ | ------------------------------------ |
+| `pnpm deploy:auth` | Deploy auth app standalone to `prod` |
+| `pnpm deploy`      | Deploy the full suite to `prod`      |
+| `pnpm destroy`     | Destroy the full `prod` suite        |
+| `pnpm test:auth`   | Run auth live smoke test             |
+
+### Console (Local Dashboard)
+
+`packages/console/` is a local-only SolidJS SPA for managing the suite. It is **not** deployed to Cloudflare — it runs via `shedflare dashboard` or `pnpm --filter @shedflare/console dev`.
+
+- **Stage discovery is automatic.** The console scans all Workers on the Cloudflare account, extracts stage names from the `shedflare-{stage}-{appId}` naming pattern, and populates a stage selector dropdown in the sidebar. No need to set `ALCHEMY_STAGE` beforehand.
+- **Stage selection persists** in `localStorage` across sessions.
+- **API endpoints:** `GET /api/stages` returns `{ stages: string[], currentStage: string }`. `GET /api/overview?stage=<name>` returns the suite overview for that stage.
+- **The stage from `ALCHEMY_STAGE` env var is still honoured** if explicitly set — it becomes the default selection.
 
 ### Design Rules
 
 - **`shedflare.config.jsonc`** is the source of truth for deployment config (domain, email, app subdomains, secrets). It is gitignored. `shedflare.config.example.jsonc` is the committed template.
 - **App manifests** (`apps/*/shedflare.app.jsonc`) declare what vars, secrets, and resources each app needs. Keep in sync with `alchemy.run.ts`.
-- **Alchemy stacks** (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If you modify a stack, run `pnpm deploy:<app>` to apply.
+- **Alchemy stacks** (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If you modify a stack, run `pnpm deploy:<app>` to apply to `prod`.
+- **Production is the default supported deploy target.** Root deploy/destroy scripts pass `--stage prod`; use direct `vp exec alchemy ... --stage <name>` commands only for temporary or test stages.
+- **Non-production stages use derived subdomains.** `prod` uses configured subdomains as-is; any other stage appends the sanitized stage, e.g. `chat` + `dev-bolt` becomes `chat-dev-bolt.example.com`.
 - **Root `alchemy.run.ts`** wires auth URL into all child apps. Update when adding a new app.
 - **Non-secret config** (domain, vars like `DEFAULT_MODEL_ID`) goes in gitignored `shedflare.config.jsonc`. **Operator secrets** use `Shedflare.WorkerSecret` in Alchemy stacks (Cloudflare Worker is source of truth; set via `shedflare secret set` or env at deploy time). See `docs/operator-secrets.md`.
 - **Every interactive prompt must have a non-interactive flag equivalent** for CI and scripting.

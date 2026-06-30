@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import { appConfig, authIssuerUrl, physicalName } from "../../infra/alchemy-env.ts";
 
 export const DriveStack = Alchemy.Stack(
   "ShedflareDrive",
@@ -11,22 +11,22 @@ export const DriveStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("drive");
+    const config = yield* Shedflare.appConfig("drive");
     const e2eAuthEmail = process.env.SHEDFLARE_DRIVE_E2E_AUTH_EMAIL;
     const e2eAuthToken = process.env.SHEDFLARE_DRIVE_E2E_AUTH_TOKEN;
     const isE2eStage = stage.startsWith("e2e-");
 
-    const db = yield* Cloudflare.D1Database("DB", {
-      name: physicalName(stage, "drive"),
+    const db = yield* Cloudflare.D1.Database("DB", {
+      name: Shedflare.physicalName(stage, "drive"),
       migrationsDir: "apps/drive/src/migrations",
     });
 
-    const filesBucket = yield* Cloudflare.R2Bucket("FILES", {
-      name: physicalName(stage, "drive", "files"),
+    const filesBucket = yield* Cloudflare.R2.Bucket("FILES", {
+      name: Shedflare.physicalName(stage, "drive", "files"),
     });
 
     const worker = yield* Cloudflare.Worker("DriveWorker", {
-      name: physicalName(stage, "drive"),
+      name: Shedflare.physicalName(stage, "drive"),
       main: "apps/drive/src/worker.ts",
       assets: "apps/drive/dist",
       compatibility: {
@@ -37,7 +37,7 @@ export const DriveStack = Alchemy.Stack(
         DB: db,
         FILES: filesBucket,
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: yield* authIssuerUrl(),
+        AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-drive`,
         OWNER_EMAIL: config.ownerEmail,
         ...(e2eAuthEmail && e2eAuthToken

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { stageSubdomain } from "@shedflare/alchemy";
 import { parse } from "jsonc-parser";
 import { REPO_ROOT } from "./repo-root.ts";
 
@@ -16,6 +17,13 @@ export interface ShedflareConfig {
   apps: Record<string, AppEntry>;
   vars?: Record<string, Record<string, string>>;
   resources?: Record<string, Record<string, string>>;
+}
+
+export interface ConfigPatch {
+  domain?: string;
+  ownerEmail?: string;
+  apps?: Record<string, Partial<AppEntry>>;
+  vars?: Record<string, Record<string, string>>;
 }
 
 export interface ManifestSummary {
@@ -42,8 +50,16 @@ export function loadConfig(): ShedflareConfig | null {
   return parsed;
 }
 
+export function formatConfig(config: ShedflareConfig): string {
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+export function writeConfigFile(file: string, config: ShedflareConfig): void {
+  writeFileSync(file, formatConfig(config));
+}
+
 export function writeConfig(config: ShedflareConfig): void {
-  writeFileSync(configPath(), `${JSON.stringify(config, null, 2)}\n`);
+  writeConfigFile(configPath(), config);
 }
 
 export function discoverAppIds(): string[] {
@@ -80,26 +96,18 @@ export function loadManifest(appId: string): ManifestSummary | null {
   };
 }
 
-export function appUrl(config: ShedflareConfig, appId: string): string | null {
+export function appUrl(config: ShedflareConfig, appId: string, stage = "prod"): string | null {
   const entry = config.apps[appId];
   if (!entry || entry.enabled === false) return null;
-  return `https://${entry.subdomain}.${config.domain}`;
+  return `https://${stageSubdomain(entry.subdomain, stage)}.${config.domain}`;
 }
 
-export function mergeConfigPatch(
-  current: ShedflareConfig,
-  patch: {
-    domain?: string;
-    ownerEmail?: string;
-    apps?: Record<string, Partial<AppEntry>>;
-    vars?: Record<string, Record<string, string>>;
-  },
-): ShedflareConfig {
+export function mergeConfigPatch(current: ShedflareConfig, patch: ConfigPatch): ShedflareConfig {
   const next: ShedflareConfig = {
     ...current,
     apps: { ...current.apps },
-    vars: { ...(current.vars ?? {}) },
-    resources: { ...(current.resources ?? {}) },
+    vars: { ...current.vars },
+    resources: { ...current.resources },
   };
   if (patch.domain) next.domain = patch.domain;
   if (patch.ownerEmail) next.ownerEmail = patch.ownerEmail;
@@ -110,8 +118,96 @@ export function mergeConfigPatch(
   }
   if (patch.vars) {
     for (const [id, vars] of Object.entries(patch.vars)) {
-      next.vars![id] = { ...(next.vars![id] ?? {}), ...vars };
+      next.vars![id] = { ...next.vars![id], ...vars };
     }
   }
   return next;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateDomain(value: unknown): string {
+  if (typeof value !== "string") throw new Error("domain must be a string");
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("domain cannot be empty");
+  if (/^https?:\/\//.test(trimmed)) throw new Error("domain must not include a protocol");
+  if (!/^[a-z0-9.-]+$/i.test(trimmed)) {
+    throw new Error("domain may only contain letters, numbers, dots, and hyphens");
+  }
+  return trimmed.toLowerCase();
+}
+
+function validateOwnerEmail(value: unknown): string {
+  if (typeof value !== "string") throw new Error("ownerEmail must be a string");
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("ownerEmail cannot be empty");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) throw new Error("ownerEmail must be an email");
+  return trimmed;
+}
+
+function validateSubdomain(value: unknown): string {
+  if (typeof value !== "string") throw new Error("subdomain must be a string");
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("subdomain cannot be empty");
+  if (!/^[a-z0-9-]+$/i.test(trimmed)) {
+    throw new Error("subdomain may only contain letters, numbers, and hyphens");
+  }
+  if (trimmed.startsWith("-") || trimmed.endsWith("-")) {
+    throw new Error("subdomain cannot start or end with a hyphen");
+  }
+  return trimmed.toLowerCase();
+}
+
+function validateAppPatch(value: unknown): Partial<AppEntry> {
+  if (!isRecord(value)) throw new Error("app patch must be an object");
+  const appPatch: Partial<AppEntry> = {};
+  if ("enabled" in value) {
+    if (typeof value.enabled !== "boolean") throw new Error("app enabled must be a boolean");
+    appPatch.enabled = value.enabled;
+  }
+  if ("subdomain" in value) {
+    appPatch.subdomain = validateSubdomain(value.subdomain);
+  }
+  return appPatch;
+}
+
+function validateVars(value: unknown): Record<string, string> {
+  if (!isRecord(value)) throw new Error("vars must be an object");
+  const vars: Record<string, string> = {};
+  for (const [key, varValue] of Object.entries(value)) {
+    if (!/^[A-Z0-9_]+$/.test(key)) {
+      throw new Error(`var name "${key}" must use uppercase letters, numbers, and underscores`);
+    }
+    if (typeof varValue !== "string") throw new Error(`var "${key}" must be a string`);
+    vars[key] = varValue;
+  }
+  return vars;
+}
+
+export function validateConfigPatch(value: unknown): ConfigPatch {
+  if (!isRecord(value)) throw new Error("config patch must be an object");
+
+  const patch: ConfigPatch = {};
+  if ("domain" in value) patch.domain = validateDomain(value.domain);
+  if ("ownerEmail" in value) patch.ownerEmail = validateOwnerEmail(value.ownerEmail);
+
+  if ("apps" in value) {
+    if (!isRecord(value.apps)) throw new Error("apps must be an object");
+    patch.apps = {};
+    for (const [appId, appPatch] of Object.entries(value.apps)) {
+      patch.apps[appId] = validateAppPatch(appPatch);
+    }
+  }
+
+  if ("vars" in value) {
+    if (!isRecord(value.vars)) throw new Error("vars must be an object");
+    patch.vars = {};
+    for (const [appId, vars] of Object.entries(value.vars)) {
+      patch.vars[appId] = validateVars(vars);
+    }
+  }
+
+  return patch;
 }

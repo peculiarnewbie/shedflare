@@ -14,7 +14,7 @@ export const ShortStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = yield* Shedflare.appConfig("s");
 
-    const db = yield* Cloudflare.D1Database("DB", {
+    const db = yield* Cloudflare.D1.Database("DB", {
       name: Shedflare.physicalName(stage, "s"),
       migrationsDir: "apps/s/src/migrations",
     });

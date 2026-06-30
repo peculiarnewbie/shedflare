@@ -14,7 +14,8 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts && node scripts/build-migration-manifest.mjs && vp fmt drizzle/migrations/index.ts",
     "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
     "typecheck": "tsc --noEmit",
-    "deploy": "npx wrangler deploy --env production",
+    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
+    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "ready": "vp fmt && vp lint && vp run test -r && vp run build -r",
     "prepare": "vp config"
   },

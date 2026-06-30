@@ -30,7 +30,12 @@ export default function AppCard(props: { app: AppStatus }) {
         <A href={`/apps/${props.app.id}`} class="btn btn-ghost btn-sm">
           Details
         </A>
-        <a href={props.app.dashboardUrl} target="_blank" rel="noreferrer" class="btn btn-ghost btn-sm">
+        <a
+          href={props.app.dashboardUrl}
+          target="_blank"
+          rel="noreferrer"
+          class="btn btn-ghost btn-sm"
+        >
           CF Worker
         </a>
         {props.app.url && (

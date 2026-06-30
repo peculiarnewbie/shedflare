@@ -13,7 +13,8 @@
     "test": "vp test",
     "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
     "typecheck": "tsc --noEmit",
-    "deploy": "npx wrangler deploy --env production",
+    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
+    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "db:generate": "drizzle-kit generate",
     "test:e2e": "vp exec jiti e2e.run.ts",
     "prepare": "vp config"

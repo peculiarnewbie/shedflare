@@ -1,5 +1,4 @@
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import { stdout as output } from "node:process";
 import { openSync, readSync, closeSync } from "node:fs";
 import { APP_IDS, loadManifest, type AppId } from "../core/manifests.js";
 import { assertEnabledApp, physicalWorkerName } from "../core/worker-names.js";

@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import { appConfig, physicalName } from "../../packages/shedflare-alchemy/src/index.ts";
 
 export const ObservabilityStack = Alchemy.Stack(
   "ShedflareObservability",
@@ -11,14 +11,14 @@ export const ObservabilityStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("observability");
+    const config = yield* Shedflare.appConfig("observability");
 
-    const db = yield* Cloudflare.D1Database("OBSERVABILITY_DB", {
-      name: physicalName(stage, "observability", "db"),
+    const db = yield* Cloudflare.D1.Database("OBSERVABILITY_DB", {
+      name: Shedflare.physicalName(stage, "observability", "db"),
     });
 
     const worker = yield* Cloudflare.Worker("ObservabilityWorker", {
-      name: physicalName(stage, "observability"),
+      name: Shedflare.physicalName(stage, "observability"),
       main: "apps/observability/src/worker.ts",
       compatibility: {
         date: "2026-03-22",

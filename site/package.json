@@ -7,8 +7,8 @@
     "build": "vp build",
     "check": "vp check",
     "typecheck": "tsc --noEmit",
-    "deploy": "vp exec alchemy deploy alchemy.run.ts",
-    "destroy": "vp exec alchemy destroy alchemy.run.ts",
+    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
+    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "prepare": "vp config"
   },
   "dependencies": {

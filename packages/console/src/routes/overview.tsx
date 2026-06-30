@@ -2,16 +2,26 @@ import { For, createResource } from "solid-js";
 import { apiGet } from "../lib/api";
 import type { SuiteOverview } from "../api/types";
 import AppCard from "../components/AppCard";
+import { useStage } from "../lib/stage-context";
 
 export default function Overview() {
-  const [overview, { refetch }] = createResource(() => apiGet<SuiteOverview>("/api/overview"));
+  const { selectedStage } = useStage();
+  const [overview, { refetch }] = createResource(
+    () => selectedStage(),
+    async (stage) => {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : "";
+      return apiGet<SuiteOverview>(`/api/overview${params}`);
+    },
+  );
 
   return (
     <div>
       <div class="page-header">
         <div>
           <h1>Overview</h1>
-          <p class="page-subtitle">Shedflare suite status from your local workspace and Cloudflare account.</p>
+          <p class="page-subtitle">
+            Shedflare suite status from your local workspace and Cloudflare account.
+          </p>
         </div>
         <button class="btn btn-ghost btn-sm" onClick={() => refetch()}>
           Refresh
@@ -22,8 +32,8 @@ export default function Overview() {
 
       {overview() && !overview()!.cfTokenValid && (
         <div class="error-banner">
-          Cloudflare API token is missing or invalid. Set CF_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in your
-          environment.
+          Cloudflare API token is missing or invalid. Set CF_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in
+          your environment.
         </div>
       )}
 
@@ -33,6 +43,15 @@ export default function Overview() {
           shedflare.config.example.jsonc.
         </div>
       )}
+
+      {overview()?.inventoryErrors.length ? (
+        <div class="error-banner">
+          Cloudflare inventory checks failed:
+          <ul style={{ "margin-top": "6px", "padding-left": "18px" }}>
+            <For each={overview()!.inventoryErrors}>{(error) => <li>{error}</li>}</For>
+          </ul>
+        </div>
+      ) : null}
 
       {overview() && (
         <>
@@ -54,13 +73,18 @@ export default function Overview() {
             </div>
             <div class="stat-card">
               <div class="stat-label">Account</div>
-              <div class="stat-value" style={{ "font-size": "13px", "font-family": "var(--font-mono)" }}>
+              <div
+                class="stat-value"
+                style={{ "font-size": "13px", "font-family": "var(--font-mono)" }}
+              >
                 {overview()!.accountId.slice(0, 8)}…
               </div>
             </div>
           </div>
 
-          <h2 style={{ "font-size": "14px", "margin-bottom": "10px", color: "var(--text-secondary)" }}>
+          <h2
+            style={{ "font-size": "14px", "margin-bottom": "10px", color: "var(--text-secondary)" }}
+          >
             Cloudflare dashboard
           </h2>
           <div class="link-grid">
@@ -73,13 +97,13 @@ export default function Overview() {
             </For>
           </div>
 
-          <h2 style={{ "font-size": "14px", "margin-bottom": "10px", color: "var(--text-secondary)" }}>
+          <h2
+            style={{ "font-size": "14px", "margin-bottom": "10px", color: "var(--text-secondary)" }}
+          >
             Apps
           </h2>
           <div class="app-grid">
-            <For each={overview()!.apps}>
-              {(app) => <AppCard app={app} />}
-            </For>
+            <For each={overview()!.apps}>{(app) => <AppCard app={app} />}</For>
           </div>
         </>
       )}

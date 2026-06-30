@@ -9,6 +9,7 @@ export default defineConfig({
   server: {
     port,
     strictPort: true,
+    allowedHosts: ["cachy"],
   },
   staged: {
     "*": "vp check --fix",

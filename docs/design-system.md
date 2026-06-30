@@ -20,13 +20,13 @@ packages/ui/
 
 Tokenami emits variables like `--color_bg`, `--color_accent`, `--radii_md`. The theme also defines a **legacy bridge** so existing app CSS keeps working during migration:
 
-| Legacy (app.css today) | Tokenami |
-|------------------------|----------|
-| `--bg` | `--color_bg` |
-| `--panel` | `--color_panel` |
-| `--text` | `--color_text` |
-| `--accent` | `--color_accent` |
-| `--radius` | `--radii_md` |
+| Legacy (app.css today) | Tokenami         |
+| ---------------------- | ---------------- |
+| `--bg`                 | `--color_bg`     |
+| `--panel`              | `--color_panel`  |
+| `--text`               | `--color_text`   |
+| `--accent`             | `--color_accent` |
+| `--radius`             | `--radii_md`     |
 
 The bridge is applied on `:root` and `[data-theme='night']` via `globalStyles` in the theme config.
 
@@ -80,10 +80,7 @@ import { createConfig } from "@tokenami/css";
 
 export default createConfig({
   ...shedflareThemeOptions,
-  include: [
-    "./src/**/*.{ts,tsx}",
-    "../../packages/ui/src/**/*.{ts,tsx}",
-  ],
+  include: ["./src/**/*.{ts,tsx}", "../../packages/ui/src/**/*.{ts,tsx}"],
 });
 ```
 
@@ -140,8 +137,8 @@ In the app entry (e.g. `entry-client.tsx`), import **in this order**:
 
 ```ts
 import "@shedflare/ui/tokenami.css"; // shared tokens + reset + legacy bridge
-import "./styles.css";               // app-local Tokenami output (from plugin/CLI)
-import "./app.css";                  // shrink over time — delete rules as you migrate
+import "./styles.css"; // app-local Tokenami output (from plugin/CLI)
+import "./app.css"; // shrink over time — delete rules as you migrate
 ```
 
 Set `data-theme="night"` on `<html>` if not already (homepage and chat already do).
@@ -166,7 +163,7 @@ const [cn, style] = button({ variant: "primary" });
 
 <button type="button" class={cn()} style={style()}>
   Save
-</button>
+</button>;
 ```
 
 **Ad-hoc layout:**
@@ -222,14 +219,14 @@ Do **not** mix unscoped new Tokenami styles with old class-based rules on the sa
 
 ## Development workflow
 
-| Task | Command |
-|------|---------|
-| Regenerate shared CSS | `pnpm --filter @shedflare/ui build` |
-| Watch shared CSS | `pnpm --filter @shedflare/ui build:watch` |
-| Dev playground (variants) | `pnpm --filter @shedflare/ui dev` |
-| Component tests | `pnpm --filter @shedflare/ui test` |
-| Lint + format package | `pnpm --filter @shedflare/ui check` |
-| Typecheck + Tokenami validate | `pnpm --filter @shedflare/ui typecheck` |
+| Task                          | Command                                   |
+| ----------------------------- | ----------------------------------------- |
+| Regenerate shared CSS         | `pnpm --filter @shedflare/ui build`       |
+| Watch shared CSS              | `pnpm --filter @shedflare/ui build:watch` |
+| Dev playground (variants)     | `pnpm --filter @shedflare/ui dev`         |
+| Component tests               | `pnpm --filter @shedflare/ui test`        |
+| Lint + format package         | `pnpm --filter @shedflare/ui check`       |
+| Typecheck + Tokenami validate | `pnpm --filter @shedflare/ui typecheck`   |
 
 When changing theme or component recipes, rebuild `@shedflare/ui` before testing in an adopted app.
 

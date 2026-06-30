@@ -69,7 +69,8 @@ function comparableLimits(
       label: `${days} day${days === 1 ? "" : "s"} at daily limit`,
     };
   }
-  if (limits.unit === "/month") return { free: limits.free, paid: limits.paid, label: "monthly limit" };
+  if (limits.unit === "/month")
+    return { free: limits.free, paid: limits.paid, label: "monthly limit" };
   return { free: limits.free, paid: limits.paid, label: limits.unit };
 }
 
@@ -162,7 +163,9 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
   const products: ProductUsage[] = [];
 
   const workersData = workersResult as {
-    viewer?: { accounts?: Array<{ workersInvocationsAdaptive?: Array<{ sum?: { requests?: number } }> }> };
+    viewer?: {
+      accounts?: Array<{ workersInvocationsAdaptive?: Array<{ sum?: { requests?: number } }> }>;
+    };
   };
   const workersInvocations = workersData?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0];
   if (workersInvocations) {
@@ -224,7 +227,9 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
       .reduce((s, o) => s + o.count, 0);
     const storage = (
       kvStorageResult as {
-        viewer?: { accounts?: Array<{ kvStorageAdaptiveGroups?: Array<{ max?: { byteCount?: number } }> }> };
+        viewer?: {
+          accounts?: Array<{ kvStorageAdaptiveGroups?: Array<{ max?: { byteCount?: number } }> }>;
+        };
       }
     )?.viewer?.accounts?.[0]?.kvStorageAdaptiveGroups?.[0]?.max;
     const metrics: UsageMetric[] = [
@@ -255,9 +260,11 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
   }
 
   const doGroups =
-    (doResult as {
-      viewer?: { accounts?: Array<{ durableObjectsInvocationsAdaptiveGroups?: unknown[] }> };
-    })?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
+    (
+      doResult as {
+        viewer?: { accounts?: Array<{ durableObjectsInvocationsAdaptiveGroups?: unknown[] }> };
+      }
+    )?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
   if (doGroups.length > 0) {
     const limits = PLAN_LIMITS.find((p) => p.id === "durableObjects")!.metrics;
     const metrics: UsageMetric[] = [
@@ -271,7 +278,11 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     ];
     const doStorage = (
       doStorageResult as {
-        viewer?: { accounts?: Array<{ durableObjectsStorageGroups?: Array<{ max?: { storedBytes?: number } }> }> };
+        viewer?: {
+          accounts?: Array<{
+            durableObjectsStorageGroups?: Array<{ max?: { storedBytes?: number } }>;
+          }>;
+        };
       }
     )?.viewer?.accounts?.[0]?.durableObjectsStorageGroups?.[0]?.max;
     if (doStorage?.storedBytes != null) {
@@ -290,14 +301,19 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
       ?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups ?? [];
   const r2Storage = (
     r2StorageResult as {
-      viewer?: { accounts?: Array<{ r2StorageAdaptiveGroups?: Array<{ max?: { payloadSize?: number } }> }> };
+      viewer?: {
+        accounts?: Array<{ r2StorageAdaptiveGroups?: Array<{ max?: { payloadSize?: number } }> }>;
+      };
     }
   )?.viewer?.accounts?.[0]?.r2StorageAdaptiveGroups?.[0]?.max;
   const storageBytes = r2Storage?.payloadSize ?? 0;
 
   if (r2Ops.length > 0 || storageBytes > 0) {
     const limits = PLAN_LIMITS.find((p) => p.id === "r2")!.metrics;
-    const ops = r2Ops as Array<{ sum?: { requests?: number }; dimensions?: { actionType?: string } }>;
+    const ops = r2Ops as Array<{
+      sum?: { requests?: number };
+      dimensions?: { actionType?: string };
+    }>;
     const classA = ops
       .filter((o) => CLASS_A_OPS.has(o.dimensions?.actionType ?? ""))
       .reduce((s, o) => s + (o.sum?.requests ?? 0), 0);
@@ -334,7 +350,11 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
 
   const httpGroup = (
     httpResult as {
-      viewer?: { zones?: Array<{ httpRequests1mGroups?: Array<{ sum?: { requests?: number; bytes?: number } }> }> };
+      viewer?: {
+        zones?: Array<{
+          httpRequests1mGroups?: Array<{ sum?: { requests?: number; bytes?: number } }>;
+        }>;
+      };
     }
   )?.viewer?.zones?.[0]?.httpRequests1mGroups?.[0];
   if (httpGroup) {

@@ -4,12 +4,12 @@ import { parse } from "jsonc-parser";
 import { getWorkspaceRoot } from "./manifests.js";
 
 function physicalName(stage: string | undefined, ...parts: string[]): string {
-  const safeStage = (stage || "dev").toLowerCase().replaceAll(/[^a-z0-9-]/g, "-");
+  const safeStage = (stage || "prod").toLowerCase().replaceAll(/[^a-z0-9-]/g, "-");
   return ["shedflare", safeStage, ...parts].join("-").replaceAll(/-+/g, "-");
 }
 
 export function resolveDeployStage(): string {
-  return process.env.ALCHEMY_STAGE ?? process.env.ALCHEMY_PROFILE ?? "dev";
+  return process.env.ALCHEMY_STAGE ?? "prod";
 }
 
 export function physicalWorkerName(appId: string, stage = resolveDeployStage()): string {

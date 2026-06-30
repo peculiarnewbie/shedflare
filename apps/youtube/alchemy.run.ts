@@ -15,7 +15,7 @@ export const YouTubeStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = yield* Shedflare.appConfig("youtube");
 
-    const db = yield* Cloudflare.D1Database("DB", {
+    const db = yield* Cloudflare.D1.Database("DB", {
       name: Shedflare.physicalName(stage, "youtube"),
       migrationsDir: "apps/youtube/src/migrations",
     });

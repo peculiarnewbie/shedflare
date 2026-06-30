@@ -5,7 +5,9 @@ import UsageCard from "../components/UsageCard";
 
 export default function Usage() {
   const [refreshing, setRefreshing] = createSignal(false);
-  const [usage, { refetch: refetchUsage }] = createResource(() => apiGet<UsageResponse>("/api/usage"));
+  const [usage, { refetch: refetchUsage }] = createResource(() =>
+    apiGet<UsageResponse>("/api/usage"),
+  );
   const [billable, { refetch: refetchBillable }] = createResource(() =>
     apiGet<{ records: BillableUsageRecord[]; error?: string }>("/api/billable-usage"),
   );
@@ -54,11 +56,11 @@ export default function Usage() {
         <div class="empty-state">No usage data returned for this period.</div>
       )}
 
-      <h2 style={{ "font-size": "16px", "margin": "28px 0 12px" }}>Billable usage (API)</h2>
+      <h2 style={{ "font-size": "16px", margin: "28px 0 12px" }}>Billable usage (API)</h2>
       {billable()?.error && (
         <div class="info-banner">
-          Billable usage API unavailable: {billable()!.error}. This endpoint is alpha/restricted on some
-          accounts.
+          Billable usage API unavailable: {billable()!.error}. This endpoint is alpha/restricted on
+          some accounts.
         </div>
       )}
 
@@ -96,8 +98,8 @@ export default function Usage() {
       )}
 
       <p class="footnote">
-        GraphQL figures are analytics estimates. Billable usage comes from Cloudflare&apos;s FOCUS-aligned API
-        when available.
+        GraphQL figures are analytics estimates. Billable usage comes from Cloudflare&apos;s
+        FOCUS-aligned API when available.
       </p>
 
       {usage.loading && <div class="empty-state">Loading usage…</div>}

@@ -2,16 +2,26 @@ import { For, createResource } from "solid-js";
 import { apiGet } from "../lib/api";
 import type { SuiteOverview } from "../api/types";
 import AppCard from "../components/AppCard";
+import { useStage } from "../lib/stage-context";
 
 export default function Apps() {
-  const [overview, { refetch }] = createResource(() => apiGet<SuiteOverview>("/api/overview"));
+  const { selectedStage } = useStage();
+  const [overview, { refetch }] = createResource(
+    () => selectedStage(),
+    async (stage) => {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : "";
+      return apiGet<SuiteOverview>(`/api/overview${params}`);
+    },
+  );
 
   return (
     <div>
       <div class="page-header">
         <div>
           <h1>Apps</h1>
-          <p class="page-subtitle">Discovered from apps/*/shedflare.app.jsonc and matched to deployed Workers.</p>
+          <p class="page-subtitle">
+            Discovered from apps/*/shedflare.app.jsonc and matched to deployed Workers.
+          </p>
         </div>
         <button class="btn btn-ghost btn-sm" onClick={() => refetch()}>
           Refresh
@@ -22,9 +32,7 @@ export default function Apps() {
 
       {overview() && (
         <div class="app-grid">
-          <For each={overview()!.apps}>
-            {(app) => <AppCard app={app} />}
-          </For>
+          <For each={overview()!.apps}>{(app) => <AppCard app={app} />}</For>
         </div>
       )}
 

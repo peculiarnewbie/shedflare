@@ -54,6 +54,7 @@ export interface SuiteOverview {
     r2: Array<{ name: string }>;
     kv: Array<{ id: string; title: string }>;
   };
+  inventoryErrors: string[];
   dashboardLinks: Record<string, string>;
 }
 
@@ -73,11 +74,4 @@ export interface BillableUsageRecord {
   ChargePeriodStart: string;
   BilledCost?: number;
   EffectiveCost?: number;
-}
-
-export interface DeployResult {
-  ok: boolean;
-  exitCode: number | null;
-  output: string;
-  script: string;
 }

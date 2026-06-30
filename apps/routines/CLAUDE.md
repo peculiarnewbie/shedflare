@@ -7,6 +7,7 @@ Routine tracker app built with SolidJS, Cloudflare Workers, and D1 database. Foc
 ## Key Components
 
 ### Frontend
+
 - **DayView**: Shows current day/time with countdown to sleep time
 - **ProgressBar**: Visual indicator of time needed for incomplete routines vs time available
 - **RoutinesList**: Editable list of daily routines with checkbox completion
@@ -15,6 +16,7 @@ Routine tracker app built with SolidJS, Cloudflare Workers, and D1 database. Foc
 - **Analytics**: Weekly/monthly/yearly charts showing completion rates
 
 ### Backend API Endpoints
+
 - `GET /api/routines/user` - Get current user email
 - `GET /api/routines/day` - Get today's routines and completions
 - `POST /api/routines` - Create routine
@@ -26,6 +28,7 @@ Routine tracker app built with SolidJS, Cloudflare Workers, and D1 database. Foc
 - `GET/POST /api/routines/settings/sleep-time` - Manage sleep time setting
 
 ### Database Schema
+
 - **routines**: Core routine data (name, scheduled time, duration)
 - **routine_completions**: Daily completion records (routine_id, date, completed flag)
 - **settings**: Key-value settings (sleep_time)
@@ -33,6 +36,7 @@ Routine tracker app built with SolidJS, Cloudflare Workers, and D1 database. Foc
 ## Development
 
 Uses Vite+ unified toolchain. Standard commands:
+
 ```bash
 vp dev       # Start dev server
 vp build     # Build for production

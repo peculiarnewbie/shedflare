@@ -1,33 +1,25 @@
 import { useParams, A } from "@solidjs/router";
-import { For, Show, createResource, createSignal } from "solid-js";
-import { apiGet, apiPost } from "../lib/api";
-import type { AppStatus, DeployResult, SuiteOverview } from "../api/types";
+import { For, Show, createResource } from "solid-js";
+import { apiGet } from "../lib/api";
+import type { SuiteOverview } from "../api/types";
+import { useStage } from "../lib/stage-context";
 
 export default function AppDetail() {
   const params = useParams();
-  const [deploying, setDeploying] = createSignal(false);
-  const [deployResult, setDeployResult] = createSignal<DeployResult | null>(null);
+  const { selectedStage } = useStage();
 
-  const [overview, { refetch }] = createResource(() => apiGet<SuiteOverview>("/api/overview"));
+  const [overview] = createResource(
+    () => selectedStage(),
+    async (stage) => {
+      const params = stage ? `?stage=${encodeURIComponent(stage)}` : "";
+      return apiGet<SuiteOverview>(`/api/overview${params}`);
+    },
+  );
   const app = () => overview()?.apps.find((a) => a.id === params.id) ?? null;
-
-  const deploy = async () => {
-    setDeploying(true);
-    setDeployResult(null);
-    try {
-      const result = await apiPost<DeployResult>(`/api/deploy/${params.id}`);
-      setDeployResult(result);
-      await refetch();
-    } catch (e) {
-      setDeployResult({
-        ok: false,
-        exitCode: 1,
-        output: String(e),
-        script: "",
-      });
-    } finally {
-      setDeploying(false);
-    }
+  const appName = () => app()?.manifest?.name ?? params.id;
+  const loadedApp = () => {
+    if (overview.loading || overview.error) return null;
+    return app();
   };
 
   return (
@@ -37,23 +29,33 @@ export default function AppDetail() {
           <A href="/apps" style={{ "font-size": "12px", color: "var(--text-muted)" }}>
             ← Apps
           </A>
-          <h1>{app()?.manifest?.name ?? params.id}</h1>
+          <h1>{appName()}</h1>
           <p class="page-subtitle">{app()?.manifest?.description}</p>
         </div>
-        <button class="btn btn-primary btn-sm" disabled={deploying()} onClick={deploy}>
-          {deploying() ? "Deploying…" : "Deploy app"}
-        </button>
       </div>
 
-      {overview.error && <div class="error-banner">{String(overview.error)}</div>}
+      <Show when={overview.error}>
+        {(error) => <div class="error-banner">{String(error())}</div>}
+      </Show>
 
-      <Show when={app()} fallback={<div class="empty-state">App not found.</div>}>
+      <Show when={overview.loading}>
+        <div class="empty-state">Loading app details…</div>
+      </Show>
+
+      <Show when={!overview.loading && !overview.error && !loadedApp()}>
+        <div class="empty-state">App not found.</div>
+      </Show>
+
+      <Show when={loadedApp()}>
         {(a) => (
           <>
             <div class="stat-grid">
               <div class="stat-card">
                 <div class="stat-label">Worker</div>
-                <div class="stat-value" style={{ "font-size": "13px", "font-family": "var(--font-mono)" }}>
+                <div
+                  class="stat-value"
+                  style={{ "font-size": "13px", "font-family": "var(--font-mono)" }}
+                >
                   {a().workerName}
                 </div>
                 <div class="stat-meta">{a().workerDeployed ? "On Cloudflare" : "Not found"}</div>
@@ -65,12 +67,19 @@ export default function AppDetail() {
               <div class="stat-card">
                 <div class="stat-label">Resources</div>
                 <div class="stat-value">{a().manifest?.resourceTypes.length ?? 0}</div>
-                <div class="stat-meta">{(a().manifest?.resourceTypes ?? []).join(", ") || "none"}</div>
+                <div class="stat-meta">
+                  {(a().manifest?.resourceTypes ?? []).join(", ") || "none"}
+                </div>
               </div>
             </div>
 
             <div class="app-card-actions" style={{ "margin-bottom": "20px" }}>
-              <a href={a().dashboardUrl} target="_blank" rel="noreferrer" class="btn btn-ghost btn-sm">
+              <a
+                href={a().dashboardUrl}
+                target="_blank"
+                rel="noreferrer"
+                class="btn btn-ghost btn-sm"
+              >
                 Open in CF dashboard ↗
               </a>
               <Show when={a().url}>
@@ -82,7 +91,13 @@ export default function AppDetail() {
               </Show>
             </div>
 
-            <h2 style={{ "font-size": "14px", "margin-bottom": "10px", color: "var(--text-secondary)" }}>
+            <h2
+              style={{
+                "font-size": "14px",
+                "margin-bottom": "10px",
+                color: "var(--text-secondary)",
+              }}
+            >
               Secrets
             </h2>
             <div class="table-wrap" style={{ "margin-bottom": "20px" }}>
@@ -122,15 +137,6 @@ export default function AppDetail() {
             <p class="footnote">
               Set secrets with <code>shedflare secret set {a().id} NAME</code> from the repo root.
             </p>
-
-            {deployResult() && (
-              <div>
-                <h2 style={{ "font-size": "14px", "margin": "16px 0 8px", color: "var(--text-secondary)" }}>
-                  Deploy output {deployResult()!.ok ? "✓" : "✗"}
-                </h2>
-                <pre class="deploy-output">{deployResult()!.output || "(no output)"}</pre>
-              </div>
-            )}
           </>
         )}
       </Show>

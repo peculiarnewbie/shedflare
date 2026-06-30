@@ -42,68 +42,73 @@ function missingSecretMessage(binding: string, workerName: string): string {
 }
 
 export const WorkerSecretProvider = () =>
-  Provider.succeed(WorkerSecret, {
-    reconcile: Effect.fn(function* ({ news }) {
-      const resolved = news as ResolvedNews;
-      const credentials = yield* yield* CloudflareEnvironment;
-      const { accountId } = credentials;
-      const { workerName, binding } = resolved;
+  Provider.succeed<WorkerSecret, CloudflareEnvironment, never, never, CloudflareEnvironment>(
+    WorkerSecret,
+    {
+      list: () => Effect.succeed([]),
 
-      const existing = yield* Effect.tryPromise({
-        try: () => listWorkerSecretNames(credentials, accountId, workerName),
-        catch: (cause) =>
-          cause instanceof Error ? cause : new Error("Failed to list worker secrets", { cause }),
-      });
+      reconcile: Effect.fn(function* ({ news }) {
+        const resolved = news as ResolvedNews;
+        const credentials = yield* yield* CloudflareEnvironment;
+        const { accountId } = credentials;
+        const { workerName, binding } = resolved;
 
-      const present = existing.includes(binding);
-
-      if (resolved.value !== undefined) {
-        const plaintext = Redacted.value(resolved.value);
-        yield* Effect.tryPromise({
-          try: () => putWorkerSecret(credentials, accountId, workerName, binding, plaintext),
+        const existing = yield* Effect.tryPromise({
+          try: () => listWorkerSecretNames(credentials, accountId, workerName),
           catch: (cause) =>
-            cause instanceof Error
-              ? cause
-              : new Error(`Failed to set secret ${binding}`, { cause }),
+            cause instanceof Error ? cause : new Error("Failed to list worker secrets", { cause }),
         });
-        return { binding, present: true };
-      }
 
-      if (present) {
-        return { binding, present: true };
-      }
+        const present = existing.includes(binding);
 
-      if (resolved.required !== false) {
-        return yield* Effect.fail(new Error(missingSecretMessage(binding, workerName)));
-      }
+        if (resolved.value !== undefined) {
+          const plaintext = Redacted.value(resolved.value);
+          yield* Effect.tryPromise({
+            try: () => putWorkerSecret(credentials, accountId, workerName, binding, plaintext),
+            catch: (cause) =>
+              cause instanceof Error
+                ? cause
+                : new Error(`Failed to set secret ${binding}`, { cause }),
+          });
+          return { binding, present: true };
+        }
 
-      return { binding, present: false };
-    }),
+        if (present) {
+          return { binding, present: true };
+        }
 
-    delete: () => Effect.void,
+        if (resolved.required !== false) {
+          return yield* Effect.fail(new Error(missingSecretMessage(binding, workerName)));
+        }
 
-    read: Effect.fn(function* ({ olds, output }) {
-      if (!output?.present) return undefined;
-      const credentials = yield* yield* CloudflareEnvironment;
-      const { accountId } = credentials;
-      const existing = yield* Effect.tryPromise({
-        try: () => listWorkerSecretNames(credentials, accountId, olds.workerName as string),
-        catch: (cause) => {
-          console.error(
-            "[WorkerSecret] read failed",
-            cause instanceof Error ? cause.message : String(cause),
-          );
-          return cause instanceof Error
-            ? cause
-            : new Error("Failed to read worker secrets", { cause });
-        },
-      }).pipe(
-        Effect.match({
-          onSuccess: (names) => names,
-          onFailure: () => [] as string[],
-        }),
-      );
-      if (!existing.includes(olds.binding)) return undefined;
-      return { binding: olds.binding, present: true };
-    }),
-  });
+        return { binding, present: false };
+      }),
+
+      delete: () => Effect.void,
+
+      read: Effect.fn(function* ({ olds, output }) {
+        if (!output?.present) return undefined;
+        const credentials = yield* yield* CloudflareEnvironment;
+        const { accountId } = credentials;
+        const existing = yield* Effect.tryPromise({
+          try: () => listWorkerSecretNames(credentials, accountId, olds.workerName as string),
+          catch: (cause) => {
+            console.error(
+              "[WorkerSecret] read failed",
+              cause instanceof Error ? cause.message : String(cause),
+            );
+            return cause instanceof Error
+              ? cause
+              : new Error("Failed to read worker secrets", { cause });
+          },
+        }).pipe(
+          Effect.match({
+            onSuccess: (names) => names,
+            onFailure: () => [] as string[],
+          }),
+        );
+        if (!existing.includes(olds.binding)) return undefined;
+        return { binding: olds.binding, present: true };
+      }),
+    },
+  );

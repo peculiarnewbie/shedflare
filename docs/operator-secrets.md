@@ -333,8 +333,8 @@ Per-app `docs/deployment.md` files should be rewritten or replaced by a single
 
 - **Destroy policy:** Should `WorkerSecret` delete bindings on `alchemy destroy`, or
   leave secrets on the Worker script?
-- **Stage naming:** Alchemy stage comes from profile (`dev-bolt`), not always
-  `ALCHEMY_STAGE` env — document for forkers.
+- **Stage naming:** Public deploy scripts use `--stage prod`. Temporary stages
+  should be explicit direct Alchemy commands, for example `--stage dev-bolt`.
 - **Browser binding (chat):** Still manual post-deploy until Alchemy supports it.
 - **Upstream Alchemy:** Consider contributing `keep_bindings` for secrets or a
   first-class "inherit existing secret" binding if WorkerSecret provider proves fragile.

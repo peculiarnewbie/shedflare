@@ -8,8 +8,8 @@
     "build": "tsc --noEmit",
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "deploy": "vp exec alchemy deploy alchemy.run.ts",
-    "destroy": "vp exec alchemy destroy alchemy.run.ts"
+    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
+    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod"
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",

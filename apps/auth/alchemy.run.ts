@@ -1,15 +1,17 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import {
-  type AppId,
-  appConfig,
-  loadShedflareConfig,
-  physicalName,
-  requireVar,
-} from "../../infra/alchemy-env.ts";
 
-const CLIENT_APPS: AppId[] = ["chat", "drive", "money", "cf-bill", "youtube", "s", "routines"];
+const CLIENT_APPS: Shedflare.AppId[] = [
+  "chat",
+  "drive",
+  "money",
+  "cf-bill",
+  "youtube",
+  "s",
+  "routines",
+];
 
 export const AuthStack = Alchemy.Stack(
   "ShedflareAuth",
@@ -19,24 +21,24 @@ export const AuthStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("auth");
-    const rootConfig = loadShedflareConfig();
+    const config = yield* Shedflare.appConfig("auth");
+    const rootConfig = Shedflare.loadShedflareConfig();
 
     const allowedClients: Record<string, string[]> = {};
     for (const appId of CLIENT_APPS) {
       const app = rootConfig.apps[appId];
       if (!app || app.enabled === false) continue;
       const clientId = `shedflare-${appId}`;
-      const origin = `https://${app.subdomain}.${rootConfig.domain}`;
+      const origin = Shedflare.appStackConfig(rootConfig, appId, stage).url;
       allowedClients[clientId] = [origin];
     }
 
-    const storage = yield* Cloudflare.KVNamespace("AuthStorage", {
-      title: physicalName(stage, "auth", "storage"),
+    const storage = yield* Cloudflare.KV.Namespace("AuthStorage", {
+      title: Shedflare.physicalName(stage, "auth", "storage"),
     });
 
     const worker = yield* Cloudflare.Worker("AuthWorker", {
-      name: physicalName(stage, "auth"),
+      name: Shedflare.physicalName(stage, "auth"),
       main: "apps/auth/src/worker.ts",
       compatibility: {
         date: "2026-03-22",
@@ -45,7 +47,7 @@ export const AuthStack = Alchemy.Stack(
       env: {
         OPENAUTH_STORAGE: storage,
         APP_PUBLIC_URL: config.url,
-        GOOGLE_CLIENT_ID: requireVar(config, "GOOGLE_CLIENT_ID"),
+        GOOGLE_CLIENT_ID: Shedflare.requireVar(config, "GOOGLE_CLIENT_ID"),
         OWNER_EMAIL: config.ownerEmail,
         ALLOWED_CLIENTS: JSON.stringify(allowedClients),
       },

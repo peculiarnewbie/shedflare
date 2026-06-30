@@ -15,11 +15,11 @@ export const ChatStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = yield* Shedflare.appConfig("chat");
 
-    const uploads = yield* Cloudflare.R2Bucket("UPLOADS", {
+    const uploads = yield* Cloudflare.R2.Bucket("UPLOADS", {
       name: Shedflare.physicalName(stage, "chat", "uploads"),
     });
 
-    const syncEngine = Cloudflare.DurableObjectNamespace("SYNC_ENGINE", {
+    const syncEngine = Cloudflare.Workers.DurableObject<unknown>("SYNC_ENGINE", {
       className: "SyncEngineDurableObject",
     });
 
@@ -31,7 +31,7 @@ export const ChatStack = Alchemy.Stack(
         date: "2026-03-22",
         flags: ["nodejs_compat"],
       },
-      crons: ["0 3 * * 0"],
+      crons: ["0 3 * * SUN"],
       env: {
         UPLOADS: uploads,
         SYNC_ENGINE: syncEngine,

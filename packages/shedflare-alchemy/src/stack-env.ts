@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Alchemy from "alchemy";
 import {
   appStackConfig,
   loadShedflareConfig,
@@ -10,11 +11,14 @@ import {
 
 export type { AppId, AppStackConfig };
 
-export function appConfig(appId: AppId): Effect.Effect<AppStackConfig> {
-  return Effect.sync(() => appStackConfig(loadShedflareConfig(), appId));
+export function appConfig(appId: AppId) {
+  return Effect.gen(function* () {
+    const stage = yield* Alchemy.Stage;
+    return appStackConfig(loadShedflareConfig(), appId, stage);
+  });
 }
 
-export function authIssuerUrl(): Effect.Effect<string> {
+export function authIssuerUrl() {
   return Effect.gen(function* () {
     const explicit = process.env.AUTH_ISSUER_URL;
     if (explicit) return explicit;

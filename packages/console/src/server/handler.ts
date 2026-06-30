@@ -1,9 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CfEnvError, resolveCfEnv } from "./env.ts";
-import { loadConfig, mergeConfigPatch, writeConfig } from "./config-service.ts";
-import { fetchSuiteOverview } from "./inventory-service.ts";
+import {
+  loadConfig,
+  mergeConfigPatch,
+  validateConfigPatch,
+  writeConfig,
+} from "./config-service.ts";
+import { fetchInventory, fetchSuiteOverview } from "./inventory-service.ts";
+import { discoverStagesFromInventory, resolveCurrentStage } from "./stage-service.ts";
 import { fetchBillableUsage, fetchScriptUsage, fetchUsage } from "./usage-service.ts";
-import { runDeploy, runDeployAll } from "./deploy-service.ts";
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -23,12 +28,11 @@ function route(pathname: string): { name: string; params: Record<string, string>
   const routes: Array<{ pattern: RegExp; name: string; params?: string[] }> = [
     { pattern: /^\/api\/health$/, name: "health" },
     { pattern: /^\/api\/overview$/, name: "overview" },
+    { pattern: /^\/api\/stages$/, name: "stages" },
     { pattern: /^\/api\/config$/, name: "config" },
     { pattern: /^\/api\/usage$/, name: "usage" },
     { pattern: /^\/api\/billable-usage$/, name: "billable-usage" },
     { pattern: /^\/api\/script-usage$/, name: "script-usage" },
-    { pattern: /^\/api\/deploy\/([^/]+)$/, name: "deploy-app", params: ["appId"] },
-    { pattern: /^\/api\/deploy$/, name: "deploy-all" },
   ];
 
   for (const routeDef of routes) {
@@ -74,7 +78,7 @@ export async function handleApiRequest(
           json(res, 400, { error: "shedflare.config.jsonc not found" });
           return true;
         }
-        const patch = (await readBody(req)) as Parameters<typeof mergeConfigPatch>[1];
+        const patch = validateConfigPatch(await readBody(req));
         const next = mergeConfigPatch(current, patch);
         writeConfig(next);
         json(res, 200, { config: next });
@@ -96,7 +100,17 @@ export async function handleApiRequest(
     }
 
     if (matched.name === "overview") {
-      json(res, 200, await fetchSuiteOverview(env));
+      // Support ?stage= query parameter to override the default stage
+      const stage = url.searchParams.get("stage") ?? undefined;
+      json(res, 200, await fetchSuiteOverview(env, stage));
+      return true;
+    }
+
+    if (matched.name === "stages") {
+      const { inventory } = await fetchInventory(env);
+      const stages = discoverStagesFromInventory(inventory);
+      const currentStage = resolveCurrentStage(inventory);
+      json(res, 200, { stages, currentStage });
       return true;
     }
 
@@ -112,18 +126,6 @@ export async function handleApiRequest(
 
     if (matched.name === "script-usage") {
       json(res, 200, { scripts: await fetchScriptUsage(env) });
-      return true;
-    }
-
-    if (matched.name === "deploy-app" && req.method === "POST") {
-      const result = await runDeploy(matched.params.appId);
-      json(res, result.ok ? 200 : 500, result);
-      return true;
-    }
-
-    if (matched.name === "deploy-all" && req.method === "POST") {
-      const result = await runDeployAll();
-      json(res, result.ok ? 200 : 500, result);
       return true;
     }
 

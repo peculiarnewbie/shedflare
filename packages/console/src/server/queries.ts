@@ -15,11 +15,7 @@ export function workersQuery(accountId: string, start: string, end: string): str
   });
 }
 
-export function workersByScriptQuery(
-  accountId: string,
-  start: string,
-  end: string,
-): string {
+export function workersByScriptQuery(accountId: string, start: string, end: string): string {
   return JSON.stringify({
     query: `{
       viewer {

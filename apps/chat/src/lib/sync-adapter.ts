@@ -703,5 +703,16 @@ export async function init() {
     applySnapshot(cached.tables);
     const { workspaces: ws, threads: ts } = collectWorkspacesAndThreads();
     reconcileDraftState(ws, ts);
+  } else if (conn.getLastServerSeq() > 0) {
+    // Offline cache was cleared but localStorage still has a stale cursor.
+    // Reset to 0 so the server sends a full sync_reset on reconnect —
+    // otherwise the client stays stuck with empty data and a cursor ahead
+    // of the server head, receiving no events.
+    console.log(
+      "[sync] offline cache missing; resetting cursor from",
+      conn.getLastServerSeq(),
+      "to 0",
+    );
+    conn.setLastServerSeq(0);
   }
 }

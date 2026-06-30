@@ -28,9 +28,9 @@ cli
   .command("deploy [app]", "Deploy apps via Alchemy")
   .option("--yes", "Skip confirmation prompts")
   .option("--secret <pair>", "Set secret for deploy: NAME=value (repeatable)")
-  .action(async (options) => {
+  .action(async (app: string | undefined, options: { yes?: boolean }) => {
     const { deployCommand } = await import("./commands/deploy.js");
-    await deployCommand(options);
+    await deployCommand({ app, yes: options.yes });
   });
 
 cli

@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
-import { appConfig, authIssuerUrl, physicalName } from "../../infra/alchemy-env.ts";
 
 export const RoutinesStack = Alchemy.Stack(
   "ShedflareRoutines",
@@ -11,15 +11,15 @@ export const RoutinesStack = Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const config = yield* appConfig("routines");
+    const config = yield* Shedflare.appConfig("routines");
 
-    const db = yield* Cloudflare.D1Database("DB", {
-      name: physicalName(stage, "routines"),
+    const db = yield* Cloudflare.D1.Database("DB", {
+      name: Shedflare.physicalName(stage, "routines"),
       migrationsDir: "apps/routines/src/migrations",
     });
 
     const worker = yield* Cloudflare.Worker("RoutinesWorker", {
-      name: physicalName(stage, "routines"),
+      name: Shedflare.physicalName(stage, "routines"),
       main: "apps/routines/src/worker.ts",
       assets: "apps/routines/dist",
       compatibility: {
@@ -29,7 +29,7 @@ export const RoutinesStack = Alchemy.Stack(
       env: {
         DB: db,
         APP_PUBLIC_URL: config.url,
-        AUTH_ISSUER_URL: yield* authIssuerUrl(),
+        AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-routines`,
         OWNER_EMAIL: config.ownerEmail,
       },

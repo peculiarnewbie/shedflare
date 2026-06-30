@@ -1,4 +1,5 @@
 import { loadConfig } from "./config-service.ts";
+import { loadRepoDotEnv } from "./dotenv.ts";
 
 export interface CfEnv {
   accountId: string;
@@ -14,6 +15,8 @@ export class CfEnvError extends Error {
 }
 
 export function resolveCfEnv(): CfEnv {
+  loadRepoDotEnv();
+
   const token =
     process.env.CF_API_TOKEN ??
     process.env.SHEDFLARE_CF_BILL_CF_API_TOKEN ??
@@ -46,7 +49,7 @@ export function resolveCfEnv(): CfEnv {
 }
 
 export function resolveDeployStage(): string {
-  return process.env.ALCHEMY_STAGE ?? process.env.ALCHEMY_PROFILE ?? "dev";
+  return process.env.ALCHEMY_STAGE ?? "prod";
 }
 
 export function physicalWorkerName(appId: string, stage = resolveDeployStage()): string {

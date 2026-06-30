@@ -1,4 +1,5 @@
 import spawn from "nano-spawn";
+import { loadRepoDotEnv } from "@shedflare/alchemy";
 import { loadConfig, validateConfig } from "../core/config.js";
 import { APP_IDS, loadManifest, type AppId } from "../core/manifests.js";
 import { whoami, login } from "../core/wrangler.js";
@@ -18,6 +19,8 @@ export interface DeployOptions {
 }
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
+  loadRepoDotEnv();
+
   const config = loadConfig();
   if (!config) {
     console.error("shedflare.config.jsonc not found. Run `shedflare init` first.");
@@ -131,7 +134,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     const target = options.app ? `apps/${options.app}/alchemy.run.ts` : "alchemy.run.ts";
 
     console.log(`Deploying via Alchemy: ${target}...`);
-    await spawn("npx", ["alchemy", "deploy", target, "--yes"], {
+    await spawn("vp", ["exec", "alchemy", "deploy", target, "--stage", "prod", "--yes"], {
       stdio: "inherit",
     });
   } finally {

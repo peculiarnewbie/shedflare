@@ -4,16 +4,16 @@ Shedflare is a self-hosted suite of personal productivity tools for Cloudflare. 
 
 ## Apps
 
-| App | Directory | Description |
-| --- | --------- | ----------- |
-| Auth | `apps/auth` | OAuth2/OIDC authentication provider (OpenAuth) |
-| Chat | `apps/chat` | AI chat interface with browser automation and Durable Objects sync |
-| Drive | `apps/drive` | File storage with R2, D1 metadata, tags, and search |
-| Money | `apps/money` | Envelope-budgeting personal finance app |
-| CF Bill | `apps/cf-bill` | Cloudflare usage vs plan limits dashboard |
-| Observability | `apps/observability` | Centralized error collection from tail events |
-| Links | `apps/s` | Link shortener with dashboard |
-| YouTube | `apps/youtube` | YouTube Watch Later manager and notification dashboard |
+| App           | Directory            | Description                                                        |
+| ------------- | -------------------- | ------------------------------------------------------------------ |
+| Auth          | `apps/auth`          | OAuth2/OIDC authentication provider (OpenAuth)                     |
+| Chat          | `apps/chat`          | AI chat interface with browser automation and Durable Objects sync |
+| Drive         | `apps/drive`         | File storage with R2, D1 metadata, tags, and search                |
+| Money         | `apps/money`         | Envelope-budgeting personal finance app                            |
+| CF Bill       | `apps/cf-bill`       | Cloudflare usage vs plan limits dashboard                          |
+| Observability | `apps/observability` | Centralized error collection from tail events                      |
+| Links         | `apps/s`             | Link shortener with dashboard                                      |
+| YouTube       | `apps/youtube`       | YouTube Watch Later manager and notification dashboard             |
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ pnpm install
 cp shedflare.config.example.jsonc shedflare.config.jsonc
 # Edit shedflare.config.jsonc with your domain, email, and app config
 
-# Deploy the full suite
+# Deploy the full production suite
 pnpm deploy
 ```
 
@@ -47,10 +47,10 @@ pnpm dev:money
 
 ## Deployment
 
-All apps deploy with Alchemy. Each app has its own `alchemy.run.ts` that declares its Cloudflare resources (Workers, D1, R2, Durable Objects, etc).
+All apps deploy with Alchemy. Each app has its own `alchemy.run.ts` that declares its Cloudflare resources (Workers, D1, R2, Durable Objects, etc). The public deploy and destroy scripts target the `prod` Alchemy stage.
 
 ```bash
-# Full suite
+# Full production suite
 pnpm deploy
 
 # Individual apps
@@ -63,12 +63,22 @@ pnpm deploy:cf-bill
 pnpm deploy:observability
 pnpm deploy:s
 
-# Destroy
+# Destroy production resources
 pnpm destroy           # full suite
 pnpm destroy:auth      # individual
 ```
 
 Deploy `@shedflare/auth` first if deploying individually — other apps use it as `AUTH_ISSUER_URL`.
+
+For temporary stages, call Alchemy directly and pass a stage explicitly:
+
+```bash
+vp exec alchemy deploy apps/chat/alchemy.run.ts --stage dev-bolt --yes
+```
+
+Non-production stages derive separate subdomains automatically. For example, configured
+subdomain `chat` becomes `chat-dev-bolt.peculiarnewbie.com` for `--stage dev-bolt`;
+`prod` keeps the configured subdomain unchanged.
 
 ## Configuration
 
@@ -92,7 +102,7 @@ pnpm test:auth      # live Alchemy smoke test (requires SHEDFLARE_LIVE_ALCHEMY_T
 
 The `shedflare` CLI (`packages/cli`) is deprecated. Use Alchemy deploy commands instead.
 
-| Command | Description |
-| ------- | ----------- |
-| `shedflare init` | Create a new Shedflare workspace and configure apps |
+| Command            | Description                                          |
+| ------------------ | ---------------------------------------------------- |
+| `shedflare init`   | Create a new Shedflare workspace and configure apps  |
 | `shedflare doctor` | Check workspace for issues and missing configuration |

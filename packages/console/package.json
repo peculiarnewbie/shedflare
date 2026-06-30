@@ -6,19 +6,21 @@
     "dev": "vp dev",
     "build": "vp build",
     "check": "vp check src vite.config.ts",
+    "test": "vp test",
     "typecheck": "tsc --noEmit",
     "prepare": "vp config"
   },
   "dependencies": {
     "@shedflare/alchemy": "workspace:*",
-    "effect": "catalog:",
     "@solidjs/router": "^0.15.4",
+    "effect": "catalog:",
     "jsonc-parser": "catalog:",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "vite-plugin-solid": "^2.11.6",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -14,12 +14,12 @@ export const HomepageStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = yield* Shedflare.appConfig("homepage");
 
-    const db = yield* Cloudflare.D1Database("DB", {
+    const db = yield* Cloudflare.D1.Database("DB", {
       name: Shedflare.physicalName(stage, "homepage"),
       migrationsDir: "apps/homepage/src/migrations",
     });
 
-    const images = yield* Cloudflare.R2Bucket("IMAGES", {
+    const images = yield* Cloudflare.R2.Bucket("IMAGES", {
       name: Shedflare.physicalName(stage, "homepage", "images"),
     });
 

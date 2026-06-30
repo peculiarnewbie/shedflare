@@ -18,13 +18,13 @@ The dev playground lives in `dev/` and is not published — use it to eyeball va
 
 ## Exports
 
-| Import                       | Purpose                                   |
-| ---------------------------- | ----------------------------------------- |
-| `@shedflare/ui`              | Components + `css` + theme                |
-| `@shedflare/ui/css`          | `css()` utility bound to Shedflare config |
+| Import                       | Purpose                                           |
+| ---------------------------- | ------------------------------------------------- |
+| `@shedflare/ui`              | Components + `css` + theme                        |
+| `@shedflare/ui/css`          | `css()` utility bound to Shedflare config         |
 | `@shedflare/ui/theme`        | `shedflareThemeOptions` — spread into app configs |
 | `@shedflare/ui/config`       | Resolved Tokenami config (for tooling)            |
-| `@shedflare/ui/tokenami.css` | Generated global stylesheet               |
+| `@shedflare/ui/tokenami.css` | Generated global stylesheet                       |
 
 ## Components
 

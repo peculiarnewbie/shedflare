@@ -1,8 +1,14 @@
-import { listWorkerSecretNames, type CfCredentials } from "@shedflare/alchemy";
+import { listWorkerSecretNames, stageSubdomain, type CfCredentials } from "@shedflare/alchemy";
 import * as Redacted from "effect/Redacted";
 import type { CfEnv } from "./env.ts";
 import { cfGet, verifyCfToken } from "./cf-client.ts";
-import { cfDashboardUrl, physicalWorkerName, resolveDeployStage, workerDashboardUrl } from "./env.ts";
+import {
+  cfDashboardUrl,
+  physicalWorkerName,
+  resolveDeployStage,
+  workerDashboardUrl,
+} from "./env.ts";
+import { resolveCurrentStage } from "./stage-service.ts";
 import {
   appUrl,
   discoverAppIds,
@@ -40,20 +46,39 @@ export interface CfInventory {
   kv: KvNamespace[];
 }
 
-export async function fetchInventory(env: CfEnv): Promise<CfInventory> {
+export interface CfInventoryResult {
+  inventory: CfInventory;
+  errors: string[];
+}
+
+function errorMessage(label: string, error: unknown): string {
+  return `${label}: ${error instanceof Error ? error.message : String(error)}`;
+}
+
+export async function fetchInventory(env: CfEnv): Promise<CfInventoryResult> {
   const accountId = env.accountId;
   const token = env.apiToken;
+  const errors: string[] = [];
+
+  async function list<T>(label: string, path: string, fallback: T): Promise<T> {
+    try {
+      return await cfGet<T>(token, path);
+    } catch (error) {
+      errors.push(errorMessage(label, error));
+      return fallback;
+    }
+  }
 
   const [workers, d1, r2, kv] = await Promise.all([
-    cfGet<WorkerScript[]>(token, `/accounts/${accountId}/workers/scripts`).catch(() => []),
-    cfGet<D1Database[]>(token, `/accounts/${accountId}/d1/database`).catch(() => []),
-    cfGet<{ buckets?: R2Bucket[] }>(token, `/accounts/${accountId}/r2/buckets`)
-      .then((r) => r.buckets ?? [])
-      .catch(() => []),
-    cfGet<KvNamespace[]>(token, `/accounts/${accountId}/storage/kv/namespaces`).catch(() => []),
+    list<WorkerScript[]>("workers", `/accounts/${accountId}/workers/scripts`, []),
+    list<D1Database[]>("d1", `/accounts/${accountId}/d1/database`, []),
+    list<{ buckets?: R2Bucket[] }>("r2", `/accounts/${accountId}/r2/buckets`, {}).then(
+      (r) => r.buckets ?? [],
+    ),
+    list<KvNamespace[]>("kv", `/accounts/${accountId}/storage/kv/namespaces`, []),
   ]);
 
-  return { workers, d1, r2, kv };
+  return { inventory: { workers, d1, r2, kv }, errors };
 }
 
 export interface AppStatus {
@@ -68,9 +93,12 @@ export interface AppStatus {
   secrets: Array<{ name: string; set: boolean }>;
 }
 
-export async function buildAppStatuses(env: CfEnv): Promise<AppStatus[]> {
+export async function buildAppStatuses(
+  env: CfEnv,
+  inventory: CfInventory,
+  stage?: string,
+): Promise<AppStatus[]> {
   const config = loadConfig();
-  const inventory = await fetchInventory(env);
   const workerIds = new Set(inventory.workers.map((w) => w.id));
   const appIds = discoverAppIds();
 
@@ -80,13 +108,15 @@ export async function buildAppStatuses(env: CfEnv): Promise<AppStatus[]> {
     accountId: env.accountId,
   };
 
+  stage ??= resolveDeployStage();
   const statuses: AppStatus[] = [];
 
   for (const id of appIds) {
     const manifest = loadManifest(id);
     const entry = config?.apps[id];
     const enabled = entry?.enabled !== false && Boolean(entry);
-    const subdomain = entry?.subdomain ?? manifest?.defaultSubdomain ?? id;
+    const configuredSubdomain = entry?.subdomain ?? manifest?.defaultSubdomain ?? id;
+    const subdomain = stageSubdomain(configuredSubdomain, stage);
     const workerName = physicalWorkerName(id);
     const workerDeployed = workerIds.has(workerName);
 
@@ -112,7 +142,16 @@ export async function buildAppStatuses(env: CfEnv): Promise<AppStatus[]> {
       manifest,
       enabled,
       subdomain,
-      url: config ? appUrl({ ...config, apps: { ...config.apps, [id]: { subdomain, enabled } } }, id) : null,
+      url: config
+        ? appUrl(
+            {
+              ...config,
+              apps: { ...config.apps, [id]: { subdomain: configuredSubdomain, enabled } },
+            },
+            id,
+            stage,
+          )
+        : null,
       workerName,
       workerDeployed,
       dashboardUrl: workerDashboardUrl(env.accountId, workerName),
@@ -132,6 +171,7 @@ export interface SuiteOverview {
   cfTokenValid: boolean;
   apps: AppStatus[];
   inventory: CfInventory;
+  inventoryErrors: string[];
   dashboardLinks: {
     workers: string;
     d1: string;
@@ -141,21 +181,25 @@ export interface SuiteOverview {
   };
 }
 
-export async function fetchSuiteOverview(env: CfEnv): Promise<SuiteOverview> {
+export async function fetchSuiteOverview(env: CfEnv, stage?: string): Promise<SuiteOverview> {
   const config = loadConfig();
-  const [apps, inventory] = await Promise.all([buildAppStatuses(env), fetchInventory(env)]);
+  const { inventory, errors: inventoryErrors } = await fetchInventory(env);
+  const apps = await buildAppStatuses(env, inventory, stage);
   const accountId = env.accountId;
   const cfTokenValid = await verifyCfToken(env.apiToken, accountId);
+
+  const resolvedStage = stage ?? resolveCurrentStage(inventory);
 
   return {
     configPresent: Boolean(config),
     domain: config?.domain,
     ownerEmail: config?.ownerEmail,
-    deployStage: resolveDeployStage(),
+    deployStage: resolvedStage,
     accountId,
     cfTokenValid,
     apps,
     inventory,
+    inventoryErrors,
     dashboardLinks: {
       workers: cfDashboardUrl(accountId, "/workers-and-pages"),
       d1: cfDashboardUrl(accountId, "/workers/d1"),

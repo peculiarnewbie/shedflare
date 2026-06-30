@@ -25,6 +25,7 @@ export interface AppStackConfig {
   appId: AppId;
   domain: string;
   subdomain: string;
+  configuredSubdomain: string;
   url: string;
   ownerEmail: string;
   vars: Record<string, string>;
@@ -52,17 +53,37 @@ export function loadShedflareConfig(root = process.cwd()): ShedflareAlchemyConfi
   };
 }
 
-export function appStackConfig(config: ShedflareAlchemyConfig, appId: AppId): AppStackConfig {
+function safeStageSuffix(stage: string): string {
+  return stage
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9-]/g, "-")
+    .replaceAll(/-+/g, "-");
+}
+
+export function stageSubdomain(subdomain: string, stage: string): string {
+  if (stage === "prod") return subdomain;
+  const suffix = safeStageSuffix(stage);
+  if (!suffix) return subdomain;
+  return `${subdomain}-${suffix}`;
+}
+
+export function appStackConfig(
+  config: ShedflareAlchemyConfig,
+  appId: AppId,
+  stage = "prod",
+): AppStackConfig {
   const app = config.apps[appId];
   if (!app || app.enabled === false) throw new Error(`App "${appId}" is not enabled.`);
 
-  const subdomain = app.subdomain;
-  if (!subdomain) throw new Error(`App "${appId}" is missing a subdomain.`);
+  const configuredSubdomain = app.subdomain;
+  if (!configuredSubdomain) throw new Error(`App "${appId}" is missing a subdomain.`);
+  const subdomain = stageSubdomain(configuredSubdomain, stage);
 
   return {
     appId,
     domain: config.domain,
     subdomain,
+    configuredSubdomain,
     url: `https://${subdomain}.${config.domain}`,
     ownerEmail: config.ownerEmail,
     vars: config.vars?.[appId] ?? {},

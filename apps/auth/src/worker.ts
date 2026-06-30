@@ -84,11 +84,7 @@ function getAllowedClients(env: Env): Map<string, string[]> {
   return parsedAllowedClients;
 }
 
-function validateClientAndRedirectURI(
-  env: Env,
-  clientId: string,
-  redirectURI: string,
-): boolean {
+function validateClientAndRedirectURI(env: Env, clientId: string, redirectURI: string): boolean {
   const allowed = getAllowedClients(env);
   const origins = allowed.get(clientId);
   if (!origins) return false;
@@ -108,7 +104,11 @@ function isValidRedirectPath(redirectURI: string): boolean {
   }
 }
 
-async function verifyPKCE(codeVerifier: string, codeChallenge: string, method: string): Promise<boolean> {
+async function verifyPKCE(
+  codeVerifier: string,
+  codeChallenge: string,
+  method: string,
+): Promise<boolean> {
   const encoder = new TextEncoder();
   const data = encoder.encode(codeVerifier);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -367,7 +367,10 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
 
   if (!redirectURI || responseType !== "code" || !clientId) return null;
 
-  if (!validateClientAndRedirectURI(env, clientId, redirectURI) || !isValidRedirectPath(redirectURI)) {
+  if (
+    !validateClientAndRedirectURI(env, clientId, redirectURI) ||
+    !isValidRedirectPath(redirectURI)
+  ) {
     if (redirectURI) {
       const location = new URL(redirectURI);
       location.searchParams.set("error", "invalid_client");

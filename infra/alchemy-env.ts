@@ -4,6 +4,7 @@
 export {
   type AppId,
   appConfig,
+  appStackConfig,
   authIssuerUrl,
   loadShedflareConfig,
   optionalSecretConfig,
