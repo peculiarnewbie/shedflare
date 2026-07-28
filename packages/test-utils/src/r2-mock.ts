@@ -1,37 +1,50 @@
+type R2MockBody = ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob;
+
+async function readBody(value: R2MockBody): Promise<Uint8Array> {
+  if (typeof value === "string") return new TextEncoder().encode(value);
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (value instanceof Blob) return new Uint8Array(await value.arrayBuffer());
+
+  const chunks: Uint8Array[] = [];
+  const reader = value.getReader();
+  while (true) {
+    const { done, value: chunk } = await reader.read();
+    if (done) break;
+    chunks.push(chunk);
+  }
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const body = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return body;
+}
+
 export class R2Mock {
   private store = new Map<
     string,
     { body: Uint8Array; httpMetadata: Record<string, string>; size: number }
   >();
+  private multipartUploads = new Map<
+    string,
+    {
+      key: string;
+      httpMetadata: Record<string, string>;
+      parts: Map<number, { body: Uint8Array; etag: string }>;
+    }
+  >();
 
   async put(
     key: string,
-    value: ReadableStream | ArrayBuffer | string,
+    value: R2MockBody,
     options?: { httpMetadata?: Record<string, string> },
   ): Promise<null> {
-    let body: Uint8Array;
-    if (typeof value === "string") {
-      body = new TextEncoder().encode(value);
-    } else if (value instanceof ArrayBuffer) {
-      body = new Uint8Array(value);
-    } else if (value instanceof ReadableStream) {
-      const chunks: Uint8Array[] = [];
-      const reader = value.getReader();
-      while (true) {
-        const { done, value: chunk } = await reader.read();
-        if (done) break;
-        chunks.push(chunk);
-      }
-      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-      body = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        body.set(chunk, offset);
-        offset += chunk.length;
-      }
-    } else {
-      body = new Uint8Array();
-    }
+    const body = await readBody(value);
 
     this.store.set(key, {
       body,
@@ -39,6 +52,60 @@ export class R2Mock {
       size: body.length,
     });
     return null;
+  }
+
+  async createMultipartUpload(key: string, options?: { httpMetadata?: Record<string, string> }) {
+    const uploadId = crypto.randomUUID();
+    this.multipartUploads.set(uploadId, {
+      key,
+      httpMetadata: options?.httpMetadata ?? {},
+      parts: new Map(),
+    });
+    return this.multipartHandle(key, uploadId);
+  }
+
+  resumeMultipartUpload(key: string, uploadId: string) {
+    return this.multipartHandle(key, uploadId);
+  }
+
+  private multipartHandle(key: string, uploadId: string) {
+    return {
+      key,
+      uploadId,
+      uploadPart: async (partNumber: number, value: R2MockBody) => {
+        const upload = this.multipartUploads.get(uploadId);
+        if (!upload || upload.key !== key) throw new Error("Multipart upload not found");
+        const body = await readBody(value);
+        const etag = `mock-${partNumber}-${body.length}`;
+        upload.parts.set(partNumber, { body, etag });
+        return { partNumber, etag };
+      },
+      abort: async () => {
+        const upload = this.multipartUploads.get(uploadId);
+        if (!upload || upload.key !== key) throw new Error("Multipart upload not found");
+        this.multipartUploads.delete(uploadId);
+      },
+      complete: async (parts: Array<{ partNumber: number; etag: string }>) => {
+        const upload = this.multipartUploads.get(uploadId);
+        if (!upload || upload.key !== key) throw new Error("Multipart upload not found");
+
+        const storedParts = parts.map((part) => {
+          const stored = upload.parts.get(part.partNumber);
+          if (!stored || stored.etag !== part.etag) throw new Error("Multipart part not found");
+          return stored.body;
+        });
+        const size = storedParts.reduce((sum, part) => sum + part.length, 0);
+        const body = new Uint8Array(size);
+        let offset = 0;
+        for (const part of storedParts) {
+          body.set(part, offset);
+          offset += part.length;
+        }
+        this.store.set(key, { body, httpMetadata: upload.httpMetadata, size });
+        this.multipartUploads.delete(uploadId);
+        return { size };
+      },
+    };
   }
 
   async get(key: string) {
@@ -66,6 +133,10 @@ export class R2Mock {
 
   has(key: string) {
     return this.store.has(key);
+  }
+
+  get pendingMultipartUploads() {
+    return this.multipartUploads.size;
   }
 }
 

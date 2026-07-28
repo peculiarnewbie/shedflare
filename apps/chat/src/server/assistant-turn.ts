@@ -23,6 +23,7 @@ import {
 } from "#/runtime";
 import { combineStrategies, maxIterations, untilFinishReason } from "@tanstack/ai";
 import {
+  AssistantTurnError,
   createStructuredLogger,
   makeRootTraceContext,
   makeTraceRecorder,
@@ -33,7 +34,11 @@ import { Effect } from "effect";
 import { createExaSearchTool, type ToolProgressEvent } from "./search";
 import { createBrowserExtractTool } from "./extract";
 import { normalizeAssistantError } from "./error-normalization";
-import { consumeAssistantStream, type StreamConsumerDeps } from "./stream-consumer";
+import {
+  consumeAssistantStream,
+  requireSuccessfulAssistantStream,
+  type StreamConsumerDeps,
+} from "./stream-consumer";
 import {
   getProviderModelOptions,
   getSearchToolSystemPrompt,
@@ -251,36 +256,39 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
       },
     });
 
-    const thread = ctx.access.getThread(payload.threadId);
-    if (!thread) {
+    const failBeforeStream = async (errorCode: string, errorMessage: string) => {
+      const current = ctx.access.getMessage(payload.assistantMessage.id);
+      if (current && current.status !== "completed" && current.status !== "failed") {
+        const failed = await ctx.eventStore.appendServerEvent(null, "message_failed", {
+          messageId: payload.assistantMessage.id,
+          errorCode,
+          errorMessage,
+          updatedAt: nowIso(),
+        });
+        ctx.broadcast(failed);
+      }
       await recorder.finishSpan({
         spanId: rootSpanId,
         status: "failed",
-        errorCode: "ThreadNotFound",
-        errorMessage: "Thread not found",
+        errorCode,
+        errorMessage,
       });
       await recorder.finishTraceRun({
         traceRunId: traceContext.traceRunId,
         status: "failed",
-        errorCode: "ThreadNotFound",
-        errorMessage: "Thread not found",
+        errorCode,
+        errorMessage,
       });
+    };
+
+    const thread = ctx.access.getThread(payload.threadId);
+    if (!thread) {
+      await failBeforeStream("ThreadNotFound", "Thread not found");
       return;
     }
     const workspace = ctx.access.getWorkspace(thread.workspaceId);
     if (!workspace) {
-      await recorder.finishSpan({
-        spanId: rootSpanId,
-        status: "failed",
-        errorCode: "WorkspaceNotFound",
-        errorMessage: "Workspace not found",
-      });
-      await recorder.finishTraceRun({
-        traceRunId: traceContext.traceRunId,
-        status: "failed",
-        errorCode: "WorkspaceNotFound",
-        errorMessage: "Workspace not found",
-      });
+      await failBeforeStream("WorkspaceNotFound", "Workspace not found");
       return;
     }
     const modelId = payload.modelId || workspace.defaultModelId || getDefaultModelId(ctx.env);
@@ -492,7 +500,6 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         messageId: payload.assistantMessage.id,
         suppressReasoningTokens: providerOptions.effectiveReasoningLevel === "off",
         log: syncLog,
-        trace: (name, kind, attrs, run) => traceAsync(name, kind, attrs, run),
       };
 
       const agentLoopStrategy =
@@ -513,9 +520,93 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         ...(activeTools.length ? { tools: activeTools } : {}),
       });
 
-      const result = await traceAsync("assistant.stream.consume", "io", { modelId }, () =>
-        consumeAssistantStream(stream, consumerDeps),
+      const streamOutcome = await runAppEffect(
+        traceEffect(
+          "assistant.stream.consume",
+          "io",
+          { modelId },
+          Effect.tryPromise({
+            try: () => consumeAssistantStream(stream, consumerDeps),
+            catch: (error) => {
+              const normalized = normalizeAssistantError({
+                errorCode: "stream_persistence_error",
+                errorMessage: error instanceof Error ? error.message : String(error),
+                modelId,
+              });
+              return new AssistantTurnError({
+                errorCode: normalized.errorCode,
+                errorMessage: normalized.errorMessage,
+                providerName: normalized.providerName,
+                retryable: normalized.retryable,
+              });
+            },
+          }).pipe(Effect.flatMap(requireSuccessfulAssistantStream)),
+        ).pipe(
+          Effect.match({
+            onFailure: (error) => ({ ok: false as const, error }),
+            onSuccess: (result) => ({ ok: true as const, result }),
+          }),
+        ),
+        traceRuntime,
       );
+      if (!streamOutcome.ok) {
+        const normalizedError =
+          streamOutcome.error instanceof AssistantTurnError
+            ? {
+                errorCode: streamOutcome.error.errorCode,
+                errorMessage: streamOutcome.error.errorMessage,
+                providerName: streamOutcome.error.providerName,
+                retryable: streamOutcome.error.retryable,
+              }
+            : normalizeAssistantError({
+                errorCode: "assistant_turn_error",
+                errorMessage:
+                  streamOutcome.error instanceof Error
+                    ? streamOutcome.error.message
+                    : String(streamOutcome.error),
+                modelId,
+              });
+        const current = ctx.access.getMessage(payload.assistantMessage.id);
+        if (current && current.status !== "completed" && current.status !== "failed") {
+          const failed = await ctx.eventStore.appendServerEvent(null, "message_failed", {
+            messageId: payload.assistantMessage.id,
+            errorCode: normalizedError.errorCode,
+            errorMessage: normalizedError.errorMessage,
+            updatedAt: nowIso(),
+          });
+          ctx.broadcast(failed);
+        }
+        await recorder.finishSpan({
+          spanId: rootSpanId,
+          status: normalizedError.errorCode === "cancelled" ? "cancelled" : "failed",
+          errorCode: normalizedError.errorCode,
+          errorMessage: normalizedError.errorMessage,
+        });
+        await recorder.finishTraceRun({
+          traceRunId: traceContext.traceRunId,
+          status: normalizedError.errorCode === "cancelled" ? "cancelled" : "failed",
+          errorCode: normalizedError.errorCode,
+          errorMessage: normalizedError.errorMessage,
+        });
+        return;
+      }
+      const result = streamOutcome.result;
+      const completed = await traceAsync(
+        "assistant.message.complete",
+        "sync",
+        { messageId: payload.assistantMessage.id, durationMs: result.durationMs },
+        () =>
+          ctx.eventStore.appendServerEvent(null, "message_completed", {
+            messageId: payload.assistantMessage.id,
+            text: result.text,
+            updatedAt: nowIso(),
+            durationMs: result.durationMs,
+            ttftMs: result.ttftMs,
+            promptTokens: result.promptTokens,
+            completionTokens: result.completionTokens,
+          }),
+      );
+      ctx.broadcast(completed);
       const searchRuns = searchTool?.state.searchRuns ?? [];
       const extractRuns = extractTool?.state.extractRuns ?? [];
 
@@ -612,6 +703,37 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         errorMessage: normalizedError.errorMessage,
       });
     }
+  } catch (error) {
+    const normalizedError = normalizeAssistantError({
+      errorCode: "assistant_turn_setup_error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      modelId: payload.modelId,
+    });
+    syncLog("assistant_turn_outer_exception", {
+      assistantMessageId: payload.assistantMessage.id,
+      threadId: payload.threadId,
+      errorCode: normalizedError.errorCode,
+      errorMessage: normalizedError.errorMessage,
+    });
+    try {
+      const current = ctx.access.getMessage(payload.assistantMessage.id);
+      if (current && current.status !== "completed" && current.status !== "failed") {
+        const failed = await ctx.eventStore.appendServerEvent(null, "message_failed", {
+          messageId: payload.assistantMessage.id,
+          errorCode: normalizedError.errorCode,
+          errorMessage: normalizedError.errorMessage,
+          updatedAt: nowIso(),
+        });
+        ctx.broadcast(failed);
+      }
+    } catch (persistenceError) {
+      syncLog("assistant_turn_terminal_persistence_failed", {
+        assistantMessageId: payload.assistantMessage.id,
+        error:
+          persistenceError instanceof Error ? persistenceError.message : String(persistenceError),
+      });
+    }
+    throw error;
   } finally {
     const finalMessage = ctx.access.getMessage(payload.assistantMessage.id);
     syncLog("CHAT_DEBUG_STUCK_GENERATING_assistant_turn_finally", {

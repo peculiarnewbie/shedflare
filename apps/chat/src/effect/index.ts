@@ -5,7 +5,7 @@ import {
   type TraceSpanKind,
   type TraceStatus,
 } from "#/domain";
-import { Cause, Context, Effect, Exit, Layer } from "effect";
+import { Cause, Context, Data, Effect, Exit, Layer } from "effect";
 import * as Schema from "effect/Schema";
 
 export const AppEnvConfig = Schema.Struct({
@@ -182,7 +182,22 @@ export class UnknownUpstreamError extends Error {
   }
 }
 
+/**
+ * A terminal assistant-turn failure that has already been normalized for
+ * persistence and presentation. Keeping this in Effect's typed error channel
+ * lets the turn orchestration, tracing, and recovery lifecycle observe the
+ * same outcome instead of treating `{ success: false }` as a successful
+ * computation.
+ */
+export class AssistantTurnError extends Data.TaggedError("AssistantTurnError")<{
+  readonly errorCode: string;
+  readonly errorMessage: string;
+  readonly providerName: string | null;
+  readonly retryable: boolean;
+}> {}
+
 export type AppError =
+  | AssistantTurnError
   | CancelledError
   | ProviderTimeoutError
   | InvalidRequestError

@@ -37,8 +37,14 @@ import {
 } from "#/runtime";
 import { createExaSearchTool } from "../server/search";
 import { createBrowserExtractTool } from "../server/extract";
-import { consumeAssistantStream } from "../server/stream-consumer";
-import { toolDefinition } from "@tanstack/ai";
+import { getSearchToolSystemPrompt } from "../server/model-config";
+import {
+  consumeAssistantStream,
+  requireSuccessfulAssistantStream,
+} from "../server/stream-consumer";
+import { convertSchemaToJsonSchema, toolDefinition } from "@tanstack/ai";
+import { AssistantTurnError } from "#/effect";
+import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { explainAssistantError } from "./assistant-errors";
 import { editUserMessageAction, retryMessageAction, sendMessageAction } from "./actions";
@@ -743,6 +749,16 @@ describe("server helpers", () => {
 
   it("normalizes email addresses", () => {
     expect(normalizeEmail(" Owner@Example.com ")).toBe("owner@example.com");
+  });
+
+  it("keeps search guidance concise while surfacing the budget", () => {
+    const prompt = getSearchToolSystemPrompt(3);
+
+    expect(prompt).toContain("materially improve the answer");
+    expect(prompt).toContain("limited to 3 calls per turn");
+    expect(prompt).toContain("Cite source numbers inline");
+    expect(prompt).not.toContain("Never repeat");
+    expect(prompt).not.toContain("If the tool returns");
   });
 
   it("creates sortable chat backup keys", () => {
@@ -1538,6 +1554,37 @@ describe("server helpers", () => {
     }
   });
 
+  it("fails a truncated stream that has text but no terminal marker", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    ) as typeof fetch;
+
+    try {
+      const adapter = createChatCompletionsAdapter(
+        { baseUrl: "https://api.example.com", apiKey: "test-key" },
+        "openai/gpt-4.1",
+      );
+      const chunks = [];
+      for await (const chunk of chat({
+        adapter,
+        messages: [{ role: "user", content: "say hi" }],
+      })) {
+        chunks.push(chunk);
+      }
+
+      const errorChunk = chunks.find((chunk: any) => chunk.type === "RUN_ERROR") as any;
+      expect(errorChunk?.error?.code).toBe("assistant_stream_interrupted");
+      expect(chunks.some((chunk: any) => chunk.type === "RUN_FINISHED")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("fails streaming chat when the overall timeout is exceeded after streaming starts", async () => {
     const originalFetch = globalThis.fetch;
     const encoder = new TextEncoder();
@@ -1790,6 +1837,9 @@ describe("server helpers", () => {
 
       expect(result.ok).toBe(true);
       expect(result.resultCount).toBe(1);
+      expect(tool.description).toContain("current or externally verifiable information");
+      expect(tool.description).toContain("limited to 3 calls per assistant turn");
+      expect(tool.description).not.toContain("reformulate");
       expect(String(result.context)).toContain("Tool: exa_web_search");
       expect(String(result.context)).toContain("Piastri leads with 89 points");
       expect(state.searchRuns).toHaveLength(1);
@@ -1829,6 +1879,110 @@ describe("server helpers", () => {
       expect(second.reason).toBe("duplicate_query");
       expect(fetchCount).toBe(1);
     } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("search tool deduplicates simultaneous equivalent queries", async () => {
+    const originalFetch = globalThis.fetch;
+    let releaseFetch: (() => void) | undefined;
+    const fetchCanFinish = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    let fetchCount = 0;
+    globalThis.fetch = vi.fn(async () => {
+      fetchCount += 1;
+      await fetchCanFinish;
+      return new Response(
+        JSON.stringify({
+          results: [{ title: "x", url: "https://x.example.com", highlights: ["result"] }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const { tool } = createExaSearchTool({
+        env,
+        assistantMessageId: "msg_parallel_duplicate",
+        maxSearchesPerTurn: 2,
+      });
+      const execute = (
+        tool as unknown as {
+          execute(args: { query: string }): Promise<{ ok: boolean; reason?: string }>;
+        }
+      ).execute.bind(tool);
+
+      const firstPending = execute({
+        query: "Piastri 2026 F1 standings",
+      });
+      const duplicate = await execute({
+        query: "  PIASTRI 2026 f1 standings!  ",
+      });
+
+      expect(duplicate.ok).toBe(false);
+      expect(duplicate.reason).toBe("duplicate_query");
+      expect(fetchCount).toBe(1);
+
+      releaseFetch?.();
+      await expect(firstPending).resolves.toMatchObject({ ok: true });
+    } finally {
+      releaseFetch?.();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("search tool reserves budget before simultaneous searches finish", async () => {
+    const originalFetch = globalThis.fetch;
+    let releaseFetch: (() => void) | undefined;
+    const fetchCanFinish = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    let fetchCount = 0;
+    globalThis.fetch = vi.fn(async () => {
+      fetchCount += 1;
+      await fetchCanFinish;
+      return new Response(
+        JSON.stringify({
+          results: [{ title: "x", url: "https://x.example.com", highlights: ["result"] }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const { tool, state } = createExaSearchTool({
+        env,
+        assistantMessageId: "msg_parallel_budget",
+        maxSearchesPerTurn: 2,
+      });
+      const execute = (
+        tool as unknown as {
+          execute(args: { query: string }): Promise<{
+            ok: boolean;
+            reason?: string;
+            disableFurtherToolCalls?: boolean;
+          }>;
+        }
+      ).execute.bind(tool);
+
+      const firstPending = execute({ query: "alpha query" });
+      const secondPending = execute({ query: "beta query" });
+      const rejected = await execute({ query: "gamma query" });
+
+      expect(rejected.ok).toBe(false);
+      expect(rejected.reason).toBe("max_searches_reached");
+      expect(rejected.disableFurtherToolCalls).toBe(true);
+      expect(fetchCount).toBe(2);
+
+      releaseFetch?.();
+      await expect(Promise.all([firstPending, secondPending])).resolves.toMatchObject([
+        { ok: true, disableFurtherToolCalls: true },
+        { ok: true, disableFurtherToolCalls: true },
+      ]);
+      expect(state.searchRuns.map((run) => run.step).sort((a, b) => a - b)).toEqual([1, 2]);
+    } finally {
+      releaseFetch?.();
       globalThis.fetch = originalFetch;
     }
   });
@@ -1907,16 +2061,43 @@ describe("server helpers", () => {
 
   it("search tool rejects empty and too-short queries", async () => {
     const { tool } = createExaSearchTool({
-      env: env as any,
+      env,
       assistantMessageId: "msg_short",
     });
-    const empty = (await (tool as any).execute({ query: "" })) as any;
+    const execute = (
+      tool as unknown as {
+        execute(args: { query: string; numResults?: unknown }): Promise<{
+          ok: boolean;
+          reason?: string;
+        }>;
+      }
+    ).execute.bind(tool);
+
+    const empty = await execute({ query: "" });
     expect(empty.ok).toBe(false);
     expect(empty.reason).toBe("empty_query");
 
-    const short = (await (tool as any).execute({ query: "a" })) as any;
+    const whitespace = await execute({ query: "   " });
+    expect(whitespace.ok).toBe(false);
+    expect(whitespace.reason).toBe("empty_query");
+
+    const short = await execute({ query: "a" });
     expect(short.ok).toBe(false);
     expect(short.reason).toBe("query_too_short");
+
+    const invalidCount = await execute({ query: "valid query", numResults: "many" });
+    expect(invalidCount.ok).toBe(false);
+    expect(invalidCount.reason).toBe("invalid_arguments");
+
+    expect(convertSchemaToJsonSchema(tool.inputSchema)).toMatchObject({
+      type: "object",
+      required: ["query"],
+      additionalProperties: false,
+      properties: {
+        query: { type: "string", minLength: 2, maxLength: 400 },
+        numResults: { type: "number", minimum: 3, maximum: 8 },
+      },
+    });
   });
 
   it("classifies Exa aborts/timeouts as a retryable timeout reason", async () => {
@@ -2157,7 +2338,7 @@ describe("server helpers", () => {
     expect(authErr.reason).toBe("auth");
   });
 
-  it("marks empty final streams as failed instead of leaving the message pending", async () => {
+  it("keeps empty final streams in Effect's typed failure channel", async () => {
     const events: any[] = [];
     const activities: any[] = [];
 
@@ -2207,7 +2388,14 @@ describe("server helpers", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(events.some((event) => event.eventType === "message_failed")).toBe(true);
+    if (result.success) throw new Error("Expected failed stream result");
+    expect(result.error.errorCode).toBe("assistant_no_output");
+    const turnError = await Effect.runPromise(
+      Effect.flip(requireSuccessfulAssistantStream(result)),
+    );
+    expect(turnError).toBeInstanceOf(AssistantTurnError);
+    expect(turnError.errorCode).toBe("assistant_no_output");
+    expect(events.some((event) => event.eventType === "message_failed")).toBe(false);
     expect(activities.some((activity) => activity.label === "Response failed")).toBe(true);
   });
 });

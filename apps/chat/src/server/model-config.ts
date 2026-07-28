@@ -31,17 +31,10 @@ export function getTitleGenerationModelOptions(modelInterleavedField?: string | 
 
 export function getSearchToolSystemPrompt(maxSearchesPerTurn: number) {
   return [
-    "You have access to the exa_web_search tool for current or external information.",
-    "",
-    "Use it when external grounding would materially improve the answer.",
-    "If the user explicitly asks you to browse, verify, or research something, using the tool is usually appropriate.",
-    `- You may call exa_web_search at most ${maxSearchesPerTurn} times this turn. use less if possible.`,
-    "- Never repeat an identical or near-identical query — the tool will refuse duplicates. If the first query was weak, reformulate it rather than retrying.",
-    "- If the tool returns `{ ok: false, ... }`, read the `hint` field and follow it. Do not retry the same failed query. If a second attempt also fails, stop searching and answer with what you know, explicitly acknowledging the gap.",
-    "- Prefer one good search when possible. After searching, answer instead of continuing to browse for completeness.",
-    "",
-    "How to use results: cite inline by source number when relevant. Do not mention the search tool, the query, or that a search happened unless the user asks.",
-  ].join("\n");
+    "Use exa_web_search when current or external sources would materially improve the answer.",
+    `Search is limited to ${maxSearchesPerTurn} calls per turn.`,
+    "Cite source numbers inline when relevant.",
+  ].join(" ");
 }
 
 export function getProviderModelOptions(

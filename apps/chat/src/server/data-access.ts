@@ -33,9 +33,9 @@ import {
 } from "#/runtime";
 import * as dbSchema from "#/db/schema";
 import { eq } from "drizzle-orm";
-import { type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
 import { sqlToBool } from "./sync-utils";
+import { type EffectDatabase } from "./effect-database";
 
 type ThreadHistoryCursor = {
   lastMessageAt: string;
@@ -397,55 +397,67 @@ export function inflateRow(tableName: string, row: Record<string, unknown>) {
 export class DataAccess {
   constructor(
     public readonly syncAccess: SyncDataAccess,
-    public readonly db: DrizzleSqliteDODatabase,
+    public readonly database: EffectDatabase,
   ) {}
 
+  get db() {
+    return this.database.drizzle;
+  }
+
   exec(query: string, ...params: any[]) {
-    return this.syncAccess.exec(query, ...params);
+    return this.database.runSync(this.syncAccess.exec(query, ...params));
   }
 
   queryOne<T extends Record<string, unknown>>(query: string, ...params: any[]) {
-    return this.syncAccess.queryOne<T>(query, ...params);
+    return this.database.runSync(this.syncAccess.queryOne<T>(query, ...params));
   }
 
   queryAll<T extends Record<string, unknown>>(query: string, ...params: any[]) {
-    return this.syncAccess.queryAll<T>(query, ...params);
+    return this.database.runSync(this.syncAccess.queryAll<T>(query, ...params));
   }
 
   getLastServerSeq() {
-    return this.syncAccess.getLastServerSeq();
+    return this.database.runSync(this.syncAccess.getLastServerSeq());
   }
 
   getOldestEventSeq(): number {
-    return this.syncAccess.getOldestEventSeq();
+    return this.database.runSync(this.syncAccess.getOldestEventSeq());
   }
 
   getEventsAfter(afterSeq: number) {
-    return this.syncAccess.getEventsAfter(afterSeq);
+    return this.database.runSync(this.syncAccess.getEventsAfter(afterSeq));
   }
 
   getCommandAck(opId: string) {
-    return this.syncAccess.getCommandAck(opId);
+    return this.database.runSync(this.syncAccess.getCommandAck(opId));
   }
 
   getWorkspace(id: string) {
     return (
-      this.db.select().from(dbSchema.workspaces).where(eq(dbSchema.workspaces.id, id)).get() ?? null
+      this.database.runSync(
+        this.db.select().from(dbSchema.workspaces).where(eq(dbSchema.workspaces.id, id)).get(),
+      ) ?? null
     );
   }
 
   getAccountSettings() {
     return (
-      this.db
-        .select()
-        .from(dbSchema.accountSettings)
-        .where(eq(dbSchema.accountSettings.id, "default"))
-        .get() ?? null
+      this.database.runSync(
+        this.db
+          .select()
+          .from(dbSchema.accountSettings)
+          .where(eq(dbSchema.accountSettings.id, "default"))
+          .get(),
+      ) ?? null
     );
   }
 
   getThread(id: string) {
-    return this.db.select().from(dbSchema.threads).where(eq(dbSchema.threads.id, id)).get() ?? null;
+    return (
+      this.database.runSync(
+        this.db.select().from(dbSchema.threads).where(eq(dbSchema.threads.id, id)).get(),
+      ) ?? null
+    );
   }
 
   deleteThreadCascade(id: string) {
@@ -473,7 +485,9 @@ export class DataAccess {
   }
 
   getMessage(id: string) {
-    const row = this.db.select().from(dbSchema.messages).where(eq(dbSchema.messages.id, id)).get();
+    const row = this.database.runSync(
+      this.db.select().from(dbSchema.messages).where(eq(dbSchema.messages.id, id)).get(),
+    );
     return row ? decodeMessageRow(row) : null;
   }
 

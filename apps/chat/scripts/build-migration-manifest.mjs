@@ -1,5 +1,5 @@
 // Converts drizzle/migrations/*/migration.sql files into a TypeScript
-// manifest that can be imported by drizzle-orm/durable-sqlite/migrator.
+// manifest that can be imported by drizzle-orm/effect-sqlite-do/migrator.
 // Run after drizzle-kit generate: node scripts/build-migration-manifest.mjs
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";

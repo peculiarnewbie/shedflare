@@ -600,7 +600,8 @@ export class ChatCompletionsAdapter {
         completionTokens: null,
         reasoningTokens: null,
       };
-      let finishReason: "stop" | "length" | "content_filter" | "tool_calls" | null = "stop";
+      let finishReason: "stop" | "length" | "content_filter" | "tool_calls" | null = null;
+      let sawDoneMarker = false;
       let reasoningContent = "";
       let assistantContent: string | null = null;
       const toolCalls = new Map<
@@ -638,7 +639,10 @@ export class ChatCompletionsAdapter {
           if (dataLines.length === 0) continue;
 
           const payloadJson = dataLines.join("\n");
-          if (payloadJson === "[DONE]") continue;
+          if (payloadJson === "[DONE]") {
+            sawDoneMarker = true;
+            continue;
+          }
 
           let parsed: any;
           try {
@@ -839,6 +843,24 @@ export class ChatCompletionsAdapter {
           (message) => message.role === "assistant" && message.toolCalls?.length,
         ).length;
         this.assistantToolCallMessageHistory[historicalToolCallCount] = providerToolCallMessage;
+      }
+
+      if (finishReason === null) {
+        if (sawDoneMarker) {
+          finishReason = "stop";
+        } else {
+          yield {
+            type: "RUN_ERROR",
+            runId,
+            error: {
+              message: "Upstream chat completion stream ended without a terminal marker",
+              code: "assistant_stream_interrupted",
+            },
+            timestamp: Date.now(),
+            model: this.model,
+          } as ExtendedStreamChunk;
+          return;
+        }
       }
 
       // Emit RUN_FINISHED with usage (including custom _reasoningTokens field)

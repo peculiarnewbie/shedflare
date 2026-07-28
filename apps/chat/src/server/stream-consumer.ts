@@ -7,9 +7,11 @@
  */
 
 import { REASONING_CONTENT_EVENT, type ExtendedStreamChunk } from "#/runtime";
-import { nowIso, type MessagePart, type SyncServerEnvelope, type TraceSpanKind } from "#/domain";
+import { nowIso, type MessagePart, type SyncServerEnvelope } from "#/domain";
+import { AssistantTurnError } from "#/effect";
+import { Effect } from "effect";
 import type { SearchProgressEvent } from "./search";
-import { normalizeAssistantError } from "./error-normalization";
+import { normalizeAssistantError, type NormalizedAssistantError } from "./error-normalization";
 
 /** Threshold for flushing accumulated deltas to the client */
 const DELTA_FLUSH_THRESHOLD = 96;
@@ -63,16 +65,9 @@ export type StreamConsumerDeps = {
   suppressReasoningTokens?: boolean;
   /** Logging function */
   log?: (message: string, details?: Record<string, unknown>) => void;
-  /** Optional tracing wrapper for stream sub-operations */
-  trace?: <A>(
-    name: string,
-    kind: TraceSpanKind,
-    attrs: Record<string, unknown>,
-    run: () => Promise<A>,
-  ) => Promise<A>;
 };
 
-export type StreamConsumerResult = {
+type StreamConsumerResultBase = {
   /** Total accumulated text from the stream */
   text: string;
   /** Duration from stream start to completion in ms */
@@ -85,15 +80,32 @@ export type StreamConsumerResult = {
   completionTokens: number | null;
   /** Number of reasoning tokens used (for extended thinking models) */
   reasoningTokens: number | null;
-  /** Whether the stream completed successfully */
-  success: boolean;
-  /** Error message if the stream failed */
-  errorMessage?: string;
   /** Number of tool-call iterations observed in this turn (0 if no tools used) */
   toolCallIterations: number;
   /** Tool names actually invoked this turn */
   toolNamesUsed: string[];
 };
+
+export type StreamConsumerResult =
+  | (StreamConsumerResultBase & { success: true })
+  | (StreamConsumerResultBase & {
+      success: false;
+      error: NormalizedAssistantError;
+      errorMessage: string;
+    });
+
+export function requireSuccessfulAssistantStream(result: StreamConsumerResult) {
+  return result.success
+    ? Effect.succeed(result)
+    : Effect.fail(
+        new AssistantTurnError({
+          errorCode: result.error.errorCode,
+          errorMessage: result.error.errorMessage,
+          providerName: result.error.providerName,
+          retryable: result.error.retryable,
+        }),
+      );
+}
 
 /**
  * Consumes a TanStack AI stream and maps AG-UI events to the existing event system.
@@ -114,10 +126,6 @@ export async function consumeAssistantStream(
    * wrapper skips commit for `kind === "text"`).
    */
   const rawAppendMessagePart = deps.rawAppendMessagePart ?? appendMessagePart;
-  const trace =
-    deps.trace ??
-    ((_: string, __: TraceSpanKind, ___: Record<string, unknown>, run: () => Promise<any>) =>
-      run());
 
   const streamStartedAt = Date.now();
   let firstTokenAt: number | null = null;
@@ -241,40 +249,9 @@ export async function consumeAssistantStream(
     const durationMs = Date.now() - streamStartedAt;
     const ttftMs = firstTokenAt !== null ? firstTokenAt - streamStartedAt : null;
 
-    await trace("assistant.message.complete", "sync", { messageId, durationMs }, async () => {
-      log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_append_start", {
-        assistantMessageId: messageId,
-        textLength: accumulated.length,
-        durationMs,
-        ttftMs,
-        chunkCount,
-        deltaCount,
-      });
-      const completed = await appendServerEvent(null, "message_completed", {
-        messageId,
-        text: accumulated,
-        updatedAt: nowIso(),
-        durationMs,
-        ttftMs,
-        promptTokens: sawUsage ? promptTokens : null,
-        completionTokens: sawUsage ? completionTokens : null,
-      });
-      log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_appended", {
-        assistantMessageId: messageId,
-        serverSeq: completed.type === "event" ? completed.serverSeq : null,
-        eventId: completed.type === "event" ? completed.eventId : null,
-        textLength: accumulated.length,
-      });
-      broadcast(completed);
-      log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_broadcast_called", {
-        assistantMessageId: messageId,
-        serverSeq: completed.type === "event" ? completed.serverSeq : null,
-        eventId: completed.type === "event" ? completed.eventId : null,
-      });
-      await reportActivity({
-        label: "Response complete",
-        state: "completed",
-      });
+    await reportActivity({
+      label: "Response complete",
+      state: "completed",
     });
 
     log?.("assistant_turn_completed", {
@@ -305,51 +282,37 @@ export async function consumeAssistantStream(
     // managed to produce before the failure chip renders.
     await flushPendingReasoning();
     await commitPendingText();
-    return trace(
-      "assistant.message.fail",
-      "sync",
-      { messageId, errorCode: normalizedError.errorCode },
-      async () => {
-        const failed = await appendServerEvent(null, "message_failed", {
-          messageId,
-          errorCode: normalizedError.errorCode,
-          errorMessage: normalizedError.errorMessage,
-          updatedAt: nowIso(),
-        });
-        broadcast(failed);
+    await reportActivity({
+      label: "Response failed",
+      state: "failed",
+      detail: normalizedError.errorMessage,
+    });
 
-        await reportActivity({
-          label: "Response failed",
-          state: "failed",
-          detail: normalizedError.errorMessage,
-        });
+    log?.("assistant_turn_failed", {
+      assistantMessageId: messageId,
+      chunkCount,
+      deltaCount,
+      toolCallIterations,
+      toolNamesUsed: [...toolNamesSeen],
+      error: normalizedError.errorMessage,
+      normalizedErrorCode: normalizedError.errorCode,
+      providerName: normalizedError.providerName,
+      retryable: normalizedError.retryable,
+    });
 
-        log?.("assistant_turn_failed", {
-          assistantMessageId: messageId,
-          chunkCount,
-          deltaCount,
-          toolCallIterations,
-          toolNamesUsed: [...toolNamesSeen],
-          error: normalizedError.errorMessage,
-          normalizedErrorCode: normalizedError.errorCode,
-          providerName: normalizedError.providerName,
-          retryable: normalizedError.retryable,
-        });
-
-        return {
-          text: accumulated,
-          durationMs: Date.now() - streamStartedAt,
-          ttftMs: firstTokenAt !== null ? firstTokenAt - streamStartedAt : null,
-          promptTokens: sawUsage ? promptTokens : null,
-          completionTokens: sawUsage ? completionTokens : null,
-          reasoningTokens: sawReasoningTokens ? reasoningTokens : null,
-          success: false,
-          errorMessage: normalizedError.errorMessage,
-          toolCallIterations,
-          toolNamesUsed: [...toolNamesSeen],
-        } satisfies StreamConsumerResult;
-      },
-    );
+    return {
+      text: accumulated,
+      durationMs: Date.now() - streamStartedAt,
+      ttftMs: firstTokenAt !== null ? firstTokenAt - streamStartedAt : null,
+      promptTokens: sawUsage ? promptTokens : null,
+      completionTokens: sawUsage ? completionTokens : null,
+      reasoningTokens: sawReasoningTokens ? reasoningTokens : null,
+      success: false,
+      error: normalizedError,
+      errorMessage: normalizedError.errorMessage,
+      toolCallIterations,
+      toolNamesUsed: [...toolNamesSeen],
+    } satisfies StreamConsumerResult;
   };
 
   const noVisibleAnswerError = () =>
@@ -601,55 +564,15 @@ export async function consumeAssistantStream(
       }
     }
 
-    // Stream ended without RUN_FINISHED or RUN_ERROR - treat as unexpected completion
+    // A transport ending without an explicit terminal event is not a valid
+    // completion, even when partial text was received. Preserve the partial
+    // text parts for the UI, but fail the turn so it can be retried.
     await flushDelta();
     await flushPendingReasoning();
     // Commit any remaining uncommitted text as a final text part so the
     // interleaved-layout client renders the complete response.
     await commitPendingText();
     const durationMs = Date.now() - streamStartedAt;
-    const ttftMs = firstTokenAt !== null ? firstTokenAt - streamStartedAt : null;
-
-    // Still emit completion since we have accumulated visible text.
-    if (accumulated.trim()) {
-      await trace("assistant.message.complete", "sync", { messageId, durationMs }, async () => {
-        log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_append_start", {
-          assistantMessageId: messageId,
-          textLength: accumulated.length,
-          durationMs,
-          ttftMs,
-          chunkCount,
-          deltaCount,
-          endedWithoutRunFinished: true,
-        });
-        const completed = await appendServerEvent(null, "message_completed", {
-          messageId,
-          text: accumulated,
-          updatedAt: nowIso(),
-          durationMs,
-          ttftMs,
-          promptTokens: sawUsage ? promptTokens : null,
-          completionTokens: sawUsage ? completionTokens : null,
-        });
-        log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_appended", {
-          assistantMessageId: messageId,
-          serverSeq: completed.type === "event" ? completed.serverSeq : null,
-          eventId: completed.type === "event" ? completed.eventId : null,
-          textLength: accumulated.length,
-          endedWithoutRunFinished: true,
-        });
-        broadcast(completed);
-        log?.("CHAT_DEBUG_STUCK_GENERATING_message_completed_broadcast_called", {
-          assistantMessageId: messageId,
-          serverSeq: completed.type === "event" ? completed.serverSeq : null,
-          eventId: completed.type === "event" ? completed.eventId : null,
-          endedWithoutRunFinished: true,
-        });
-      });
-    } else {
-      return failMessage(noVisibleAnswerError());
-    }
-
     log?.("assistant_turn_stream_ended_without_finish", {
       assistantMessageId: messageId,
       chunkCount,
@@ -659,18 +582,13 @@ export async function consumeAssistantStream(
       totalChars: accumulated.length,
       durationMs,
     });
-
-    return {
-      text: accumulated,
-      durationMs,
-      ttftMs,
-      promptTokens: sawUsage ? promptTokens : null,
-      completionTokens: sawUsage ? completionTokens : null,
-      reasoningTokens: sawReasoningTokens ? reasoningTokens : null,
-      success: true,
-      toolCallIterations,
-      toolNamesUsed: [...toolNamesSeen],
-    };
+    if (!accumulated.trim()) return failMessage(noVisibleAnswerError());
+    return failMessage(
+      normalizeAssistantError({
+        errorCode: "assistant_stream_interrupted",
+        errorMessage: "The provider stream ended before reporting completion. Retry the response.",
+      }),
+    );
   } catch (error) {
     const normalizedError = normalizeAssistantError({
       errorCode: "stream_error",

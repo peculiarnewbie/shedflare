@@ -1,4 +1,6 @@
 import { toolDefinition } from "@tanstack/ai";
+import { toStandardJsonSchema } from "@valibot/to-json-schema";
+import * as v from "valibot";
 import {
   buildMultiSearchContext,
   clampSearchesPerTurn,
@@ -19,6 +21,29 @@ const SEARCH_RESULTS_PER_RUN = 5;
 /** Minimum normalized query length. Anything shorter is probably garbage
  *  (the model accidentally sending a single word or an empty string). */
 const MIN_QUERY_CHARS = 2;
+const MAX_QUERY_CHARS = 400;
+const MIN_RESULTS_PER_RUN = 3;
+const MAX_RESULTS_PER_RUN = 8;
+
+const SearchToolArgsSchema = v.strictObject({
+  query: v.pipe(
+    v.string(),
+    v.minLength(MIN_QUERY_CHARS),
+    v.maxLength(MAX_QUERY_CHARS),
+    v.description("Search query."),
+  ),
+  numResults: v.optional(
+    v.pipe(
+      v.number(),
+      v.minValue(MIN_RESULTS_PER_RUN),
+      v.maxValue(MAX_RESULTS_PER_RUN),
+      v.description(
+        "Desired number of results to retrieve. Default 5. Use more only when comparing multiple sources.",
+      ),
+    ),
+  ),
+});
+const searchToolInputSchema = toStandardJsonSchema(SearchToolArgsSchema);
 
 type SearchGroundingRun = {
   query: string;
@@ -99,6 +124,7 @@ type ExaFailureReason =
 type SearchFailureReason =
   | "empty_query"
   | "query_too_short"
+  | "invalid_arguments"
   | "duplicate_query"
   | "max_searches_reached"
   | ExaFailureReason;
@@ -213,6 +239,11 @@ export function createExaSearchTool(input: {
    *  grounding plus a short nudge telling the model to answer rather
    *  than keep searching. This breaks the thinking-model re-ask loop. */
   const queryCache = new Map<string, string>();
+  /** Calls can be emitted in parallel by the model. Reserve budget and query
+   *  keys before the first await so simultaneous calls cannot oversubscribe
+   *  the per-turn limit or issue the same request twice. */
+  const inFlightQueryKeys = new Set<string>();
+  let reservedSearches = 0;
 
   const publishState = async () => {
     await input.onSearchStateChange?.({
@@ -226,66 +257,78 @@ export function createExaSearchTool(input: {
   const tool = toolDefinition({
     name: "exa_web_search",
     description: [
-      "Run a web search through Exa and receive a grounded block of ranked results (title, URL, snippet).",
-      "Use this when external or current information would help answer the user's request.",
-      `Limit: at most ${maxSearchesPerTurn} searches per assistant turn. Do not request another search after the limit is reached.`,
-      "- If a query returned poor or irrelevant results, reformulate it. Do not re-issue the same or near-identical query — the tool will refuse it.",
-      "",
-      "Budget: stop once you have enough to answer, and answer — do not keep searching to be thorough.",
-    ].join("\n"),
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Search query.",
-          minLength: 2,
-          maxLength: 400,
-        },
-        numResults: {
-          type: "number",
-          description:
-            "Desired number of results to retrieve, between 3 and 8. Default 5. Use more only when comparing multiple sources.",
-          minimum: 3,
-          maximum: 8,
-        },
-      },
-      required: ["query"],
-      additionalProperties: false,
-    },
-  }).server(async (args: any): Promise<SearchToolResult> => {
+      "Search the web for current or externally verifiable information.",
+      "Returns ranked sources with titles, URLs, and snippets.",
+      "Use it when fresh sources would materially improve the answer.",
+      `Search is limited to ${maxSearchesPerTurn} calls per assistant turn.`,
+    ].join(" "),
+    inputSchema: searchToolInputSchema,
+  }).server(async (value): Promise<SearchToolResult> => {
+    // Keep the tool boundary unknown until the executable schema has
+    // validated it. TanStack performs this validation in its normal tool
+    // loop; doing it here as well keeps direct execute() calls safe.
+    const decoded = v.safeParse(SearchToolArgsSchema, value);
+    if (!decoded.success) {
+      const rawQuery =
+        typeof value === "object" &&
+        value !== null &&
+        "query" in value &&
+        typeof value.query === "string"
+          ? value.query
+          : "";
+      const query = rawQuery.trim().replace(/\s+/g, " ");
+      const reason: SearchFailureReason = !query
+        ? "empty_query"
+        : query.length < MIN_QUERY_CHARS
+          ? "query_too_short"
+          : "invalid_arguments";
+      const hint =
+        reason === "empty_query"
+          ? "Provide a non-empty search query."
+          : reason === "query_too_short"
+            ? "Use a longer search query."
+            : `Use a query of ${MIN_QUERY_CHARS}-${MAX_QUERY_CHARS} characters and request ${MIN_RESULTS_PER_RUN}-${MAX_RESULTS_PER_RUN} results.`;
+      input.log?.("assistant_turn_tool_search_rejected", {
+        assistantMessageId: input.assistantMessageId,
+        reason,
+        issues: decoded.issues.map((issue) => issue.message),
+      });
+      return {
+        ok: false,
+        query,
+        error: `Invalid search arguments: ${decoded.issues.map((issue) => issue.message).join("; ")}`,
+        reason,
+        hint,
+      };
+    }
+    const args = decoded.output;
+
     // Guard -1: the user already pressed Stop. The model may still emit
     // queued tool_calls from before the abort landed; short-circuit them
     // so we don't fire a web search whose result will be thrown away.
     if (input.signal?.aborted) {
       return {
         ok: false,
-        query: typeof args?.query === "string" ? args.query : "",
+        query: args.query,
         error: "Request was cancelled.",
         reason: "exa_unknown",
         hint: "The user cancelled the turn; do not retry.",
       };
     }
-    const rawQuery = typeof args?.query === "string" ? args.query : "";
-    const query = rawQuery.trim().replace(/\s+/g, " ");
-    const numResults = clampExaResults(args?.numResults ?? SEARCH_RESULTS_PER_RUN);
+    const query = args.query.trim().replace(/\s+/g, " ");
+    const numResults = clampExaResults(args.numResults ?? SEARCH_RESULTS_PER_RUN);
 
-    // Guard 0: empty query.
+    // The JSON Schema length constraint applies to raw input. Re-check after
+    // whitespace normalization so values such as "  " cannot pass through.
     if (!query) {
-      input.log?.("assistant_turn_tool_search_rejected", {
-        assistantMessageId: input.assistantMessageId,
-        reason: "empty_query",
-      });
       return {
         ok: false,
         query: "",
-        error: "Query was empty.",
+        error: "Query was empty after whitespace normalization.",
         reason: "empty_query",
-        hint: "Provide a non-empty search query. Do not retry with an empty query.",
+        hint: "Provide a non-empty search query.",
       };
     }
-
-    // Guard 1: too-short query (single character, etc.).
     if (query.length < MIN_QUERY_CHARS) {
       return {
         ok: false,
@@ -296,19 +339,42 @@ export function createExaSearchTool(input: {
       };
     }
 
-    // Guard 2: per-turn budget. Absolute ceiling to stop thinking-model loops.
-    if (state.searchRuns.length >= maxSearchesPerTurn) {
+    const queryKey = normalizeQueryKey(query);
+
+    // Guard 0: duplicate / near-duplicate query. Check in-flight calls as
+    // well as completed calls because providers may emit tool calls in
+    // parallel.
+    if (queryCache.has(queryKey) || inFlightQueryKeys.has(queryKey)) {
+      input.log?.("assistant_turn_tool_search_deduped", {
+        assistantMessageId: input.assistantMessageId,
+        query,
+        queryKey,
+        inFlight: inFlightQueryKeys.has(queryKey),
+      });
+      return {
+        ok: false,
+        query,
+        error: "This query (or a near-duplicate) was already run this turn.",
+        reason: "duplicate_query",
+        hint: "Do not repeat the same query. Answer using the prior results, or search a meaningfully different angle.",
+      };
+    }
+
+    // Guard 1: per-turn budget. Use reservations rather than completed rows:
+    // concurrent calls otherwise all see the same row count and can exceed
+    // the configured ceiling.
+    if (reservedSearches >= maxSearchesPerTurn) {
       input.log?.("assistant_turn_tool_search_rejected", {
         assistantMessageId: input.assistantMessageId,
         reason: "max_searches_reached",
         attempted: query,
-        priorRuns: state.searchRuns.length,
+        priorRuns: reservedSearches,
       });
       await input.onProgress?.({
         tool: "search",
         label: `Search budget reached (${maxSearchesPerTurn}); answering with existing results`,
         state: "failed",
-        step: state.searchRuns.length + 1,
+        step: reservedSearches + 1,
         query,
         detail: "max searches per turn",
       });
@@ -322,206 +388,194 @@ export function createExaSearchTool(input: {
       };
     }
 
-    // Guard 3: duplicate / near-duplicate query. Instead of firing another
-    // request, return the cached context with a nudge to finalize.
-    const queryKey = normalizeQueryKey(query);
-    const cached = queryCache.get(queryKey);
-    if (cached) {
-      input.log?.("assistant_turn_tool_search_deduped", {
-        assistantMessageId: input.assistantMessageId,
-        query,
-        queryKey,
-      });
-      return {
-        ok: false,
-        query,
-        error: "This query (or a near-duplicate) was already run this turn.",
-        reason: "duplicate_query",
-        hint: "Do not repeat the same query. Answer using the prior results, or search a meaningfully different angle.",
-      };
-    }
+    reservedSearches += 1;
+    const step = reservedSearches;
+    inFlightQueryKeys.add(queryKey);
 
-    return trace("assistant.search.prepare", { query, numResults }, async () => {
-      const step = state.searchRuns.length + 1;
-      await input.onProgress?.({
-        tool: "search",
-        label: `Searching the web for "${query}"`,
-        state: "active",
-        step,
-        query,
-      });
+    try {
+      return await trace("assistant.search.prepare", { query, numResults }, async () => {
+        await input.onProgress?.({
+          tool: "search",
+          label: `Searching the web for "${query}"`,
+          state: "active",
+          step,
+          query,
+        });
 
-      return trace("assistant.search.run", { query, step, numResults }, async () => {
-        try {
-          let groundingRun: SearchGroundingRun;
-          let context: string;
-          let resultCount = 0;
+        return trace("assistant.search.run", { query, step, numResults }, async () => {
+          try {
+            let groundingRun: SearchGroundingRun;
+            let context: string;
+            let resultCount = 0;
 
-          if (input.env.EXA_API_KEY && !input.preferFreeExa) {
-            const runRows = (await exaSearch(input.env, query, numResults, input.signal)).map(
-              (row) =>
+            if (input.env.EXA_API_KEY && !input.preferFreeExa) {
+              const runRows = (await exaSearch(input.env, query, numResults, input.signal)).map(
+                (row) =>
+                  decodeSearchResultRow({
+                    ...row,
+                    searchRunId: "",
+                    messageId: input.assistantMessageId,
+                  }),
+              );
+              const run = createSearchRun({
+                messageId: input.assistantMessageId,
+                query,
+                status: "completed",
+                step,
+                numResults,
+                resultCount: runRows.length,
+                previewText: summarizeStructuredResults(runRows),
+                mode: "api",
+              });
+              const normalizedRows = runRows.map((row) =>
                 decodeSearchResultRow({
                   ...row,
-                  searchRunId: "",
+                  searchRunId: run.id,
                   messageId: input.assistantMessageId,
                 }),
-            );
-            const run = createSearchRun({
-              messageId: input.assistantMessageId,
-              query,
-              status: "completed",
-              step,
-              numResults,
-              resultCount: runRows.length,
-              previewText: summarizeStructuredResults(runRows),
-              mode: "api",
-            });
-            const normalizedRows = runRows.map((row) =>
-              decodeSearchResultRow({
-                ...row,
-                searchRunId: run.id,
+              );
+
+              state.searchRuns.push(run);
+              state.searchResults.push(...normalizedRows);
+              resultCount = normalizedRows.length;
+              groundingRun = {
+                query,
+                rows: normalizedRows.map((row) => ({
+                  title: row.title,
+                  url: row.url,
+                  snippet: row.snippet,
+                })),
+              };
+
+              input.log?.("assistant_turn_tool_search_success", {
+                assistantMessageId: input.assistantMessageId,
+                step,
+                query,
+                resultCount: normalizedRows.length,
+                mode: "exa_api",
+                previewText: run.previewText,
+              });
+              await input.onProgress?.({
+                tool: "search",
+                label:
+                  normalizedRows.length > 0
+                    ? `Found ${normalizedRows.length} result${normalizedRows.length === 1 ? "" : "s"} for "${query}"`
+                    : `No results for "${query}"`,
+                state: "completed",
+                step,
+                query,
+                detail: run.previewText || undefined,
+              });
+            } else {
+              const rawText = await exaMcpSearchRawText(query, numResults, input.signal);
+              const run = createSearchRun({
                 messageId: input.assistantMessageId,
+                query,
+                status: "completed",
+                step,
+                numResults,
+                resultCount: 0,
+                previewText: summarizeRawText(rawText),
+                mode: "mcp",
+              });
+
+              state.searchRuns.push(run);
+              resultCount = rawText ? 1 : 0;
+              groundingRun = {
+                query,
+                rawText,
+              };
+
+              input.log?.("assistant_turn_tool_search_success", {
+                assistantMessageId: input.assistantMessageId,
+                step,
+                query,
+                resultCount: 0,
+                mode: "exa_mcp",
+                previewText: run.previewText,
+              });
+              await input.onProgress?.({
+                tool: "search",
+                label: `Search finished for "${query}"`,
+                state: "completed",
+                step,
+                query,
+                detail: run.previewText || undefined,
+              });
+            }
+
+            context = buildMultiSearchContext({ runs: [groundingRun] });
+            queryCache.set(queryKey, context);
+            await publishState();
+            const budgetExhausted = reservedSearches >= maxSearchesPerTurn;
+            return {
+              ok: true,
+              query,
+              resultCount,
+              context,
+              ...(budgetExhausted
+                ? {
+                    disableFurtherToolCalls: true,
+                    hint: "Search budget is exhausted. Do not call tools again; answer using the search results already provided.",
+                  }
+                : {}),
+            } satisfies SearchToolResult;
+          } catch (error) {
+            const { reason, message, hint } = classifyExaError(error);
+            // If the user pressed Stop mid-search, the cancel handler already
+            // drove the UI into the cancelled state. Keep the run row so the
+            // Searching chip doesn't stay "active", but suppress the "Search
+            // failed for X" activity chip — that would lie about what
+            // happened.
+            const cancelled = Boolean(input.signal?.aborted);
+            state.searchRuns.push(
+              createSearchRun({
+                messageId: input.assistantMessageId,
+                query,
+                status: "failed",
+                step,
+                numResults,
+                errorMessage: cancelled ? "Cancelled" : message,
+                mode: input.env.EXA_API_KEY && !input.preferFreeExa ? "api" : "mcp",
               }),
             );
-
-            state.searchRuns.push(run);
-            state.searchResults.push(...normalizedRows);
-            resultCount = normalizedRows.length;
-            groundingRun = {
-              query,
-              rows: normalizedRows.map((row) => ({
-                title: row.title,
-                url: row.url,
-                snippet: row.snippet,
-              })),
-            };
-
-            input.log?.("assistant_turn_tool_search_success", {
+            await publishState();
+            input.log?.("assistant_turn_tool_search_error", {
               assistantMessageId: input.assistantMessageId,
               step,
               query,
-              resultCount: normalizedRows.length,
-              mode: "exa_api",
-              previewText: run.previewText,
+              error: message,
+              reason,
+              cancelled,
             });
-            await input.onProgress?.({
-              tool: "search",
-              label:
-                normalizedRows.length > 0
-                  ? `Found ${normalizedRows.length} result${normalizedRows.length === 1 ? "" : "s"} for "${query}"`
-                  : `No results for "${query}"`,
-              state: "completed",
-              step,
+            if (!cancelled) {
+              await input.onProgress?.({
+                tool: "search",
+                label: `Search failed for "${query}"`,
+                state: "failed",
+                step,
+                query,
+                detail: message,
+              });
+            }
+            // Return a structured failure — do NOT throw. Throwing aborts the
+            // turn; we want the model to see the failure, adjust, and
+            // continue (or decide to answer without search).
+            const budgetExhausted = reservedSearches >= maxSearchesPerTurn;
+            return {
+              ok: false,
               query,
-              detail: run.previewText || undefined,
-            });
-          } else {
-            const rawText = await exaMcpSearchRawText(query, numResults, input.signal);
-            const run = createSearchRun({
-              messageId: input.assistantMessageId,
-              query,
-              status: "completed",
-              step,
-              numResults,
-              resultCount: 0,
-              previewText: summarizeRawText(rawText),
-              mode: "mcp",
-            });
-
-            state.searchRuns.push(run);
-            resultCount = rawText ? 1 : 0;
-            groundingRun = {
-              query,
-              rawText,
-            };
-
-            input.log?.("assistant_turn_tool_search_success", {
-              assistantMessageId: input.assistantMessageId,
-              step,
-              query,
-              resultCount: 0,
-              mode: "exa_mcp",
-              previewText: run.previewText,
-            });
-            await input.onProgress?.({
-              tool: "search",
-              label: `Search finished for "${query}"`,
-              state: "completed",
-              step,
-              query,
-              detail: run.previewText || undefined,
-            });
+              error: cancelled ? "Request was cancelled." : message,
+              reason: cancelled ? "exa_unknown" : reason,
+              hint: cancelled ? "The user cancelled the turn; do not retry." : hint,
+              ...(budgetExhausted ? { disableFurtherToolCalls: true } : {}),
+            } satisfies SearchToolResult;
           }
-
-          context = buildMultiSearchContext({ runs: [groundingRun] });
-          queryCache.set(queryKey, context);
-          await publishState();
-          const budgetExhausted = state.searchRuns.length >= maxSearchesPerTurn;
-          return {
-            ok: true,
-            query,
-            resultCount,
-            context,
-            ...(budgetExhausted
-              ? {
-                  disableFurtherToolCalls: true,
-                  hint: "Search budget is exhausted. Do not call tools again; answer using the search results already provided.",
-                }
-              : {}),
-          } satisfies SearchToolResult;
-        } catch (error) {
-          const { reason, message, hint } = classifyExaError(error);
-          // If the user pressed Stop mid-search, the cancel handler already
-          // drove the UI into the cancelled state. Keep the run row so the
-          // Searching chip doesn't stay "active", but suppress the "Search
-          // failed for X" activity chip — that would lie about what
-          // happened.
-          const cancelled = Boolean(input.signal?.aborted);
-          state.searchRuns.push(
-            createSearchRun({
-              messageId: input.assistantMessageId,
-              query,
-              status: "failed",
-              step,
-              numResults,
-              errorMessage: cancelled ? "Cancelled" : message,
-              mode: input.env.EXA_API_KEY && !input.preferFreeExa ? "api" : "mcp",
-            }),
-          );
-          await publishState();
-          input.log?.("assistant_turn_tool_search_error", {
-            assistantMessageId: input.assistantMessageId,
-            step,
-            query,
-            error: message,
-            reason,
-            cancelled,
-          });
-          if (!cancelled) {
-            await input.onProgress?.({
-              tool: "search",
-              label: `Search failed for "${query}"`,
-              state: "failed",
-              step,
-              query,
-              detail: message,
-            });
-          }
-          // Return a structured failure — do NOT throw. Throwing aborts the
-          // turn; we want the model to see the failure, adjust, and
-          // continue (or decide to answer without search).
-          const budgetExhausted = state.searchRuns.length >= maxSearchesPerTurn;
-          return {
-            ok: false,
-            query,
-            error: cancelled ? "Request was cancelled." : message,
-            reason: cancelled ? "exa_unknown" : reason,
-            hint: cancelled ? "The user cancelled the turn; do not retry." : hint,
-            ...(budgetExhausted ? { disableFurtherToolCalls: true } : {}),
-          } satisfies SearchToolResult;
-        }
+        });
       });
-    });
+    } finally {
+      inFlightQueryKeys.delete(queryKey);
+    }
   });
 
   return {

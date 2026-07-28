@@ -1,4 +1,6 @@
+import { Cause, Effect } from "effect";
 import { DataAccess } from "./data-access";
+import { SyncDecodeError, SyncStorageError, UnknownSyncCommandError } from "./errors";
 import { HandlerRegistry } from "./handler-registry";
 import type {
   SyncClientEnvelope,
@@ -8,11 +10,16 @@ import type {
   SyncServerEvent,
   SyncSnapshot,
 } from "./sync-types";
-import { json, nowIso, parseJson, isWebSocketRequest } from "./sync-utils";
+import { isWebSocketRequest, json, nowIso, parseJson } from "./sync-utils";
 
 export type HandlerContext<Env> = {
   access: DataAccess;
   env: Env;
+};
+
+type CommandResult = {
+  ack: SyncServerAck | null;
+  events: SyncServerEvent[];
 };
 
 export abstract class SyncEngineDO<Env> {
@@ -24,32 +31,20 @@ export abstract class SyncEngineDO<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
     this.env = env;
-    this.access = new DataAccess(
-      (query: string, ...params: unknown[]) => ctx.storage.sql.exec(query, ...params),
-      <T extends Record<string, unknown>>(query: string, ...params: unknown[]): T | null => {
-        const rows = ctx.storage.sql.exec(query, ...params).toArray() as T[];
-        return rows[0] ?? null;
-      },
-      <T extends Record<string, unknown>>(query: string, ...params: unknown[]): T[] => {
-        return ctx.storage.sql.exec(query, ...params).toArray() as T[];
-      },
-    );
+    this.access = new DataAccess((query, ...params) => ctx.storage.sql.exec(query, ...params));
     this.handlerRegistry = new HandlerRegistry<HandlerContext<Env>>();
   }
 
-  // ─── Abstract ──────────────────────────────────────────────────
-
   abstract get protocolVersion(): string;
   abstract registerHandlers(registry: HandlerRegistry<HandlerContext<Env>>): void;
-  abstract getSnapshot(): SyncSnapshot;
-  protected abstract executeTransaction<T>(fn: () => T): T;
-
-  // ─── Fetch — routing ───────────────────────────────────────────
+  protected abstract getSnapshotEffect(): Effect.Effect<SyncSnapshot, unknown, never>;
+  protected abstract executeTransaction<A, E>(
+    effect: Effect.Effect<A, E, never>,
+  ): Effect.Effect<A, E | SyncStorageError, never>;
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    // WebSocket upgrade at /ws
     if (url.pathname === "/ws") {
       if (!isWebSocketRequest(request)) {
         return new Response("Upgrade required", { status: 426 });
@@ -60,17 +55,16 @@ export abstract class SyncEngineDO<Env> {
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    // Internal command endpoint
     if (url.pathname === "/internal/command" && request.method === "POST") {
-      return this.handleInternalCommand(request);
+      return Effect.runPromise(this.handleInternalCommand(request));
     }
 
-    // Snapshot endpoint
     if (url.pathname === "/internal/snapshot") {
-      return Response.json(this.getSnapshot());
+      return Effect.runPromise(
+        this.getSnapshotEffect().pipe(Effect.map((snapshot) => Response.json(snapshot))),
+      );
     }
 
-    // REST routes — delegated to app via Effect HttpApp
     return this.handleApiRequest(request);
   }
 
@@ -78,188 +72,213 @@ export abstract class SyncEngineDO<Env> {
     return new Response("Not found", { status: 404 });
   }
 
-  // ─── WebSocket ─────────────────────────────────────────────────
-
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const text = typeof message === "string" ? message : new TextDecoder().decode(message);
-    let envelope: SyncClientEnvelope;
-    try {
-      envelope = parseJson<SyncClientEnvelope>(text);
-    } catch {
-      console.warn("[sync-protocol] Failed to parse WebSocket message envelope");
-      return;
-    }
+    const program = Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
+      const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+      const envelope = yield* Effect.try({
+        try: () => parseJson<SyncClientEnvelope>(text),
+        catch: (cause) => new SyncDecodeError({ target: "clientEnvelope", cause }),
+      });
 
-    try {
       switch (envelope.type) {
         case "hello":
-          await this.handleHello(ws, envelope);
+          yield* this.handleHello(envelope, ws);
           break;
         case "resume":
-          await this.replayAfter(ws, envelope.lastServerSeq);
+          yield* this.replayAfter(ws, envelope.lastServerSeq);
           break;
         case "command":
-          await this.processCommand(envelope.opId, envelope.commandType, envelope.payload, true);
+          yield* this.processCommandEffect(
+            envelope.opId,
+            envelope.commandType,
+            envelope.payload,
+            true,
+          );
           break;
       }
-    } catch (error) {
-      ws.send(
-        json({
-          type: "sync_reset",
-          reason: error instanceof Error ? error.message : "Unknown error",
-          protocolVersion: this.protocolVersion,
-          snapshot: this.getSnapshot(),
-        } satisfies SyncServerEnvelope),
-      );
-    }
-  }
-
-  async webSocketClose(_ws: WebSocket): Promise<void> {
-    // App can override
-  }
-
-  // ─── Alarm ──────────────────────────────────────────────────────
-
-  async alarm(): Promise<void> {
-    // App can override
-  }
-
-  // ─── Hello handshake ────────────────────────────────────────────
-
-  protected async handleHello(ws: WebSocket, hello: SyncClientHello): Promise<void> {
-    const lastServerSeq = this.access.getLastServerSeq();
-    ws.send(
-      json({
-        type: "hello_ack",
-        protocolVersion: this.protocolVersion,
-        serverTime: nowIso(),
-        lastServerSeq,
-      } satisfies SyncServerEnvelope),
+    }).pipe(
+      Effect.catchCause((cause) =>
+        this.getSnapshotEffect().pipe(
+          Effect.flatMap((snapshot) =>
+            Effect.sync(() =>
+              ws.send(
+                json({
+                  type: "sync_reset",
+                  reason: Cause.pretty(cause),
+                  protocolVersion: this.protocolVersion,
+                  snapshot,
+                } satisfies SyncServerEnvelope),
+              ),
+            ),
+          ),
+          Effect.catchCause((snapshotCause) =>
+            Effect.sync(() =>
+              console.error(
+                "[sync-protocol] Failed to report protocol failure",
+                Cause.pretty(snapshotCause),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
 
-    // Protocol mismatch → full reset
-    if (hello.protocolVersion !== this.protocolVersion) {
-      ws.send(
-        json({
-          type: "sync_reset",
-          reason: "protocol_mismatch",
-          protocolVersion: this.protocolVersion,
-          snapshot: this.getSnapshot(),
-        } satisfies SyncServerEnvelope),
-      );
-      return;
-    }
-
-    // Stale cursor or first sync → full snapshot
-    const oldestSeq = this.access.getOldestEventSeq();
-    const needsFullSync =
-      hello.lastServerSeq <= 0 || (oldestSeq > 0 && hello.lastServerSeq < oldestSeq);
-
-    if (needsFullSync) {
-      const reason = hello.lastServerSeq <= 0 ? "initial_sync" : "cursor_stale";
-      ws.send(
-        json({
-          type: "sync_reset",
-          reason,
-          protocolVersion: this.protocolVersion,
-          snapshot: this.getSnapshot(),
-        } satisfies SyncServerEnvelope),
-      );
-    } else {
-      await this.replayAfter(ws, hello.lastServerSeq);
-    }
-
-    // Re-process unacked ops
-    for (const opId of hello.unackedOpIds) {
-      const ack = this.access.getCommandAck(opId);
-      if (ack) ws.send(json(ack));
-    }
+    await Effect.runPromise(program);
   }
 
-  // ─── Event replay ──────────────────────────────────────────────
+  async webSocketClose(_ws: WebSocket): Promise<void> {}
 
-  protected async replayAfter(ws: WebSocket, afterSeq: number): Promise<void> {
-    const events = this.access.getEventsAfter(afterSeq);
-    for (const event of events) {
-      ws.send(json(event));
-    }
+  async alarm(): Promise<void> {}
+
+  protected handleHello(hello: SyncClientHello, ws: WebSocket) {
+    return Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
+      const lastServerSeq = yield* this.access.getLastServerSeq();
+      yield* Effect.sync(() =>
+        ws.send(
+          json({
+            type: "hello_ack",
+            protocolVersion: this.protocolVersion,
+            serverTime: nowIso(),
+            lastServerSeq,
+          } satisfies SyncServerEnvelope),
+        ),
+      );
+
+      if (hello.protocolVersion !== this.protocolVersion) {
+        const snapshot = yield* this.getSnapshotEffect();
+        yield* Effect.sync(() =>
+          ws.send(
+            json({
+              type: "sync_reset",
+              reason: "protocol_mismatch",
+              protocolVersion: this.protocolVersion,
+              snapshot,
+            } satisfies SyncServerEnvelope),
+          ),
+        );
+        return;
+      }
+
+      const oldestSeq = yield* this.access.getOldestEventSeq();
+      const needsFullSync =
+        hello.lastServerSeq <= 0 || (oldestSeq > 0 && hello.lastServerSeq < oldestSeq);
+
+      if (needsFullSync) {
+        const snapshot = yield* this.getSnapshotEffect();
+        yield* Effect.sync(() =>
+          ws.send(
+            json({
+              type: "sync_reset",
+              reason: hello.lastServerSeq <= 0 ? "initial_sync" : "cursor_stale",
+              protocolVersion: this.protocolVersion,
+              snapshot,
+            } satisfies SyncServerEnvelope),
+          ),
+        );
+      } else {
+        yield* this.replayAfter(ws, hello.lastServerSeq);
+      }
+
+      yield* Effect.forEach(
+        hello.unackedOpIds,
+        (opId) =>
+          this.access
+            .getCommandAck(opId)
+            .pipe(
+              Effect.flatMap((ack) => (ack ? Effect.sync(() => ws.send(json(ack))) : Effect.void)),
+            ),
+        { discard: true },
+      );
+    });
   }
 
-  // ─── Command processing ────────────────────────────────────────
+  protected replayAfter(ws: WebSocket, afterSeq: number) {
+    return this.access.getEventsAfter(afterSeq).pipe(
+      Effect.flatMap((events) =>
+        Effect.forEach(events, (event) => Effect.sync(() => ws.send(json(event))), {
+          discard: true,
+        }),
+      ),
+    );
+  }
 
-  protected async processCommand(
+  protected processCommandEffect(
     opId: string,
     commandType: string,
     payload: unknown,
     doBroadcast: boolean,
-  ): Promise<{ ack: SyncServerAck | null; events: SyncServerEvent[] }> {
-    const existing = this.access.getCommandAck(opId);
-    if (existing) {
-      return { ack: existing, events: [] };
-    }
+  ) {
+    return Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
+      const existing = yield* this.access.getCommandAck(opId);
+      if (existing) return { ack: existing, events: [] } satisfies CommandResult;
 
-    const handler = this.handlerRegistry.get(commandType);
-    if (!handler) {
-      throw new Error(`Unknown command type: ${commandType}`);
-    }
+      const handler = this.handlerRegistry.get(commandType);
+      if (!handler) return yield* new UnknownSyncCommandError({ commandType });
+      const createdAt = nowIso();
 
-    const createdAt = nowIso();
+      const result = yield* this.executeTransaction(
+        Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
+          const commandPayload =
+            payload && typeof payload === "object"
+              ? { ...(payload as Record<string, unknown>), commandType }
+              : payload;
+          const handled = yield* handler(opId, commandPayload, {
+            access: this.access,
+            env: this.env,
+          });
+          const ackedSeq =
+            handled.events.at(-1)?.serverSeq ?? (yield* this.access.getLastServerSeq());
+          const ack = {
+            type: "ack" as const,
+            opId,
+            serverSeq: ackedSeq,
+            acceptedAt: createdAt,
+            commandType,
+          } satisfies SyncServerAck;
 
-    const result = this.executeTransaction(() => {
-      const commandPayload =
-        payload && typeof payload === "object"
-          ? { ...(payload as Record<string, unknown>), commandType }
-          : payload;
-
-      const { events: resultEvents } = handler(opId, commandPayload, {
-        access: this.access,
-        env: this.env,
-      });
-
-      const ackedSeq =
-        resultEvents.length > 0
-          ? resultEvents[resultEvents.length - 1]!.serverSeq
-          : this.access.getLastServerSeq();
-
-      const ack = {
-        type: "ack" as const,
-        opId,
-        serverSeq: ackedSeq,
-        acceptedAt: createdAt,
-        commandType,
-      } satisfies SyncServerAck;
-
-      const ackJson = json(ack);
-      this.access.exec(
-        `INSERT OR REPLACE INTO commands (op_id, type, status, response_json, acked_seq, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        opId,
-        commandType,
-        "accepted",
-        ackJson,
-        ackedSeq,
-        createdAt,
+          yield* this.access.exec(
+            `INSERT OR REPLACE INTO commands (op_id, type, status, response_json, acked_seq, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            opId,
+            commandType,
+            "accepted",
+            json(ack),
+            ackedSeq,
+            createdAt,
+          );
+          return { ack, events: handled.events, followUp: handled.followUp };
+        }),
       );
 
-      return { ack, events: resultEvents };
-    });
-
-    if (doBroadcast) {
-      this.broadcast(result.ack);
-      for (const event of result.events) {
-        this.broadcast(event);
+      if (doBroadcast) {
+        yield* Effect.sync(() => {
+          this.broadcast(result.ack);
+          for (const event of result.events) this.broadcast(event);
+        });
       }
-    }
-
-    return { ack: result.ack, events: result.events };
+      if (result.followUp) {
+        const followUp = result.followUp;
+        yield* Effect.sync(() =>
+          this.ctx.waitUntil(
+            Effect.runPromise(
+              followUp.pipe(
+                Effect.catchCause((cause) =>
+                  Effect.sync(() =>
+                    console.error("[sync-protocol] Command follow-up failed", Cause.pretty(cause)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      return { ack: result.ack, events: result.events } satisfies CommandResult;
+    });
   }
-
-  // ─── Broadcast ──────────────────────────────────────────────────
 
   protected broadcast(envelope: SyncServerEnvelope): void {
     const message = json(envelope);
-    const sockets = this.ctx.getWebSockets();
-    for (const socket of sockets) {
+    for (const socket of this.ctx.getWebSockets()) {
       try {
         socket.send(message);
       } catch {
@@ -268,22 +287,24 @@ export abstract class SyncEngineDO<Env> {
     }
   }
 
-  // ─── Internal command ──────────────────────────────────────────
-
-  private async handleInternalCommand(request: Request): Promise<Response> {
-    const body = (await request.json().catch(() => {
-      console.warn("[sync-protocol] handleInternalCommand request.json() failed");
-      return null;
-    })) as Record<string, unknown> | null;
-    if (!body || typeof body.opId !== "string" || typeof body.commandType !== "string") {
-      return new Response("Invalid command body", { status: 400 });
-    }
-    const result = await this.processCommand(
-      body.opId as string,
-      body.commandType as string,
-      body.payload,
-      true,
+  private handleInternalCommand(request: Request) {
+    return Effect.tryPromise({
+      try: () => request.json(),
+      catch: (cause) => new SyncDecodeError({ target: "internalCommand", cause }),
+    }).pipe(
+      Effect.catch(() => Effect.succeed(null)),
+      Effect.flatMap((value) => {
+        const body =
+          value && typeof value === "object" && !Array.isArray(value)
+            ? (value as Record<string, unknown>)
+            : null;
+        if (!body || typeof body.opId !== "string" || typeof body.commandType !== "string") {
+          return Effect.succeed(new Response("Invalid command body", { status: 400 }));
+        }
+        return this.processCommandEffect(body.opId, body.commandType, body.payload, true).pipe(
+          Effect.map((result) => Response.json({ ok: true, ack: result.ack })),
+        );
+      }),
     );
-    return Response.json({ ok: true, ack: result.ack });
   }
 }

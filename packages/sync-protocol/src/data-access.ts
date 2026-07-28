@@ -1,73 +1,94 @@
-import type { SyncServerEvent, SyncServerAck } from "./sync-types";
+import { Effect } from "effect";
+import type { SyncServerAck, SyncServerEvent } from "./sync-types";
+import { SyncDecodeError, SyncStorageError } from "./errors";
 
-export type SqlExecFn = (
-  query: string,
-  ...params: unknown[]
-) => { toArray(): Record<string, unknown>[] };
-export type SqlQueryOneFn = <T extends Record<string, unknown>>(
-  query: string,
-  ...params: unknown[]
-) => T | null;
-export type SqlQueryAllFn = <T extends Record<string, unknown>>(
-  query: string,
-  ...params: unknown[]
-) => T[];
+export type SqlResult = { toArray(): Record<string, unknown>[] };
+export type SqlExecFn = (query: string, ...params: unknown[]) => SqlResult;
 
 export class DataAccess {
-  constructor(
-    public readonly exec: SqlExecFn,
-    public readonly queryOne: SqlQueryOneFn,
-    public readonly queryAll: SqlQueryAllFn,
-  ) {}
+  constructor(private readonly execute: SqlExecFn) {}
 
-  getLastServerSeq(): number {
-    const row = this.queryOne<{ seq: number }>("SELECT COALESCE(MAX(seq), 0) AS seq FROM events");
-    return row?.seq ?? 0;
+  exec(query: string, ...params: unknown[]) {
+    return Effect.try({
+      try: () => this.execute(query, ...params),
+      catch: (cause) => new SyncStorageError({ operation: "exec", query, cause }),
+    });
   }
 
-  getOldestEventSeq(): number {
-    const row = this.queryOne<{ seq: number }>("SELECT COALESCE(MIN(seq), 0) AS seq FROM events");
-    return row?.seq ?? 0;
+  queryOne<T extends Record<string, unknown>>(query: string, ...params: unknown[]) {
+    return Effect.try({
+      try: () => (this.execute(query, ...params).toArray() as T[])[0] ?? null,
+      catch: (cause) => new SyncStorageError({ operation: "queryOne", query, cause }),
+    });
   }
 
-  getEventsAfter(afterSeq: number): SyncServerEvent[] {
-    const rows = this.queryAll<{
+  queryAll<T extends Record<string, unknown>>(query: string, ...params: unknown[]) {
+    return Effect.try({
+      try: () => this.execute(query, ...params).toArray() as T[],
+      catch: (cause) => new SyncStorageError({ operation: "queryAll", query, cause }),
+    });
+  }
+
+  getLastServerSeq() {
+    return this.queryOne<{ seq: number }>("SELECT COALESCE(MAX(seq), 0) AS seq FROM events").pipe(
+      Effect.map((row) => row?.seq ?? 0),
+    );
+  }
+
+  getOldestEventSeq() {
+    return this.queryOne<{ seq: number }>("SELECT COALESCE(MIN(seq), 0) AS seq FROM events").pipe(
+      Effect.map((row) => row?.seq ?? 0),
+    );
+  }
+
+  getEventsAfter(afterSeq: number) {
+    return this.queryAll<{
       seq: number;
       event_id: string;
       op_id: string | null;
       type: string;
       payload_json: string;
       created_at: string;
-    }>("SELECT * FROM events WHERE seq > ? ORDER BY seq ASC", afterSeq);
-
-    return rows.map((row) => ({
-      type: "event" as const,
-      serverSeq: row.seq,
-      eventId: row.event_id,
-      eventType: row.type,
-      payload: JSON.parse(row.payload_json),
-      causedByOpId: row.op_id,
-    }));
+    }>("SELECT * FROM events WHERE seq > ? ORDER BY seq ASC", afterSeq).pipe(
+      Effect.flatMap((rows) =>
+        Effect.forEach(rows, (row) =>
+          Effect.try({
+            try: (): SyncServerEvent => ({
+              type: "event",
+              serverSeq: row.seq,
+              eventId: row.event_id,
+              eventType: row.type,
+              payload: JSON.parse(row.payload_json),
+              causedByOpId: row.op_id,
+            }),
+            catch: (cause) => new SyncDecodeError({ target: "event", cause }),
+          }),
+        ),
+      ),
+    );
   }
 
-  getCommandAck(opId: string): SyncServerAck | null {
-    const row = this.queryOne<{
+  getCommandAck(opId: string) {
+    return this.queryOne<{
       op_id: string;
       type: string;
       response_json: string | null;
       acked_seq: number | null;
       created_at: string;
-    }>("SELECT * FROM commands WHERE op_id = ?", opId);
-
-    if (!row || !row.response_json) return null;
-
-    const parsed = JSON.parse(row.response_json) as SyncServerAck;
-    return parsed;
+    }>("SELECT * FROM commands WHERE op_id = ?", opId).pipe(
+      Effect.flatMap((row) => {
+        if (!row?.response_json) return Effect.succeed<SyncServerAck | null>(null);
+        return Effect.try({
+          try: () => JSON.parse(row.response_json!) as SyncServerAck,
+          catch: (cause) => new SyncDecodeError({ target: "commandAck", cause }),
+        });
+      }),
+    );
   }
 
-  /** Number of rows in a given data table (for diagnostics). */
-  tableRowCount(tableName: string): number {
-    const row = this.queryOne<{ count: number }>(`SELECT COUNT(*) AS count FROM ${tableName}`);
-    return row?.count ?? 0;
+  tableRowCount(tableName: string) {
+    return this.queryOne<{ count: number }>(`SELECT COUNT(*) AS count FROM ${tableName}`).pipe(
+      Effect.map((row) => row?.count ?? 0),
+    );
   }
 }

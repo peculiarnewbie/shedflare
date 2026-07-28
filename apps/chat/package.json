@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
+    "@effect/sql-sqlite-do": "catalog:",
     "@openauthjs/openauth": "^0.4.3",
     "@shedflare/alchemy": "workspace:*",
     "@shedflare/auth-client": "workspace:*",
@@ -30,6 +31,7 @@
     "@tanstack/ai": "0.10.2",
     "@tanstack/db": "catalog:",
     "@tanstack/solid-db": "catalog:",
+    "@valibot/to-json-schema": "catalog:",
     "dompurify": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",

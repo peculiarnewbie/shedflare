@@ -14,9 +14,17 @@ import {
 } from "#/domain";
 import { getDefaultModelId, type AppEnv } from "#/runtime";
 import * as dbSchema from "#/db/schema";
-import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { eq } from "drizzle-orm";
-import { SyncEngineDO } from "@shedflare/sync-protocol";
+import {
+  SyncEngineDO,
+  SyncCommandExecutionError,
+  SyncStorageError,
+  type HandlerContext,
+  type HandlerRegistry,
+  type SyncClientHello,
+} from "@shedflare/sync-protocol";
+import { Effect } from "effect";
+import * as SqlError from "effect/unstable/sql/SqlError";
 import { json, parseJsonRequest, parseInternalCommandBody, syncLog } from "./sync-utils";
 import migrationManifest from "../../drizzle/migrations";
 import { runMigrations } from "./migrator";
@@ -50,8 +58,19 @@ import {
 } from "./command-handlers";
 import { runAssistantTurn } from "./assistant-turn";
 import { generateThreadTitle } from "./title-generator";
+import { EffectDatabase, type ChatDrizzleDatabase } from "./effect-database";
 
 type ChatHandlerFn = (
+  opId: string,
+  payload: SyncCommandPayloadMap[SyncCommandType],
+  ctx: CommandHandlerContext,
+) => Effect.Effect<
+  { events: SyncServerEvent[]; followUp?: DeferredFollowUp },
+  SyncCommandExecutionError,
+  never
+>;
+
+type SyncChatHandlerFn = (
   opId: string,
   payload: SyncCommandPayloadMap[SyncCommandType],
   ctx: CommandHandlerContext,
@@ -78,6 +97,10 @@ type SavedTurnParams = {
 const ALARM_INTERVAL_MS = 30_000;
 
 const STUCK_DEBUG_PREFIX = "CHAT_DEBUG_STUCK_GENERATING";
+
+function isTerminalTurnStatus(status: Message["status"] | undefined) {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
 
 function envelopeDebugSummary(envelope: SyncServerEnvelope) {
   if (envelope.type !== "event") {
@@ -110,7 +133,8 @@ function shouldLogBroadcast(envelope: SyncServerEnvelope) {
 // ---------------------------------------------------------------------------
 
 export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
-  private readonly db: DrizzleSqliteDODatabase;
+  private readonly database: EffectDatabase;
+  private readonly db: ChatDrizzleDatabase;
   private readonly chatAccess: DataAccess;
   private readonly eventStore: EventStore;
   private readonly assistantTurnControllers = new Map<string, AbortController>();
@@ -120,25 +144,28 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
   constructor(ctx: DurableObjectState, env: AppEnv) {
     super(ctx, env);
-    this.db = drizzle(ctx.storage, { logger: false });
-    this.chatAccess = new DataAccess(this.access, this.db);
+    this.database = new EffectDatabase(ctx.storage);
+    this.db = this.database.drizzle;
+    this.chatAccess = new DataAccess(this.access, this.database);
     this.eventStore = new EventStore(this.chatAccess);
     this.registerChatHandlers();
 
     this.initialized = ctx.blockConcurrencyWhile(async () => {
       syncLog("migrate_start");
-      runMigrations(this.db, migrationManifest);
+      await this.database.runPromise(runMigrations(this.db, this.ctx.storage, migrationManifest));
       syncLog("migrate_done");
 
-      const version = this.access.queryOne<{ value: string }>(
-        `SELECT value FROM metadata WHERE key = 'sync_protocol_version'`,
+      const version = this.database.runSync(
+        this.access.queryOne<{ value: string }>(
+          `SELECT value FROM metadata WHERE key = 'sync_protocol_version'`,
+        ),
       );
       if (version?.value !== SYNC_PROTOCOL_VERSION) {
         syncLog("protocol_version_reset", {
           previous: version?.value ?? null,
           current: SYNC_PROTOCOL_VERSION,
         });
-        this.db.transaction(() => {
+        this.ctx.storage.transactionSync(() => {
           resetForProtocolVersion((query, ...params) => {
             this.ctx.storage.sql.exec(query, ...params);
           });
@@ -155,37 +182,48 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     return SYNC_PROTOCOL_VERSION;
   }
 
-  registerHandlers(_registry: any): void {
+  registerHandlers(_registry: HandlerRegistry<HandlerContext<AppEnv>>): void {
     // Handlers registered via chatHandlers typed Map — no as any needed
   }
 
   private registerChatHandlers(): void {
-    const handlers: [SyncCommandType, ChatHandlerFn][] = [
-      ["bootstrap_session", handleBootstrapSession as ChatHandlerFn],
-      ["update_account_settings", handleUpdateAccountSettings as ChatHandlerFn],
-      ["create_workspace", handleCreateWorkspace as ChatHandlerFn],
-      ["update_workspace", handleUpdateWorkspace as ChatHandlerFn],
-      ["archive_workspace", handleArchiveWorkspace as ChatHandlerFn],
-      ["create_thread", handleUpsertThread as ChatHandlerFn],
-      ["update_thread", handleUpsertThread as ChatHandlerFn],
-      ["archive_thread", handleArchiveThread as ChatHandlerFn],
-      ["create_user_message", handleCreateUserMessage as ChatHandlerFn],
-      ["retry_message", handleRetryMessage as ChatHandlerFn],
-      ["edit_user_message", handleEditUserMessage as ChatHandlerFn],
-      ["start_assistant_turn", handleStartAssistantTurn as ChatHandlerFn],
-      ["cancel_assistant_turn", handleCancelAssistantTurn as ChatHandlerFn],
-      ["register_attachment", handleUpsertAttachment as ChatHandlerFn],
-      ["complete_attachment", handleUpsertAttachment as ChatHandlerFn],
-      ["update_attachment", handleUpsertAttachment as ChatHandlerFn],
-      ["delete_attachment", handleDeleteAttachment as ChatHandlerFn],
-      ["delete_thread", handleDeleteThread as ChatHandlerFn],
-      ["fork_thread", handleForkThread as ChatHandlerFn],
-      ["create_comparison", handleCreateComparison as ChatHandlerFn],
-      ["set_search_mode", handleSetSearchMode as ChatHandlerFn],
-      ["reset_storage", handleResetStorage as ChatHandlerFn],
+    const handlers: [SyncCommandType, SyncChatHandlerFn][] = [
+      ["bootstrap_session", handleBootstrapSession as SyncChatHandlerFn],
+      ["update_account_settings", handleUpdateAccountSettings as SyncChatHandlerFn],
+      ["create_workspace", handleCreateWorkspace as SyncChatHandlerFn],
+      ["update_workspace", handleUpdateWorkspace as SyncChatHandlerFn],
+      ["archive_workspace", handleArchiveWorkspace as SyncChatHandlerFn],
+      ["create_thread", handleUpsertThread as SyncChatHandlerFn],
+      ["update_thread", handleUpsertThread as SyncChatHandlerFn],
+      ["archive_thread", handleArchiveThread as SyncChatHandlerFn],
+      ["create_user_message", handleCreateUserMessage as SyncChatHandlerFn],
+      ["retry_message", handleRetryMessage as SyncChatHandlerFn],
+      ["edit_user_message", handleEditUserMessage as SyncChatHandlerFn],
+      ["start_assistant_turn", handleStartAssistantTurn as SyncChatHandlerFn],
+      ["cancel_assistant_turn", handleCancelAssistantTurn as SyncChatHandlerFn],
+      ["register_attachment", handleUpsertAttachment as SyncChatHandlerFn],
+      ["complete_attachment", handleUpsertAttachment as SyncChatHandlerFn],
+      ["update_attachment", handleUpsertAttachment as SyncChatHandlerFn],
+      ["delete_attachment", handleDeleteAttachment as SyncChatHandlerFn],
+      ["delete_thread", handleDeleteThread as SyncChatHandlerFn],
+      ["fork_thread", handleForkThread as SyncChatHandlerFn],
+      ["create_comparison", handleCreateComparison as SyncChatHandlerFn],
+      ["set_search_mode", handleSetSearchMode as SyncChatHandlerFn],
+      ["reset_storage", handleResetStorage as SyncChatHandlerFn],
     ];
     for (const [type, handler] of handlers) {
-      this.chatHandlers.set(type, handler);
+      this.chatHandlers.set(type, (opId, payload, ctx) =>
+        Effect.try({
+          try: () => handler(opId, payload, ctx),
+          catch: (cause) =>
+            new SyncCommandExecutionError({
+              opId,
+              commandType: type,
+              phase: "handler",
+              cause,
+            }),
+        }),
+      );
     }
   }
 
@@ -193,8 +231,20 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     return this.chatAccess.getSnapshot();
   }
 
-  protected executeTransaction<T>(fn: () => T): T {
-    return (this.db as { transaction<T>(fn: () => T): T }).transaction(fn);
+  protected getSnapshotEffect() {
+    return Effect.sync(() => this.getSnapshot());
+  }
+
+  protected executeTransaction<A, E>(effect: Effect.Effect<A, E, never>) {
+    return this.db
+      .transaction(() => effect)
+      .pipe(
+        Effect.mapError((error) =>
+          SqlError.isSqlError(error)
+            ? new SyncStorageError({ operation: "transaction", cause: error })
+            : error,
+        ),
+      );
   }
 
   // ─── Fetch ──────────────────────────────────────────────────────
@@ -289,10 +339,10 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     try {
       switch (envelope.type) {
         case "hello":
-          await this.handleHello(ws, envelope);
+          await this.database.runPromise(this.handleHello(envelope, ws));
           break;
         case "resume":
-          await this.replayAfter(ws, envelope.lastServerSeq);
+          await this.database.runPromise(this.replayAfter(ws, envelope.lastServerSeq));
           break;
         case "command":
           await this.processChatCommand(
@@ -413,14 +463,18 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
   // ─── Hello ──────────────────────────────────────────────────────
 
-  protected async handleHello(ws: WebSocket, hello: any): Promise<void> {
-    syncLog("hello", {
-      clientId: hello.clientId,
-      lastServerSeq: hello.lastServerSeq,
-      unackedOpIds: hello.unackedOpIds?.length,
-    });
-    await this.ensureBootstrapped();
-    await super.handleHello(ws, hello);
+  protected handleHello(hello: SyncClientHello, ws: WebSocket) {
+    return Effect.tryPromise({
+      try: async () => {
+        syncLog("hello", {
+          clientId: hello.clientId,
+          lastServerSeq: hello.lastServerSeq,
+          unackedOpIds: hello.unackedOpIds?.length,
+        });
+        await this.ensureBootstrapped();
+      },
+      catch: (cause) => new SyncStorageError({ operation: "transaction", cause }),
+    }).pipe(Effect.andThen(super.handleHello(hello, ws)));
   }
 
   // ─── Chat command processing ────────────────────────────────────
@@ -433,45 +487,64 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   ): Promise<SyncCommandResult> {
     syncLog("process_command_start", { opId, commandType, doBroadcast });
 
-    const existing = this.access.getCommandAck(opId);
-    if (existing) {
+    const command = await this.database.runPromise(
+      Effect.gen({ self: this }, function* (this: SyncEngineDurableObject) {
+        const existing = yield* this.access.getCommandAck(opId);
+        if (existing) {
+          return { duplicate: true as const, result: { ack: existing, events: [] } };
+        }
+
+        const handler = this.chatHandlers.get(commandType);
+        if (!handler) {
+          return yield* new SyncCommandExecutionError({
+            opId,
+            commandType,
+            phase: "handler",
+            cause: new Error(`Unknown command type: ${commandType}`),
+          });
+        }
+        const validatedPayload = yield* Effect.try({
+          try: () => decodeCommand(commandType, payload) as SyncCommandPayloadMap[T],
+          catch: (cause) =>
+            new SyncCommandExecutionError({ opId, commandType, phase: "decode", cause }),
+        });
+        const createdAt = nowIso();
+        const handlerContext = this.buildHandlerContext();
+        const transactionResult = yield* this.executeTransaction(
+          Effect.gen({ self: this }, function* (this: SyncEngineDurableObject) {
+            const result = yield* handler(opId, validatedPayload, handlerContext);
+            const ackedSeq =
+              result.events.at(-1)?.serverSeq ?? (yield* this.access.getLastServerSeq());
+            const ack: SyncServerAck = {
+              type: "ack",
+              opId,
+              serverSeq: ackedSeq,
+              acceptedAt: createdAt,
+              commandType,
+            };
+            yield* this.db.insert(dbSchema.commands).values({
+              opId,
+              type: commandType,
+              status: "accepted",
+              responseJson: json(ack),
+              createdAt,
+              ackedSeq,
+            });
+            return { ack, events: result.events, followUp: result.followUp };
+          }),
+        );
+        return { duplicate: false as const, transactionResult, validatedPayload };
+      }),
+    );
+
+    if (command.duplicate) {
       syncLog("process_command_duplicate", { opId, commandType });
-      return { ack: existing as SyncServerAck, events: [] };
-    }
-
-    const handler = this.chatHandlers.get(commandType);
-    if (!handler) {
-      throw new Error(`Unknown command type: ${commandType}`);
-    }
-
-    const createdAt = nowIso();
-    const handlerContext = this.buildHandlerContext();
-    const validatedPayload = decodeCommand(commandType, payload) as SyncCommandPayloadMap[T];
-
-    const transactionResult = this.db.transaction(() => {
-      const result = handler(opId, validatedPayload, handlerContext);
-
-      const ackedSeq = result.events.at(-1)?.serverSeq ?? this.access.getLastServerSeq();
-      const ack: SyncServerAck = {
-        type: "ack",
-        opId,
-        serverSeq: ackedSeq,
-        acceptedAt: createdAt,
-        commandType,
+      return {
+        ack: { ...command.result.ack, commandType },
+        events: [],
       };
-      this.db
-        .insert(dbSchema.commands)
-        .values({
-          opId,
-          type: commandType,
-          status: "accepted",
-          responseJson: json(ack),
-          createdAt,
-          ackedSeq,
-        })
-        .run();
-      return { ack, events: result.events, followUp: result.followUp };
-    });
+    }
+    const { transactionResult, validatedPayload } = command;
 
     syncLog("process_command_committed", {
       opId,
@@ -516,18 +589,15 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
         followUpPromise
           .then(() => {
-            for (const msg of comparisonPayload.assistantMessages) {
-              this.activeTurnMessageIds.delete(msg.id);
-              this.clearTurnParams(msg.id);
-            }
-            void this.ctx.storage.deleteAlarm().catch(() => syncLog("alarm_delete_failed"));
-            syncLog("comparison_turn_params_cleared");
+            this.settleTrackedTurns(
+              comparisonPayload.assistantMessages.map((message) => message.id),
+            );
             return undefined;
           })
           .catch((error: any) => {
-            for (const msg of comparisonPayload.assistantMessages) {
-              this.activeTurnMessageIds.delete(msg.id);
-            }
+            this.settleTrackedTurns(
+              comparisonPayload.assistantMessages.map((message) => message.id),
+            );
             syncLog("follow_up_error", {
               opId,
               commandType,
@@ -576,17 +646,12 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
               finalStatus: message?.status ?? null,
               finalTextLength: message?.text.length ?? null,
             });
-            this.activeTurnMessageIds.delete(turnMessageId);
-            this.clearTurnParams(turnMessageId);
-            void this.ctx.storage
-              .deleteAlarm()
-              .catch(() => syncLog("alarm_delete_failed", { messageId: turnMessageId }));
-            syncLog("turn_params_cleared", { messageId: turnMessageId });
+            this.settleTrackedTurns([turnMessageId]);
             return undefined;
           })
           .catch((error: any) => {
             const message = this.chatAccess.getMessage(turnMessageId);
-            this.activeTurnMessageIds.delete(turnMessageId);
+            this.settleTrackedTurns([turnMessageId]);
             syncLog("follow_up_error", {
               opId,
               commandType,
@@ -653,25 +718,59 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   // ─── Turn recovery ──────────────────────────────────────────────
 
   private saveTurnParams(messageId: string, params: SavedTurnParams) {
-    this.db
-      .insert(dbSchema.pendingTurns)
-      .values({
+    this.database.runSync(
+      this.db.insert(dbSchema.pendingTurns).values({
         messageId,
         payloadJson: JSON.stringify(params),
         createdAt: nowIso(),
-      })
-      .run();
+      }),
+    );
   }
 
   private clearTurnParams(messageId: string) {
-    this.db
-      .delete(dbSchema.pendingTurns)
-      .where(eq(dbSchema.pendingTurns.messageId, messageId))
-      .run();
+    this.database.runSync(
+      this.db.delete(dbSchema.pendingTurns).where(eq(dbSchema.pendingTurns.messageId, messageId)),
+    );
+  }
+
+  /**
+   * Release in-memory tracking after a turn promise settles, but only delete
+   * durable recovery data when the materialized message reached a terminal
+   * state. A resolved wrapper (for example Promise.allSettled) is not proof
+   * that the assistant turn completed successfully.
+   */
+  private settleTrackedTurns(messageIds: readonly string[]) {
+    const retained: string[] = [];
+    const cleared: string[] = [];
+    for (const messageId of messageIds) {
+      this.activeTurnMessageIds.delete(messageId);
+      const message = this.chatAccess.getMessage(messageId);
+      if (isTerminalTurnStatus(message?.status)) {
+        this.clearTurnParams(messageId);
+        cleared.push(messageId);
+      } else {
+        retained.push(messageId);
+      }
+    }
+
+    const pendingCount = this.database.runSync(this.db.select().from(dbSchema.pendingTurns)).length;
+    const alarmUpdate =
+      pendingCount > 0
+        ? this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS)
+        : this.ctx.storage.deleteAlarm();
+    this.ctx.waitUntil(
+      alarmUpdate.catch((error) =>
+        syncLog("turn_recovery_alarm_update_failed", {
+          pendingCount,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    );
+    syncLog("turn_tracking_settled", { cleared, retained, pendingCount });
   }
 
   private loadAllTurnParams(): Map<string, SavedTurnParams> {
-    const rows = this.db.select().from(dbSchema.pendingTurns).all();
+    const rows = this.database.runSync(this.db.select().from(dbSchema.pendingTurns));
     const result = new Map<string, SavedTurnParams>();
     for (const row of rows) {
       try {

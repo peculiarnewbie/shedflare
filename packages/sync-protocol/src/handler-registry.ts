@@ -1,15 +1,16 @@
+import type { Effect } from "effect";
 import type { SyncServerEvent } from "./sync-types";
 
 export type CommandHandlerResult = {
   events: SyncServerEvent[];
-  followUp?: () => Promise<void>;
+  followUp?: Effect.Effect<void, unknown, never>;
 };
 
 export type CommandHandlerFn<Ctx, Payload = unknown> = (
   opId: string,
   payload: Payload,
   ctx: Ctx,
-) => CommandHandlerResult;
+) => Effect.Effect<CommandHandlerResult, unknown, never>;
 
 export class HandlerRegistry<Ctx> {
   private readonly handlers = new Map<string, CommandHandlerFn<Ctx>>();
@@ -26,7 +27,6 @@ export class HandlerRegistry<Ctx> {
     return this.handlers.has(type);
   }
 
-  /** Iterate all registered command types (for diagnostics). */
   types(): string[] {
     return [...this.handlers.keys()];
   }
