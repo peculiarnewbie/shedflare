@@ -278,6 +278,7 @@ export const AccountTagsResponseSchema = Schema.Struct({
 
 export const TransactionsResponseSchema = Schema.Struct({
   transactions: Schema.Array(TransactionApiSchema),
+  transactionTags: Schema.optional(Schema.Array(TransactionTagApiSchema)),
 });
 
 export const CategoriesResponseSchema = Schema.Struct({
@@ -288,8 +289,16 @@ export const CategoryGroupsResponseSchema = Schema.Struct({
   groups: Schema.Array(CategoryGroupSchema),
 });
 
+export const GoalProgressItemSchema = Schema.Struct({
+  categoryId: Schema.String,
+  goalType: Schema.String,
+  goalAmount: Schema.Number,
+  currentAmount: Schema.Number,
+  targetDate: Schema.NullOr(Schema.String),
+});
+
 export const GoalProgressResponseSchema = Schema.Struct({
-  progress: Schema.Array(Schema.Any),
+  progress: Schema.Array(GoalProgressItemSchema),
 });
 
 export const BudgetOverviewResponseSchema = BudgetOverviewSchema;
@@ -312,8 +321,21 @@ export const ScheduleResponseSchema = Schema.Struct({
   schedule: ScheduleDetailSchema,
 });
 
+export const DiscoveredScheduleSchema = Schema.Struct({
+  payee: Schema.String,
+  accountId: Schema.String,
+  accountName: Schema.String,
+  categoryId: Schema.NullOr(Schema.String),
+  amount: Schema.Number,
+  recurrenceType: Schema.String,
+  intervalDays: Schema.Number,
+  confidence: Schema.Number,
+  transactionCount: Schema.Number,
+  matchedTransactionCount: Schema.Number,
+});
+
 export const SchedulesDiscoverResponseSchema = Schema.Struct({
-  discovered: Schema.Array(Schema.Any),
+  discovered: Schema.Array(DiscoveredScheduleSchema),
 });
 
 export const RulesResponseSchema = Schema.Struct({

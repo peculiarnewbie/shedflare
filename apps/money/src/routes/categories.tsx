@@ -139,7 +139,15 @@ export default function CategoriesPage() {
         })),
       );
 
-      setGoalProgress([...goalProgressData.progress]);
+      setGoalProgress(
+        goalProgressData.progress.map((p) => ({
+          categoryId: p.categoryId,
+          goalType: p.goalType as GoalType,
+          goalAmount: p.goalAmount,
+          currentAmount: p.currentAmount,
+          targetDate: p.targetDate,
+        })),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load categories");
     } finally {

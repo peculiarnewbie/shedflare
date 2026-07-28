@@ -149,11 +149,21 @@ export default function ScheduleDetailPage() {
   }
 
   function handlePost() {
-    dispatch("post_schedule_transaction", { scheduleId: params.id });
+    const { promise } = dispatch("post_schedule_transaction", { scheduleId: params.id });
+    void promise
+      .then(() => loadSchedule())
+      .catch((err) => {
+        console.warn("[schedule] post failed", err);
+      });
   }
 
   function handleSkip() {
-    dispatch("skip_schedule_date", { id: params.id });
+    const { promise } = dispatch("skip_schedule_date", { id: params.id });
+    void promise
+      .then(() => loadSchedule())
+      .catch((err) => {
+        console.warn("[schedule] skip failed", err);
+      });
   }
 
   function handleDelete() {
@@ -168,12 +178,15 @@ export default function ScheduleDetailPage() {
             commandType: "create_schedule",
             payload: {
               schedule: {
-                accountId: sched?.accountId ?? "",
+                accountId: sched?.accountId ?? null,
                 name: sched?.name ?? "",
                 startDate: sched?.startDate ?? "",
                 amount: sched?.amount ?? 0,
-                frequency: sched?.frequency ?? "monthly",
-                weekendHandling: sched?.weekendHandling ?? "before",
+                recurrenceRules: sched?.recurrenceRules ?? JSON.stringify({ type: "monthly" }),
+                endMode: sched?.endMode ?? "never",
+                endDate: sched?.endDate ?? null,
+                endOccurrences: sched?.endOccurrences ?? null,
+                postsTransaction: sched?.postsTransaction ?? false,
               },
             },
           },

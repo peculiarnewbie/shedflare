@@ -58,7 +58,7 @@ export default function AccountPage() {
 
   const [filterId, setFilterId] = createSignal<string | null>(null);
   const [filterConditions, setFilterConditions] = createSignal<Condition[]>([]);
-  const [_filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
+  const [filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
 
   const [tagList, setTagList] = createSignal<TagInfo[]>([]);
   const [txTags, setTxTags] = createSignal<
@@ -78,10 +78,12 @@ export default function AccountPage() {
     setFilterConditionsOp(conditionsOp);
     setFilterId(fId);
     setLoading(true);
-    void loadAccount();
   }
 
   createEffect(() => {
+    filterId();
+    filterConditions();
+    filterConditionsOp();
     if (accountId) {
       void loadAccount();
       void loadCategories();
@@ -93,9 +95,15 @@ export default function AccountPage() {
     setError(null);
     try {
       const fId = filterId();
+      const conditions = filterConditions();
+      const txQuery = fId
+        ? { filterId: fId }
+        : conditions.length > 0
+          ? { conditions, conditionsOp: filterConditionsOp() }
+          : undefined;
       const [acctData, txData, txTagsData] = await Promise.all([
         api.account(accountId),
-        api.accountTransactions(accountId, fId ?? undefined),
+        api.accountTransactions(accountId, txQuery),
         api.accountTags(accountId),
       ]);
       setAccount(acctData);
@@ -176,7 +184,7 @@ export default function AccountPage() {
   }
 
   const runningBalance = createMemo(() =>
-    transactions().reduce((sum, tx) => sum + (tx.amount ?? 0), 0),
+    transactions().reduce((sum, tx) => (tx.isChild ? sum : sum + (tx.amount ?? 0)), 0),
   );
 
   return (
@@ -211,7 +219,7 @@ export default function AccountPage() {
         <Show when={account()}>
           <div class="account-header">
             <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
-              {fmt().formatCents(runningBalance() || (account()?.balanceCurrent ?? 0))}
+              {fmt().formatCents(runningBalance() ?? account()?.balanceCurrent ?? 0)}
             </div>
             <Show when={account()?.lastReconciled}>
               {(lastReconciled) => (
@@ -224,6 +232,7 @@ export default function AccountPage() {
         <TransactionFilters
           accountId={params.id}
           activeConditions={filterConditions()}
+          activeConditionsOp={filterConditionsOp()}
           onConditionsChange={handleFilterChange}
         />
 
@@ -266,6 +275,7 @@ export default function AccountPage() {
             txTags={txTags()}
             tagList={tagList()}
             showBalance
+            onReload={loadAccount}
             onTransactionPatch={patchTransaction}
             onTransactionRemove={removeTransaction}
             onTransactionRestore={restoreTransaction}

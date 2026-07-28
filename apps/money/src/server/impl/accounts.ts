@@ -10,8 +10,7 @@ import {
   AccountTagsResponseSchema,
 } from "../../domain/schemas";
 import * as s from "../../db/schema";
-import { buildFilterSql } from "../conditions-to-sql";
-import type { FilterCondition } from "../conditions-to-sql";
+import { resolveTransactionFilter } from "../resolve-transaction-filter";
 
 type Env = { MONEY_DB: D1Database };
 
@@ -32,7 +31,7 @@ export function createAccountsGroup(env: Env) {
           last_reconciled: string | null;
         }>(
           sql`SELECT a.id, a.name, a.offbudget, a.closed, a.sort_order,
-                  COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance_current,
+                  COALESCE(a.balance_current, 0) + COALESCE(SUM(CASE WHEN t.is_child = 0 THEN t.amount ELSE 0 END), 0) AS balance_current,
                   a.last_reconciled
            FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id
            GROUP BY a.id ORDER BY a.sort_order, a.name`,
@@ -71,7 +70,7 @@ export function createAccountsGroup(env: Env) {
             closed: s.accounts.closed,
             sortOrder: s.accounts.sortOrder,
             balanceCurrent:
-              sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0) + COALESCE(SUM(${s.transactions.amount}), 0)`.mapWith(
+              sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0) + COALESCE(SUM(CASE WHEN ${s.transactions.isChild} = 0 THEN ${s.transactions.amount} ELSE 0 END), 0)`.mapWith(
                 Number,
               ),
             lastReconciled: s.accounts.lastReconciled,
@@ -97,7 +96,6 @@ export function createAccountsGroup(env: Env) {
       handler: wrapHandler(async (req: Request): Promise<Response> => {
         const url = new URL(req.url);
         const accountId = url.pathname.match(/\/api\/accounts\/([^/]+)\/transactions$/)?.[1];
-        const filterId = url.searchParams.get("filter");
         const db = createDb(env.MONEY_DB);
         if (!accountId)
           return new Response(JSON.stringify({ error: "Not found" }), {
@@ -106,21 +104,8 @@ export function createAccountsGroup(env: Env) {
           });
 
         let whereClause = eq(s.transactions.accountId, accountId);
-        if (filterId) {
-          const [filterRow] = await db
-            .select()
-            .from(s.transactionFilters)
-            .where(eq(s.transactionFilters.id, filterId))
-            .all();
-          if (filterRow) {
-            const conditions = JSON.parse(
-              (filterRow.conditions as string) ?? "[]",
-            ) as FilterCondition[];
-            const conditionsOp = (filterRow.conditionsOp as string) ?? "and";
-            const filterSql = buildFilterSql(conditions, conditionsOp as "and" | "or");
-            if (filterSql) whereClause = and(whereClause, filterSql) as SQL<unknown>;
-          }
-        }
+        const { filterSql } = await resolveTransactionFilter(db, url);
+        if (filterSql) whereClause = and(whereClause, filterSql) as SQL<unknown>;
 
         const rows = await db
           .select({

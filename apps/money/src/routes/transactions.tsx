@@ -56,7 +56,7 @@ export default function AllTransactionsPage() {
 
   const [filterId, setFilterId] = createSignal<string | null>(null);
   const [filterConditions, setFilterConditions] = createSignal<Condition[]>([]);
-  const [_filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
+  const [filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
 
   function handleFilterChange(
     conditions: Condition[],
@@ -70,7 +70,13 @@ export default function AllTransactionsPage() {
   }
 
   createEffect(() => {
+    filterId();
+    filterConditions();
+    filterConditionsOp();
     void loadData();
+  });
+
+  createEffect(() => {
     void loadCategories();
     void loadTags();
     void loadAccounts();
@@ -80,8 +86,25 @@ export default function AllTransactionsPage() {
     setError(null);
     try {
       const fId = filterId();
-      const data = await api.transactions(fId ?? undefined);
+      const conditions = filterConditions();
+      const data = await api.transactions(
+        fId
+          ? { filterId: fId }
+          : conditions.length > 0
+            ? { conditions, conditionsOp: filterConditionsOp() }
+            : undefined,
+      );
       setTransactions(data.transactions.map(toTransactionRow));
+      const map: Record<string, { id: string; name: string; color: string | null }[]> = {};
+      for (const tt of data.transactionTags ?? []) {
+        if (!map[tt.transactionId]) map[tt.transactionId] = [];
+        map[tt.transactionId].push({
+          id: tt.tagId,
+          name: tt.tagName,
+          color: tt.tagColor,
+        });
+      }
+      setTxTags(map);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load transactions");
     } finally {
@@ -184,6 +207,7 @@ export default function AllTransactionsPage() {
 
       <TransactionFilters
         activeConditions={filterConditions()}
+        activeConditionsOp={filterConditionsOp()}
         onConditionsChange={handleFilterChange}
       />
 
@@ -204,6 +228,7 @@ export default function AllTransactionsPage() {
             tagList={tagList()}
             showAccount
             accountNames={accountNames()}
+            onReload={loadData}
             onTransactionPatch={patchTransaction}
             onTransactionRemove={removeTransaction}
             onTransactionRestore={restoreTransaction}

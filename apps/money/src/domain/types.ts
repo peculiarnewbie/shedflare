@@ -173,12 +173,39 @@ export function getCurrentMonthInt(): number {
   return toMonthInt(getCurrentMonthKey());
 }
 
-export function monthBoundaries(monthKey: string): { start: string; end: string } {
+/** Format a local Date as YYYY-MM-DD without UTC shift. */
+export function formatCalendarDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Inclusive calendar-month range for YYYY-MM keys.
+ * Use `date >= start AND date <= end` (or `date < exclusiveEnd`).
+ */
+export function monthBoundaries(monthKey: string): {
+  start: string;
+  end: string;
+  exclusiveEnd: string;
+} {
   const [y, m] = monthKey.split("-").map(Number);
   const start = `${y}-${String(m).padStart(2, "0")}-01`;
   const endDate = new Date(y, m, 0);
-  const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
-  return { start, end };
+  const end = formatCalendarDate(endDate);
+  const exclusiveEnd = formatCalendarDate(new Date(y, m, 1));
+  return { start, end, exclusiveEnd };
+}
+
+/** Parse a YYYY-MM-DD calendar date as local components (no UTC midnight shift). */
+export function parseCalendarDate(isoDate: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  return date;
 }
 
 export function prevMonthKey(monthKey: string): string {

@@ -18,6 +18,7 @@ import {
   computeCrossoverProjection,
 } from "./budget-engine";
 import { discoverSchedules } from "./discover-schedules";
+import { monthBoundaries } from "../domain/types";
 import {
   AccountsResponseSchema,
   AccountApiSchema,
@@ -84,7 +85,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
       last_reconciled: string | null;
     }>(
       sql`SELECT a.id, a.name, a.offbudget, a.closed, a.sort_order,
-              COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance_current,
+              COALESCE(a.balance_current, 0) + COALESCE(SUM(CASE WHEN t.is_child = 0 THEN t.amount ELSE 0 END), 0) AS balance_current,
               a.last_reconciled
        FROM accounts a
        LEFT JOIN transactions t ON t.account_id = a.id
@@ -115,7 +116,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
         closed: s.accounts.closed,
         sortOrder: s.accounts.sortOrder,
         balanceCurrent:
-          sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0) + COALESCE(SUM(${s.transactions.amount}), 0)`.mapWith(
+          sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0) + COALESCE(SUM(CASE WHEN ${s.transactions.isChild} = 0 THEN ${s.transactions.amount} ELSE 0 END), 0)`.mapWith(
             Number,
           ),
         lastReconciled: s.accounts.lastReconciled,
@@ -320,7 +321,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
     const netWorthRow = await db.get<{ total: number }>(
       sql`SELECT COALESCE(SUM(balance), 0) AS total
        FROM (
-         SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
+         SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(CASE WHEN t.is_child = 0 THEN t.amount ELSE 0 END), 0) AS balance
          FROM accounts a
          LEFT JOIN transactions t ON t.account_id = a.id
          WHERE a.closed = 0
@@ -330,7 +331,7 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
     const onBudgetRow = await db.get<{ total: number }>(
       sql`SELECT COALESCE(SUM(balance), 0) AS total
        FROM (
-         SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(t.amount), 0) AS balance
+         SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(CASE WHEN t.is_child = 0 THEN t.amount ELSE 0 END), 0) AS balance
          FROM accounts a
          LEFT JOIN transactions t ON t.account_id = a.id
          WHERE a.offbudget = 0 AND a.closed = 0
@@ -340,21 +341,21 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
     const accountCount = await db.$count(s.accounts, eq(s.accounts.closed, false));
 
     const now = new Date();
-    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const { start: startDate, end: endDate } = monthBoundaries(monthKey);
 
     const incomeRow = await db.get<{ total: number }>(
       sql`SELECT COALESCE(SUM(t.amount), 0) as total
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 1 AND t.is_child = 0`,
+       WHERE t.date >= ${startDate} AND t.date <= ${endDate} AND c.is_income = 1 AND t.is_child = 0`,
     );
 
     const expenseRow = await db.get<{ total: number }>(
       sql`SELECT COALESCE(SUM(t.amount), 0) as total
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ${startDate} AND t.date < ${endDate} AND c.is_income = 0 AND t.is_child = 0`,
+       WHERE t.date >= ${startDate} AND t.date <= ${endDate} AND c.is_income = 0 AND t.is_child = 0`,
     );
 
     return validatedJson(BudgetOverviewResponseSchema, {
@@ -595,8 +596,8 @@ export async function handleApiRequest(url: URL, method: string, db: Db): Promis
   // ── Report: spending by category ────────────────────────────────────
   if (pathname === "/api/reports/spending" && method === "GET") {
     const now = new Date();
-    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const { start: startDate, end: endDate } = monthBoundaries(monthKey);
     const cats = await computeSpendingByCategory(db, startDate, endDate);
     const categories = cats.map((c) => ({
       label: c.categoryName,

@@ -62,6 +62,29 @@ export type CommandResponse = S.Schema.Type<typeof CommandResponseSchema>;
 /**
  * Execute a command via POST /api/command.
  */
+export type TransactionListQuery = {
+  filterId?: string;
+  conditions?: Array<{
+    field: string;
+    op: string;
+    value: unknown;
+    value2?: unknown;
+  }>;
+  conditionsOp?: "and" | "or";
+};
+
+function transactionQueryParams(query?: TransactionListQuery): string {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  if (query.filterId) params.set("filter", query.filterId);
+  if (query.conditions && query.conditions.length > 0) {
+    params.set("conditions", JSON.stringify(query.conditions));
+    params.set("conditionsOp", query.conditionsOp ?? "and");
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export async function execute(commandType: string, payload: unknown): Promise<CommandResponse> {
   const res = await fetch(`${BASE}/api/command`, {
     method: "POST",
@@ -69,6 +92,13 @@ export async function execute(commandType: string, payload: unknown): Promise<Co
     body: JSON.stringify({ commandType, payload }),
   });
   const data = await res.json();
+  if (!res.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data && typeof data.error === "string"
+        ? data.error
+        : `API error: ${res.status}`;
+    return { ok: false, error: message };
+  }
   return typedDecode<CommandResponse>(CommandResponseSchema)(data);
 }
 
@@ -85,8 +115,13 @@ export const api = {
       AccountApiSchema,
       `/api/accounts/${id}`,
     ),
-  accountTransactions: (id: string, filterId?: string) => {
-    const params = filterId ? `?filter=${encodeURIComponent(filterId)}` : "";
+  accountTransactions: (id: string, query?: string | TransactionListQuery) => {
+    const params =
+      typeof query === "string"
+        ? query
+          ? `?filter=${encodeURIComponent(query)}`
+          : ""
+        : transactionQueryParams(query);
     return fetchApi<import("../domain/schemas-client").AccountTransactionsResponse>(
       AccountTransactionsResponseSchema,
       `/api/accounts/${id}/transactions${params}`,
@@ -98,8 +133,13 @@ export const api = {
       `/api/accounts/${id}/tags`,
     ),
 
-  transactions: (filterId?: string) => {
-    const params = filterId ? `?filter=${encodeURIComponent(filterId)}` : "";
+  transactions: (query?: string | TransactionListQuery) => {
+    const params =
+      typeof query === "string"
+        ? query
+          ? `?filter=${encodeURIComponent(query)}`
+          : ""
+        : transactionQueryParams(query);
     return fetchApi<import("../domain/schemas-client").TransactionsResponse>(
       TransactionsResponseSchema,
       `/api/transactions${params}`,

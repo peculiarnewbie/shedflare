@@ -24,6 +24,7 @@ import {
   computeCrossoverProjection,
   computeMonthBudget,
 } from "../budget-engine";
+import { monthBoundaries } from "../../domain/types";
 import { buildFilterWhereSql } from "../conditions-to-sql";
 import type { FilterCondition } from "../conditions-to-sql";
 
@@ -61,10 +62,8 @@ export function createReportsGroup(env: Env) {
       handler: wrapHandler(async (): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
         const now = new Date();
-        const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-        const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-          .toISOString()
-          .slice(0, 10);
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const { start: startDate, end: endDate } = monthBoundaries(monthKey);
         const cats = await computeSpendingByCategory(db, startDate, endDate);
         return validatedJson(ReportsSpendingResponseSchema, {
           categories: cats.map((c) => ({

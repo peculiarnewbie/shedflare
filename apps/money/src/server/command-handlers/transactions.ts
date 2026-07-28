@@ -46,24 +46,58 @@ export async function handleTransactionCommands(
 
     case "delete_transaction": {
       const p = payload as CommandPayloadMap["delete_transaction"];
+      // Cascade: remove split children first (no FK cascade in schema).
+      await db.delete(s.transactions).where(eq(s.transactions.parentId, p.id));
       await db.delete(s.transactions).where(eq(s.transactions.id, p.id));
       return { ok: true, data: { id: p.id } };
     }
 
     case "split_transaction": {
       const p = payload as CommandPayloadMap["split_transaction"];
+      const [parent] = await db
+        .select()
+        .from(s.transactions)
+        .where(eq(s.transactions.id, p.parentId))
+        .all();
+      if (!parent) return { ok: false, error: "Parent transaction not found" };
+      if (parent.isChild) return { ok: false, error: "Cannot split a child transaction" };
+      if (p.children.length === 0) return { ok: false, error: "Split requires at least one child" };
+
+      const childSum = p.children.reduce((sum: number, c: { amount: number }) => sum + c.amount, 0);
+      if (childSum !== parent.amount) {
+        return {
+          ok: false,
+          error: `Split amounts (${childSum}) must equal parent amount (${parent.amount})`,
+        };
+      }
+
       await db.delete(s.transactions).where(eq(s.transactions.parentId, p.parentId));
       const results: string[] = [];
       for (const child of p.children) {
         const row = createTransaction({
           ...child,
+          accountId: parent.accountId,
+          date: child.date ?? parent.date,
+          payee: child.payee ?? parent.payee ?? undefined,
           parentId: p.parentId,
           isChild: true,
+          isParent: false,
         });
         await db.insert(s.transactions).values(row);
         results.push(row.id);
       }
-      return { ok: true, data: { childIds: results } };
+
+      await db
+        .update(s.transactions)
+        .set({
+          isParent: true,
+          isChild: false,
+          categoryId: null,
+          updatedAt: nowIso(),
+        })
+        .where(eq(s.transactions.id, p.parentId));
+
+      return { ok: true, data: { childIds: results, parentId: p.parentId } };
     }
 
     default:

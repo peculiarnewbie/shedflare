@@ -299,6 +299,7 @@ export const AccountTagsResponseSchema = S.Struct({
 });
 export const TransactionsResponseSchema = S.Struct({
   transactions: S.Array(TransactionApiSchema),
+  transactionTags: S.optional(S.Array(TransactionTagApiSchema)),
 });
 export const CategoriesResponseSchema = S.Struct({
   categories: S.Array(CategoryApiSchema),
@@ -306,8 +307,15 @@ export const CategoriesResponseSchema = S.Struct({
 export const CategoryGroupsResponseSchema = S.Struct({
   groups: S.Array(CategoryGroupSchema),
 });
+export const GoalProgressItemSchema = S.Struct({
+  categoryId: S.String,
+  goalType: S.String,
+  goalAmount: S.Number,
+  currentAmount: S.Number,
+  targetDate: S.NullOr(S.String),
+});
 export const GoalProgressResponseSchema = S.Struct({
-  progress: S.Array(S.Any),
+  progress: S.Array(GoalProgressItemSchema),
 });
 export const BudgetOverviewResponseSchema = BudgetOverviewSchema;
 export const MonthBudgetResponseSchema = MonthBudgetSchema;
@@ -323,8 +331,20 @@ export const SchedulesResponseSchema = S.Struct({
 export const ScheduleResponseSchema = S.Struct({
   schedule: ScheduleDetailSchema,
 });
+export const DiscoveredScheduleSchema = S.Struct({
+  payee: S.String,
+  accountId: S.String,
+  accountName: S.String,
+  categoryId: S.NullOr(S.String),
+  amount: S.Number,
+  recurrenceType: S.String,
+  intervalDays: S.Number,
+  confidence: S.Number,
+  transactionCount: S.Number,
+  matchedTransactionCount: S.Number,
+});
 export const SchedulesDiscoverResponseSchema = S.Struct({
-  discovered: S.Array(S.Any),
+  discovered: S.Array(DiscoveredScheduleSchema),
 });
 export const RulesResponseSchema = S.Struct({
   rules: S.Array(RuleSchema),
@@ -415,6 +435,7 @@ export type ReportsAgeOfMoneyResponse = S.Schema.Type<typeof ReportsAgeOfMoneyRe
 export type ReportsHeatmapResponse = S.Schema.Type<typeof ReportsHeatmapResponseSchema>;
 export type CustomReportsResponse = S.Schema.Type<typeof CustomReportsResponseSchema>;
 export type SchedulesDiscoverResponse = S.Schema.Type<typeof SchedulesDiscoverResponseSchema>;
+export type DiscoveredSchedule = S.Schema.Type<typeof DiscoveredScheduleSchema>;
 export type CustomReportResult = S.Schema.Type<typeof CustomReportResultSchema>;
 export type DashboardWidgetsResponse = S.Schema.Type<typeof DashboardWidgetsResponseSchema>;
 export type DashboardExport = S.Schema.Type<typeof DashboardExportSchema>;

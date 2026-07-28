@@ -227,12 +227,15 @@ function conditionLabel(cond: Condition): string {
 export default function TransactionFilters(props: {
   accountId?: string;
   activeConditions: Condition[];
+  activeConditionsOp?: "and" | "or";
   onConditionsChange: (
     conditions: Condition[],
     conditionsOp: "and" | "or",
     filterId: string | null,
   ) => void;
 }) {
+  const conditionsOp = () => props.activeConditionsOp ?? "and";
+
   const [savedFilters, setSavedFilters] = createSignal<SavedFilter[]>([]);
   const [showAddMenu, setShowAddMenu] = createSignal(false);
   const [showSavedMenu, setShowSavedMenu] = createSignal(false);
@@ -273,7 +276,7 @@ export default function TransactionFilters(props: {
       value2: editOp() === "isbetween" ? editValue2() : undefined,
     };
     const updated = [...props.activeConditions, newCond];
-    props.onConditionsChange(updated, "and", null);
+    props.onConditionsChange(updated, conditionsOp(), null);
     setShowBuilder(false);
     setEditField("");
     setEditOp("is");
@@ -283,7 +286,7 @@ export default function TransactionFilters(props: {
 
   function removeCondition(idx: number) {
     const updated = props.activeConditions.filter((_, i) => i !== idx);
-    props.onConditionsChange(updated, "and", null);
+    props.onConditionsChange(updated, conditionsOp(), null);
   }
 
   function clearAll() {
@@ -309,7 +312,7 @@ export default function TransactionFilters(props: {
       filter: {
         name,
         conditions: JSON.stringify(props.activeConditions),
-        conditionsOp: "and",
+        conditionsOp: conditionsOp(),
       },
     });
     setSaveName("");
@@ -319,6 +322,11 @@ export default function TransactionFilters(props: {
   function deleteFilter(id: string) {
     dispatch("delete_filter", { id });
     props.onConditionsChange([], "and", null);
+  }
+
+  function toggleConditionsOp() {
+    const next = conditionsOp() === "and" ? "or" : "and";
+    props.onConditionsChange(props.activeConditions, next, null);
   }
 
   createEffect(() => {
@@ -340,11 +348,8 @@ export default function TransactionFilters(props: {
       <div class="filter-bar-header">
         <div class="filter-bar-row">
           <Show when={props.activeConditions.length > 1}>
-            <button
-              class="btn btn-xs btn-ghost filter-op-toggle"
-              onClick={() => props.onConditionsChange(props.activeConditions, "or", null)}
-            >
-              all
+            <button class="btn btn-xs btn-ghost filter-op-toggle" onClick={toggleConditionsOp}>
+              {conditionsOp() === "and" ? "all" : "any"}
             </button>
           </Show>
 

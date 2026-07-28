@@ -5,8 +5,7 @@ import { createDb } from "../d1-access";
 import { wrapHandler, validatedJson } from "./wrap-handler";
 import { TransactionsResponseSchema } from "../../domain/schemas";
 import * as s from "../../db/schema";
-import { buildFilterSql } from "../conditions-to-sql";
-import type { FilterCondition } from "../conditions-to-sql";
+import { resolveTransactionFilter } from "../resolve-transaction-filter";
 
 type Env = { MONEY_DB: D1Database };
 
@@ -17,25 +16,8 @@ export function createTransactionsGroup(env: Env) {
       endpoint: endpoints["list"],
       handler: wrapHandler(async (req: Request): Promise<Response> => {
         const url = new URL(req.url);
-        const filterId = url.searchParams.get("filter");
         const db = createDb(env.MONEY_DB);
-
-        let whereClause: any = undefined;
-        if (filterId) {
-          const [filterRow] = await db
-            .select()
-            .from(s.transactionFilters)
-            .where(eq(s.transactionFilters.id, filterId))
-            .all();
-          if (filterRow) {
-            const conditions = JSON.parse(
-              (filterRow.conditions as string) ?? "[]",
-            ) as FilterCondition[];
-            const conditionsOp = (filterRow.conditionsOp as string) ?? "and";
-            const filterSql = buildFilterSql(conditions, conditionsOp as "and" | "or");
-            if (filterSql) whereClause = filterSql;
-          }
-        }
+        const { filterSql } = await resolveTransactionFilter(db, url);
 
         const query = db
           .select({
@@ -67,9 +49,25 @@ export function createTransactionsGroup(env: Env) {
           .leftJoin(s.accounts, eq(s.transactions.accountId, s.accounts.id))
           .leftJoin(s.schedules, eq(s.transactions.scheduleId, s.schedules.id))
           .orderBy(sql`${s.transactions.date} DESC, ${s.transactions.createdAt} DESC`);
-        if (whereClause) query.where(whereClause);
+        if (filterSql) query.where(filterSql);
         const rows = await query.all();
-        return validatedJson(TransactionsResponseSchema, { transactions: rows });
+
+        const tagRows = await db
+          .select({
+            transactionId: s.transactionTags.transactionId,
+            tagId: s.transactionTags.tagId,
+            tagName: s.tags.name,
+            tagColor: s.tags.color,
+          })
+          .from(s.transactionTags)
+          .innerJoin(s.tags, eq(s.transactionTags.tagId, s.tags.id))
+          .orderBy(s.tags.name)
+          .all();
+
+        return validatedJson(TransactionsResponseSchema, {
+          transactions: rows,
+          transactionTags: tagRows,
+        });
       }),
       isRaw: true,
       uninterruptible: false,

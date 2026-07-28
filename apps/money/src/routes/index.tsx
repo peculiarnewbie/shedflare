@@ -595,17 +595,19 @@ export default function Dashboard() {
               when={data.length > 1}
               fallback={<div class="chart-empty">Not enough data to display chart</div>}
             >
-              <Chart data={data} height={220}>
-                <Axis axis="x" position="bottom" dataKey="date" type="time">
-                  <AxisMark />
-                  <AxisLabel />
-                </Axis>
-                <Axis axis="y" position="left">
-                  <AxisMark />
-                  <AxisLabel format={(v: number) => fmt().formatCents(v)} />
-                </Axis>
-                <Area dataKey="value" color="var(--primary)" />
-              </Chart>
+              <div classList={{ "privacy-blur": privacyBlur().enabled }}>
+                <Chart data={data} height={220}>
+                  <Axis axis="x" position="bottom" dataKey="date" type="time">
+                    <AxisMark />
+                    <AxisLabel />
+                  </Axis>
+                  <Axis axis="y" position="left">
+                    <AxisMark />
+                    <AxisLabel format={(v: number) => fmt().formatCents(v)} />
+                  </Axis>
+                  <Area dataKey="value" color="var(--primary)" />
+                </Chart>
+              </div>
             </Show>
           </div>
         );
@@ -625,19 +627,21 @@ export default function Dashboard() {
               when={transformed.length > 0}
               fallback={<div class="chart-empty">Insufficient data for chart</div>}
             >
-              <Chart data={transformed} height={220}>
-                <Axis axis="x" position="bottom" dataKey="month" type="point">
-                  <AxisMark />
-                  <AxisLabel />
-                </Axis>
-                <Axis axis="y" position="left">
-                  <AxisMark />
-                  <AxisLabel format={(v: number) => fmt().formatCents(v)} />
-                </Axis>
-                <Bar dataKey="income" name="Income" color="var(--positive)" />
-                <Bar dataKey="expenses" name="Expenses" color="var(--negative)" />
-                <Legend />
-              </Chart>
+              <div classList={{ "privacy-blur": privacyBlur().enabled }}>
+                <Chart data={transformed} height={220}>
+                  <Axis axis="x" position="bottom" dataKey="month" type="point">
+                    <AxisMark />
+                    <AxisLabel />
+                  </Axis>
+                  <Axis axis="y" position="left">
+                    <AxisMark />
+                    <AxisLabel format={(v: number) => fmt().formatCents(v)} />
+                  </Axis>
+                  <Bar dataKey="income" name="Income" color="var(--positive)" />
+                  <Bar dataKey="expenses" name="Expenses" color="var(--negative)" />
+                  <Legend />
+                </Chart>
+              </div>
             </Show>
           </div>
         );
@@ -652,10 +656,12 @@ export default function Dashboard() {
               when={data.length > 0}
               fallback={<div class="chart-empty">No spending data for this period</div>}
             >
-              <Chart data={data} height={280}>
-                <Pie dataKey="value" nameKey="label" innerRadius="50%" outerRadius="80%" />
-                <Legend />
-              </Chart>
+              <div classList={{ "privacy-blur": privacyBlur().enabled }}>
+                <Chart data={data} height={280}>
+                  <Pie dataKey="value" nameKey="label" innerRadius="50%" outerRadius="80%" />
+                  <Legend />
+                </Chart>
+              </div>
             </Show>
           </div>
         );
@@ -666,7 +672,9 @@ export default function Dashboard() {
         return (
           <div class="widget-chart">
             <div class="widget-chart-title">Budget vs Actuals</div>
-            <BudgetBar data={data} maxCategories={10} formatValue={fmt().formatCents} />
+            <div classList={{ "privacy-blur": privacyBlur().enabled }}>
+              <BudgetBar data={data} maxCategories={10} formatValue={fmt().formatCents} />
+            </div>
           </div>
         );
       }
@@ -686,6 +694,7 @@ export default function Dashboard() {
                 }
               >
                 <span
+                  class={privacyBlur().blurClass()}
                   style={{
                     "font-size": "2.5rem",
                     "font-weight": 700,
@@ -815,7 +824,12 @@ export default function Dashboard() {
                 <span class="crossover-stat-value">{(data.savingsRate * 100).toFixed(0)}%</span>
               </div>
             </div>
-            <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+            <svg
+              class={privacyBlur().blurClass()}
+              width={svgWidth}
+              height={svgHeight}
+              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            >
               <line
                 x1={margin.left}
                 y1={yScale(0)}
@@ -888,7 +902,7 @@ export default function Dashboard() {
                 year: "numeric",
               })}
             </div>
-            <div class="heatmap-grid">
+            <div class={`heatmap-grid ${privacyBlur().blurClass()}`}>
               {dayLabels.map((l) => (
                 <div class="heatmap-day-label">{l}</div>
               ))}
@@ -896,7 +910,11 @@ export default function Dashboard() {
               {cells.map((c) => (
                 <div
                   class="heatmap-cell heatmap-cell-split"
-                  title={`${c.day}\nIncome: ${fmt().formatCents(c.style.inc)}\nExpenses: ${fmt().formatCents(c.style.exp)}\nNet: ${fmt().formatCents(c.style.inc + c.style.exp)}`}
+                  title={
+                    privacyBlur().enabled
+                      ? `${c.day}\nFinancial activity hidden`
+                      : `${c.day}\nIncome: ${fmt().formatCents(c.style.inc)}\nExpenses: ${fmt().formatCents(c.style.exp)}\nNet: ${fmt().formatCents(c.style.inc + c.style.exp)}`
+                  }
                 >
                   <div
                     class="heatmap-cell-half heatmap-cell-income"

@@ -182,12 +182,12 @@ export default function BudgetPage() {
                     {(cat) => (
                       <div class="budget-row">
                         <span class="col-category">{cat.categoryName}</span>
-                        <span class="col-budgeted">
+                        <span class={`col-budgeted ${privacyBlur().blurClass()}`}>
                           <input
                             type="number"
                             value={cat.budgeted / 100}
                             step="0.01"
-                            class="budget-input"
+                            class={`budget-input ${privacyBlur().blurClass()}`}
                             onBlur={(e) => {
                               const val = parseFloat(e.currentTarget.value);
                               if (!isNaN(val))

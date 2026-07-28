@@ -4,6 +4,7 @@ import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts"
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency, formatCentsValue, type NumberFormat } from "../lib/currency";
+import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
 
 type ReportId =
@@ -75,6 +76,7 @@ const GRAPH_TYPES = [
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = createSignal<ReportId>("net-worth");
   const fmt = useCurrency();
+  const privacy = usePrivacyMode();
 
   // Lazy-load report data
   const [netWorthData, setNetWorthData] = createSignal<TimeSeriesPoint[]>([]);
@@ -397,6 +399,10 @@ export default function ReportsPage() {
                               ? cellStyle
                               : {}
                           }
+                          classList={{
+                            "privacy-blur":
+                              privacy().enabled && (key === "total" || key === "amount"),
+                          }}
                         >
                           {(key === "total" || key === "amount") && row[key] !== undefined
                             ? fmtAmount(row[key] as number)
@@ -474,13 +480,15 @@ export default function ReportsPage() {
         points = rows.map((r: any) => ({ date: r.date, value: r.amount }));
       }
       return (
-        <AreaChart
-          data={points}
-          dimensions={{ width: 700, height: 300, marginBottom: 40 }}
-          fillColor={colors?.balance ?? colors?.expense}
-          strokeColor={colors?.balance ?? colors?.expense}
-          formatValue={fmt().formatCents}
-        />
+        <div classList={{ "privacy-blur": privacy().enabled }}>
+          <AreaChart
+            data={points}
+            dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+            fillColor={colors?.balance ?? colors?.expense}
+            strokeColor={colors?.balance ?? colors?.expense}
+            formatValue={fmt().formatCents}
+          />
+        </div>
       );
     }
 
@@ -508,13 +516,15 @@ export default function ReportsPage() {
         }));
       }
       return (
-        <BarChart
-          groups={groups}
-          stacked={false}
-          dimensions={{ width: 700, height: 300, marginBottom: 40 }}
-          formatX={formatMonth}
-          formatValue={fmt().formatCents}
-        />
+        <div classList={{ "privacy-blur": privacy().enabled }}>
+          <BarChart
+            groups={groups}
+            stacked={false}
+            dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+            formatX={formatMonth}
+            formatValue={fmt().formatCents}
+          />
+        </div>
       );
     }
 
@@ -541,11 +551,13 @@ export default function ReportsPage() {
         }));
       }
       return (
-        <DonutChart
-          slices={slices}
-          dimensions={{ width: 500, height: 350 }}
-          formatValue={fmt().formatCents}
-        />
+        <div classList={{ "privacy-blur": privacy().enabled }}>
+          <DonutChart
+            slices={slices}
+            dimensions={{ width: 500, height: 350 }}
+            formatValue={fmt().formatCents}
+          />
+        </div>
       );
     }
 
@@ -666,11 +678,13 @@ export default function ReportsPage() {
                 <p class="report-description">
                   Your total assets minus liabilities, tracked monthly.
                 </p>
-                <AreaChart
-                  data={netWorthData()}
-                  dimensions={{ width: 700, height: 300, marginBottom: 40 }}
-                  formatValue={fmt().formatCents}
-                />
+                <div classList={{ "privacy-blur": privacy().enabled }}>
+                  <AreaChart
+                    data={netWorthData()}
+                    dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+                    formatValue={fmt().formatCents}
+                  />
+                </div>
               </div>
             </Show>
 
@@ -678,13 +692,15 @@ export default function ReportsPage() {
               <div class="report-card">
                 <h2 class="report-title">Cash Flow</h2>
                 <p class="report-description">Income versus expenses by month.</p>
-                <BarChart
-                  groups={cashFlowData()}
-                  stacked={false}
-                  dimensions={{ width: 700, height: 300, marginBottom: 40 }}
-                  formatX={formatMonth}
-                  formatValue={fmt().formatCents}
-                />
+                <div classList={{ "privacy-blur": privacy().enabled }}>
+                  <BarChart
+                    groups={cashFlowData()}
+                    stacked={false}
+                    dimensions={{ width: 700, height: 300, marginBottom: 40 }}
+                    formatX={formatMonth}
+                    formatValue={fmt().formatCents}
+                  />
+                </div>
               </div>
             </Show>
 
@@ -692,11 +708,13 @@ export default function ReportsPage() {
               <div class="report-card">
                 <h2 class="report-title">Spending by Category</h2>
                 <p class="report-description">Where your money went this period.</p>
-                <DonutChart
-                  slices={spendingData()}
-                  dimensions={{ width: 500, height: 350 }}
-                  formatValue={fmt().formatCents}
-                />
+                <div classList={{ "privacy-blur": privacy().enabled }}>
+                  <DonutChart
+                    slices={spendingData()}
+                    dimensions={{ width: 500, height: 350 }}
+                    formatValue={fmt().formatCents}
+                  />
+                </div>
               </div>
             </Show>
 
@@ -704,7 +722,13 @@ export default function ReportsPage() {
               <div class="report-card">
                 <h2 class="report-title">Budget vs Actuals</h2>
                 <p class="report-description">How each category compares to its budget.</p>
-                <BudgetBar data={budgetData()} maxCategories={15} formatValue={fmt().formatCents} />
+                <div classList={{ "privacy-blur": privacy().enabled }}>
+                  <BudgetBar
+                    data={budgetData()}
+                    maxCategories={15}
+                    formatValue={fmt().formatCents}
+                  />
+                </div>
               </div>
             </Show>
 
@@ -723,7 +747,11 @@ export default function ReportsPage() {
                       </span>
                     }
                   >
-                    <span class="age-number" style={{ "font-size": "3rem", "font-weight": 700 }}>
+                    <span
+                      class="age-number"
+                      classList={{ "privacy-blur": privacy().enabled }}
+                      style={{ "font-size": "3rem", "font-weight": 700 }}
+                    >
                       {ageOfMoney()}
                     </span>
                     <span

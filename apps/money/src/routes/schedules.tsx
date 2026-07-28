@@ -7,12 +7,14 @@ import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { useDateFormat } from "../lib/date-format";
+import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
 
 export default function SchedulesPage() {
   const navigate = useNavigate();
   const df = useDateFormat();
   const fmt = useCurrency();
+  const privacyBlur = usePrivacyMode();
   const [schedules, setSchedules] = createSignal<any[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
@@ -48,12 +50,15 @@ export default function SchedulesPage() {
             commandType: "create_schedule",
             payload: {
               schedule: {
-                accountId: sched?.accountId ?? "",
+                accountId: sched?.accountId ?? null,
                 name: sched?.name ?? "",
                 startDate: sched?.startDate ?? "",
                 amount: sched?.amount ?? 0,
-                frequency: sched?.frequency ?? "monthly",
-                weekendHandling: sched?.weekendHandling ?? "before",
+                recurrenceRules: sched?.recurrenceRules ?? JSON.stringify({ type: "monthly" }),
+                endMode: sched?.endMode ?? "never",
+                endDate: sched?.endDate ?? null,
+                endOccurrences: sched?.endOccurrences ?? null,
+                postsTransaction: sched?.postsTransaction ?? false,
               },
             },
           },
@@ -64,11 +69,21 @@ export default function SchedulesPage() {
   }
 
   function handlePost(scheduleId: string) {
-    dispatch("post_schedule_transaction", { scheduleId });
+    const { promise } = dispatch("post_schedule_transaction", { scheduleId });
+    void promise
+      .then(() => loadSchedules())
+      .catch((err) => {
+        console.warn("[schedules] post failed", err);
+      });
   }
 
   function handleSkip(id: string) {
-    dispatch("skip_schedule_date", { id });
+    const { promise } = dispatch("skip_schedule_date", { id });
+    void promise
+      .then(() => loadSchedules())
+      .catch((err) => {
+        console.warn("[schedules] skip failed", err);
+      });
   }
 
   function handleEdit(schedule: any) {
@@ -155,6 +170,7 @@ export default function SchedulesPage() {
         <DiscoverModal
           fmt={fmt}
           df={df}
+          privacyClass={privacyBlur().blurClass()}
           onClose={() => setShowDiscover(false)}
           onCreateSchedule={(candidate) => {
             setShowDiscover(false);
@@ -476,6 +492,7 @@ interface DiscoverCandidate {
   payee: string;
   accountId: string;
   accountName: string;
+  categoryId?: string | null;
   amount: number;
   recurrenceType: string;
   intervalDays: number;
@@ -487,6 +504,7 @@ interface DiscoverCandidate {
 function DiscoverModal(props: {
   fmt: ReturnType<typeof useCurrency>;
   df: ReturnType<typeof useDateFormat>;
+  privacyClass: string;
   onClose: () => void;
   onCreateSchedule: (candidate: DiscoverCandidate) => void;
 }) {
@@ -503,7 +521,7 @@ function DiscoverModal(props: {
     setError(null);
     try {
       const data = await api.schedulesDiscover();
-      setCandidates((data.discovered ?? []) as DiscoverCandidate[]);
+      setCandidates([...(data.discovered ?? [])]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to discover");
     } finally {
@@ -535,7 +553,7 @@ function DiscoverModal(props: {
 
   return (
     <div class="modal-overlay" onClick={props.onClose}>
-      <div class="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+      <div class="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>Discover Recurring Transactions</h2>
           <button class="modal-close" onClick={props.onClose}>
@@ -568,8 +586,10 @@ function DiscoverModal(props: {
                         <div class="discover-payee">{candidate.payee}</div>
                         <div class="discover-meta">
                           {candidate.accountName && `${candidate.accountName} · `}
-                          {props.fmt().formatCents(candidate.amount)} ·{" "}
-                          {recurrenceLabel(candidate.recurrenceType)}
+                          <span class={props.privacyClass}>
+                            {props.fmt().formatCents(candidate.amount)}
+                          </span>{" "}
+                          · {recurrenceLabel(candidate.recurrenceType)}
                         </div>
                         <div class="discover-stats">
                           <span class={`confidence-badge ${confidenceClass(candidate.confidence)}`}>

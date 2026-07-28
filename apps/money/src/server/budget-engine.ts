@@ -6,7 +6,14 @@
  */
 import { sql } from "drizzle-orm";
 import type { Db } from "./d1-access";
-import { monthBoundaries, prevMonthKey, fromMonthInt, toMonthInt, castId } from "../domain/types";
+import {
+  monthBoundaries,
+  prevMonthKey,
+  fromMonthInt,
+  toMonthInt,
+  castId,
+  formatCalendarDate,
+} from "../domain/types";
 import type { CategoryBudgetRow, CategoryId, CategoryGroupId } from "../domain/types";
 
 export interface BudgetRecalculationResult {
@@ -28,19 +35,39 @@ interface LeftoverInfo {
   leftoverPos: number;
 }
 
+/** Live ledger balance: opening balance_current + non-child transactions. */
+async function sumLiveBalances(
+  db: Db,
+  opts: { closed?: boolean; offbudget?: boolean } = {},
+): Promise<number> {
+  const closedClause =
+    opts.closed === undefined ? sql`1=1` : sql`a.closed = ${opts.closed ? 1 : 0}`;
+  const offbudgetClause =
+    opts.offbudget === undefined ? sql`1=1` : sql`a.offbudget = ${opts.offbudget ? 1 : 0}`;
+  const row = await db.get<{ total: number | null }>(
+    sql`SELECT COALESCE(SUM(balance), 0) AS total
+     FROM (
+       SELECT COALESCE(a.balance_current, 0) + COALESCE(SUM(CASE WHEN t.is_child = 0 THEN t.amount ELSE 0 END), 0) AS balance
+       FROM accounts a
+       LEFT JOIN transactions t ON t.account_id = a.id
+       WHERE ${closedClause} AND ${offbudgetClause}
+       GROUP BY a.id
+     )`,
+  );
+  return Number(row?.total ?? 0);
+}
+
 // -- Category spending per month -------------------------------------------
 async function getCategorySpending(
   db: Db,
   month: number,
 ): Promise<Array<{ categoryId: string; spent: number }>> {
-  const startDate = `${Math.floor(month / 100)}-${String(month % 100).padStart(2, "0")}-01`;
-  const endDateObj = new Date(Math.floor(month / 100), month % 100, 0);
-  const endDate = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, "0")}-${String(endDateObj.getDate()).padStart(2, "0")}`;
+  const { start, end } = monthBoundaries(fromMonthInt(month));
 
   const rows = await db.all<{ category_id: string; total: number }>(
     sql`SELECT category_id, COALESCE(SUM(amount), 0) AS total
      FROM transactions
-     WHERE date >= ${startDate} AND date < ${endDate} AND category_id IS NOT NULL AND is_child = 0
+     WHERE date >= ${start} AND date <= ${end} AND category_id IS NOT NULL AND is_child = 0
      GROUP BY category_id`,
   );
   return rows.map((r) => ({ categoryId: String(r.category_id), spent: Number(r.total) }));
@@ -182,10 +209,7 @@ export async function computeMonthBudget(
 
 // -- Net worth ----------------------------------------------------------------
 export async function computeNetWorth(db: Db): Promise<number> {
-  const rows = await db.all<{ balance_current: number | null }>(
-    sql`SELECT balance_current FROM accounts WHERE closed = 0`,
-  );
-  return rows.reduce((sum, r) => sum + Number(r.balance_current ?? 0), 0);
+  return sumLiveBalances(db, { closed: false });
 }
 
 // -- Net worth history ---------------------------------------------------------
@@ -195,34 +219,42 @@ export async function computeNetWorthHistory(
 ): Promise<Array<{ month: string; netWorth: number }>> {
   const now = new Date();
   const monthKeys: string[] = [];
-  const monthBoundariesList: string[] = [];
 
   for (let i = monthsBack; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    monthKeys.push(mk);
-    monthBoundariesList.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`);
+    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
 
-  const startingRow = await db.get<{ total: number | null }>(
-    sql`SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE closed = 0 AND balance_current IS NOT NULL`,
+  const windowStart = monthBoundaries(monthKeys[0]).start;
+
+  // Opening balances + all activity before the history window = seed for first month.
+  const openingRow = await db.get<{ total: number | null }>(
+    sql`SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE closed = 0`,
   );
-  const startingBalance = Number(startingRow?.total ?? 0);
+  const priorTxRow = await db.get<{ total: number | null }>(
+    sql`SELECT COALESCE(SUM(amount), 0) AS total
+     FROM transactions
+     WHERE is_child = 0
+       AND account_id IN (SELECT id FROM accounts WHERE closed = 0)
+       AND date < ${windowStart}`,
+  );
+  let cumulative = Number(openingRow?.total ?? 0) + Number(priorTxRow?.total ?? 0);
 
   const monthlyTx = await db.all<{ month: string; total: number }>(
     sql`SELECT strftime('%Y-%m', date) AS month, COALESCE(SUM(amount), 0) AS total
      FROM transactions
-     WHERE account_id IN (SELECT id FROM accounts WHERE closed = 0)
+     WHERE is_child = 0
+       AND account_id IN (SELECT id FROM accounts WHERE closed = 0)
+       AND date >= ${windowStart}
      GROUP BY strftime('%Y-%m', date)`,
   );
 
   const txByMonth = new Map<string, number>();
   for (const r of monthlyTx) txByMonth.set(r.month, Number(r.total));
 
-  let cumulative = 0;
   return monthKeys.map((mk) => {
     cumulative += txByMonth.get(mk) ?? 0;
-    return { month: mk, netWorth: startingBalance + cumulative };
+    return { month: mk, netWorth: cumulative };
   });
 }
 
@@ -286,7 +318,7 @@ export async function computeSpendingByCategory(
      FROM transactions t
      JOIN categories c ON t.category_id = c.id
      LEFT JOIN category_groups cg ON c.group_id = cg.id
-     WHERE t.date >= ${startDate} AND t.date < ${endDate}
+     WHERE t.date >= ${startDate} AND t.date <= ${endDate}
        AND t.is_child = 0 AND c.hidden = 0
      GROUP BY c.id
      ORDER BY total DESC`,
@@ -310,7 +342,7 @@ export async function computeDailyHeatmap(
        COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
        COALESCE(SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END), 0) AS expense
      FROM transactions t
-     WHERE t.date >= ${boundaries.start} AND t.date < ${boundaries.end}
+     WHERE t.date >= ${boundaries.start} AND t.date <= ${boundaries.end}
        AND t.is_child = 0
      GROUP BY t.date
      ORDER BY t.date`,
@@ -326,22 +358,19 @@ export async function computeDailyHeatmap(
 
 // -- Age of money ------------------------------------------------------------
 export async function computeAgeOfMoney(db: Db): Promise<number | null> {
-  const balanceRow = await db.get<{ total: number | null }>(
-    sql`SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE offbudget = 0 AND closed = 0`,
-  );
-  const currentCash = Number(balanceRow?.total ?? 0);
+  const currentCash = await sumLiveBalances(db, { closed: false, offbudget: false });
   if (currentCash <= 0) return null;
 
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const startDate = ninetyDaysAgo.toISOString().slice(0, 10);
-  const endDate = new Date().toISOString().slice(0, 10);
+  const end = new Date();
+  const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 90);
+  const startDate = formatCalendarDate(start);
+  const endDate = formatCalendarDate(end);
 
   const spendingRow = await db.get<{ total: number | null }>(
     sql`SELECT COALESCE(SUM(t.amount), 0) AS total
      FROM transactions t
      JOIN categories c ON t.category_id = c.id
-     WHERE t.date >= ${startDate} AND t.date < ${endDate}
+     WHERE t.date >= ${startDate} AND t.date <= ${endDate}
        AND c.is_income = 0 AND t.is_child = 0`,
   );
   const totalSpending = Math.abs(Number(spendingRow?.total ?? 0));
@@ -384,14 +413,14 @@ export async function computeCrossoverProjection(db: Db): Promise<CrossoverResul
       sql`SELECT COALESCE(SUM(t.amount), 0) AS total
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ${boundaries.start} AND t.date < ${boundaries.end}
+       WHERE t.date >= ${boundaries.start} AND t.date <= ${boundaries.end}
          AND c.is_income = 1 AND t.is_child = 0`,
     );
     const expenseRow = await db.get<{ total: number | null }>(
       sql`SELECT COALESCE(SUM(t.amount), 0) AS total
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
-       WHERE t.date >= ${boundaries.start} AND t.date < ${boundaries.end}
+       WHERE t.date >= ${boundaries.start} AND t.date <= ${boundaries.end}
          AND c.is_income = 0 AND t.is_child = 0`,
     );
     monthlyData.push({
@@ -414,10 +443,7 @@ export async function computeCrossoverProjection(db: Db): Promise<CrossoverResul
   const avgMonthlySavings = (totalIncome - totalExpense) / monthlyData.length;
   const savingsRate = totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0;
 
-  const balanceRow = await db.get<{ total: number | null }>(
-    sql`SELECT COALESCE(SUM(balance_current), 0) AS total FROM accounts WHERE offbudget = 0 AND closed = 0`,
-  );
-  const currentBalance = Number(balanceRow?.total ?? 0);
+  const currentBalance = await sumLiveBalances(db, { closed: false, offbudget: false });
 
   const annualExpense = medianExpense * 12;
   const targetNestEgg = annualExpense / 0.04;

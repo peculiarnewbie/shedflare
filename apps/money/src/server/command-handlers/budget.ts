@@ -269,22 +269,58 @@ export async function handleBudgetCommands(
       const p = payload as CommandPayloadMap["cover_overspending"];
       const month = toMonthInt(p.month);
       const now = nowIso();
-      const id = budgetId(month, p.to);
+
+      const amount = p.amount;
+      if (amount === undefined) {
+        return { ok: false, error: "Transfer/cover amount is required" };
+      }
+
+      const [fromRow] = await db
+        .select()
+        .from(s.budgets)
+        .where(eq(s.budgets.id, budgetId(month, p.from)))
+        .all();
+      const [toRow] = await db
+        .select()
+        .from(s.budgets)
+        .where(eq(s.budgets.id, budgetId(month, p.to)))
+        .all();
+
+      const fromAmount = (fromRow?.amount ?? 0) - amount;
+      const toAmount = (toRow?.amount ?? 0) + amount;
+
       await db
         .insert(s.budgets)
         .values({
-          id,
+          id: budgetId(month, p.from),
           month,
-          categoryId: p.to,
-          amount: p.amount,
-          carryover: false,
-          createdAt: now,
+          categoryId: p.from,
+          amount: fromAmount,
+          carryover: fromRow?.carryover ?? false,
+          createdAt: fromRow?.createdAt ?? now,
           updatedAt: now,
         })
         .onConflictDoUpdate({
           target: s.budgets.id,
-          set: { amount: p.amount, updatedAt: now },
+          set: { amount: fromAmount, updatedAt: now },
         });
+
+      await db
+        .insert(s.budgets)
+        .values({
+          id: budgetId(month, p.to),
+          month,
+          categoryId: p.to,
+          amount: toAmount,
+          carryover: toRow?.carryover ?? false,
+          createdAt: toRow?.createdAt ?? now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: s.budgets.id,
+          set: { amount: toAmount, updatedAt: now },
+        });
+
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }

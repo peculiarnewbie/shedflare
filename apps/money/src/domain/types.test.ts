@@ -11,6 +11,8 @@ import {
   isSyncCommandType,
   monthBoundaries,
   nowIso,
+  parseCalendarDate,
+  formatCalendarDate,
   prevMonthKey,
   toMonthInt,
 } from "./types";
@@ -68,11 +70,41 @@ describe("month conversions", () => {
   });
 
   test("monthBoundaries returns the first and last day of the month", () => {
-    expect(monthBoundaries("2026-04")).toEqual({ start: "2026-04-01", end: "2026-04-30" });
-    expect(monthBoundaries("2026-02")).toEqual({ start: "2026-02-01", end: "2026-02-28" });
+    expect(monthBoundaries("2026-04")).toEqual({
+      start: "2026-04-01",
+      end: "2026-04-30",
+      exclusiveEnd: "2026-05-01",
+    });
+    expect(monthBoundaries("2026-02")).toEqual({
+      start: "2026-02-01",
+      end: "2026-02-28",
+      exclusiveEnd: "2026-03-01",
+    });
     // leap year
-    expect(monthBoundaries("2024-02")).toEqual({ start: "2024-02-01", end: "2024-02-29" });
-    expect(monthBoundaries("2026-12")).toEqual({ start: "2026-12-01", end: "2026-12-31" });
+    expect(monthBoundaries("2024-02")).toEqual({
+      start: "2024-02-01",
+      end: "2024-02-29",
+      exclusiveEnd: "2024-03-01",
+    });
+    expect(monthBoundaries("2026-12")).toEqual({
+      start: "2026-12-01",
+      end: "2026-12-31",
+      exclusiveEnd: "2027-01-01",
+    });
+  });
+
+  test("parseCalendarDate parses local calendar components without UTC shift", () => {
+    const d = parseCalendarDate("2026-04-15");
+    expect(d).not.toBeNull();
+    expect(d!.getFullYear()).toBe(2026);
+    expect(d!.getMonth()).toBe(3);
+    expect(d!.getDate()).toBe(15);
+    expect(parseCalendarDate("2026-02-30")).toBeNull();
+    expect(parseCalendarDate("not-a-date")).toBeNull();
+  });
+
+  test("formatCalendarDate uses local Y-M-D", () => {
+    expect(formatCalendarDate(new Date(2026, 3, 30))).toBe("2026-04-30");
   });
 
   test("prevMonthKey rolls over year boundary", () => {

@@ -69,6 +69,7 @@ interface TransactionTableProps {
   onTransactionRestore?: (tx: TransactionRow) => void;
   onTagAdd?: (txId: string, tag: TagInfo) => void;
   onTagRemove?: (txId: string, tagId: string) => void;
+  onReload?: () => void | Promise<void>;
 }
 
 export default function TransactionTable(props: TransactionTableProps) {
@@ -108,7 +109,8 @@ export default function TransactionTable(props: TransactionTableProps) {
     const result: Array<TransactionRow & { balance: number }> = [];
     let balance = 0;
     for (const tx of txs) {
-      balance += tx.amount;
+      // Parent holds the full amount; children are category splits only.
+      if (!tx.isChild) balance += tx.amount;
       result.push({ ...tx, balance });
     }
     return result.reverse();
@@ -310,11 +312,27 @@ export default function TransactionTable(props: TransactionTableProps) {
           payee: parent.payee || undefined,
         };
       })
-      .filter(Boolean);
+      .filter((c): c is NonNullable<typeof c> => c !== null);
 
     if (children.length === 0) return;
-    dispatch("split_transaction", { parentId, children });
-    cancelSplit();
+
+    const childSum = children.reduce((sum, c) => sum + c.amount, 0);
+    if (childSum !== parent.amount) {
+      console.warn(
+        `[TransactionTable] split sum ${childSum} does not equal parent ${parent.amount}`,
+      );
+      return;
+    }
+
+    const { promise } = dispatch("split_transaction", { parentId, children });
+    void promise
+      .then(async () => {
+        cancelSplit();
+        await props.onReload?.();
+      })
+      .catch((err) => {
+        console.warn("[TransactionTable] split failed", err);
+      });
   }
 
   function handleAddTag(txId: string, tagId: string) {
