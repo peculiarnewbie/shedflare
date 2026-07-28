@@ -3,7 +3,6 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import { CloudflareEnvironment } from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Redacted from "effect/Redacted";
 import { AnkiStack } from "./apps/anki/alchemy.run.ts";
 import { AuthStack } from "./apps/auth/alchemy.run.ts";
 import { CfBillStack } from "./apps/cf-bill/alchemy.run.ts";
@@ -13,13 +12,12 @@ import { MoneyStack } from "./apps/money/alchemy.run.ts";
 import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { RoutinesStack } from "./apps/routines/alchemy.run.ts";
 import { ShortStack } from "./apps/s/alchemy.run.ts";
-import { YouTubeStack } from "./apps/youtube/alchemy.run.ts";
 import { HomepageStack } from "./apps/homepage/alchemy.run.ts";
 import { SiteStack } from "./site/alchemy.run.ts";
-import { physicalName } from "./packages/shedflare-alchemy/src/index.ts";
+import * as Shedflare from "./packages/shedflare-alchemy/src/index.ts";
 
 function patchTailConsumers(
-  apiToken: string,
+  credentials: Shedflare.CfCredentials,
   accountId: string,
   scriptName: string,
   service: string,
@@ -31,7 +29,7 @@ function patchTailConsumers(
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiToken}`,
+          ...Shedflare.cfAuthHeaders(credentials),
         },
         body: JSON.stringify({ tail_consumers: [{ service }] }),
       },
@@ -47,7 +45,8 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
-    const { accountId, apiToken } = yield* CloudflareEnvironment;
+    const credentials = yield* yield* CloudflareEnvironment;
+    const { accountId } = credentials;
 
     const auth = yield* AuthStack;
     const anki = yield* AnkiStack;
@@ -55,7 +54,6 @@ export default Alchemy.Stack(
     const drive = yield* DriveStack;
     const chat = yield* ChatStack;
     const money = yield* MoneyStack;
-    const youtube = yield* YouTubeStack;
     const short = yield* ShortStack;
     const routines = yield* RoutinesStack;
     const homepage = yield* HomepageStack;
@@ -63,7 +61,7 @@ export default Alchemy.Stack(
     const site = yield* SiteStack;
 
     if (Option.isSome(observability)) {
-      const obsWorker = physicalName(stage, "observability");
+      const obsWorker = Shedflare.physicalName(stage, "observability");
       const apps = [
         "auth",
         "anki",
@@ -74,14 +72,13 @@ export default Alchemy.Stack(
         "money",
         "routines",
         "s",
-        "youtube",
         "site",
       ] as const;
       for (const app of apps) {
         yield* patchTailConsumers(
-          Redacted.value(apiToken),
+          credentials,
           accountId,
-          physicalName(stage, app),
+          Shedflare.physicalName(stage, app),
           obsWorker,
         ).pipe(
           Effect.catch((err) =>
@@ -99,18 +96,17 @@ export default Alchemy.Stack(
 
     return {
       stage,
-      authUrl: auth.url,
-      ankiUrl: anki.url,
-      homepageUrl: homepage.url,
-      cfBillUrl: cfBill.url,
-      driveUrl: drive.url,
-      chatUrl: chat.url,
-      moneyUrl: money.url,
-      youtubeUrl: youtube.url,
-      shortUrl: short.url,
-      routinesUrl: routines.url,
-      siteUrl: site.url,
-      observabilityUrl: Option.isSome(observability) ? observability.value.url : undefined,
+      authUrl: auth.output.url,
+      ankiUrl: anki.output.url,
+      homepageUrl: homepage.output.url,
+      cfBillUrl: cfBill.output.url,
+      driveUrl: drive.output.url,
+      chatUrl: chat.output.url,
+      moneyUrl: money.output.url,
+      shortUrl: short.output.url,
+      routinesUrl: routines.output.url,
+      siteUrl: site.output.url,
+      observabilityUrl: Option.isSome(observability) ? observability.value.output.url : undefined,
     };
   }),
 );

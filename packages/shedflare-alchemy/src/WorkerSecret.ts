@@ -5,6 +5,7 @@ import type { Input } from "alchemy/Input";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { listWorkerSecretNames, putWorkerSecret } from "./cf-secrets-api.ts";
+import type { ShedflareProviders } from "./providers.ts";
 
 export interface WorkerSecretProps {
   workerName: Input<string>;
@@ -21,7 +22,9 @@ export interface WorkerSecretAttributes {
 export type WorkerSecret = Resource<
   "Shedflare.WorkerSecret",
   WorkerSecretProps,
-  WorkerSecretAttributes
+  WorkerSecretAttributes,
+  never,
+  ShedflareProviders
 >;
 
 export const WorkerSecret = Resource<WorkerSecret>("Shedflare.WorkerSecret");
