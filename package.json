@@ -33,8 +33,6 @@
     "dashboard": "pnpm --filter @shedflare/console dev",
     "deploy:routines": "vp build apps/routines && vp exec jiti packages/cli/src/index.ts deploy routines --yes",
     "destroy:routines": "vp exec alchemy destroy apps/routines/alchemy.run.ts --stage prod --yes",
-    "deploy:youtube": "vp build apps/youtube && vp exec jiti packages/cli/src/index.ts deploy youtube --yes",
-    "destroy:youtube": "vp exec alchemy destroy apps/youtube/alchemy.run.ts --stage prod --yes",
     "deploy:observability": "vp exec jiti packages/cli/src/index.ts deploy observability --yes",
     "destroy:observability": "vp exec alchemy destroy apps/observability/alchemy.run.ts --stage prod --yes",
     "deploy:s": "vp build apps/s && vp exec jiti packages/cli/src/index.ts deploy s --yes",
@@ -52,13 +50,18 @@
     "test:e2e:money:destroy": "vp exec jiti apps/money/e2e.run.ts --destroy-only",
     "test:chat": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/chat/alchemy.test.ts",
     "test:money": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/money/alchemy.test.ts",
-    "test:youtube": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/youtube/alchemy.test.ts",
     "test:s": "SHEDFLARE_LIVE_ALCHEMY_TESTS=1 vp exec vitest run apps/s/alchemy.test.ts",
+    "registry:generate": "pnpm --filter @shedflare/core registry:generate",
+    "registry:check": "pnpm --filter @shedflare/core registry:check",
+    "schemas:generate": "pnpm --filter @shedflare/core schemas:generate",
+    "schemas:check": "pnpm --filter @shedflare/core schemas:check",
+    "contract:check": "pnpm --filter @shedflare/core contract:check && pnpm registry:check && pnpm schemas:check",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm -r check",
+    "check": "pnpm -r check && pnpm contract:check",
     "test": "pnpm -r test"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260415.1",
     "@effect/platform-node": "catalog:",
     "@shedflare/alchemy": "workspace:*",
     "@types/node": "catalog:",
@@ -66,7 +69,8 @@
     "effect": "catalog:",
     "jiti": "catalog:",
     "jsonc-parser": "catalog:",
-    "playwright": "catalog:"
+    "playwright": "catalog:",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.24"
   },
   "engines": {
     "node": ">=22.12.0"

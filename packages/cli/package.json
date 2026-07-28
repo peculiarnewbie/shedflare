@@ -28,10 +28,9 @@
   "dependencies": {
     "@clack/prompts": "^1.2",
     "@shedflare/alchemy": "workspace:*",
+    "@shedflare/core": "workspace:*",
     "cac": "^7",
-    "jsonc-parser": "^3",
-    "nano-spawn": "^2.1",
-    "valibot": "catalog:"
+    "nano-spawn": "^2.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",

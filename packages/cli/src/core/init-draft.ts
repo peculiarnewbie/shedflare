@@ -1,5 +1,9 @@
+import {
+  computeDeployOrder as computeCoreDeployOrder,
+  type ManifestCatalog,
+} from "@shedflare/core";
 import type { AppId, AppManifest } from "./manifests.js";
-import { APP_IDS } from "./manifests.js";
+import { APP_IDS, isAppId } from "./manifests.js";
 import type { ShedflareConfig } from "./config.js";
 
 export interface InitOptions {
@@ -23,7 +27,7 @@ export interface InitDraft {
 
 export interface InitPlan {
   apps: AppManifest[];
-  deployOrder: AppId[];
+  deployOrder: string[];
   urls: Record<string, string>;
   resourceIds: Record<string, Record<string, string>>;
   resolvedVars: Record<string, Record<string, string>>;
@@ -118,6 +122,8 @@ export function createPlan(draft: InitDraft, manifests: Record<string, AppManife
         case "user":
           appVars[key] = draft.vars[appId]?.[key] ?? def.default ?? "";
           break;
+        case "computed":
+          break;
       }
     }
     resolvedVars[appId] = appVars;
@@ -147,19 +153,24 @@ export function buildPlanFromConfig(
   mockResources = false,
 ): InitPlan {
   const enabledAppIds = Object.entries(config.apps)
-    .filter(([_, entry]) => entry.enabled)
-    .map(([id]) => id as AppId);
+    .filter(([_, entry]) => (config.configVersion === 1 ? entry.enabled !== false : true))
+    .map(([id]) => id)
+    .filter(isAppId);
 
   const deployOrder = computeDeployOrder(enabledAppIds, manifests);
 
   const urls: Record<string, string> = {};
   for (const appId of enabledAppIds) {
-    const subdomain = config.apps[appId].subdomain;
+    const subdomain =
+      config.configVersion === 1
+        ? config.apps[appId].subdomain
+        : (config.apps[appId].subdomain ?? manifests[appId].defaultSubdomain);
     urls[appId] = `https://${subdomain}.${config.domain}`;
   }
 
   const resourceIds: Record<string, Record<string, string>> = {};
-  for (const [appId, ids] of Object.entries(config.resources)) {
+  const resources = config.configVersion === 1 ? config.resources : {};
+  for (const [appId, ids] of Object.entries(resources)) {
     resourceIds[appId] = { ...ids };
   }
 
@@ -188,7 +199,14 @@ export function buildPlanFromConfig(
           appVars[key] = `shedflare-${appId}`;
           break;
         case "user":
-          appVars[key] = config.vars[appId]?.[key] ?? def.default ?? "";
+          appVars[key] =
+            (config.configVersion === 1
+              ? config.vars[appId]?.[key]
+              : config.apps[appId]?.vars?.[key]) ??
+            def.default ??
+            "";
+          break;
+        case "computed":
           break;
       }
     }
@@ -213,29 +231,12 @@ export function buildPlanFromConfig(
 }
 
 export function computeDeployOrder(
-  selected: AppId[],
+  selected: readonly string[],
   manifests: Record<string, AppManifest>,
-): AppId[] {
-  const ordered: AppId[] = [];
-  const visited = new Set<string>();
-
-  function visit(appId: AppId): void {
-    if (visited.has(appId)) return;
-    visited.add(appId);
-    const manifests_ = manifests[appId];
-    if (manifests_) {
-      for (const dep of manifests_.dependsOn) {
-        if (selected.includes(dep)) {
-          visit(dep);
-        }
-      }
-    }
-    ordered.push(appId);
-  }
-
-  for (const appId of selected) {
-    visit(appId);
-  }
-
-  return ordered;
+): string[] {
+  const catalog: ManifestCatalog = {
+    appIds: Object.keys(manifests),
+    manifests: new Map(Object.entries(manifests)),
+  };
+  return computeCoreDeployOrder(selected, catalog);
 }

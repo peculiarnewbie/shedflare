@@ -1,7 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { parse } from "jsonc-parser";
-import { getWorkspaceRoot } from "./manifests.js";
+import { isAppSelected, loadConfig } from "./config.js";
 
 function physicalName(stage: string | undefined, ...parts: string[]): string {
   const safeStage = (stage || "prod").toLowerCase().replaceAll(/[^a-z0-9-]/g, "-");
@@ -17,16 +14,11 @@ export function physicalWorkerName(appId: string, stage = resolveDeployStage()):
 }
 
 export function assertEnabledApp(appId: string): void {
-  const configPath = join(getWorkspaceRoot(), "shedflare.config.jsonc");
-  if (!existsSync(configPath)) {
+  const config = loadConfig();
+  if (!config) {
     throw new Error("shedflare.config.jsonc not found. Run `shedflare init` first.");
   }
-
-  const config = parse(readFileSync(configPath, "utf-8")) as {
-    apps?: Record<string, { enabled?: boolean }>;
-  };
-  const app = config.apps?.[appId];
-  if (!app || app.enabled === false) {
-    throw new Error(`App "${appId}" is not enabled in shedflare.config.jsonc.`);
+  if (!isAppSelected(config, appId)) {
+    throw new Error(`App "${appId}" is not selected in shedflare.config.jsonc.`);
   }
 }

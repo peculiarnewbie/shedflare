@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "cf-bill",
   "name": "Shedflare CF Usage",
   "description": "Cloudflare estimated usage vs plan limits dashboard",
+  "lifecycle": "experimental",
+  "category": "developer",
+  "dataSensitivity": "high",
   "dependsOn": ["auth"],
   "defaultSubdomain": "cf-bill",
   "vars": {

@@ -1,72 +1,23 @@
 {
+  "$schema": "./packages/shedflare-core/schemas/shedflare-config.schema.json",
+  "configVersion": 2,
   "domain": "example.com",
   "ownerEmail": "you@example.com",
   "apps": {
-    "anki": {
-      "enabled": true,
-      "subdomain": "anki",
-    },
-    "auth": {
-      "enabled": true,
-      "subdomain": "auth",
-    },
-    "cf-bill": {
-      "enabled": true,
-      "subdomain": "cf-bill",
-    },
-    "chat": {
-      "enabled": true,
-      "subdomain": "chat",
-    },
-    "drive": {
-      "enabled": true,
-      "subdomain": "drive",
-    },
-    "homepage": {
-      "enabled": true,
-      "subdomain": "home",
-    },
-    "money": {
-      "enabled": true,
-      "subdomain": "money",
-    },
-    "observability": {
-      "enabled": true,
-      "subdomain": "observability",
-    },
-    "routines": {
-      "enabled": true,
-      "subdomain": "routines",
-    },
-    "s": {
-      "enabled": true,
-      "subdomain": "s",
-    },
-    "youtube": {
-      "enabled": true,
-      "subdomain": "youtube",
-    },
-  },
-  "vars": {
     "anki": {},
     "auth": {},
     "cf-bill": {
-      "CLOUDFLARE_ACCOUNT_ID": "",
-      "CLOUDFLARE_ZONE_ID": "",
+      "vars": {
+        "CLOUDFLARE_ACCOUNT_ID": "",
+        "CLOUDFLARE_ZONE_ID": "",
+      },
     },
-    "chat": {
-      "DEFAULT_MODEL_ID": "auto",
-      "OPENCODE_GO_API_KEY": "",
-      "UPLOAD_TOKEN_SECRET": "",
-      "EXA_API_KEY": "",
-    },
+    "chat": {},
     "drive": {},
     "homepage": {},
     "money": {},
     "observability": {},
     "routines": {},
     "s": {},
-    "youtube": {},
   },
-  "resources": {},
 }

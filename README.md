@@ -20,7 +20,7 @@ Shedflare is a self-hosted suite of personal productivity tools for Cloudflare. 
 ```bash
 pnpm install
 cp shedflare.config.example.jsonc shedflare.config.jsonc
-# Edit shedflare.config.jsonc with your domain, email, and app config
+# Edit shedflare.config.jsonc with your domain, email, and selected apps
 
 # Deploy the full production suite
 pnpm deploy
@@ -82,13 +82,27 @@ subdomain `chat` becomes `chat-dev-bolt.peculiarnewbie.com` for `--stage dev-bol
 
 ## Configuration
 
-`shedflare.config.jsonc` (gitignored) is the source of truth for deployment config — domain, email, app subdomains, and per-app vars. Create it from the committed template:
+`shedflare.config.jsonc` (gitignored) is the source of truth for desired deployment state. App presence means selected; manifest defaults supply subdomains and user-var defaults, so the config stores only deviations. Create it from the committed version-2 template:
 
 ```bash
 cp shedflare.config.example.jsonc shedflare.config.jsonc
 ```
 
 Operator secrets are managed via `Shedflare.WorkerSecret` in Alchemy stacks. See `docs/operator-secrets.md`.
+
+The app catalog comes from `apps/*/shedflare.app.jsonc`. After adding or removing an app, regenerate and verify the typed registry:
+
+```bash
+pnpm registry:generate
+pnpm contract:check
+```
+
+Existing version-1 configs remain readable. Preview or explicitly write a local, backed-up migration with:
+
+```bash
+shedflare config migrate
+shedflare config migrate --write --yes
+```
 
 ## Testing
 
@@ -98,11 +112,12 @@ pnpm test           # run all package tests
 pnpm test:auth      # live Alchemy smoke test (requires SHEDFLARE_LIVE_ALCHEMY_TESTS=1)
 ```
 
-## CLI (deprecated)
+## CLI
 
-The `shedflare` CLI (`packages/cli`) is deprecated. Use Alchemy deploy commands instead.
+The `shedflare` CLI exposes scriptable configuration, deployment, and secret operations. The local Console (`shedflare dashboard`) is the primary human-facing control plane.
 
-| Command            | Description                                          |
-| ------------------ | ---------------------------------------------------- |
-| `shedflare init`   | Create a new Shedflare workspace and configure apps  |
-| `shedflare doctor` | Check workspace for issues and missing configuration |
+| Command                    | Description                                           |
+| -------------------------- | ----------------------------------------------------- |
+| `shedflare init`           | Create a new Shedflare workspace and configure apps   |
+| `shedflare doctor`         | Check workspace for issues and missing configuration  |
+| `shedflare config migrate` | Preview or write an explicit config v1 → v2 migration |

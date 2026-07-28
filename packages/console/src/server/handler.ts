@@ -1,11 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CfEnvError, resolveCfEnv } from "./env.ts";
-import {
-  loadConfig,
-  mergeConfigPatch,
-  validateConfigPatch,
-  writeConfig,
-} from "./config-service.ts";
+import { loadConfig, patchConfig } from "./config-service.ts";
 import { fetchInventory, fetchSuiteOverview } from "./inventory-service.ts";
 import { discoverStagesFromInventory, resolveCurrentStage } from "./stage-service.ts";
 import { fetchBillableUsage, fetchScriptUsage, fetchUsage } from "./usage-service.ts";
@@ -78,9 +73,7 @@ export async function handleApiRequest(
           json(res, 400, { error: "shedflare.config.jsonc not found" });
           return true;
         }
-        const patch = validateConfigPatch(await readBody(req));
-        const next = mergeConfigPatch(current, patch);
-        writeConfig(next);
+        const next = patchConfig(await readBody(req));
         json(res, 200, { config: next });
         return true;
       }

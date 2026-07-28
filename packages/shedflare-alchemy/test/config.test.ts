@@ -85,4 +85,19 @@ describe("appStackConfig", () => {
       url: "https://chat-dev-bolt.peculiarnewbie.com",
     });
   });
+
+  test("resolves sparse version 2 config using manifest defaults", () => {
+    const versionTwoConfig = {
+      configVersion: 2 as const,
+      domain: "peculiarnewbie.com",
+      ownerEmail: "owner@example.com",
+      apps: { chat: {} },
+    };
+
+    expect(appStackConfig(versionTwoConfig, "chat", "prod")).toMatchObject({
+      subdomain: "chat",
+      configuredSubdomain: "chat",
+      vars: { DEFAULT_MODEL_ID: "auto" },
+    });
+  });
 });

@@ -12,6 +12,8 @@ allowBuilds:
 catalog:
   "@better-auth/infra": ^0.1.14
   "@effect/platform-node": 4.0.0-beta.92
+  "@effect/sql-d1": 4.0.0-beta.92
+  "@effect/sql-sqlite-do": 4.0.0-beta.92
   "@tanstack/db": ^0.6.5
   "@tanstack/solid-db": ^0.2.19
   "@tanstack/solid-form": ^1.32.0
@@ -43,6 +45,7 @@ catalog:
   "@tokenami/css": ^0.0.98
   "@tokenami/unplugin": ^0.0.98
   tokenami: ^0.0.98
+  "@valibot/to-json-schema": ^1.7.1
 
 catalogMode: prefer
 minimumReleaseAge: 0

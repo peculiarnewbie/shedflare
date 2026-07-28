@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "anki",
   "name": "Shedflare Anki",
   "description": "Personal spaced-repetition cards with a calmer online-first review flow",
+  "lifecycle": "experimental",
+  "category": "knowledge",
+  "dataSensitivity": "personal",
   "dependsOn": ["auth"],
   "defaultSubdomain": "anki",
   "vars": {

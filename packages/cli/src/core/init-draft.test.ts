@@ -1,12 +1,13 @@
 import { expect, test } from "vite-plus/test";
 import { createDraft, validateDraft, createPlan } from "./init-draft.js";
-import { APP_IDS } from "./manifests.js";
-import { BUILTIN_MANIFESTS } from "./manifests-data.js";
+import { APP_IDS, getAllManifests } from "./manifests.js";
 import type { InitDraft } from "./init-draft.js";
+
+const manifests = Object.fromEntries(getAllManifests().map((manifest) => [manifest.id, manifest]));
 
 test("createDraft defaults to all apps", () => {
   const draft = createDraft({});
-  expect(draft.apps).toEqual(APP_IDS);
+  expect(draft.apps).toEqual([...APP_IDS]);
   expect(draft.mockResources).toBe(false);
 });
 
@@ -101,7 +102,7 @@ test("createPlan resolves URLs before vars regardless of input order", () => {
     secrets: {},
     mockResources: true,
   };
-  const plan = createPlan(draft, BUILTIN_MANIFESTS);
+  const plan = createPlan(draft, manifests);
 
   // URLs should exist for both apps
   expect(plan.urls.auth).toBe("https://auth.example.com");
@@ -121,7 +122,7 @@ test("createPlan sets deploy order with auth first", () => {
     secrets: {},
     mockResources: true,
   };
-  const plan = createPlan(draft, BUILTIN_MANIFESTS);
+  const plan = createPlan(draft, manifests);
   expect(plan.deployOrder).toEqual(["auth", "chat", "drive"]);
 });
 
@@ -135,7 +136,7 @@ test("createPlan resolves all var sources", () => {
     secrets: {},
     mockResources: true,
   };
-  const plan = createPlan(draft, BUILTIN_MANIFESTS);
+  const plan = createPlan(draft, manifests);
 
   // url type
   expect(plan.resolvedVars.auth?.APP_PUBLIC_URL).toBe("https://auth.test.com");
@@ -159,7 +160,7 @@ test("createPlan uses custom subdomains", () => {
     secrets: {},
     mockResources: true,
   };
-  const plan = createPlan(draft, BUILTIN_MANIFESTS);
+  const plan = createPlan(draft, manifests);
   expect(plan.urls.auth).toBe("https://login.example.com");
   expect(plan.urls.chat).toBe("https://talk.example.com");
 });
@@ -174,7 +175,7 @@ test("createPlan respects user var defaults when not provided", () => {
     secrets: {},
     mockResources: true,
   };
-  const plan = createPlan(draft, BUILTIN_MANIFESTS);
+  const plan = createPlan(draft, manifests);
   expect(plan.resolvedVars.chat?.DEFAULT_MODEL_ID).toBe("auto");
 });
 
@@ -188,7 +189,7 @@ test("createPlan resolves secrets from draft", () => {
     secrets: { chat: { OPENCODE_GO_API_KEY: "key-123", UPLOAD_TOKEN_SECRET: "token-456" } },
     mockResources: true,
   };
-  const plan = createPlan(draft, BUILTIN_MANIFESTS);
+  const plan = createPlan(draft, manifests);
   expect(plan.resolvedSecrets.chat?.OPENCODE_GO_API_KEY).toBe("key-123");
   expect(plan.resolvedSecrets.chat?.UPLOAD_TOKEN_SECRET).toBe("token-456");
 });

@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "s",
   "name": "Shedflare Links",
   "description": "Simple link shortener with dashboard",
+  "lifecycle": "beta",
+  "category": "productivity",
+  "dataSensitivity": "personal",
   "dependsOn": ["auth"],
   "defaultSubdomain": "s",
   "vars": {

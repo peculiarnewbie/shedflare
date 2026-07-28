@@ -112,8 +112,7 @@ The desired shape should be sparse and based on installed-app presence:
 
 ```jsonc
 {
-  "$schema": "./packages/shedflare-core/shedflare.schema.json",
-  "stage": "prod",
+  "$schema": "./packages/shedflare-core/schemas/shedflare-config.schema.json",
   "domain": "example.com",
   "ownerEmail": "you@example.com",
   "apps": {
@@ -127,6 +126,10 @@ The desired shape should be sparse and based on installed-app presence:
   },
 }
 ```
+
+Deployment stage is deliberately not committed in the shared config. It is chosen
+per deployment or persisted as a local Console preference so one desired-state file
+can serve production and temporary stages.
 
 Rules:
 
@@ -432,25 +435,13 @@ product cost.
 
 ## Delivery Phases
 
-### Phase 0: Record the contract
+### Phases 0–1: Control plane foundation
 
 Deliverables:
 
-- Adopt this direction as the active product plan.
+- Adopt this direction as the active product and command-surface plan.
 - Define lifecycle statuses and classify every app.
 - Document the desired/secret/observed state boundary.
-- Decide the supported public CLI commands without yet rewriting them.
-
-Exit criteria:
-
-- Every app has an honest status.
-- Contributors can identify the supported setup and deployment path.
-- Historical plans are labeled as historical where necessary.
-
-### Phase 1: Headless config and catalog foundation
-
-Deliverables:
-
 - Extract config and manifest operations into a shared core package.
 - Generate and validate the typed app registry.
 - Add JSON Schema for config.
@@ -462,6 +453,10 @@ Exit criteria:
 - Console and CLI can list the same apps from the same source.
 - A config can be created, migrated, validated, and patched without UI code.
 - CI can detect manifest/registry/config drift.
+- Every app has an honest status and contributors can identify the supported setup
+  and deployment path.
+
+Detailed implementation plan: `docs/control-plane-foundation-plan.md`.
 
 ### Phase 2: Setup wizard without deployment
 

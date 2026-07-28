@@ -1,6 +1,6 @@
 import spawn from "nano-spawn";
 import { loadRepoDotEnv } from "@shedflare/alchemy";
-import { loadConfig, validateConfig } from "../core/config.js";
+import { isAppSelected, loadConfig, validateConfig } from "../core/config.js";
 import { APP_IDS, loadManifest, type AppId } from "../core/manifests.js";
 import { whoami, login } from "../core/wrangler.js";
 import { physicalWorkerName } from "../core/worker-names.js";
@@ -40,16 +40,15 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     process.exit(1);
   }
 
-  if (options.app && !validConfig.apps[options.app]?.enabled) {
+  if (options.app && !isAppSelected(validConfig, options.app)) {
     console.error(`App "${options.app}" is not enabled in config.`);
     process.exit(1);
   }
 
   const appIds = options.app
     ? [options.app]
-    : Object.entries(validConfig.apps)
-        .filter(([_, cfg]) => cfg.enabled)
-        .map(([id]) => id)
+    : Object.keys(validConfig.apps)
+        .filter((id) => isAppSelected(validConfig, id))
         .filter((id) => (APP_IDS as readonly string[]).includes(id));
 
   if (appIds.length === 0) {

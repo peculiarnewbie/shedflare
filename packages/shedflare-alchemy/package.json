@@ -13,9 +13,9 @@
     "test": "vp test"
   },
   "dependencies": {
+    "@shedflare/core": "workspace:*",
     "alchemy": "catalog:",
-    "effect": "catalog:",
-    "jsonc-parser": "catalog:"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

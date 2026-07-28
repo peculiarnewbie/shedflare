@@ -114,7 +114,10 @@ export async function buildAppStatuses(
   for (const id of appIds) {
     const manifest = loadManifest(id);
     const entry = config?.apps[id];
-    const enabled = entry?.enabled !== false && Boolean(entry);
+    const enabled =
+      config?.configVersion === 1
+        ? !!config.apps[id] && config.apps[id].enabled !== false
+        : !!entry;
     const configuredSubdomain = entry?.subdomain ?? manifest?.defaultSubdomain ?? id;
     const subdomain = stageSubdomain(configuredSubdomain, stage);
     const workerName = physicalWorkerName(id);
@@ -142,16 +145,7 @@ export async function buildAppStatuses(
       manifest,
       enabled,
       subdomain,
-      url: config
-        ? appUrl(
-            {
-              ...config,
-              apps: { ...config.apps, [id]: { subdomain: configuredSubdomain, enabled } },
-            },
-            id,
-            stage,
-          )
-        : null,
+      url: config ? appUrl(config, id, stage) : null,
       workerName,
       workerDeployed,
       dashboardUrl: workerDashboardUrl(env.accountId, workerName),

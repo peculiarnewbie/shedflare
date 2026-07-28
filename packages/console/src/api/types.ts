@@ -58,12 +58,7 @@ export interface SuiteOverview {
   dashboardLinks: Record<string, string>;
 }
 
-export interface ShedflareConfig {
-  domain: string;
-  ownerEmail: string;
-  apps: Record<string, { enabled?: boolean; subdomain: string }>;
-  vars?: Record<string, Record<string, string>>;
-}
+export type { ShedflareConfig } from "@shedflare/core";
 
 export interface BillableUsageRecord {
   x_BillableMetricId?: string;

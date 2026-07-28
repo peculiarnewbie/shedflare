@@ -29,10 +29,9 @@ export function resolveCfEnv(): CfEnv {
   }
 
   const config = loadConfig();
-  const accountId =
-    process.env.CLOUDFLARE_ACCOUNT_ID ??
-    config?.vars?.["cf-bill"]?.CLOUDFLARE_ACCOUNT_ID ??
-    config?.vars?.console?.CLOUDFLARE_ACCOUNT_ID;
+  const cfBillVars =
+    config?.configVersion === 1 ? config.vars["cf-bill"] : config?.apps["cf-bill"]?.vars;
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? cfBillVars?.CLOUDFLARE_ACCOUNT_ID;
 
   if (!accountId) {
     throw new CfEnvError(
@@ -40,10 +39,7 @@ export function resolveCfEnv(): CfEnv {
     );
   }
 
-  const zoneId =
-    process.env.CLOUDFLARE_ZONE_ID ??
-    config?.vars?.["cf-bill"]?.CLOUDFLARE_ZONE_ID ??
-    config?.vars?.console?.CLOUDFLARE_ZONE_ID;
+  const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? cfBillVars?.CLOUDFLARE_ZONE_ID;
 
   return { accountId, apiToken: token, zoneId: zoneId || undefined };
 }

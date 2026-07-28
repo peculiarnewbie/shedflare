@@ -42,6 +42,17 @@ cli
   });
 
 cli
+  .command("config migrate", "Preview or explicitly migrate shedflare.config.jsonc to version 2")
+  .option("--check", "Fail when migration is required or blocked")
+  .option("--write", "Write the migration after confirmation")
+  .option("--yes", "Skip the migration write confirmation")
+  .option("--json", "Output the migration result as JSON")
+  .action(async (options: { check?: boolean; write?: boolean; yes?: boolean; json?: boolean }) => {
+    const { configMigrateCommand } = await import("./commands/config.js");
+    await configMigrateCommand(options);
+  });
+
+cli
   .command("secret set <app> <name>", "Set an operator secret on a deployed Worker")
   .option("--value <value>", "Secret value (otherwise prompted)")
   .action(async (app: string, name: string, options: { value?: string }) => {

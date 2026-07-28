@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "auth",
   "name": "Shedflare Auth",
   "description": "OAuth2/OIDC authentication provider using OpenAuth",
+  "lifecycle": "beta",
+  "category": "platform",
+  "dataSensitivity": "high",
   "dependsOn": [],
   "defaultSubdomain": "auth",
   "vars": {

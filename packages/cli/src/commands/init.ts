@@ -3,7 +3,7 @@ import { createDraft, validateDraft, createPlan } from "../core/init-draft.js";
 import { APP_IDS, loadManifest } from "../core/manifests.js";
 import type { AppId } from "../core/manifests.js";
 import { writeConfig } from "../core/config.js";
-import type { ShedflareConfig } from "../core/config.js";
+import type { AppSelection, ShedflareConfigV2 } from "@shedflare/core";
 import { whoami, login } from "../core/wrangler.js";
 import {
   selectApps,
@@ -111,23 +111,23 @@ export async function initCommand(options: InitOptions): Promise<void> {
   console.log(`  Deploy order: ${plan.deployOrder.join(" → ")}`);
 
   // Build config
-  const config: ShedflareConfig = {
+  const apps: Record<string, AppSelection> = {};
+  for (const app of plan.apps) {
+    const subdomain = draft.subdomains[app.id] ?? app.defaultSubdomain;
+    const appVars = draft.vars[app.id];
+    apps[app.id] = {
+      ...(subdomain === app.defaultSubdomain ? {} : { subdomain }),
+      ...(appVars && Object.keys(appVars).length > 0 ? { vars: appVars } : {}),
+    };
+  }
+
+  const config: ShedflareConfigV2 = {
+    $schema: "./packages/shedflare-core/schemas/shedflare-config.schema.json",
+    configVersion: 2,
     domain,
     ownerEmail,
-    apps: {},
-    vars: {},
-    resources: {},
+    apps,
   };
-
-  for (const app of plan.apps) {
-    config.apps[app.id] = {
-      enabled: true,
-      subdomain: draft.subdomains[app.id] ?? app.defaultSubdomain,
-    };
-    if (draft.vars[app.id]) {
-      config.vars[app.id] = draft.vars[app.id];
-    }
-  }
 
   // Write config
   writeConfig(config);

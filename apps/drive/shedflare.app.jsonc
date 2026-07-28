@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "drive",
   "name": "Shedflare Drive",
   "description": "File storage and management",
+  "lifecycle": "beta",
+  "category": "files",
+  "dataSensitivity": "high",
   "dependsOn": ["auth"],
   "defaultSubdomain": "drive",
   "vars": {

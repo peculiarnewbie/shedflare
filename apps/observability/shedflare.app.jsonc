@@ -1,9 +1,13 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "observability",
   "name": "Shedflare Observability",
   "description": "Centralized error collection from tail events across all app Workers",
+  "lifecycle": "experimental",
+  "category": "developer",
+  "dataSensitivity": "high",
   "dependsOn": [],
+  "defaultSubdomain": "observability",
   "vars": {},
   "secrets": {},
   "resources": [

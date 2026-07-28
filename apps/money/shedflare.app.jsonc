@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "money",
   "name": "Shedflare Money",
   "description": "Envelope-budgeting personal finance app",
+  "lifecycle": "beta",
+  "category": "finance",
+  "dataSensitivity": "high",
   "dependsOn": ["auth"],
   "defaultSubdomain": "money",
   "vars": {

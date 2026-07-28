@@ -3,6 +3,18 @@ import { apiGet, apiPatch } from "../lib/api";
 import { editableVars, hiddenSensitiveVarNames } from "../lib/config-vars";
 import type { ShedflareConfig } from "../api/types";
 
+function appVars(config: ShedflareConfig, appId: string): Record<string, string> | undefined {
+  return config.configVersion === 1 ? config.vars[appId] : config.apps[appId]?.vars;
+}
+
+function isAppEnabled(config: ShedflareConfig, appId: string): boolean {
+  if (config.configVersion === 1) {
+    const selection = config.apps[appId];
+    return !!selection && selection.enabled !== false;
+  }
+  return !!config.apps[appId];
+}
+
 function varsToText(vars: Record<string, string> | undefined): string {
   return Object.entries(editableVars(vars))
     .map(([key, value]) => `${key}=${value}`)
@@ -46,9 +58,11 @@ export default function ConfigPage() {
     setDomain(c.domain);
     setOwnerEmail(c.ownerEmail);
     setSubdomains(
-      Object.fromEntries(Object.entries(c.apps).map(([id, entry]) => [id, entry.subdomain])),
+      Object.fromEntries(Object.entries(c.apps).map(([id, entry]) => [id, entry.subdomain ?? ""])),
     );
-    setVarText(Object.fromEntries(Object.keys(c.apps).map((id) => [id, varsToText(c.vars?.[id])])));
+    setVarText(
+      Object.fromEntries(Object.keys(c.apps).map((id) => [id, varsToText(appVars(c, id))])),
+    );
   });
 
   const saveTopLevel = async () => {
@@ -73,7 +87,7 @@ export default function ConfigPage() {
     setMessage(null);
     try {
       await apiPatch("/api/config", {
-        apps: { [appId]: { subdomain: subdomains()[appId] ?? "" } },
+        apps: { [appId]: { subdomain: subdomains()[appId] || null } },
       });
       setMessage(`Saved ${appId} subdomain.`);
       await refetch();
@@ -84,14 +98,12 @@ export default function ConfigPage() {
     }
   };
 
-  const toggleApp = async (appId: string, enabled: boolean) => {
+  const removeApp = async (appId: string) => {
     setSaving(true);
     setMessage(null);
     try {
-      await apiPatch("/api/config", {
-        apps: { [appId]: { enabled } },
-      });
-      setMessage(`Updated ${appId}.`);
+      await apiPatch("/api/config", { apps: { [appId]: null } });
+      setMessage(`Removed ${appId} from the selected apps.`);
       await refetch();
     } catch (e) {
       setMessage(String(e));
@@ -105,7 +117,7 @@ export default function ConfigPage() {
     setMessage(null);
     try {
       await apiPatch("/api/config", {
-        vars: { [appId]: varsFromText(varText()[appId] ?? "") },
+        apps: { [appId]: { vars: varsFromText(varText()[appId] ?? "") } },
       });
       setMessage(`Saved ${appId} vars.`);
       await refetch();
@@ -177,7 +189,7 @@ export default function ConfigPage() {
                       <td>
                         <input
                           class="table-input"
-                          value={subdomains()[id] ?? entry.subdomain}
+                          value={subdomains()[id] ?? entry.subdomain ?? ""}
                           onInput={(e) =>
                             setSubdomains((current) => ({
                               ...current,
@@ -186,7 +198,7 @@ export default function ConfigPage() {
                           }
                         />
                       </td>
-                      <td>{entry.enabled === false ? "No" : "Yes"}</td>
+                      <td>{isAppEnabled(configRes()!.config!, id) ? "Yes" : "No"}</td>
                       <td>
                         <div class="row-actions">
                           <button
@@ -196,13 +208,15 @@ export default function ConfigPage() {
                           >
                             Save
                           </button>
-                          <button
-                            class="btn btn-ghost btn-sm"
-                            disabled={saving()}
-                            onClick={() => toggleApp(id, entry.enabled === false)}
-                          >
-                            {entry.enabled === false ? "Enable" : "Disable"}
-                          </button>
+                          {configRes()!.config!.configVersion === 2 && (
+                            <button
+                              class="btn btn-ghost btn-sm"
+                              disabled={saving()}
+                              onClick={() => removeApp(id)}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -220,7 +234,7 @@ export default function ConfigPage() {
           <div class="vars-grid">
             <For each={Object.keys(configRes()!.config!.apps)}>
               {(id) => {
-                const hiddenVars = () => hiddenSensitiveVarNames(configRes()!.config!.vars?.[id]);
+                const hiddenVars = () => hiddenSensitiveVarNames(appVars(configRes()!.config!, id));
                 return (
                   <section class="vars-panel">
                     <div class="vars-panel-header">

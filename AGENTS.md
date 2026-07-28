@@ -46,15 +46,16 @@ packages/cli/           # Shedflare CLI (init, configure, doctor — deprecated)
 
 ### Design Rules
 
-- **`shedflare.config.jsonc`** is the source of truth for deployment config (domain, email, app subdomains, secrets). It is gitignored. `shedflare.config.example.jsonc` is the committed template.
-- **App manifests** (`apps/*/shedflare.app.jsonc`) declare what vars, secrets, and resources each app needs. Keep in sync with `alchemy.run.ts`.
+- **`shedflare.config.jsonc`** is the gitignored desired-state source of truth. Version 2 is sparse: app presence means selected, and it stores only non-secret deviations from manifest defaults. `shedflare.config.example.jsonc` is the committed template.
+- **App manifests** (`apps/*/shedflare.app.jsonc`) are the catalog source of truth. They declare lifecycle, category, data sensitivity, vars, secrets, and resources; keep deployment metadata in sync with `alchemy.run.ts`.
+- **`@shedflare/core`** is the only implementation of manifest discovery, app identity, config validation, migration, config patching, and dependency ordering. Alchemy, the CLI, and the Console consume it; do not add a local manifest registry or config parser.
 - **Alchemy stacks** (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If you modify a stack, run `pnpm deploy:<app>` to apply to `prod`.
 - **Production is the default supported deploy target.** Root deploy/destroy scripts pass `--stage prod`; use direct `vp exec alchemy ... --stage <name>` commands only for temporary or test stages.
 - **Non-production stages use derived subdomains.** `prod` uses configured subdomains as-is; any other stage appends the sanitized stage, e.g. `chat` + `dev-bolt` becomes `chat-dev-bolt.example.com`.
 - **Root `alchemy.run.ts`** wires auth URL into all child apps. Update when adding a new app.
-- **Non-secret config** (domain, vars like `DEFAULT_MODEL_ID`) goes in gitignored `shedflare.config.jsonc`. **Operator secrets** use `Shedflare.WorkerSecret` in Alchemy stacks (Cloudflare Worker is source of truth; set via `shedflare secret set` or env at deploy time). See `docs/operator-secrets.md`.
+- **Non-secret config** (domain and vars like `DEFAULT_MODEL_ID`) goes in gitignored `shedflare.config.jsonc`; secrets and physical Cloudflare resource IDs do not. **Operator secrets** use `Shedflare.WorkerSecret` in Alchemy stacks (Cloudflare Worker is source of truth; set via `shedflare secret set` or env at deploy time). See `docs/operator-secrets.md`.
 - **Every interactive prompt must have a non-interactive flag equivalent** for CI and scripting.
-- **Run `shedflare doctor` to validate config** (deprecated CLI, but still works for validation).
+- **Run `shedflare doctor` to validate local and deployed state.** Use `shedflare config migrate --write` for an explicit, backed-up version-1 migration.
 
 ### Adding a New App
 
@@ -63,11 +64,11 @@ packages/cli/           # Shedflare CLI (init, configure, doctor — deprecated)
 3. Add `apps/<name>/alchemy.run.ts` with the Alchemy stack (Worker, resources, bindings).
 4. Add `apps/<name>/alchemy.test.ts` with a live smoke test.
 5. Add `apps/<name>/.dev.vars.example` with required secrets.
-6. Register the app ID in `infra/alchemy-config.ts` AppId type union.
+6. Run `pnpm registry:generate` to update the generated `@shedflare/core` app ID type.
 7. Add `deploy:<name>` and `destroy:<name>` scripts to root `package.json`.
 8. Update root `alchemy.run.ts` to compose the new stack.
 9. Update `shedflare.config.example.jsonc` with new app entry.
-10. Optionally register in `packages/cli/src/core/manifests.ts` type union if CLI tooling is still used.
+10. Run `pnpm contract:check`; it verifies generated files, manifests, and the example config.
 
 ### Schema Convention
 

@@ -1,8 +1,11 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
   "id": "chat",
   "name": "Shedflare Chat",
   "description": "AI chat interface with browser automation",
+  "lifecycle": "beta",
+  "category": "productivity",
+  "dataSensitivity": "high",
   "dependsOn": ["auth"],
   "defaultSubdomain": "chat",
   "vars": {

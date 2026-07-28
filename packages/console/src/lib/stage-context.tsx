@@ -46,7 +46,9 @@ function persistStage(stage: string): void {
 export function StageProvider(props: { children: JSX.Element }) {
   const [availableStages] = createResource(() => apiGet<StageList>("/api/stages"));
 
-  const [selectedStage, setSelectedStage] = createSignal<string>(loadPersistedStage() ?? "prod");
+  const [selectedStage, setSelectedStage] = createSignal<string>(
+    loadPersistedStage() ?? availableStages()?.currentStage ?? "prod",
+  );
 
   // Sync selected stage with the API's currentStage on first load
   // (only if there's no persisted preference)

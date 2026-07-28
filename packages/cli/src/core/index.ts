@@ -13,14 +13,13 @@ export {
   getD1DatabaseName,
 } from "./manifests.js";
 
-export { BUILTIN_MANIFESTS } from "./manifests-data.js";
-
 export {
   type ShedflareConfig,
-  type AppEntry,
+  type ShedflareConfigV2,
   loadConfig,
   validateConfig,
   writeConfig,
+  isAppSelected,
   configPath,
   exampleConfigPath,
 } from "./config.js";
