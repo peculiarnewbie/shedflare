@@ -22,11 +22,14 @@ describe("Panel", () => {
     ["lg", 8],
   ] as const)("padding %s sets padding token", (padding, token) => {
     const [, styleFn] = panel({ padding });
-    expect(styleFn()["--padding"]).toBe(token);
+    expect(Object.entries(styleFn())).toContainEqual(["--padding", token]);
   });
 
   test("elevated variant uses stronger panel background token", () => {
     const [, styleFn] = panel({ elevated: true });
-    expect(styleFn()["--background-color"]).toBe("var(--color_panel-strong)");
+    expect(Object.entries(styleFn())).toContainEqual([
+      "--background-color",
+      "var(--color_panel-strong)",
+    ]);
   });
 });

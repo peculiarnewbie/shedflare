@@ -27,6 +27,6 @@ describe("Tag", () => {
 describe("tag recipe", () => {
   test("neutral tone uses secondary text color token", () => {
     const [, styleFn] = tag({ tone: "neutral" });
-    expect(styleFn()["--color"]).toBe("var(--color_text-secondary)");
+    expect(Object.entries(styleFn())).toContainEqual(["--color", "var(--color_text-secondary)"]);
   });
 });

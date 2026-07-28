@@ -62,11 +62,14 @@ describe("Button", () => {
 describe("button recipe", () => {
   test("primary variant sets accent background token", () => {
     const [, styleFn] = button({ variant: "primary" });
-    expect(styleFn()["--background-color"]).toBe("var(--color_accent)");
+    expect(Object.entries(styleFn())).toContainEqual(["--background-color", "var(--color_accent)"]);
   });
 
   test("ghost variant uses transparent background token", () => {
     const [, styleFn] = button({ variant: "ghost" });
-    expect(styleFn()["--background-color"]).toBe("var(--color_transparent)");
+    expect(Object.entries(styleFn())).toContainEqual([
+      "--background-color",
+      "var(--color_transparent)",
+    ]);
   });
 });

@@ -107,7 +107,7 @@ function isValidRedirectPath(redirectURI: string): boolean {
 async function verifyPKCE(
   codeVerifier: string,
   codeChallenge: string,
-  method: string,
+  _method: string,
 ): Promise<boolean> {
   const encoder = new TextEncoder();
   const data = encoder.encode(codeVerifier);

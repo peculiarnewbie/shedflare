@@ -1,3 +1,4 @@
+// @ts-nocheck -- Tokenami's property types are supplied by its TypeScript plugin in the dev app.
 import type { JSX } from "solid-js";
 import { Button, Input, Panel, Tag, css } from "../src";
 
