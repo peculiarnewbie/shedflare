@@ -72,7 +72,13 @@ export default function Projects() {
 
   return (
     <div style={{ width: "100%", position: "relative" }}>
-      <div ref={shineRef} class="shine" aria-hidden="true" />
+      <div
+        ref={(el) => {
+          shineRef = el;
+        }}
+        class="shine"
+        aria-hidden="true"
+      />
       <div class="home-layout">
         <div class="two-col">
           <div class="left-col">

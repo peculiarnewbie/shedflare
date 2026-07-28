@@ -7,7 +7,7 @@
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
-    "test": "vp test",
+    "test": "vp test --passWithNoTests",
     "check": "vp check src alchemy.run.ts vite.config.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",

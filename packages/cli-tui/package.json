@@ -12,7 +12,7 @@
     "build": "vp pack",
     "check": "vp check",
     "typecheck": "tsc --noEmit",
-    "test": "vp test",
+    "test": "vp test --passWithNoTests",
     "prepare": "vp config"
   },
   "devDependencies": {

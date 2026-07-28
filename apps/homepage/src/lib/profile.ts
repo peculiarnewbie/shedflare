@@ -20,5 +20,5 @@ const FALLBACK: AppConfig = {
 
 export const PROFILE: AppConfig = {
   ...FALLBACK,
-  ...((import.meta.env.VITE_APP_CONFIG as Partial<AppConfig>) ?? {}),
+  ...(import.meta.env.VITE_APP_CONFIG as Partial<AppConfig>),
 };

@@ -151,7 +151,13 @@ export default function Home() {
 
   return (
     <div style={{ width: "100%", position: "relative" }}>
-      <div ref={shineRef} class="shine" aria-hidden="true" />
+      <div
+        ref={(el) => {
+          shineRef = el;
+        }}
+        class="shine"
+        aria-hidden="true"
+      />
       <div class="home-layout">
         <div class="two-col">
           <div class="left-col">
@@ -159,7 +165,13 @@ export default function Home() {
               <div style={{ position: "relative", width: "fit-content" }}>
                 <h1 class="name-heading">{p.name}</h1>
                 {p.nickname ? (
-                  <span ref={boltRef} id="bolt" class="name-nickname">
+                  <span
+                    ref={(el) => {
+                      boltRef = el;
+                    }}
+                    id="bolt"
+                    class="name-nickname"
+                  >
                     ({p.nickname})
                   </span>
                 ) : null}

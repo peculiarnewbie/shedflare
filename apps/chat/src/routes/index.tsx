@@ -9,6 +9,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  onCleanup,
   Suspense,
 } from "solid-js";
 import { createStore } from "solid-js/store";
@@ -909,10 +910,28 @@ export default function Home() {
   // Smart scroll: track whether user is near the bottom
   const [isNearBottom, setIsNearBottom] = createSignal(true);
   const [showScrollBtn, setShowScrollBtn] = createSignal(false);
+  const [activeMinimapMarkerId, setActiveMinimapMarkerId] = createSignal<string | null>(null);
+  const [hoveredMinimapMarker, setHoveredMinimapMarker] = createSignal<{
+    id: string;
+    top: number;
+    left: number;
+  } | null>(null);
 
   const SCROLL_THRESHOLD = 80; // px from bottom to consider "at bottom"
 
   let _isProgrammaticScroll = false;
+  let updateActiveMinimapMarker = () => {};
+  let hideMinimapCard = (_markerId?: string) => {};
+  // updateActiveMinimapMarker does a DOM query per marker — coalesce scroll
+  // bursts to one run per frame.
+  let minimapMarkerRaf = 0;
+  const scheduleActiveMinimapMarkerUpdate = () => {
+    if (minimapMarkerRaf) return;
+    minimapMarkerRaf = requestAnimationFrame(() => {
+      minimapMarkerRaf = 0;
+      updateActiveMinimapMarker();
+    });
+  };
 
   const [reasoningNearBottom, setReasoningNearBottom] = createSignal(true);
 
@@ -931,6 +950,8 @@ export default function Home() {
     const nearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
     setIsNearBottom(nearBottom);
     setShowScrollBtn(!nearBottom);
+    scheduleActiveMinimapMarkerUpdate();
+    hideMinimapCard();
 
     // Mobile header show/hide on scroll direction
     if (window.innerWidth <= 700) {
@@ -955,6 +976,10 @@ export default function Home() {
     timelineRef.scrollTo({ top: timelineRef.scrollHeight, behavior: "smooth" });
     setIsNearBottom(true);
     setShowScrollBtn(false);
+    const markers = userMessageMarkers();
+    if (markers.length > 0) {
+      setActiveMinimapMarkerId(markers[markers.length - 1]!.id);
+    }
     requestAnimationFrame(() => {
       _isProgrammaticScroll = false;
     });
@@ -1873,29 +1898,101 @@ export default function Home() {
   const userFileAttachments = (messageId: string) =>
     userAttachments(messageId).filter((attachment) => !isImageMime(attachment.mimeType));
 
+  const previewText = (text: string | null | undefined, fallback: string) => {
+    const trimmed = text?.trim();
+    if (!trimmed) return fallback;
+    return trimmed.replace(/\s+/g, " ").slice(0, 120);
+  };
+
   const userMessageMarkers = createMemo(() => {
     const ids = messageIds();
-    const total = Math.max(ids.length - 1, 1);
-    return ids
-      .map((id, index) => {
-        const message = messageById(id);
-        if (!message || message.role !== "user") return null;
-        const text = message.text.trim();
-        return {
-          id: message.id,
-          label: text || "Attachment message",
-          preview: text ? text.replace(/\s+/g, " ").slice(0, 120) : "Attachment message",
-          top: `${(index / total) * 100}%`,
-        };
-      })
-      .filter((marker): marker is { id: string; label: string; preview: string; top: string } =>
-        Boolean(marker),
-      );
+    const markers: Array<{ id: string; label: string; preview: string }> = [];
+    for (let index = 0; index < ids.length; index++) {
+      const message = messageById(ids[index]!);
+      if (!message || message.role !== "user") continue;
+      const label = previewText(message.text, "Attachment message");
+      const reply = ids
+        .slice(index + 1)
+        .map((id) => messageById(id))
+        .find((candidate) => candidate?.role === "assistant");
+      const preview = previewText(reply?.text, label);
+      markers.push({ id: message.id, label, preview });
+    }
+    return markers;
+  });
+
+  const hoveredMinimapCard = createMemo(() => {
+    const hovered = hoveredMinimapMarker();
+    if (!hovered) return null;
+    const marker = userMessageMarkers().find((entry) => entry.id === hovered.id);
+    if (!marker) return null;
+    return { ...marker, top: hovered.top, left: hovered.left };
+  });
+
+  const showMinimapCard = (markerId: string, target: HTMLElement) => {
+    const rect = target.getBoundingClientRect();
+    setHoveredMinimapMarker({
+      id: markerId,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 10,
+    });
+  };
+
+  hideMinimapCard = (markerId?: string) => {
+    setHoveredMinimapMarker((current) => {
+      if (!current) return null;
+      if (markerId && current.id !== markerId) return current;
+      return null;
+    });
+  };
+
+  updateActiveMinimapMarker = () => {
+    const markers = userMessageMarkers();
+    if (!timelineRef || markers.length === 0) {
+      setActiveMinimapMarkerId(null);
+      return;
+    }
+
+    const timelineRect = timelineRef.getBoundingClientRect();
+    const focusY = timelineRect.top + Math.min(120, timelineRect.height * 0.28);
+    let bestId = markers[markers.length - 1]!.id;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const marker of markers) {
+      const target = timelineRef.querySelector<HTMLElement>(`[data-message-id="${marker.id}"]`);
+      if (!target) continue;
+      const distance = Math.abs(target.getBoundingClientRect().top - focusY);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestId = marker.id;
+      }
+    }
+
+    setActiveMinimapMarkerId(bestId);
+  };
+
+  // Track messageIds() only: it has stable equality, so this fires when a
+  // message is added/removed but not on every streaming token. Reading
+  // userMessageMarkers() here would re-run on every message text update.
+  createEffect(() => {
+    messageIds();
+    queueMicrotask(updateActiveMinimapMarker);
+  });
+
+  createEffect(() => {
+    const onResize = () => {
+      updateActiveMinimapMarker();
+      hideMinimapCard();
+    };
+    window.addEventListener("resize", onResize);
+    onCleanup(() => window.removeEventListener("resize", onResize));
   });
 
   const scrollToMessage = (messageId: string) => {
     const target = timelineRef?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
     if (!target) return;
+    setActiveMinimapMarkerId(messageId);
+    hideMinimapCard();
     target.scrollIntoView({ block: "center", behavior: "smooth" });
   };
 
@@ -3717,19 +3814,41 @@ export default function Home() {
                             <button
                               type="button"
                               class="message-minimap-marker"
-                              style={{ top: marker.top }}
+                              classList={{
+                                "is-active": activeMinimapMarkerId() === marker.id,
+                              }}
                               aria-label={`Scroll to: ${marker.label}`}
+                              aria-current={
+                                activeMinimapMarkerId() === marker.id ? "location" : undefined
+                              }
                               onClick={() => scrollToMessage(marker.id)}
+                              onMouseEnter={(event) =>
+                                showMinimapCard(marker.id, event.currentTarget)
+                              }
+                              onMouseLeave={() => hideMinimapCard(marker.id)}
+                              onFocus={(event) => showMinimapCard(marker.id, event.currentTarget)}
+                              onBlur={() => hideMinimapCard(marker.id)}
                             >
                               <span class="message-minimap-tick" aria-hidden="true" />
-                              <span class="message-minimap-card">
-                                <strong>{marker.label}</strong>
-                                <span>{marker.preview}</span>
-                              </span>
                             </button>
                           )}
                         </For>
                       </nav>
+                      <Show when={hoveredMinimapCard()}>
+                        {(card) => (
+                          <div
+                            class="message-minimap-card is-visible"
+                            style={{
+                              top: `${card().top}px`,
+                              left: `${card().left}px`,
+                            }}
+                            role="tooltip"
+                          >
+                            <strong>{card().label}</strong>
+                            <span>{card().preview}</span>
+                          </div>
+                        )}
+                      </Show>
                     </Show>
                     <section
                       class="timeline"

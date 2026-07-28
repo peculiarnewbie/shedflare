@@ -19,50 +19,50 @@ const baseFile: DriveFile = {
 
 describe("FileCard", () => {
   test("renders file name", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <FileCard file={baseFile} />
       </TestDriveProvider>
     ));
-    expect(getByText("document.pdf")).toBeTruthy();
+    expect(view.getByText("document.pdf")).toBeTruthy();
   });
 
   test("renders file description", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <FileCard file={baseFile} />
       </TestDriveProvider>
     ));
-    expect(getByText("A test document")).toBeTruthy();
+    expect(view.getByText("A test document")).toBeTruthy();
   });
 
   test("renders mime type when no description", () => {
     const file = { ...baseFile, description: "" };
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <FileCard file={file} />
       </TestDriveProvider>
     ));
-    expect(getByText("application/pdf")).toBeTruthy();
+    expect(view.getByText("application/pdf")).toBeTruthy();
   });
 
   test("renders formatted size", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <FileCard file={baseFile} />
       </TestDriveProvider>
     ));
-    expect(getByText("2 KB")).toBeTruthy();
+    expect(view.getByText("2 KB")).toBeTruthy();
   });
 
   test("renders tags", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <FileCard file={baseFile} />
       </TestDriveProvider>
     ));
-    expect(getByText("work")).toBeTruthy();
-    expect(getByText("important")).toBeTruthy();
+    expect(view.getByText("work")).toBeTruthy();
+    expect(view.getByText("important")).toBeTruthy();
   });
 
   test("renders file glyph for non-previewable files", () => {
@@ -90,12 +90,12 @@ describe("FileCard", () => {
 
   test("renders public badge when file is public", () => {
     const publicFile: DriveFile = { ...baseFile, isPublic: true };
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <FileCard file={publicFile} />
       </TestDriveProvider>
     ));
-    expect(getByText("Public")).toBeTruthy();
+    expect(view.getByText("Public")).toBeTruthy();
   });
 
   test("does not render public badge when file is not public", () => {

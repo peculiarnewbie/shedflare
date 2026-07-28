@@ -15,7 +15,7 @@ describe("ToastContainer", () => {
   });
 
   test("renders toasts from context", () => {
-    const { container, getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider
         value={{
           toasts: () => [
@@ -27,9 +27,9 @@ describe("ToastContainer", () => {
         <ToastContainer />
       </TestDriveProvider>
     ));
-    expect(getByText("File uploaded")).toBeTruthy();
-    expect(getByText("Error occurred")).toBeTruthy();
-    const toastEls = container.querySelectorAll(".toast");
+    expect(view.getByText("File uploaded")).toBeTruthy();
+    expect(view.getByText("Error occurred")).toBeTruthy();
+    const toastEls = view.container.querySelectorAll(".toast");
     expect(toastEls).toHaveLength(2);
   });
 

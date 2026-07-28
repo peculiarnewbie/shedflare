@@ -71,7 +71,9 @@ export default function FileRow(props: { file: DriveFile }) {
           }
         >
           <input
-            ref={renameInput}
+            ref={(el) => {
+              renameInput = el;
+            }}
             class="rename-input"
             value={renameValue()}
             onInput={(e) => setRenameValue(e.currentTarget.value)}

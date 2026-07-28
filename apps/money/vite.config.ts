@@ -18,6 +18,9 @@ export default defineConfig({
   server: {
     allowedHosts: true,
   },
+  test: {
+    include: ["src/**/*.test.{ts,tsx}"],
+  },
   staged: {
     "*": "vp check --fix",
   },

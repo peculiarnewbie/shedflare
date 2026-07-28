@@ -14,9 +14,7 @@ export const BUILTIN_MANIFESTS: Record<string, AppManifest> = {
       OWNER_EMAIL: { from: "ownerEmail", description: "Deployment owner email" },
     },
     secrets: {},
-    resources: [
-      { type: "d1", binding: "DB", name: "shedflare-anki", idField: "DB_ID" },
-    ],
+    resources: [{ type: "d1", binding: "DB", name: "shedflare-anki", idField: "DB_ID" }],
   },
   auth: {
     id: "auth",

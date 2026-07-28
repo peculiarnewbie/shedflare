@@ -84,7 +84,9 @@ export default function FileCard(props: { file: DriveFile }) {
       <div class="file-body">
         <Show when={isEditing()} fallback={<h2 onDblClick={startRename}>{file.name}</h2>}>
           <input
-            ref={renameInput}
+            ref={(el) => {
+              renameInput = el;
+            }}
             class="rename-input"
             value={renameValue()}
             onInput={(e) => setRenameValue(e.currentTarget.value)}

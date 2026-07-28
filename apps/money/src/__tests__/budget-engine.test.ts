@@ -16,7 +16,7 @@ const MIGRATIONS_DIR = join(import.meta.dirname, "../migrations");
 
 function createTestDb(): Db {
   const sqlite = new DatabaseSync(":memory:");
-  const db = drizzle({ client: sqlite, schema });
+  const db = drizzle({ client: sqlite });
 
   const dirs = readdirSync(MIGRATIONS_DIR).sort();
   for (const dir of dirs) {

@@ -5,9 +5,7 @@ export type MigrationManifest = Record<string, string>;
 
 const MIGRATIONS_TABLE = "__drizzle_migrations";
 
-function ensureMigrationsTable<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
-): void {
+function ensureMigrationsTable(db: DrizzleSqliteDODatabase): void {
   db.run(sql`
     CREATE TABLE IF NOT EXISTS ${sql.identifier(MIGRATIONS_TABLE)} (
       id INTEGER PRIMARY KEY,
@@ -19,8 +17,8 @@ function ensureMigrationsTable<TSchema extends Record<string, unknown>>(
   `);
 }
 
-function listAppliedMigrations<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
+function listAppliedMigrations(
+  db: DrizzleSqliteDODatabase,
 ): Array<{ name: string | null; hash: string | null }> {
   const rows = db.values(sql`SELECT name, hash FROM ${sql.identifier(MIGRATIONS_TABLE)}`) as Array<
     [unknown, unknown]
@@ -31,8 +29,8 @@ function listAppliedMigrations<TSchema extends Record<string, unknown>>(
   }));
 }
 
-function recordMigration<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
+function recordMigration(
+  db: DrizzleSqliteDODatabase,
   name: string,
   hash: string,
   createdAt: number,
@@ -54,20 +52,14 @@ function parseMigrationName(name: string): {
   return { timestamp, folderMillis: millis };
 }
 
-function tableExists<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
-  tableName: string,
-): boolean {
+function tableExists(db: DrizzleSqliteDODatabase, tableName: string): boolean {
   const rows = db.values(
     sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ${tableName}`,
   ) as Array<[number]>;
   return rows.length > 0;
 }
 
-function tableColumns<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
-  tableName: string,
-): Set<string> {
+function tableColumns(db: DrizzleSqliteDODatabase, tableName: string): Set<string> {
   const rows = db.values(sql`PRAGMA table_info(${sql.raw(tableName)})`) as Array<
     [number, string, string, number, unknown, number]
   >;
@@ -83,9 +75,7 @@ function tableColumns<TSchema extends Record<string, unknown>>(
  * chat data migrate cleanly without losing history. New DOs take the normal
  * migration path.
  */
-function repairLegacySchema<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
-): void {
+function repairLegacySchema(db: DrizzleSqliteDODatabase): void {
   const repairs: Array<{ table: string; column: string; ddl: string }> = [
     {
       table: "workspaces",
@@ -137,10 +127,7 @@ function makeIdempotent(migrationSql: string): string {
     .replace(/CREATE INDEX(?! IF NOT EXISTS)\s+/gi, "CREATE INDEX IF NOT EXISTS ");
 }
 
-function runMigrationStatements<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
-  migrationSql: string,
-): void {
+function runMigrationStatements(db: DrizzleSqliteDODatabase, migrationSql: string): void {
   const statements = migrationSql
     .split("--> statement-breakpoint")
     .map((s) => s.trim())
@@ -155,10 +142,7 @@ function runMigrationStatements<TSchema extends Record<string, unknown>>(
  * migrator, this surfaces the actual SQL error when a statement fails instead
  * of masking it behind a generic "Rollback" error.
  */
-export function runMigrations<TSchema extends Record<string, unknown>>(
-  db: DrizzleSqliteDODatabase<TSchema>,
-  migrations: MigrationManifest,
-): void {
+export function runMigrations(db: DrizzleSqliteDODatabase, migrations: MigrationManifest): void {
   ensureMigrationsTable(db);
 
   const applied = listAppliedMigrations(db);

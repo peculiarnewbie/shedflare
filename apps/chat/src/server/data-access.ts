@@ -397,7 +397,7 @@ export function inflateRow(tableName: string, row: Record<string, unknown>) {
 export class DataAccess {
   constructor(
     public readonly syncAccess: SyncDataAccess,
-    public readonly db: DrizzleSqliteDODatabase<typeof dbSchema>,
+    public readonly db: DrizzleSqliteDODatabase,
   ) {}
 
   exec(query: string, ...params: any[]) {

@@ -5,7 +5,11 @@ export type CommandHandlerResult = {
   followUp?: () => Promise<void>;
 };
 
-export type CommandHandlerFn<Ctx> = (opId: string, payload: any, ctx: Ctx) => CommandHandlerResult;
+export type CommandHandlerFn<Ctx, Payload = unknown> = (
+  opId: string,
+  payload: Payload,
+  ctx: Ctx,
+) => CommandHandlerResult;
 
 export class HandlerRegistry<Ctx> {
   private readonly handlers = new Map<string, CommandHandlerFn<Ctx>>();

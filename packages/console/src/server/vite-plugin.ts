@@ -1,7 +1,18 @@
-import type { Plugin } from "vite";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { handleApiRequest } from "./handler.ts";
 
-export function consoleApiPlugin(): Plugin {
+type DevServer = {
+  middlewares: {
+    use(handler: (req: IncomingMessage, res: ServerResponse, next: () => void) => void): void;
+  };
+};
+
+type DevServerPlugin = {
+  name: string;
+  configureServer(server: DevServer): void;
+};
+
+export function consoleApiPlugin(): DevServerPlugin {
   return {
     name: "shedflare-console-api",
     configureServer(server) {

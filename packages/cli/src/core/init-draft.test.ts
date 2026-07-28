@@ -1,11 +1,12 @@
 import { expect, test } from "vite-plus/test";
 import { createDraft, validateDraft, createPlan } from "./init-draft.js";
+import { APP_IDS } from "./manifests.js";
 import { BUILTIN_MANIFESTS } from "./manifests-data.js";
 import type { InitDraft } from "./init-draft.js";
 
 test("createDraft defaults to all apps", () => {
   const draft = createDraft({});
-  expect(draft.apps).toEqual(["auth", "chat", "drive"]);
+  expect(draft.apps).toEqual(APP_IDS);
   expect(draft.mockResources).toBe(false);
 });
 

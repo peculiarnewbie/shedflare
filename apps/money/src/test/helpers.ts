@@ -5,7 +5,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { D1Shim } from "@shedflare/test-utils/d1-shim";
 import { R2Mock } from "@shedflare/test-utils/r2-mock";
-import * as schema from "../db/schema";
 import { createMoneyTestD1 } from "./d1-shim";
 
 export type MoneyTestEnv = {
@@ -41,7 +40,7 @@ export function createMoneyTestEnv(overrides?: Partial<MoneyTestEnv>): MoneyTest
  * `createDb(env.MONEY_DB)`, so handler code can run unmodified.
  */
 export function dbFor(env: MoneyTestEnv) {
-  return drizzle(env.MONEY_DB as unknown as D1Database, { schema });
+  return drizzle(env.MONEY_DB as unknown as D1Database);
 }
 
 export type Db = ReturnType<typeof dbFor>;

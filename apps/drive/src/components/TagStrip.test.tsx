@@ -6,7 +6,7 @@ import { TestDriveProvider } from "../test/test-context";
 
 describe("TagStrip", () => {
   test("renders All button and tag buttons", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider
         value={{
           tags: () => [
@@ -18,24 +18,24 @@ describe("TagStrip", () => {
         <TagStrip />
       </TestDriveProvider>
     ));
-    expect(getByText("All")).toBeTruthy();
-    expect(getByText(/work/)).toBeTruthy();
-    expect(getByText(/personal/)).toBeTruthy();
+    expect(view.getByText("All")).toBeTruthy();
+    expect(view.getByText(/work/)).toBeTruthy();
+    expect(view.getByText(/personal/)).toBeTruthy();
   });
 
   test("All button is active when no tag selected", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider>
         <TagStrip />
       </TestDriveProvider>
     ));
-    const allBtn = getByText("All");
+    const allBtn = view.getByText("All");
     expect(allBtn.classList.contains("active")).toBe(true);
   });
 
   test("clicking a tag calls setSelectedTag", async () => {
     let selected = "";
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider
         value={{
           tags: () => [{ name: "work", count: 5 }],
@@ -48,12 +48,12 @@ describe("TagStrip", () => {
         <TagStrip />
       </TestDriveProvider>
     ));
-    fireEvent.click(getByText(/work/));
+    fireEvent.click(view.getByText(/work/));
     expect(selected).toBe("work");
   });
 
   test("tag button is active when selected", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider
         value={{
           tags: () => [{ name: "work", count: 5 }],
@@ -63,12 +63,12 @@ describe("TagStrip", () => {
         <TagStrip />
       </TestDriveProvider>
     ));
-    const tagBtn = getByText(/work/);
+    const tagBtn = view.getByText(/work/);
     expect(tagBtn.classList.contains("active")).toBe(true);
   });
 
   test("renders tag count", () => {
-    const { getByText } = render(() => (
+    const view = render(() => (
       <TestDriveProvider
         value={{
           tags: () => [{ name: "work", count: 42 }],
@@ -77,6 +77,6 @@ describe("TagStrip", () => {
         <TagStrip />
       </TestDriveProvider>
     ));
-    expect(getByText("42")).toBeTruthy();
+    expect(view.getByText("42")).toBeTruthy();
   });
 });

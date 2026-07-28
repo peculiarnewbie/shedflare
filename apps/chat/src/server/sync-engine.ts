@@ -110,7 +110,7 @@ function shouldLogBroadcast(envelope: SyncServerEnvelope) {
 // ---------------------------------------------------------------------------
 
 export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
-  private readonly db: DrizzleSqliteDODatabase<typeof dbSchema>;
+  private readonly db: DrizzleSqliteDODatabase;
   private readonly chatAccess: DataAccess;
   private readonly eventStore: EventStore;
   private readonly assistantTurnControllers = new Map<string, AbortController>();
@@ -120,7 +120,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
   constructor(ctx: DurableObjectState, env: AppEnv) {
     super(ctx, env);
-    this.db = drizzle(ctx.storage, { schema: dbSchema, logger: false });
+    this.db = drizzle(ctx.storage, { logger: false });
     this.chatAccess = new DataAccess(this.access, this.db);
     this.eventStore = new EventStore(this.chatAccess);
     this.registerChatHandlers();

@@ -45,7 +45,36 @@ function comparableLimits(
   return { free: limits.free, paid: limits.paid, label: limits.unit };
 }
 
-function safeSum(items: { sum?: Record<string, number | null> }[], key: string): number {
+type AnalyticsSum = Record<string, number | null | undefined>;
+type SumGroup = { sum?: AnalyticsSum };
+type ActionCountGroup = { count?: number | null; dimensions?: { actionType?: string } };
+type R2OperationGroup = {
+  sum?: { requests?: number | null };
+  dimensions?: { actionType?: string };
+};
+type StorageGroup = { max?: { byteCount?: number | null; payloadSize?: number | null } };
+type AccountAnalytics = {
+  workersInvocationsAdaptive?: SumGroup[];
+  d1AnalyticsAdaptiveGroups?: SumGroup[];
+  kvOperationsAdaptiveGroups?: ActionCountGroup[];
+  kvStorageAdaptiveGroups?: StorageGroup[];
+  durableObjectsInvocationsAdaptiveGroups?: SumGroup[];
+  r2OperationsAdaptiveGroups?: R2OperationGroup[];
+  r2StorageAdaptiveGroups?: StorageGroup[];
+};
+type ZoneAnalytics = { httpRequests1mGroups?: SumGroup[] };
+type AccountAnalyticsResponse = { viewer?: { accounts?: AccountAnalytics[] } };
+type ZoneAnalyticsResponse = { viewer?: { zones?: ZoneAnalytics[] } };
+
+function accountAnalytics(data: unknown): AccountAnalytics | undefined {
+  return (data as AccountAnalyticsResponse | null)?.viewer?.accounts?.[0];
+}
+
+function zoneAnalytics(data: unknown): ZoneAnalytics | undefined {
+  return (data as ZoneAnalyticsResponse | null)?.viewer?.zones?.[0];
+}
+
+function safeSum(items: readonly SumGroup[], key: string): number {
   let total = 0;
   for (const item of items) total += item.sum?.[key] ?? 0;
   return total;
@@ -146,20 +175,19 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
 
         const products: ProductUsage[] = [];
 
-        const workersData = workersResult as any;
-        const workersInvocations =
-          workersData?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0];
+        const workersInvocations = accountAnalytics(workersResult)?.workersInvocationsAdaptive?.[0];
         if (workersInvocations) {
-          const sum = workersInvocations.sum as any;
+          const sum = workersInvocations.sum ?? {};
           const limits = PLAN_LIMITS.find((p) => p.id === "workers")!.metrics;
+          const requests = sum.requests ?? 0;
           products.push({
             id: "workers",
             name: "Workers",
             metrics: [
               {
                 label: "Requests",
-                used: sum.requests ?? 0,
-                unit: formatCount(sum.requests ?? 0),
+                used: requests,
+                unit: formatCount(requests),
                 limits: comparableLimits(limits.requests, period),
                 note: "GraphQL Analytics estimate; not billing-grade.",
               },
@@ -167,8 +195,7 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const d1Data = d1Result as any;
-        const d1Groups = (d1Data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups ?? []) as any[];
+        const d1Groups = accountAnalytics(d1Result)?.d1AnalyticsAdaptiveGroups ?? [];
         if (d1Groups.length > 0) {
           const limits = PLAN_LIMITS.find((p) => p.id === "d1")!.metrics;
           products.push({
@@ -193,19 +220,17 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const kvOpsData = kvOpsResult as any;
-        const kvOps = (kvOpsData?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups ?? []) as any[];
+        const kvOps = accountAnalytics(kvOpsResult)?.kvOperationsAdaptiveGroups ?? [];
         if (kvOps.length > 0) {
           const limits = PLAN_LIMITS.find((p) => p.id === "kv")!.metrics;
           const reads = kvOps
-            .filter((o: any) => o.dimensions?.actionType === "read")
-            .reduce((s: number, o: any) => s + o.count, 0);
+            .filter((o) => o.dimensions?.actionType === "read")
+            .reduce((s, o) => s + (o.count ?? 0), 0);
           const writes = kvOps
-            .filter((o: any) => o.dimensions?.actionType === "write")
-            .reduce((s: number, o: any) => s + o.count, 0);
-          const storage = (kvStorageResult as any)?.viewer?.accounts?.[0]
-            ?.kvStorageAdaptiveGroups?.[0]?.max;
-          const metrics: any[] = [
+            .filter((o) => o.dimensions?.actionType === "write")
+            .reduce((s, o) => s + (o.count ?? 0), 0);
+          const storage = accountAnalytics(kvStorageResult)?.kvStorageAdaptiveGroups?.[0]?.max;
+          const metrics: ProductUsage["metrics"] = [
             {
               label: "Reads",
               used: reads,
@@ -232,9 +257,7 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           products.push({ id: "kv", name: "Workers KV", metrics });
         }
 
-        const doData = doResult as any;
-        const doGroups = (doData?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ??
-          []) as any[];
+        const doGroups = accountAnalytics(doResult)?.durableObjectsInvocationsAdaptiveGroups ?? [];
         if (doGroups.length > 0) {
           const limits = PLAN_LIMITS.find((p) => p.id === "durableObjects")!.metrics;
           products.push({
@@ -252,16 +275,14 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const r2Data = r2Result as any;
-        const r2Ops = (r2Data?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups ?? []) as any[];
-        const r2Storage = (r2StorageResult as any)?.viewer?.accounts?.[0]
-          ?.r2StorageAdaptiveGroups?.[0]?.max;
+        const r2Ops = accountAnalytics(r2Result)?.r2OperationsAdaptiveGroups ?? [];
+        const r2Storage = accountAnalytics(r2StorageResult)?.r2StorageAdaptiveGroups?.[0]?.max;
         const storageBytes = r2Storage?.payloadSize ?? 0;
 
         if (r2Ops.length > 0 || storageBytes > 0) {
           const limits = PLAN_LIMITS.find((p) => p.id === "r2")!.metrics;
           const classA = r2Ops
-            .filter((o: any) =>
+            .filter((o) =>
               [
                 "PutObject",
                 "CopyObject",
@@ -276,11 +297,11 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 "ListBuckets",
                 "ListMultipartUploads",
                 "UploadPartCopy",
-              ].includes(o.dimensions?.actionType),
+              ].includes(o.dimensions?.actionType ?? ""),
             )
-            .reduce((s: number, o: any) => s + (o.sum?.requests ?? 0), 0);
+            .reduce((s, o) => s + (o.sum?.requests ?? 0), 0);
           const classB = r2Ops
-            .filter((o: any) =>
+            .filter((o) =>
               [
                 "HeadObject",
                 "HeadBucket",
@@ -294,9 +315,9 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
                 "DeleteObjects",
                 "DeleteBucket",
                 "AbortMultipartUpload",
-              ].includes(o.dimensions?.actionType),
+              ].includes(o.dimensions?.actionType ?? ""),
             )
-            .reduce((s: number, o: any) => s + (o.sum?.requests ?? 0), 0);
+            .reduce((s, o) => s + (o.sum?.requests ?? 0), 0);
 
           products.push({
             id: "r2",
@@ -326,8 +347,7 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const httpData = httpResult as any;
-        const httpGroup = httpData?.viewer?.zones?.[0]?.httpRequests1mGroups?.[0] as any;
+        const httpGroup = zoneAnalytics(httpResult)?.httpRequests1mGroups?.[0];
         if (httpGroup) {
           const limits = PLAN_LIMITS.find((p) => p.id === "http")!.metrics;
           products.push({
