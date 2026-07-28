@@ -60,7 +60,7 @@ async function main() {
   try {
     deployed = await deployDrive();
     console.log(`Testing ${deployed.url}`);
-    runPlaywright(deployed.url);
+    runPlaywright(deployed.url ?? deployed.configuredUrl);
     console.log("Drive E2E passed");
   } finally {
     console.log(`Destroying drive E2E stage ${stage}`);

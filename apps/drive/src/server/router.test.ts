@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach } from "vite-plus/test";
 import { createRouter } from "./router";
 import { createTestD1, D1Shim } from "../test/d1-shim";
 import { R2Mock } from "../test/r2-mock";
+import { MULTIPART_PART_SIZE, SINGLE_UPLOAD_MAX_BYTES } from "./impl/files";
 
 function makeTestEnv(db: D1Shim, files: R2Mock) {
   return {
@@ -75,6 +76,123 @@ describe("file API", () => {
 
     const res = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
     expect(res.status).toBe(400);
+  });
+
+  test("POST /api/files rejects oversized single-request uploads with an actionable error", async () => {
+    const res = await router.fetch(
+      makeRequest("/api/files", {
+        method: "POST",
+        headers: { "content-length": String(SINGLE_UPLOAD_MAX_BYTES + 1) },
+        body: "too large",
+      }),
+    );
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({
+      code: "single_upload_too_large",
+      retryable: false,
+    });
+  });
+
+  test("multipart upload stores a large file and its metadata", async () => {
+    const finalChunk = new TextEncoder().encode("final chunk");
+    const size = MULTIPART_PART_SIZE + finalChunk.length;
+    const createRes = await router.fetch(
+      makeRequest("/api/files/multipart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "large-video.mp4",
+          mimeType: "video/mp4",
+          size,
+          description: "large upload",
+          tags: "video, archive",
+        }),
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const session = (await createRes.json()) as {
+      fileId: string;
+      uploadId: string;
+      partSize: number;
+    };
+    expect(session.partSize).toBe(MULTIPART_PART_SIZE);
+
+    const firstChunk = new Uint8Array(MULTIPART_PART_SIZE);
+    firstChunk.fill(7);
+    const uploadedParts: Array<{ partNumber: number; etag: string }> = [];
+    for (const [index, chunk] of [firstChunk, finalChunk].entries()) {
+      const partNumber = index + 1;
+      const partRes = await router.fetch(
+        makeRequest(`/api/files/multipart/${session.fileId}/parts/${partNumber}`, {
+          method: "PUT",
+          headers: { "x-shedflare-upload-id": session.uploadId },
+          body: chunk,
+        }),
+      );
+      expect(partRes.status).toBe(200);
+      uploadedParts.push((await partRes.json()) as { partNumber: number; etag: string });
+    }
+
+    const completeRes = await router.fetch(
+      makeRequest(`/api/files/multipart/${session.fileId}/complete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          uploadId: session.uploadId,
+          parts: uploadedParts,
+          name: "large-video.mp4",
+          mimeType: "video/mp4",
+          size,
+          description: "large upload",
+          tags: "video, archive",
+        }),
+      }),
+    );
+    expect(completeRes.status).toBe(201);
+    const completed = (await completeRes.json()) as {
+      file: { id: string; name: string; size: number; tags: string[] };
+    };
+    expect(completed.file).toMatchObject({
+      id: session.fileId,
+      name: "large-video.mp4",
+      size,
+    });
+    expect(completed.file.tags.sort()).toEqual(["archive", "video"]);
+
+    const downloadRes = await router.fetch(makeRequest(`/api/files/${session.fileId}/download`));
+    expect(downloadRes.status).toBe(200);
+    expect((await downloadRes.arrayBuffer()).byteLength).toBe(size);
+    expect(r2.pendingMultipartUploads).toBe(0);
+  });
+
+  test("multipart upload can be canceled without leaving an object", async () => {
+    const createRes = await router.fetch(
+      makeRequest("/api/files/multipart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "canceled.bin",
+          mimeType: "application/octet-stream",
+          size: MULTIPART_PART_SIZE + 1,
+          description: "",
+          tags: "",
+        }),
+      }),
+    );
+    const session = (await createRes.json()) as { fileId: string; uploadId: string };
+
+    const abortRes = await router.fetch(
+      makeRequest(`/api/files/multipart/${session.fileId}`, {
+        method: "DELETE",
+        headers: { "x-shedflare-upload-id": session.uploadId },
+      }),
+    );
+
+    expect(abortRes.status).toBe(200);
+    expect(await abortRes.json()).toEqual({ ok: true });
+    expect(r2.pendingMultipartUploads).toBe(0);
+    expect(r2.has(`files/${session.fileId}`)).toBe(false);
   });
 
   test("full CRUD lifecycle", async () => {

@@ -424,6 +424,32 @@ select {
   font-size: 0.78rem;
 }
 
+.upload-progress {
+  display: grid;
+  gap: 5px;
+}
+
+.upload-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.upload-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.upload-progress-detail {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .upload-tags-input,
 .upload-desc-input {
   min-height: 36px;

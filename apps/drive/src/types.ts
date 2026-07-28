@@ -9,6 +9,12 @@ export type FileResponse = SharedSchema.FileResponse;
 export const FilesResponse = SharedSchema.FilesResponse;
 export type FilesResponse = SharedSchema.FilesResponse;
 
+export const MultipartUploadResponse = SharedSchema.MultipartUploadResponse;
+export type MultipartUploadResponse = SharedSchema.MultipartUploadResponse;
+
+export const MultipartPartResponse = SharedSchema.MultipartPartResponse;
+export type MultipartPartResponse = SharedSchema.MultipartPartResponse;
+
 export const SessionResponse = SharedSchema.SessionResponse;
 export type SessionResponse = SharedSchema.SessionResponse;
 

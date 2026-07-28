@@ -1,7 +1,6 @@
 import { createSignal } from "solid-js";
-import { useDrive } from "../context";
-import { FileResponse } from "../types";
-import * as Schema from "effect/Schema";
+import { formatSize, useDrive } from "../context";
+import { DriveUploadError, uploadDriveFile, type UploadProgress } from "../lib/upload";
 
 export default function UploadPanel() {
   const ctx = useDrive();
@@ -10,6 +9,7 @@ export default function UploadPanel() {
   const [dragging, setDragging] = createSignal(false);
   const [description, setDescription] = createSignal("");
   const [tags, setTags] = createSignal("");
+  const [progress, setProgress] = createSignal<UploadProgress | null>(null);
   let uploadController: AbortController | null = null;
 
   function cancelUpload() {
@@ -25,23 +25,19 @@ export default function UploadPanel() {
     const file = input?.files?.[0];
     if (!file) return;
 
-    const data = new FormData();
-    data.set("file", file);
-    data.set("description", description());
-    data.set("tags", tags());
-
     setBusy(true);
     setUploadingFileName(file.name);
+    setProgress(null);
     ctx.setError("");
     uploadController = new AbortController();
     try {
-      const response = await fetch("/api/files", {
-        method: "POST",
-        body: data,
+      await uploadDriveFile({
+        file,
+        description: description(),
+        tags: tags(),
         signal: uploadController.signal,
+        onProgress: setProgress,
       });
-      if (!response.ok) throw new Error(await response.text());
-      Schema.decodeUnknownSync(FileResponse)(await response.json());
       form.reset();
       setDescription("");
       setTags("");
@@ -52,14 +48,15 @@ export default function UploadPanel() {
         ctx.addToast(`Canceled ${file.name}`, "info");
         return;
       }
-      if (err instanceof Error && err.message.includes("Unauthorized")) {
+      if (err instanceof DriveUploadError && err.status === 401) {
         ctx.addToast("Session expired — please sign in again", "error");
         return;
       }
-      ctx.setError(err instanceof Error ? err.message : "Upload failed");
+      ctx.addToast(err instanceof Error ? err.message : "Upload failed. Retry the file.", "error");
     } finally {
       setBusy(false);
       setUploadingFileName("");
+      setProgress(null);
       uploadController = null;
     }
   }
@@ -125,9 +122,24 @@ export default function UploadPanel() {
           }}
         />
         <span class="drop-text">
-          {busy() ? `Uploading ${uploadingFileName()}` : "Drop files here or click to browse"}
+          {busy()
+            ? `Uploading ${uploadingFileName()}${progress() ? ` · ${progress()!.percent}%` : ""}`
+            : "Drop files here or click to browse"}
         </span>
       </label>
+      {busy() && progress() && (
+        <div class="upload-progress" aria-live="polite">
+          <div class="upload-progress-track">
+            <span style={{ width: `${progress()!.percent}%` }} />
+          </div>
+          <span class="upload-progress-detail">
+            {formatSize(progress()!.uploadedBytes)} of {formatSize(progress()!.totalBytes)}
+            {progress()!.totalParts > 1
+              ? ` · ${progress()!.completedParts}/${progress()!.totalParts} parts`
+              : ""}
+          </span>
+        </div>
+      )}
       <input
         class="upload-tags-input"
         value={tags()}

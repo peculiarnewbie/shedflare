@@ -1,12 +1,42 @@
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
-import { DeleteResponse, FileResponse, FilesResponse, TagsResponse } from "../shared/schema";
+import {
+  DeleteResponse,
+  FileResponse,
+  FilesResponse,
+  MultipartPartResponse,
+  MultipartUploadResponse,
+  TagsResponse,
+} from "../shared/schema";
 
 const fileListEp = HttpApiEndpoint.get("list", "/api/files", {
   success: FilesResponse,
 });
 const fileCreateEp = HttpApiEndpoint.post("create", "/api/files", {
   success: FileResponse,
+});
+const multipartCreateEp = HttpApiEndpoint.post("multipartCreate", "/api/files/multipart", {
+  success: MultipartUploadResponse,
+});
+const multipartPartEp = HttpApiEndpoint.put(
+  "multipartPart",
+  "/api/files/multipart/:id/parts/:partNumber",
+  {
+    params: Schema.Struct({ id: Schema.String, partNumber: Schema.String }),
+    success: MultipartPartResponse,
+  },
+);
+const multipartCompleteEp = HttpApiEndpoint.post(
+  "multipartComplete",
+  "/api/files/multipart/:id/complete",
+  {
+    params: Schema.Struct({ id: Schema.String }),
+    success: FileResponse,
+  },
+);
+const multipartAbortEp = HttpApiEndpoint.delete("multipartAbort", "/api/files/multipart/:id", {
+  params: Schema.Struct({ id: Schema.String }),
+  success: DeleteResponse,
 });
 const fileUpdateEp = HttpApiEndpoint.patch("update", "/api/files/:id", {
   params: Schema.Struct({ id: Schema.String }),
@@ -28,6 +58,10 @@ const filePreviewEp = HttpApiEndpoint.get("preview", "/api/files/:id/preview", {
 const filesGroup = HttpApiGroup.make("files").add(
   fileListEp,
   fileCreateEp,
+  multipartCreateEp,
+  multipartPartEp,
+  multipartCompleteEp,
+  multipartAbortEp,
   fileUpdateEp,
   fileDeleteEp,
   fileDownloadEp,

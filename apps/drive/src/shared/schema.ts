@@ -30,6 +30,19 @@ export const FileResponse = Schema.Struct({
 });
 export type FileResponse = Schema.Schema.Type<typeof FileResponse>;
 
+export const MultipartUploadResponse = Schema.Struct({
+  fileId: Schema.String,
+  uploadId: Schema.String,
+  partSize: Schema.Number,
+});
+export type MultipartUploadResponse = Schema.Schema.Type<typeof MultipartUploadResponse>;
+
+export const MultipartPartResponse = Schema.Struct({
+  partNumber: Schema.Number,
+  etag: Schema.String,
+});
+export type MultipartPartResponse = Schema.Schema.Type<typeof MultipartPartResponse>;
+
 export const DeleteResponse = Schema.Struct({
   ok: Schema.Boolean,
 });

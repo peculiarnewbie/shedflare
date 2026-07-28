@@ -18,6 +18,30 @@ export { formatSize, fileGlyph };
 
 type AnySchema = Parameters<typeof Schema.decodeUnknownSync>[0];
 
+async function responseErrorMessage(response: Response) {
+  const text = await response.text().catch(() => "");
+  try {
+    const body: unknown = JSON.parse(text);
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      !Array.isArray(body) &&
+      typeof (body as Record<string, unknown>).error === "string"
+    ) {
+      return (body as Record<string, unknown>).error as string;
+    }
+  } catch {
+    // Fall back to a short non-HTML response or a status-specific message.
+  }
+
+  if (text && !text.trimStart().startsWith("<")) return text.slice(0, 500);
+  if (response.status === 401) return "Session expired — please sign in again";
+  if (response.status === 404) return "The requested file no longer exists";
+  if (response.status === 429) return "Drive is busy. Wait a moment and retry";
+  if (response.status >= 500) return "Drive could not complete the request. Retry";
+  return `Drive request failed (HTTP ${response.status})`;
+}
+
 export async function requestJson<T>(
   input: RequestInfo | URL,
   schema: AnySchema,
@@ -27,8 +51,13 @@ export async function requestJson<T>(
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(input, { ...init, signal: controller.signal });
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await responseErrorMessage(response));
     return Schema.decodeUnknownSync(schema)(await response.json()) as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Drive did not respond within 10 seconds. Retry.");
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -232,7 +261,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     setOffset(0);
     if (!userEmail()) return;
     void loadFiles(false, 0).catch((err) =>
-      setError(err instanceof Error ? err.message : "Search failed"),
+      addToast(err instanceof Error ? err.message : "Search failed", "error"),
     );
   });
 
@@ -301,7 +330,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       setFiles((prev) => prev.map((f) => (f.id === file.id ? data.file : f)));
       addToast(isPublic ? "File is now public" : "Public sharing disabled", "success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update sharing");
+      addToast(err instanceof Error ? err.message : "Could not update sharing", "error");
     }
   }
 
@@ -311,14 +340,14 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       const response = await fetch(`/api/files/${file.id}`, {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await responseErrorMessage(response));
       setSelectedFileId("");
       setPendingDeleteId("");
       await Promise.all([loadFiles(false, 0), loadTags()]);
       setOffset(0);
       addToast(`Deleted ${file.name}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      addToast(err instanceof Error ? err.message : "Delete failed", "error");
     }
   }
 
@@ -327,18 +356,25 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     if (ids.length === 0) return;
     setError("");
     let deleted = 0;
+    let failed = 0;
     for (const id of ids) {
       try {
-        await fetch(`/api/files/${id}`, { method: "DELETE" });
-        deleted++;
+        const response = await fetch(`/api/files/${id}`, { method: "DELETE" });
+        if (response.ok) deleted++;
+        else failed++;
       } catch {
-        // continue with remaining
+        failed++;
       }
     }
     clearSelection();
     await Promise.all([loadFiles(false, 0), loadTags()]);
     setOffset(0);
-    addToast(`Deleted ${deleted} file${deleted !== 1 ? "s" : ""}`);
+    addToast(
+      failed > 0
+        ? `Deleted ${deleted} file${deleted !== 1 ? "s" : ""}; ${failed} failed`
+        : `Deleted ${deleted} file${deleted !== 1 ? "s" : ""}`,
+      failed > 0 ? "error" : "info",
+    );
   }
 
   function downloadSelected() {
@@ -360,7 +396,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       });
       setFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, name } : f)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rename failed");
+      addToast(err instanceof Error ? err.message : "Rename failed", "error");
     }
   }
 
