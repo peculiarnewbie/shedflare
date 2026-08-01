@@ -1,4 +1,5 @@
-import { initializeStorage, type ErrorLog } from "./db/schema";
+import { drizzle } from "drizzle-orm/d1";
+import { errorLogs, type NewErrorLog } from "./db/schema";
 
 interface Env {
   OBSERVABILITY_DB: D1Database;
@@ -32,7 +33,7 @@ export default {
   },
 
   async tail(events: TraceItem[], env: Env, ctx: ExecutionContext) {
-    const errors: ErrorLog[] = [];
+    const errors: NewErrorLog[] = [];
 
     for (const trace of events) {
       if (!isErrorOutcome(trace.outcome)) continue;
@@ -60,30 +61,8 @@ export default {
     ctx.waitUntil(
       (async () => {
         try {
-          await initializeStorage(env.OBSERVABILITY_DB);
-
-          const stmt = env.OBSERVABILITY_DB.prepare(
-            `INSERT INTO error_logs (id, outcome, script_name, method, url, status, exception_name, exception_message, stack, cpu_time_us, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          );
-
-          const batch = errors.map((e) =>
-            stmt.bind(
-              e.id,
-              e.outcome,
-              e.scriptName,
-              e.method,
-              e.url,
-              e.status,
-              e.exceptionName,
-              e.exceptionMessage,
-              e.stack,
-              e.cpuTimeUs,
-              e.createdAt,
-            ),
-          );
-
-          await env.OBSERVABILITY_DB.batch(batch);
+          const db = drizzle(env.OBSERVABILITY_DB);
+          await db.insert(errorLogs).values(errors).run();
         } catch (err) {
           console.error("[observability] failed to persist errors", err);
         }

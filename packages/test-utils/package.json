@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./d1-shim": "./src/d1-shim.ts",
+    "./migrations": "./src/migrations.ts",
     "./r2-mock": "./src/r2-mock.ts"
   },
   "scripts": {

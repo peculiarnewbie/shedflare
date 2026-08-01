@@ -1,10 +1,13 @@
 /// <reference types="node" />
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { join } from "node:path";
+import { applyDrizzleMigrations } from "@shedflare/test-utils/migrations";
 import { describe, expect, test } from "vite-plus/test";
 import { createFuzzRandom, type FuzzRandom } from "../test/fuzz";
 import { buildFilterWhereSql, type FilterCondition } from "./conditions-to-sql";
 
 const SEED = 0xf17e12;
+const MIGRATIONS_DIR = join(import.meta.dirname, "../migrations");
 
 interface TransactionFixture {
   id: string;
@@ -196,19 +199,25 @@ function generateCondition(random: FuzzRandom): FilterCondition {
 describe("transaction filter SQL fuzzing", () => {
   test(`matches a reference evaluator across 1,000 queries (seed ${SEED})`, () => {
     const sqlite = new DatabaseSync(":memory:");
-    sqlite.exec(`
-      CREATE TABLE transactions (
-        id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL,
-        category_id TEXT NOT NULL,
-        amount INTEGER NOT NULL,
-        date TEXT NOT NULL,
-        notes TEXT,
-        cleared INTEGER NOT NULL,
-        reconciled INTEGER NOT NULL
-      )
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    applyDrizzleMigrations(sqlite, MIGRATIONS_DIR);
+    const insert = sqlite.prepare(`
+      INSERT INTO transactions (
+        id,
+        account_id,
+        category_id,
+        amount,
+        date,
+        notes,
+        cleared,
+        reconciled,
+        starting_balance_flag,
+        is_parent,
+        is_child,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const insert = sqlite.prepare("INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     for (const row of FIXTURES) {
       insert.run(
         row.id,
@@ -219,6 +228,11 @@ describe("transaction filter SQL fuzzing", () => {
         row.notes,
         row.cleared,
         row.reconciled,
+        0,
+        0,
+        0,
+        row.date,
+        row.date,
       );
     }
 

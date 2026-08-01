@@ -15,6 +15,7 @@ export const ObservabilityStack = Alchemy.Stack(
 
     const db = yield* Cloudflare.D1.Database("OBSERVABILITY_DB", {
       name: Shedflare.physicalName(stage, "observability", "db"),
+      migrationsDir: "apps/observability/src/migrations",
     });
 
     const worker = yield* Cloudflare.Worker("ObservabilityWorker", {

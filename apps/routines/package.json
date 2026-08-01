@@ -10,6 +10,7 @@
     "test": "vp test --passWithNoTests",
     "check": "vp check src alchemy.run.ts vite.config.ts",
     "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
     "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "db:migrate": "wrangler d1 migrations apply shedflare-routines --remote",

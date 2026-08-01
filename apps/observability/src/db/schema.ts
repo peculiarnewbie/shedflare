@@ -1,31 +1,18 @@
-export interface ErrorLog {
-  id: string;
-  outcome: string;
-  scriptName: string;
-  method: string | null;
-  url: string | null;
-  status: number | null;
-  exceptionName: string | null;
-  exceptionMessage: string | null;
-  stack: string | null;
-  cpuTimeUs: number | null;
-  createdAt: string;
-}
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-const CREATE_ERROR_LOGS = `CREATE TABLE IF NOT EXISTS error_logs (
-  id TEXT PRIMARY KEY,
-  outcome TEXT NOT NULL,
-  script_name TEXT NOT NULL,
-  method TEXT,
-  url TEXT,
-  status INTEGER,
-  exception_name TEXT,
-  exception_message TEXT,
-  stack TEXT,
-  cpu_time_us INTEGER,
-  created_at TEXT NOT NULL
-)`;
+export const errorLogs = sqliteTable("error_logs", {
+  id: text("id").primaryKey(),
+  outcome: text("outcome").notNull(),
+  scriptName: text("script_name").notNull(),
+  method: text("method"),
+  url: text("url"),
+  status: integer("status"),
+  exceptionName: text("exception_name"),
+  exceptionMessage: text("exception_message"),
+  stack: text("stack"),
+  cpuTimeUs: integer("cpu_time_us"),
+  createdAt: text("created_at").notNull(),
+});
 
-export async function initializeStorage(db: D1Database): Promise<void> {
-  await db.exec(CREATE_ERROR_LOGS);
-}
+export type ErrorLog = typeof errorLogs.$inferSelect;
+export type NewErrorLog = typeof errorLogs.$inferInsert;

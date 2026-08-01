@@ -29,4 +29,3 @@ export type {
 } from "./sync-types";
 
 export { json, parseJson, nowIso, isWebSocketRequest, createId } from "./sync-utils";
-export { EVENTS_TABLE_DDL, COMMANDS_TABLE_DDL } from "./schema";

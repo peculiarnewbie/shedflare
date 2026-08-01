@@ -1,7 +1,6 @@
 import { createHttpApiAuth } from "@shedflare/auth-client/http-api";
 import { createAuthHandlers } from "@shedflare/auth-client/consumer";
 import { db } from "./db";
-import { ensureSchema } from "./init";
 import * as handlers from "./handlers";
 import type { AuthEnv } from "@shedflare/auth-client/consumer";
 
@@ -46,7 +45,6 @@ export function createRouter(env: Env) {
         // ── All other API routes require a session ───────────────────
         if (pathname.startsWith("/api/")) {
           await rawAuth.requireSession(request);
-          await ensureSchema(env.DB);
 
           if (pathname === "/api/routines/day" && method === "GET") {
             return await handlers.getDay(database, url.searchParams.get("date"));

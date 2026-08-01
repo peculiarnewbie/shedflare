@@ -492,6 +492,9 @@ importers:
       '@shedflare/alchemy':
         specifier: workspace:*
         version: link:../../packages/shedflare-alchemy
+      drizzle-orm:
+        specifier: 1.0.0-rc.4
+        version: 1.0.0-rc.4(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.0.0-beta.92(effect@4.0.0-beta.92))(@effect/sql-sqlite-do@4.0.0-beta.92(effect@4.0.0-beta.92))(@libsql/client@0.17.3)(effect@4.0.0-beta.92)(mysql2@3.22.4(@types/node@25.9.1))(pg@8.21.0)(valibot@1.4.1(typescript@6.0.3))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: ^0.1.8
@@ -499,6 +502,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20260415.1
         version: 4.20260604.1
+      drizzle-kit:
+        specifier: 1.0.0-rc.4
+        version: 1.0.0-rc.4
       wrangler:
         specifier: ^4.15.1
         version: 4.98.0(@cloudflare/workers-types@4.20260604.1)
@@ -762,9 +768,6 @@ importers:
 
   packages/sync-protocol:
     dependencies:
-      drizzle-orm:
-        specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.0.0-beta.92(effect@4.0.0-beta.92))(@effect/sql-sqlite-do@4.0.0-beta.92(effect@4.0.0-beta.92))(@libsql/client@0.17.3)(effect@4.0.0-beta.92)(mysql2@3.22.4(@types/node@24.13.0))(pg@8.21.0)(valibot@1.4.1(typescript@6.0.3))
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.92

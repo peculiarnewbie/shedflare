@@ -10,15 +10,13 @@
     "./event-store": "./src/event-store.ts",
     "./handler-registry": "./src/handler-registry.ts",
     "./durable-object": "./src/durable-object.ts",
-    "./sync-utils": "./src/sync-utils.ts",
-    "./schema": "./src/schema.ts"
+    "./sync-utils": "./src/sync-utils.ts"
   },
   "scripts": {
     "check": "vp check src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "drizzle-orm": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {

@@ -1,21 +1,30 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "8f8f8f8f-8f8f-8f8f-8f8f-8f8f8f8f8f8f",
+  "id": "9d85cd2f-dfbd-45fd-96e3-63d3128fbe94",
   "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
-    { "name": "settings", "entityType": "tables" },
-    { "name": "routines", "entityType": "tables" },
-    { "name": "routine_completions", "entityType": "tables" },
+    {
+      "name": "routine_completions",
+      "entityType": "tables"
+    },
+    {
+      "name": "routines",
+      "entityType": "tables"
+    },
+    {
+      "name": "settings",
+      "entityType": "tables"
+    },
     {
       "type": "text",
-      "notNull": true,
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "id",
       "entityType": "columns",
-      "table": "settings"
+      "table": "routine_completions"
     },
     {
       "type": "text",
@@ -23,9 +32,9 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "key",
+      "name": "routine_id",
       "entityType": "columns",
-      "table": "settings"
+      "table": "routine_completions"
     },
     {
       "type": "text",
@@ -33,9 +42,29 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "value",
+      "name": "date",
       "entityType": "columns",
-      "table": "settings"
+      "table": "routine_completions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "completed",
+      "entityType": "columns",
+      "table": "routine_completions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "routine_completions"
     },
     {
       "type": "text",
@@ -45,11 +74,11 @@
       "generated": null,
       "name": "updated_at",
       "entityType": "columns",
-      "table": "settings"
+      "table": "routine_completions"
     },
     {
       "type": "text",
-      "notNull": true,
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -91,7 +120,7 @@
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
-      "default": 0,
+      "default": "0",
       "generated": null,
       "name": "weekly_target",
       "entityType": "columns",
@@ -101,7 +130,7 @@
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
-      "default": 0,
+      "default": "0",
       "generated": null,
       "name": "sort_order",
       "entityType": "columns",
@@ -129,13 +158,13 @@
     },
     {
       "type": "text",
-      "notNull": true,
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "id",
       "entityType": "columns",
-      "table": "routine_completions"
+      "table": "settings"
     },
     {
       "type": "text",
@@ -143,9 +172,9 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "routine_id",
+      "name": "key",
       "entityType": "columns",
-      "table": "routine_completions"
+      "table": "settings"
     },
     {
       "type": "text",
@@ -153,29 +182,9 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
-      "name": "date",
+      "name": "value",
       "entityType": "columns",
-      "table": "routine_completions"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": 0,
-      "generated": null,
-      "name": "completed",
-      "entityType": "columns",
-      "table": "routine_completions"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "table": "routine_completions"
+      "table": "settings"
     },
     {
       "type": "text",
@@ -185,7 +194,100 @@
       "generated": null,
       "name": "updated_at",
       "entityType": "columns",
+      "table": "settings"
+    },
+    {
+      "columns": ["routine_id"],
+      "tableTo": "routines",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_routine_completions_routine_id_routines_id_fk",
+      "entityType": "fks",
       "table": "routine_completions"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "routine_completions_pk",
+      "table": "routine_completions",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "routines_pk",
+      "table": "routines",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "settings_pk",
+      "table": "settings",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "date",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_routine_completions_date",
+      "entityType": "indexes",
+      "table": "routine_completions"
+    },
+    {
+      "columns": [
+        {
+          "value": "routine_id",
+          "isExpression": false
+        },
+        {
+          "value": "date",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_routine_completions_routine_date",
+      "entityType": "indexes",
+      "table": "routine_completions"
+    },
+    {
+      "columns": [
+        {
+          "value": "sort_order",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_routines_sort_order",
+      "entityType": "indexes",
+      "table": "routines"
+    },
+    {
+      "columns": ["routine_id", "date"],
+      "nameExplicit": true,
+      "name": "routine_id_date",
+      "entityType": "uniques",
+      "table": "routine_completions"
+    },
+    {
+      "columns": ["key"],
+      "nameExplicit": false,
+      "name": "settings_key_unique",
+      "entityType": "uniques",
+      "table": "settings"
     }
-  ]
+  ],
+  "renames": []
 }

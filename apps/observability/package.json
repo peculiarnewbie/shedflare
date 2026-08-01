@@ -4,14 +4,18 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "vp check src alchemy.run.ts drizzle.config.ts",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts"
   },
   "dependencies": {
-    "@shedflare/alchemy": "workspace:*"
+    "@shedflare/alchemy": "workspace:*",
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^0.1.8",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "drizzle-kit": "catalog:",
     "wrangler": "^4.15.1"
   }
 }
