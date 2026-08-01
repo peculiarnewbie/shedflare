@@ -39,6 +39,108 @@ function clearSessionCookie() {
   return serializeCookie(SESSION_COOKIE, "", 0);
 }
 
+function renderAuthHome(opts: { email: string | null; appOrigins: string[] }): string {
+  const { email, appOrigins } = opts;
+  const apps = [...new Set(appOrigins)]
+    .sort()
+    .map(
+      (origin) =>
+        `<a class="app-link" href="${origin}" target="_blank" rel="noreferrer">${origin.replace(/^https?:\/\//, "")}</a>`,
+    )
+    .join("");
+
+  const body = email
+    ? `
+    <div class="card">
+      <p class="eyebrow">Signed in</p>
+      <h1 class="title">${email}</h1>
+      <p class="sub">Your session is active on this auth domain. Signing out revokes it everywhere — apps will ask you to sign in again on your next visit.</p>
+      <form method="post" action="/logout?returnTo=/">
+        <button class="btn btn-danger" type="submit">Sign out</button>
+      </form>
+    </div>`
+    : `
+    <div class="card">
+      <p class="eyebrow">Not signed in</p>
+      <h1 class="title">Shedflare Auth</h1>
+      <p class="sub">No active session on this auth domain. Open any app below and sign in with Google — it will establish a session here too.</p>
+      ${apps ? `<div class="apps">${apps}</div>` : ""}
+    </div>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shedflare Auth</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #1a1d27;
+    --text: #e4e4e8;
+    --text-secondary: #7f8394;
+    --line: rgba(255, 255, 255, 0.06);
+    --accent: #2dd4a8;
+    --danger: #e5484d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: min(420px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .title { font-size: 1.5rem; font-weight: 700; word-break: break-word; }
+  .sub { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+  .apps { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .app-link {
+    display: block;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 0.9rem;
+    text-decoration: none;
+  }
+  .app-link:hover { border-color: var(--accent); }
+  .btn {
+    margin-top: 8px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { opacity: 0.9; }
+</style>
+</head>
+<body>${body}</body>
+</html>`;
+}
+
 function validateReturnTo(input: unknown): string | null {
   if (typeof input !== "string") return null;
   // Decode first, then validate: validating the still-encoded form lets
@@ -473,7 +575,23 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/") {
-      return new Response("Shedflare Auth", { headers: { "content-type": "text/plain" } });
+      const sessionId = getCookieValue(request.headers.get("cookie"), SESSION_COOKIE);
+      let email: string | null = null;
+      if (sessionId) {
+        const session = await env.OPENAUTH_STORAGE.get(`session:${sessionId}`, "json");
+        if (
+          session &&
+          typeof session === "object" &&
+          "email" in session &&
+          typeof session.email === "string"
+        ) {
+          email = session.email;
+        }
+      }
+      const appOrigins = [...getAllowedClients(env).values()].flat();
+      return new Response(renderAuthHome({ email, appOrigins }), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     }
     if (url.pathname === "/forbidden") {
       return new Response("This Google account is not allowed for this Shedflare install.", {
@@ -483,6 +601,10 @@ export default {
 
     if (url.pathname === "/logout" && request.method === "POST") {
       const returnTo = validateReturnTo(url.searchParams.get("returnTo")) ?? "/";
+      const sessionId = getCookieValue(request.headers.get("cookie"), SESSION_COOKIE);
+      if (sessionId) {
+        await env.OPENAUTH_STORAGE.delete(`session:${sessionId}`);
+      }
       const headers = new Headers({ Location: returnTo });
       headers.append("Set-Cookie", clearSessionCookie());
       return new Response(null, { status: 302, headers });

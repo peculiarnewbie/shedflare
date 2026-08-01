@@ -865,6 +865,35 @@ describe("server helpers", () => {
     expect(unknown.family).toBe("unknown");
   });
 
+  it("marks newly listed GPT and Kimi models as multimodal", () => {
+    const { OPENCODE_GO_MODEL_ALLOWLIST: _, ...noAllowlist } = env;
+    const result = filterModelsCatalog(
+      {
+        "opencode-go": {
+          id: "opencode-go",
+          api: "https://api.example.com",
+          models: {
+            luna: { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
+            kimi: { id: "kimi-k3", name: "Kimi K3" },
+          },
+        },
+      },
+      noAllowlist as any,
+    );
+
+    expect(result.models.find((model) => model.id === "gpt-5.6-luna")).toMatchObject({
+      attachment: true,
+      reasoning: true,
+      toolCall: true,
+    });
+    expect(result.models.find((model) => model.id === "kimi-k3")).toMatchObject({
+      attachment: true,
+      reasoning: true,
+      toolCall: true,
+      interleaved: { field: "reasoning_content" },
+    });
+  });
+
   it("env var override overrides local registry", () => {
     const { OPENCODE_GO_MODEL_ALLOWLIST: _, ...noAllowlist } = env;
     const overrideEnv = {
@@ -1580,6 +1609,40 @@ describe("server helpers", () => {
       const errorChunk = chunks.find((chunk: any) => chunk.type === "RUN_ERROR") as any;
       expect(errorChunk?.error?.code).toBe("assistant_stream_interrupted");
       expect(chunks.some((chunk: any) => chunk.type === "RUN_FINISHED")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("accepts a usage-terminated stream when the provider omits [DONE]", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          'data: {"choices":[{"delta":{"content":"complete"}}]}\r\n\r\ndata: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":3,"completion_tokens":2}}',
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          },
+        ),
+    ) as typeof fetch;
+
+    try {
+      const adapter = createChatCompletionsAdapter(
+        { baseUrl: "https://api.example.com", apiKey: "test-key" },
+        "gpt-5.6-luna",
+      );
+      const chunks = [];
+      for await (const chunk of chat({
+        adapter,
+        messages: [{ role: "user", content: "say hi" }],
+      })) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.some((chunk) => chunk.type === "RUN_ERROR")).toBe(false);
+      const finishedChunk = chunks.find((chunk) => chunk.type === "RUN_FINISHED");
+      expect(finishedChunk?.finishReason).toBe("stop");
     } finally {
       globalThis.fetch = originalFetch;
     }

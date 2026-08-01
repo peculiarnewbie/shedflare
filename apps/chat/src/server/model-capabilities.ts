@@ -9,6 +9,14 @@ export interface ModelCapabilitySource {
 }
 
 export const MODEL_CAPABILITY_REGISTRY: Record<string, ModelCapabilitySource> = {
+  "gpt-5.6-luna": {
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+    family: "gpt-luna",
+    limit: { context: 1_050_000, output: 128_000 },
+  },
   "minimax-m2.7": {
     attachment: false,
     reasoning: true,
@@ -43,6 +51,15 @@ export const MODEL_CAPABILITY_REGISTRY: Record<string, ModelCapabilitySource> = 
     modalities: { input: ["text", "image", "video"], output: ["text"] },
     family: "kimi-k2.5",
     limit: { context: 262144, output: 65536 },
+  },
+  "kimi-k3": {
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    interleaved: { field: "reasoning_content" },
+    modalities: { input: ["text", "image", "video"], output: ["text"] },
+    family: "kimi-k3",
+    limit: { context: 1048576, output: 131072 },
   },
   "glm-5.1": {
     attachment: false,

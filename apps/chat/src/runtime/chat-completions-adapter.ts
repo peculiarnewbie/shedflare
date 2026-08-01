@@ -602,6 +602,7 @@ export class ChatCompletionsAdapter {
       };
       let finishReason: "stop" | "length" | "content_filter" | "tool_calls" | null = null;
       let sawDoneMarker = false;
+      let sawUsageChunk = false;
       let reasoningContent = "";
       let assistantContent: string | null = null;
       const toolCalls = new Map<
@@ -620,19 +621,27 @@ export class ChatCompletionsAdapter {
           request.markFirstByteReceived();
           request.markStreamChunkReceived();
         }
-        if (done) break;
+        if (value && value.byteLength > 0) {
+          buffer += decoder.decode(value, { stream: true });
+        }
+        if (done) {
+          // Some OpenAI-compatible proxies close immediately after the final
+          // SSE event instead of sending the usual blank line or [DONE].
+          buffer += decoder.decode();
+          if (buffer.trim()) buffer += "\n\n";
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete SSE blocks (delimited by \n\n)
-        while (buffer.includes("\n\n")) {
-          const idx = buffer.indexOf("\n\n");
-          const block = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
+        // Process complete SSE blocks (delimited by a blank line). Accept both
+        // LF and CRLF framing because providers are not consistent here.
+        while (true) {
+          const separator = buffer.match(/\r?\n\r?\n/);
+          if (!separator || separator.index === undefined) break;
+          const block = buffer.slice(0, separator.index);
+          buffer = buffer.slice(separator.index + separator[0].length);
 
           // Extract data lines
           const dataLines = block
-            .split("\n")
+            .split(/\r?\n/)
             .filter((line) => line.startsWith("data:"))
             .map((line) => line.slice(5).trim());
 
@@ -657,6 +666,7 @@ export class ChatCompletionsAdapter {
 
           // Extract usage information
           if (parsed.usage) {
+            sawUsageChunk = true;
             usage.promptTokens = parsed.usage.prompt_tokens ?? null;
             usage.completionTokens = parsed.usage.completion_tokens ?? null;
             const reasoningTokens = extractReasoningTokens(parsed.usage);
@@ -774,6 +784,7 @@ export class ChatCompletionsAdapter {
             rawEvent: parsed,
           } as ExtendedStreamChunk;
         }
+        if (done) break;
       }
 
       // Emit TEXT_MESSAGE_END if message was started
@@ -846,7 +857,7 @@ export class ChatCompletionsAdapter {
       }
 
       if (finishReason === null) {
-        if (sawDoneMarker) {
+        if (sawDoneMarker || sawUsageChunk) {
           finishReason = "stop";
         } else {
           yield {

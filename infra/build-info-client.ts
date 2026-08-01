@@ -28,10 +28,10 @@ export function createBuildInfo(env: Record<string, string | undefined> | undefi
     commit,
     builtAt,
     label: formattedBuiltAt
-      ? `deployed ${formattedBuiltAt} (${commitLabel(commit)})`
-      : `deployed unknown (${commitLabel(commit)})`,
+      ? `built ${formattedBuiltAt} (${commitLabel(commit)})`
+      : `built unknown (${commitLabel(commit)})`,
     tooltip: [
-      formattedBuiltAt ? `deployed ${formattedBuiltAt}` : null,
+      formattedBuiltAt ? `built ${formattedBuiltAt}` : null,
       commit !== "dev" ? `commit ${commit}` : null,
       version,
     ]
