@@ -8,6 +8,7 @@ export {
   requireVar,
   stageSubdomain,
 } from "./config.ts";
+export { discoverManifests, findRepoRoot, isAppId } from "@shedflare/core";
 export {
   CfApiError,
   type CfCredentials,

@@ -156,6 +156,6 @@ These are _intentional_ omissions — the e2e should be a fast, deterministic sm
 
 ## 9. Follow-ups (not in this plan)
 
-- Wire the same e2e harness into chat, cf-bill, youtube, s — they don't have it yet
+- Wire the same e2e harness into chat, cf-bill, s — they don't have it yet
 - Add a smoke "live deploy" test for money that asserts all `/api/*` GET endpoints return 200 with the e2e token
 - Consider a Vite+-native e2e (no Playwright) once `vp test` supports it — drive is stuck on Playwright so money would inherit the same friction; revisit if Vitest browser mode matures

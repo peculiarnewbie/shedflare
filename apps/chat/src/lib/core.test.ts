@@ -28,6 +28,7 @@ import {
   normalizeModelsCatalogResponse,
   getSignedAttachmentUrl,
   isImageAttachment,
+  isOwnerEmail,
   isInlineTextAttachment,
   normalizeEmail,
   normalizeExtractUrl,
@@ -749,6 +750,11 @@ describe("server helpers", () => {
 
   it("normalizes email addresses", () => {
     expect(normalizeEmail(" Owner@Example.com ")).toBe("owner@example.com");
+  });
+
+  it("matches owner email addresses after normalization", () => {
+    expect(isOwnerEmail(" Owner@Example.com ", "owner@example.com")).toBe(true);
+    expect(isOwnerEmail("other@example.com", "owner@example.com")).toBe(false);
   });
 
   it("keeps search guidance concise while surfacing the budget", () => {

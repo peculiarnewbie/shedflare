@@ -14,7 +14,6 @@ import { createStructuredLogger, decodeAppEnv, type AppEnv } from "#/effect";
 import { MODEL_CAPABILITY_REGISTRY, type ModelCapabilitySource } from "#/server/model-capabilities";
 import {
   createLocalJWKSet,
-  createRemoteJWKSet,
   errors as joseErrors,
   exportJWK,
   importSPKI,
@@ -28,11 +27,18 @@ import {
   type SyncCommandType,
   type SyncSnapshot,
 } from "#/domain";
+import {
+  createAuthHandlers,
+  getCookie,
+  isOwnerEmail,
+  normalizeEmail,
+} from "@shedflare/auth-client/consumer";
 import { createAuthIssuer } from "./auth/issuer.js";
 
 export type { AppEnv } from "#/effect";
 export { subjects } from "./auth/subjects.js";
 export { createAuthIssuer } from "./auth/issuer.js";
+export { isOwnerEmail, normalizeEmail } from "@shedflare/auth-client/consumer";
 
 declare global {
   // Worker entry sets bindings here per request for getRuntimeEnv().
@@ -187,10 +193,6 @@ export type AccessSession = {
   };
 };
 
-export function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
-
 export function getDefaultModelId(env: Pick<AppEnv, "DEFAULT_MODEL_ID">) {
   return env.DEFAULT_MODEL_ID?.trim() || "auto";
 }
@@ -212,20 +214,9 @@ function isLocalDevRequest(request: Request) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
 }
 
-function getCookie(request: Request, name: string) {
-  const cookie = request.headers.get("cookie") ?? "";
-  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-// We are our own OAuth issuer — the access token's signing key lives in
-// our own KV namespace. Verifying a session cookie does not need to round-
-// trip through `/.well-known/jwks.json` over a fake-fetch into our own
-// Hono app; we can read the key set once per isolate and verify JWTs
-// in-process. This is what the read paths (sync upgrade, models, uploads)
-// use. The refresh path (bootstrap, session) still needs to hit the
-// issuer's `/token` endpoint to rotate, but only when the access token is
-// genuinely expired.
+// Deployed Chat delegates remote auth verification and refresh to the shared
+// auth consumer. This verifier is only for the local issuer compatibility
+// path, where Chat owns the signing keys in its local KV binding.
 const SIGNING_ALG_DEFAULT = "ES256";
 const LEGACY_SIGNING_ALG = "RS512";
 const STORAGE_KEY_SEPARATOR = String.fromCharCode(31);
@@ -243,8 +234,6 @@ type StoredSigningKey = {
 
 let jwksPromise: Promise<ReturnType<typeof createLocalJWKSet>> | null = null;
 let jwksLoadedAt = 0;
-let remoteJwksUrl: string | null = null;
-let remoteJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 async function loadJwks(env: AppEnv) {
   const namespace = env.OPENAUTH_STORAGE as KVNamespace;
@@ -284,15 +273,6 @@ function getJwks(env: AppEnv) {
   return jwksPromise!;
 }
 
-function getRemoteJwks(env: AppEnv) {
-  const url = `${env.AUTH_ISSUER_URL}/.well-known/jwks.json`;
-  if (!remoteJwks || remoteJwksUrl !== url) {
-    remoteJwksUrl = url;
-    remoteJwks = createRemoteJWKSet(new URL(url));
-  }
-  return remoteJwks;
-}
-
 function invalidateJwks() {
   jwksPromise = null;
   jwksLoadedAt = 0;
@@ -301,22 +281,6 @@ function invalidateJwks() {
 type LocalVerifyResult = { kind: "ok"; email: string } | { kind: "expired" } | { kind: "invalid" };
 
 async function verifyAccessLocally(token: string, env: AppEnv): Promise<LocalVerifyResult> {
-  if (env.AUTH_ISSUER_URL) {
-    try {
-      const { payload } = await jwtVerify(token, getRemoteJwks(env), {
-        issuer: env.AUTH_ISSUER_URL,
-      });
-      if (payload.mode !== "access") return { kind: "invalid" };
-      const properties = payload.properties as { email?: unknown } | undefined;
-      const email = properties?.email;
-      if (typeof email !== "string" || !email) return { kind: "invalid" };
-      return { kind: "ok", email };
-    } catch (error) {
-      if (error instanceof joseErrors.JWTExpired) return { kind: "expired" };
-      return { kind: "invalid" };
-    }
-  }
-
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const jwks = await getJwks(env);
@@ -344,7 +308,7 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
   try {
-    const tokenRequest = new Request(`${env.AUTH_ISSUER_URL ?? env.APP_PUBLIC_URL}/token`, {
+    const tokenRequest = new Request(`${env.APP_PUBLIC_URL}/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -353,13 +317,11 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
       }),
       signal: controller.signal,
     });
-    const response = env.AUTH_ISSUER_URL
-      ? await fetch(tokenRequest)
-      : await createAuthIssuer(env).fetch(
-          tokenRequest,
-          env as unknown as Record<string, unknown>,
-          {} as ExecutionContext,
-        );
+    const response = await createAuthIssuer(env).fetch(
+      tokenRequest,
+      env as unknown as Record<string, unknown>,
+      {} as ExecutionContext,
+    );
     if (!response.ok) {
       let errorCode: string | undefined;
       try {
@@ -405,25 +367,78 @@ export type GetSessionOptions = {
   refresh?: boolean;
 };
 
+type SharedConsumerAuth = ReturnType<typeof createAuthHandlers>;
+
+let sharedConsumerAuth: { key: string; handlers: SharedConsumerAuth } | null = null;
+
+function getSharedConsumerAuth(env: AppEnv): SharedConsumerAuth | null {
+  const issuerUrl = env.AUTH_ISSUER_URL;
+  if (!issuerUrl) return null;
+
+  const clientId = env.AUTH_CLIENT_ID ?? "shedflare-chat";
+  const key = [
+    issuerUrl,
+    clientId,
+    env.APP_PUBLIC_URL,
+    env.OWNER_EMAIL,
+    env.DEV_AUTH_EMAIL ?? "",
+  ].join("\u001f");
+  if (!sharedConsumerAuth || sharedConsumerAuth.key !== key) {
+    sharedConsumerAuth = {
+      key,
+      handlers: createAuthHandlers({
+        AUTH_ISSUER_URL: issuerUrl,
+        AUTH_CLIENT_ID: clientId,
+        APP_PUBLIC_URL: env.APP_PUBLIC_URL,
+        OWNER_EMAIL: env.OWNER_EMAIL,
+        ...(env.DEV_AUTH_EMAIL ? { DEV_AUTH_EMAIL: env.DEV_AUTH_EMAIL } : {}),
+      }),
+    };
+  }
+  return sharedConsumerAuth.handlers;
+}
+
+function createOwnerSession(
+  env: AppEnv,
+  email: string,
+  options: { name?: string; tokens?: AccessSession["tokens"] } = {},
+): AccessSession | null {
+  if (!isOwnerEmail(email, env.OWNER_EMAIL)) return null;
+  return {
+    user: {
+      email: normalizeEmail(email),
+      ...(options.name ? { name: options.name } : {}),
+    },
+    ...(options.tokens ? { tokens: options.tokens } : {}),
+  };
+}
+
 export async function getSession(
   request: Request,
   env: AppEnv,
   options: GetSessionOptions = {},
 ): Promise<AccessSession | null> {
   const startedAt = Date.now();
+
+  const sharedAuth = getSharedConsumerAuth(env);
+  if (sharedAuth) {
+    const session = await sharedAuth.authenticate(request, { refresh: options.refresh ?? true });
+    return session ? createOwnerSession(env, session.email, { tokens: session.tokens }) : null;
+  }
+
   const token = getCookie(request, "auth_access_token");
   const refreshToken = getCookie(request, "auth_refresh_token");
 
   if (!token) {
     if (env.DEV_AUTH_EMAIL && isLocalDevRequest(request)) {
-      return { user: { email: normalizeEmail(env.DEV_AUTH_EMAIL), name: "Local Dev" } };
+      return createOwnerSession(env, env.DEV_AUTH_EMAIL, { name: "Local Dev" });
     }
     return null;
   }
 
   const verified = await verifyAccessLocally(token, env);
   if (verified.kind === "ok") {
-    return { user: { email: verified.email } };
+    return createOwnerSession(env, verified.email);
   }
 
   const refresh = options.refresh ?? true;
@@ -450,7 +465,7 @@ export async function getSession(
       return null;
     }
     logger.log("auth_session_refreshed", { durationMs: Date.now() - startedAt });
-    return { user: { email: reverified.email }, tokens: rotated };
+    return createOwnerSession(env, reverified.email, { tokens: rotated });
   }
 
   logger.log("auth_session_not_valid", {

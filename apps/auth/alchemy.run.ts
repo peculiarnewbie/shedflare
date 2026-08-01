@@ -3,8 +3,6 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
 
-const CLIENT_APPS: Shedflare.AppId[] = ["chat", "drive", "money", "cf-bill", "s", "routines"];
-
 export const AuthStack = Alchemy.Stack(
   "ShedflareAuth",
   {
@@ -15,9 +13,16 @@ export const AuthStack = Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const config = yield* Shedflare.appConfig("auth");
     const rootConfig = Shedflare.loadShedflareConfig();
+    const catalog = Shedflare.discoverManifests(Shedflare.findRepoRoot());
+    const clientApps = catalog.appIds.filter(
+      (appId): appId is Shedflare.AppId =>
+        Shedflare.isAppId(appId) &&
+        appId !== "auth" &&
+        (catalog.manifests.get(appId)?.dependsOn.includes("auth") ?? false),
+    );
 
     const allowedClients: Record<string, string[]> = {};
-    for (const appId of CLIENT_APPS) {
+    for (const appId of clientApps) {
       const selected =
         rootConfig.configVersion === 1
           ? !!rootConfig.apps[appId] && rootConfig.apps[appId].enabled !== false

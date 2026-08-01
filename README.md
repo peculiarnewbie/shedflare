@@ -6,14 +6,16 @@ Shedflare is a self-hosted suite of personal productivity tools for Cloudflare. 
 
 | App           | Directory            | Description                                                        |
 | ------------- | -------------------- | ------------------------------------------------------------------ |
+| Anki          | `apps/anki`          | Personal spaced-repetition cards and review                        |
 | Auth          | `apps/auth`          | OAuth2/OIDC authentication provider (OpenAuth)                     |
 | Chat          | `apps/chat`          | AI chat interface with browser automation and Durable Objects sync |
+| Homepage      | `apps/homepage`      | Personal homepage with profile, experience, and projects           |
 | Drive         | `apps/drive`         | File storage with R2, D1 metadata, tags, and search                |
 | Money         | `apps/money`         | Envelope-budgeting personal finance app                            |
 | CF Bill       | `apps/cf-bill`       | Cloudflare usage vs plan limits dashboard                          |
+| Routines      | `apps/routines`      | Daily routine tracker with progress visualization                  |
 | Observability | `apps/observability` | Centralized error collection from tail events                      |
 | Links         | `apps/s`             | Link shortener with dashboard                                      |
-| YouTube       | `apps/youtube`       | YouTube Watch Later manager and notification dashboard             |
 
 ## Quick Start
 
@@ -32,6 +34,8 @@ Deploy auth first if you want to deploy apps individually:
 pnpm deploy:auth
 pnpm deploy:chat
 pnpm deploy:drive
+pnpm deploy:anki
+pnpm deploy:homepage
 # ...etc
 ```
 
@@ -58,8 +62,10 @@ pnpm deploy:auth
 pnpm deploy:chat
 pnpm deploy:drive
 pnpm deploy:money
-pnpm deploy:youtube
+pnpm deploy:anki
+pnpm deploy:homepage
 pnpm deploy:cf-bill
+pnpm deploy:routines
 pnpm deploy:observability
 pnpm deploy:s
 

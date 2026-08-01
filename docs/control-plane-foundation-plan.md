@@ -119,7 +119,6 @@ Proposed initial classification:
 | Homepage      | `experimental`    | Recent personal experiment rather than suite infrastructure                           |
 | Observability | `experimental`    | Ingestion exists without a complete owner-facing review loop                          |
 | Routines      | `experimental`    | Experimental app with no current tests                                                |
-| YouTube       | `experimental`    | Light coverage and external integration assumptions                                   |
 
 These labels describe support confidence, not application quality. Changing a label
 later is a manifest edit backed by explicit criteria.

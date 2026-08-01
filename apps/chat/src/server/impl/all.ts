@@ -1,6 +1,5 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { chatApi } from "../definitions";
-import { handleSession } from "../../api/session";
 import { handleBootstrap } from "../../api/bootstrap";
 import { handleModels } from "../../api/models";
 import { handleUploadPresign } from "../../api/uploads-presign";
@@ -17,12 +16,6 @@ export function createBootstrapGroup() {
     handlers.handlers.set("bootstrap", {
       endpoint: endpoints["bootstrap"],
       handler: wrapHandler(handleBootstrap),
-      isRaw: true,
-      uninterruptible: false,
-    });
-    handlers.handlers.set("session", {
-      endpoint: endpoints["session"],
-      handler: wrapHandler(handleSession),
       isRaw: true,
       uninterruptible: false,
     });

@@ -1,25 +1,6 @@
+import { serializeCookie } from "@shedflare/auth-client/consumer";
 import { getRuntimeEnv, getSession } from "#/runtime";
 import { runApiTrace } from "../server/api-tracing";
-
-function serializeCookie(
-  name: string,
-  value: string,
-  opts: {
-    maxAge?: number;
-    path?: string;
-    secure?: boolean;
-    httpOnly?: boolean;
-    sameSite?: string;
-  } = {},
-) {
-  let cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
-  if (opts.maxAge !== undefined) cookie += `; Max-Age=${opts.maxAge}`;
-  cookie += `; Path=${opts.path ?? "/"}`;
-  if (opts.secure !== false) cookie += `; Secure`;
-  if (opts.httpOnly !== false) cookie += `; HttpOnly`;
-  cookie += `; SameSite=${opts.sameSite ?? "Lax"}`;
-  return cookie;
-}
 
 export async function handleBootstrap(request: Request): Promise<Response> {
   const env = getRuntimeEnv();

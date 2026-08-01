@@ -31,6 +31,10 @@ export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+export function isOwnerEmail(email: string, ownerEmail: string): boolean {
+  return normalizeEmail(email) === normalizeEmail(ownerEmail);
+}
+
 function isLocalRequest(request: Request) {
   const hostname = new URL(request.url).hostname;
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
@@ -293,7 +297,7 @@ export function createAuthHandlers(env: AuthEnv) {
   ): Promise<Session> {
     const session = await authenticate(request, options);
     if (!session) throw new Response("Unauthorized", { status: 401 });
-    if (session.email !== normalizeEmail(env.OWNER_EMAIL)) {
+    if (!isOwnerEmail(session.email, env.OWNER_EMAIL)) {
       throw new Response("Forbidden", { status: 403 });
     }
     return session;

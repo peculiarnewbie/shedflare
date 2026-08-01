@@ -11,7 +11,6 @@ export const APP_IDS = [
   "observability",
   "routines",
   "s",
-  "youtube",
 ] as const;
 
 export type AppId = (typeof APP_IDS)[number];
