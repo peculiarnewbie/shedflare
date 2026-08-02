@@ -1,113 +1,100 @@
 import { asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { projects } from "../../db/schema";
-import { homepageApi } from "../definitions";
+import { projects, type ProjectRow as DbProjectRow } from "../../db/schema";
+import {
+  homepageApi,
+  type ApiError,
+  type ProjectCreatePayload,
+  type ProjectRow,
+  type ProjectUpdatePayload,
+} from "../definitions";
 import type { HttpApiAuth } from "@shedflare/auth-client/http-api";
 
-function asString(value: unknown, fallback: string): string {
-  return typeof value === "string" ? value : fallback;
-}
-
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" ? value : fallback;
-}
-
-function asBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === "boolean" ? value : fallback;
+function toProjectRow(row: DbProjectRow): ProjectRow {
+  return { ...row, createdAt: row.createdAt ?? "" };
 }
 
 export function createProjectsGroup(env: { DB: D1Database }, auth: HttpApiAuth, isPublic: boolean) {
-  const endpoints = (homepageApi as any).groups["projects"].endpoints;
-  return (HttpApiBuilder.group as any)(homepageApi, "projects", (handlers: any) => {
-    handlers.handlers.set("list", {
-      endpoint: endpoints["list"],
-      handler: isPublic
-        ? async () => {
-            const db = drizzle(env.DB);
-            return await db.select().from(projects).orderBy(asc(projects.sortOrder)).all();
-          }
-        : auth.createProtectedHandler(async () => {
-            const db = drizzle(env.DB);
-            return await db.select().from(projects).orderBy(asc(projects.sortOrder)).all();
-          }),
-      isRaw: false,
-      uninterruptible: false,
-    });
-    return handlers;
-  });
+  const list = async (): Promise<ProjectRow[]> => {
+    const db = drizzle(env.DB);
+    const rows = await db.select().from(projects).orderBy(asc(projects.sortOrder)).all();
+    return rows.map(toProjectRow);
+  };
+
+  return HttpApiBuilder.group(homepageApi, "projects", (handlers) =>
+    handlers.handle(
+      "list",
+      isPublic
+        ? () => Effect.promise(() => list())
+        : auth.createProtectedHandler<never, never, ProjectRow[]>(async () => list()),
+    ),
+  );
 }
 
 export function createAdminProjectsGroup(env: { DB: D1Database }, auth: HttpApiAuth) {
-  const endpoints = (homepageApi as any).groups["admin-projects"].endpoints;
-  return (HttpApiBuilder.group as any)(homepageApi, "admin-projects", (handlers: any) => {
-    handlers.handlers.set("create", {
-      endpoint: endpoints["create"],
-      handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
-        const body = ctx.payload as Record<string, unknown> | null;
-        const id = asString(body?.id, "");
-        const title = asString(body?.title, "");
-        if (!id || !title) {
-          return { error: "id and title are required" } as any;
-        }
-        const db = drizzle(env.DB);
-        const existing = await db.select().from(projects).where(eq(projects.id, id)).get();
-        if (existing) return { error: `Project "${id}" already exists` } as any;
-        const now = new Date().toISOString();
-        const row = {
-          id,
-          title,
-          tags: asString(body?.tags, "[]"),
-          image: asString(body?.image, ""),
-          url: asString(body?.url, ""),
-          githubUrl: asString(body?.githubUrl, ""),
-          desc: asString(body?.desc, ""),
-          sortOrder: asNumber(body?.sortOrder, 0),
-          showOnHome: asBoolean(body?.showOnHome, true),
-          createdAt: now,
-        };
-        await db.insert(projects).values(row).run();
-        return row as any;
-      }),
-      isRaw: false,
-      uninterruptible: false,
-    });
-
-    handlers.handlers.set("update", {
-      endpoint: endpoints["update"],
-      handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
-        const id = asString(ctx.params?.id, "");
-        const body = ctx.payload as Record<string, unknown> | null;
-        if (!body || Object.keys(body).length === 0) {
-          return { error: "No fields to update" } as any;
-        }
-        const db = drizzle(env.DB);
-        const existing = await db.select().from(projects).where(eq(projects.id, id)).get();
-        if (!existing) return { error: "Not found" } as any;
-        await db
-          .update(projects)
-          .set(body as any)
-          .where(eq(projects.id, id))
-          .run();
-        const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
-        return (updated ?? existing) as any;
-      }),
-      isRaw: false,
-      uninterruptible: false,
-    });
-
-    handlers.handlers.set("remove", {
-      endpoint: endpoints["remove"],
-      handler: auth.createProtectedHandler(async (_webReq, _session, ctx) => {
-        const id = asString(ctx.params?.id, "");
-        const db = drizzle(env.DB);
-        await db.delete(projects).where(eq(projects.id, id)).run();
-        return { ok: true };
-      }),
-      isRaw: false,
-      uninterruptible: false,
-    });
-
-    return handlers;
-  });
+  return HttpApiBuilder.group(homepageApi, "admin-projects", (handlers) =>
+    handlers
+      .handle(
+        "create",
+        auth.createProtectedHandler<never, ProjectCreatePayload, ProjectRow | ApiError>(
+          async (_webReq, _session, ctx) => {
+            const body = ctx.payload;
+            const id = body?.id ?? "";
+            const title = body?.title ?? "";
+            if (!id || !title) {
+              return { error: "id and title are required" };
+            }
+            const db = drizzle(env.DB);
+            const existing = await db.select().from(projects).where(eq(projects.id, id)).get();
+            if (existing) return { error: `Project "${id}" already exists` };
+            const now = new Date().toISOString();
+            const row = {
+              id,
+              title,
+              tags: body?.tags ?? "[]",
+              image: body?.image ?? "",
+              url: body?.url ?? "",
+              githubUrl: body?.githubUrl ?? "",
+              desc: body?.desc ?? "",
+              sortOrder: body?.sortOrder ?? 0,
+              showOnHome: body?.showOnHome ?? true,
+              createdAt: now,
+            };
+            await db.insert(projects).values(row).run();
+            return row;
+          },
+        ),
+      )
+      .handle(
+        "update",
+        auth.createProtectedHandler<{ id: string }, ProjectUpdatePayload, ProjectRow | ApiError>(
+          async (_webReq, _session, ctx) => {
+            const id = ctx.params?.id ?? "";
+            const body = ctx.payload;
+            if (!body || Object.keys(body).length === 0) {
+              return { error: "No fields to update" };
+            }
+            const db = drizzle(env.DB);
+            const existing = await db.select().from(projects).where(eq(projects.id, id)).get();
+            if (!existing) return { error: "Not found" };
+            await db.update(projects).set(body).where(eq(projects.id, id)).run();
+            const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
+            return toProjectRow(updated ?? existing);
+          },
+        ),
+      )
+      .handle(
+        "remove",
+        auth.createProtectedHandler<{ id: string }, never, { ok: boolean }>(
+          async (_webReq, _session, ctx) => {
+            const id = ctx.params?.id ?? "";
+            const db = drizzle(env.DB);
+            await db.delete(projects).where(eq(projects.id, id)).run();
+            return { ok: true };
+          },
+        ),
+      ),
+  );
 }

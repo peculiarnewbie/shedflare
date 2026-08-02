@@ -1,17 +1,16 @@
 import { sql } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { moneyApi, exportGroup as group } from "../definitions";
+import { moneyApi } from "../definitions";
 import { createDb } from "../d1-access";
 import { wrapHandler } from "./wrap-handler";
 
 type Env = { MONEY_DB: D1Database };
 
 export function createExportGroup(env: Env) {
-  const endpoints = group.endpoints;
-  return (HttpApiBuilder.group as any)(moneyApi, "export", (handlers: any) => {
-    handlers.handlers.set("csv", {
-      endpoint: endpoints["csv"],
-      handler: wrapHandler(async (): Promise<Response> => {
+  return HttpApiBuilder.group(moneyApi, "export", (handlers) =>
+    handlers.handleRaw(
+      "csv",
+      wrapHandler(async (): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
         const rows = await db.all<{
           date: string;
@@ -46,9 +45,6 @@ export function createExportGroup(env: Env) {
           },
         });
       }),
-      isRaw: true,
-      uninterruptible: false,
-    });
-    return handlers;
-  });
+    ),
+  );
 }

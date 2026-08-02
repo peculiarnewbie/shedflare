@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { moneyApi, transactionsGroup as group } from "../definitions";
+import { moneyApi } from "../definitions";
 import { createDb } from "../d1-access";
 import { wrapHandler, validatedJson } from "./wrap-handler";
 import { TransactionsResponseSchema } from "../../domain/schemas";
@@ -10,11 +10,10 @@ import { resolveTransactionFilter } from "../resolve-transaction-filter";
 type Env = { MONEY_DB: D1Database };
 
 export function createTransactionsGroup(env: Env) {
-  const endpoints = group.endpoints;
-  return (HttpApiBuilder.group as any)(moneyApi, "transactions", (handlers: any) => {
-    handlers.handlers.set("list", {
-      endpoint: endpoints["list"],
-      handler: wrapHandler(async (req: Request): Promise<Response> => {
+  return HttpApiBuilder.group(moneyApi, "transactions", (handlers) =>
+    handlers.handleRaw(
+      "list",
+      wrapHandler(async (req: Request): Promise<Response> => {
         const url = new URL(req.url);
         const db = createDb(env.MONEY_DB);
         const { filterSql } = await resolveTransactionFilter(db, url);
@@ -69,9 +68,6 @@ export function createTransactionsGroup(env: Env) {
           transactionTags: tagRows,
         });
       }),
-      isRaw: true,
-      uninterruptible: false,
-    });
-    return handlers;
-  });
+    ),
+  );
 }

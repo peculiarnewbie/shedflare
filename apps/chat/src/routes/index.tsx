@@ -1033,16 +1033,31 @@ export default function Home() {
   createEffect(() => {
     const modelList = models()?.models ?? [];
     const workspace = activeWorkspace();
-    if (!workspace) {
-      if (!composer.modelId && modelList[0]) setComposer("modelId", modelList[0].id);
-      return;
+    if (modelList.length === 0) return;
+
+    const selectedId = composerModelId();
+    const selectedExists = modelList.some((model) => model.id === selectedId);
+    const workspaceDefault = workspace?.defaultModelId;
+    const defaultExists = Boolean(
+      workspaceDefault && modelList.some((model) => model.id === workspaceDefault),
+    );
+    const fallbackId = defaultExists ? workspaceDefault : modelList[0]?.id;
+    if (!fallbackId) return;
+
+    if (!selectedExists) {
+      if (workspace && isDraftViewActive()) {
+        updateWorkspaceDraft(workspace.id, (draft) => ({
+          ...draft,
+          modelId: fallbackId,
+          updatedAt: nowIso(),
+        }));
+      } else {
+        setComposer("modelId", fallbackId);
+      }
     }
 
-    if (workspace.defaultModelId && modelList.length > 0) {
-      const exists = modelList.some((m) => m.id === workspace.defaultModelId);
-      if (!exists && modelList[0]) {
-        updateWorkspacePreferences({ defaultModelId: modelList[0].id });
-      }
+    if (workspace && workspaceDefault !== fallbackId) {
+      updateWorkspacePreferences({ defaultModelId: fallbackId });
     }
   });
 

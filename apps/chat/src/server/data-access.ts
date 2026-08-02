@@ -25,7 +25,7 @@ import {
 } from "#/domain";
 import {
   completeTextAttachment,
-  getSignedAttachmentUrl,
+  getInlineAttachment,
   isImageAttachment,
   isInlineTextAttachment,
   type AppEnv,
@@ -737,8 +737,9 @@ export async function buildModelMessages(
   for (const message of threadMessages) {
     if (message.status === "failed" || message.status === "cancelled") continue;
 
-    const contentParts: Array<string | { type: "image"; source: { type: "url"; value: string } }> =
-      [];
+    const contentParts: Array<
+      string | { type: "image"; source: { type: "data"; value: string; mimeType: string } }
+    > = [];
 
     if (message.text?.trim()) {
       contentParts.push(message.text);
@@ -749,10 +750,19 @@ export async function buildModelMessages(
         .filter((attachment) => attachment.messageId === message.id)
         .map(async (attachment) => {
           if (isImageAttachment(attachment.mimeType)) {
-            const signedUrl = await getSignedAttachmentUrl(env, attachment.objectKey);
+            const inlineAttachment = await getInlineAttachment(
+              env,
+              attachment.objectKey,
+              attachment.mimeType,
+            );
+            if (!inlineAttachment) return null;
             return {
               type: "image" as const,
-              source: { type: "url" as const, value: signedUrl },
+              source: {
+                type: "data" as const,
+                value: inlineAttachment.base64,
+                mimeType: inlineAttachment.mimeType,
+              },
             };
           }
           if (isInlineTextAttachment(attachment.mimeType, attachment.sizeBytes)) {

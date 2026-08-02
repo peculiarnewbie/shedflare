@@ -1,6 +1,7 @@
 export {
   ChatCompletionsAdapter,
   createChatCompletionsAdapter,
+  createResponsesAdapter,
   REASONING_CONTENT_EVENT,
   type ChatCompletionsAdapterConfig,
   type ChatCompletionsUsage,
@@ -12,6 +13,7 @@ export {
 export { chat } from "@tanstack/ai";
 import { createStructuredLogger, decodeAppEnv, type AppEnv } from "#/effect";
 import { MODEL_CAPABILITY_REGISTRY, type ModelCapabilitySource } from "#/server/model-capabilities";
+export { modelTransportFor } from "#/server/model-capabilities";
 import {
   createLocalJWKSet,
   errors as joseErrors,
@@ -1405,6 +1407,29 @@ export async function completeTextAttachment(env: AppEnv, objectKey: string) {
   const object = await env.UPLOADS.get(objectKey);
   if (!object) return null;
   return object.text();
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+export async function getInlineAttachment(
+  env: AppEnv,
+  objectKey: string,
+  fallbackMimeType: string,
+) {
+  const object = await env.UPLOADS.get(objectKey);
+  if (!object) return null;
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  return {
+    mimeType: object.httpMetadata?.contentType ?? fallbackMimeType,
+    base64: bytesToBase64(bytes),
+  };
 }
 
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();

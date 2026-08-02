@@ -1,0 +1,60 @@
+{
+    "domain": "peculiarnewbie.com",
+    "ownerEmail": "peculiarnewbie@gmail.com",
+    "apps": {
+        "auth": {
+            "enabled": true,
+            "subdomain": "auth",
+        },
+        "cf-bill": {
+            "enabled": true,
+            "subdomain": "cf-bill",
+        },
+        "chat": {
+            "enabled": true,
+            "subdomain": "chat",
+        },
+        "drive": {
+            "enabled": true,
+            "subdomain": "drive",
+        },
+        "money": {
+            "enabled": true,
+            "subdomain": "money",
+        },
+        "observability": {
+            "enabled": true,
+            "subdomain": "observability",
+        },
+        "routines": {
+            "enabled": true,
+            "subdomain": "routines",
+        },
+        "s": {
+            "enabled": true,
+            "subdomain": "s",
+        },
+    },
+    "vars": {
+        "auth": {
+            "GOOGLE_CLIENT_ID": "1061674839158-p3tt2pckrha5ipvg9bgkf81d8j8u3gpi.apps.googleusercontent.com",
+        },
+        "cf-bill": {
+            "AUTH_ISSUER_URL": "https://auth.peculiarnewbie.com",
+            "CLOUDFLARE_ACCOUNT_ID": "3a855f7ef3ac127682a419eddeb9f884",
+            "CLOUDFLARE_ZONE_ID": "",
+        },
+        "chat": {
+            "AUTH_ISSUER_URL": "https://auth.peculiarnewbie.com",
+            "DEFAULT_MODEL_ID": "auto",
+        },
+        "drive": {},
+        "money": {
+            "AUTH_ISSUER_URL": "https://auth.peculiarnewbie.com",
+        },
+        "observability": {},
+        "routines": {},
+        "s": {},
+    },
+    "resources": {},
+}

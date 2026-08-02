@@ -1,5 +1,6 @@
 export interface ModelCapabilitySource {
   attachment?: boolean;
+  transport?: "chat-completions" | "responses";
   reasoning?: boolean;
   tool_call?: boolean;
   interleaved?: { field: string } | null;
@@ -11,6 +12,7 @@ export interface ModelCapabilitySource {
 export const MODEL_CAPABILITY_REGISTRY: Record<string, ModelCapabilitySource> = {
   "gpt-5.6-luna": {
     attachment: true,
+    transport: "responses",
     reasoning: true,
     tool_call: true,
     modalities: { input: ["text", "image", "pdf"], output: ["text"] },
@@ -150,3 +152,8 @@ export const MODEL_CAPABILITY_REGISTRY: Record<string, ModelCapabilitySource> = 
     limit: { context: 1000000, output: 128000 },
   },
 };
+
+export function modelTransportFor(modelId: string) {
+  const catalogModelId = modelId.split("/").pop() ?? modelId;
+  return MODEL_CAPABILITY_REGISTRY[catalogModelId]?.transport ?? "chat-completions";
+}

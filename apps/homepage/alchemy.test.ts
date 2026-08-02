@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { make } from "alchemy/Test/Vitest";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
@@ -17,6 +16,7 @@ test.skipIf(!live)(
   "homepage endpoints respond correctly",
   Effect.gen(function* () {
     const deployed = yield* deploy(HomepageStack);
+    assert.ok(deployed.url);
     const base = deployed.url;
 
     const root = yield* Effect.promise(() => fetch(base));
@@ -24,8 +24,14 @@ test.skipIf(!live)(
 
     const profile = yield* Effect.promise(() => fetch(`${base}/api/profile`));
     assert.equal(profile.status, 200);
-    const profileData = yield* Effect.promise(() => profile.json() as any);
-    assert.ok(profileData.name);
+    const profileData: unknown = yield* Effect.promise(() => profile.json());
+    assert.equal(
+      typeof profileData === "object" &&
+        profileData !== null &&
+        "name" in profileData &&
+        typeof profileData.name === "string",
+      true,
+    );
 
     const experiences = yield* Effect.promise(() => fetch(`${base}/api/experiences`));
     assert.equal(experiences.status, 200);

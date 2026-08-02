@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { make } from "alchemy/Test/Vitest";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
@@ -17,6 +16,7 @@ test.skipIf(!live)(
   "anki endpoints respond correctly",
   Effect.gen(function* () {
     const deployed = yield* deploy(AnkiStack);
+    assert.ok(deployed.url);
     const base = deployed.url;
 
     const root = yield* Effect.promise(() => fetch(base));

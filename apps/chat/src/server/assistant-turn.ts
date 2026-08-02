@@ -18,7 +18,9 @@ import {
   OPENCODE_GO_BASE_URL,
   chat,
   createChatCompletionsAdapter,
+  createResponsesAdapter,
   getDefaultModelId,
+  modelTransportFor,
   type AppEnv,
 } from "#/runtime";
 import { combineStrategies, maxIterations, untilFinishReason } from "@tanstack/ai";
@@ -437,14 +439,20 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
       const datePrompt = `Current date: ${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}. When searching for current/recent information, use this date as reference—do not default to years from your training data.`;
       systemPrompts.push(datePrompt);
 
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: OPENCODE_GO_BASE_URL,
-          apiKey: ctx.env.OPENCODE_GO_API_KEY,
-          trace: (name, kind, attrs, run) => traceAsync(name, kind, attrs, run),
-        },
-        modelId,
-      );
+      const adapterConfig = {
+        baseUrl: OPENCODE_GO_BASE_URL,
+        apiKey: ctx.env.OPENCODE_GO_API_KEY,
+        trace: <A>(
+          name: string,
+          kind: TraceSpan["kind"],
+          attrs: Record<string, unknown>,
+          run: () => Promise<A>,
+        ) => traceAsync(name, kind, attrs, run),
+      };
+      const adapter =
+        modelTransportFor(modelId) === "responses"
+          ? createResponsesAdapter(adapterConfig, modelId)
+          : createChatCompletionsAdapter(adapterConfig, modelId);
       const providerOptions = await traceSync(
         "assistant.provider.options",
         "model",

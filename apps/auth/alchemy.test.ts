@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { make } from "alchemy/Test/Vitest";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
@@ -17,7 +16,9 @@ test.skipIf(!live)(
   "auth worker is reachable",
   Effect.gen(function* () {
     const deployed = yield* deploy(AuthStack);
-    const response = yield* Effect.promise(() => fetch(deployed.url));
+    const base = deployed.url;
+    assert.ok(base);
+    const response = yield* Effect.promise(() => fetch(base));
     assert.equal(response.status, 200);
     assert.equal(yield* Effect.promise(() => response.text()), "Shedflare Auth");
   }),

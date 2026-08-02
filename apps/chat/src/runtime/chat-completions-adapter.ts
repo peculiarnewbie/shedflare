@@ -1012,3 +1012,636 @@ export function createChatCompletionsAdapter(
 ): ChatCompletionsAdapter {
   return new ChatCompletionsAdapter(config, modelId);
 }
+
+type ResponsesRecord = Record<string, unknown>;
+
+function asResponsesRecord(value: unknown): ResponsesRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as ResponsesRecord)
+    : null;
+}
+
+function responseString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function responseNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function convertToResponsesContent(
+  content: ModelMessage["content"],
+  role: "user" | "assistant",
+): string | Array<ResponsesRecord> | null {
+  if (content === null) return null;
+  if (typeof content === "string") return content;
+
+  const parts: ResponsesRecord[] = [];
+  const textType = role === "assistant" ? "output_text" : "input_text";
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push({ type: textType, text: part });
+      continue;
+    }
+
+    if (part.type === "text") {
+      parts.push({ type: textType, text: part.content });
+      continue;
+    }
+
+    if (part.type === "image" && role === "user") {
+      const imageUrl =
+        part.source.type === "data"
+          ? `data:${part.source.mimeType};base64,${part.source.value}`
+          : part.source.value;
+      parts.push({ type: "input_image", image_url: imageUrl });
+    }
+  }
+
+  return parts.length > 0 ? parts : null;
+}
+
+function responseOutputForTool(content: ModelMessage["content"]) {
+  const converted = convertToResponsesContent(content, "user");
+  return typeof converted === "string" ? converted : JSON.stringify(converted ?? "");
+}
+
+function convertToResponsesInput(
+  messages: ModelMessage[],
+  systemPrompts: string[] = [],
+): Array<ResponsesRecord> {
+  const result: ResponsesRecord[] = [];
+
+  for (const systemPrompt of systemPrompts) {
+    if (systemPrompt.trim()) {
+      result.push({
+        role: "system",
+        content: [{ type: "input_text", text: systemPrompt }],
+      });
+    }
+  }
+
+  for (const message of messages) {
+    if (message.role === "tool") {
+      result.push({
+        type: "function_call_output",
+        call_id: message.toolCallId,
+        output: responseOutputForTool(message.content),
+      });
+      continue;
+    }
+
+    const content = convertToResponsesContent(message.content, message.role);
+    if (content !== null) {
+      result.push({
+        role: message.role,
+        content,
+      });
+    }
+
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      for (const toolCall of message.toolCalls) {
+        result.push({
+          type: "function_call",
+          call_id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+function convertToResponsesTools(tools: Tool[] | undefined): Array<ResponsesRecord> | undefined {
+  if (!tools?.length) return undefined;
+  return tools.map((tool) => ({
+    type: "function",
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema ?? {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    strict: true,
+  }));
+}
+
+function extractResponsesText(value: unknown): string {
+  const response = asResponsesRecord(value);
+  if (!response) return "";
+
+  const outputText = responseString(response.output_text);
+  if (outputText) return outputText.trim();
+
+  const output = Array.isArray(response.output) ? response.output : [];
+  return output
+    .flatMap((item) => {
+      const record = asResponsesRecord(item);
+      const content = record && Array.isArray(record.content) ? record.content : [];
+      return content.flatMap((part) => {
+        const contentPart = asResponsesRecord(part);
+        const text = contentPart && responseString(contentPart.text);
+        return text ? [text] : [];
+      });
+    })
+    .join("\n")
+    .trim();
+}
+
+type ResponseToolCall = {
+  itemId: string;
+  callId: string;
+  toolName: string;
+  args: string;
+  index: number;
+  started: boolean;
+};
+
+/**
+ * Adapter for OpenAI Responses-compatible model endpoints.
+ *
+ * OpenCode Go exposes GPT-5.6 Luna through `/responses`, while the rest of
+ * the OpenCode Go models in this app use the chat-completions protocol.
+ */
+export class ResponsesAdapter {
+  readonly kind = "text" as const;
+  readonly name = "responses";
+  readonly model: string;
+
+  "~types"!: {
+    providerOptions: Record<string, unknown>;
+    inputModalities: readonly ["text", "image"];
+    messageMetadataByModality: Record<string, unknown>;
+  };
+
+  private readonly config: ChatCompletionsAdapterConfig;
+
+  constructor(config: ChatCompletionsAdapterConfig, modelId: string) {
+    this.config = config;
+    this.model = modelId;
+  }
+
+  async *chatStream(options: TextOptions): AsyncIterable<ExtendedStreamChunk> {
+    const systemPrompts = shouldDisableFurtherToolCalls(options.messages)
+      ? [...(options.systemPrompts ?? []), DISABLE_FURTHER_TOOL_CALLS_SYSTEM_PROMPT]
+      : options.systemPrompts;
+    const input = convertToResponsesInput(options.messages ?? [], systemPrompts);
+    const tools = shouldDisableFurtherToolCalls(options.messages)
+      ? undefined
+      : convertToResponsesTools(options.tools);
+    const trace =
+      this.config.trace ??
+      (<A>(_: string, __: TraceSpanKind, ___: Record<string, unknown>, run: () => Promise<A>) =>
+        run());
+
+    const runId = generateId();
+    const messageId = generateId();
+    const request = createRequestLifecycle({
+      externalSignal: options.abortController?.signal,
+      overallTimeoutMs: this.config.overallTimeout ?? this.config.timeout,
+      firstByteTimeoutMs: this.config.firstByteTimeout,
+      idleTimeoutMs: this.config.idleTimeout,
+    });
+
+    yield {
+      type: "RUN_STARTED",
+      runId,
+      timestamp: Date.now(),
+      model: this.model,
+    } as ExtendedStreamChunk;
+
+    try {
+      const url = `${this.config.baseUrl.replace(/\/$/, "")}/responses`;
+      const response = await trace(
+        "assistant.upstream.responses",
+        "model",
+        {
+          modelId: this.model,
+          stream: true,
+          inputItemCount: input.length,
+          toolCount: tools?.length ?? 0,
+          toolsDisabled: !tools,
+          firstByteTimeoutMs: this.config.firstByteTimeout ?? DEFAULT_FIRST_BYTE_TIMEOUT_MS,
+          idleTimeoutMs: this.config.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_MS,
+          overallTimeoutMs:
+            this.config.overallTimeout ?? this.config.timeout ?? DEFAULT_OVERALL_REQUEST_TIMEOUT_MS,
+        },
+        () =>
+          fetch(url, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${this.config.apiKey}`,
+              ...this.config.headers,
+            },
+            body: JSON.stringify({
+              model: this.model,
+              stream: true,
+              input,
+              ...(tools ? { tools } : {}),
+              ...(options.temperature !== undefined && { temperature: options.temperature }),
+              ...(options.maxTokens !== undefined && { max_output_tokens: options.maxTokens }),
+              ...options.modelOptions,
+            }),
+            signal: request.signal,
+          }),
+      );
+
+      if (!response.ok || !response.body) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        yield {
+          type: "RUN_ERROR",
+          runId,
+          error: {
+            message: `HTTP ${response.status}: ${errorText.slice(0, 500)}`,
+            code: String(response.status),
+          },
+        } as ExtendedStreamChunk;
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let messageStarted = false;
+      let sawTerminalEvent = false;
+      let finishReason: "stop" | "length" | "content_filter" | "tool_calls" | null = null;
+      let assistantContent = "";
+      let usage: ChatCompletionsUsage = {
+        promptTokens: null,
+        completionTokens: null,
+        reasoningTokens: null,
+      };
+      const toolCalls = new Map<string, ResponseToolCall>();
+
+      const emitToolStart = (toolCall: ResponseToolCall, rawEvent: unknown) => {
+        if (toolCall.started) return null;
+        toolCall.started = true;
+        return {
+          type: "TOOL_CALL_START" as const,
+          toolCallId: toolCall.callId,
+          toolName: toolCall.toolName,
+          parentMessageId: messageId,
+          index: toolCall.index,
+          timestamp: Date.now(),
+          model: this.model,
+          rawEvent,
+        } as ExtendedStreamChunk;
+      };
+
+      const ensureToolCall = (inputRecord: {
+        itemId?: string | null;
+        callId?: string | null;
+        toolName?: string | null;
+        index?: number | null;
+      }) => {
+        const itemId = inputRecord.itemId || inputRecord.callId || generateId();
+        const existing = toolCalls.get(itemId);
+        if (existing) {
+          if (inputRecord.callId) existing.callId = inputRecord.callId;
+          if (inputRecord.toolName) existing.toolName = inputRecord.toolName;
+          if (inputRecord.index !== null && inputRecord.index !== undefined) {
+            existing.index = inputRecord.index;
+          }
+          return existing;
+        }
+        const toolCall: ResponseToolCall = {
+          itemId,
+          callId: inputRecord.callId || itemId,
+          toolName: inputRecord.toolName || "tool",
+          args: "",
+          index: inputRecord.index ?? toolCalls.size,
+          started: false,
+        };
+        toolCalls.set(itemId, toolCall);
+        return toolCall;
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value && value.byteLength > 0) {
+          request.markFirstByteReceived();
+          request.markStreamChunkReceived();
+          buffer += decoder.decode(value, { stream: true });
+        }
+        if (done) {
+          buffer += decoder.decode();
+          if (buffer.trim()) buffer += "\n\n";
+        }
+
+        while (true) {
+          const separator = buffer.match(/\r?\n\r?\n/);
+          if (!separator || separator.index === undefined) break;
+          const block = buffer.slice(0, separator.index);
+          buffer = buffer.slice(separator.index + separator[0].length);
+          const eventName = block
+            .split(/\r?\n/)
+            .find((line) => line.startsWith("event:"))
+            ?.slice(6)
+            .trim();
+          const dataLines = block
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trim());
+          if (dataLines.length === 0) continue;
+          const payloadText = dataLines.join("\n");
+          if (payloadText === "[DONE]") {
+            sawTerminalEvent = true;
+            continue;
+          }
+
+          let parsed: ResponsesRecord;
+          try {
+            const value = JSON.parse(payloadText) as unknown;
+            const record = asResponsesRecord(value);
+            if (!record) continue;
+            parsed = record;
+          } catch {
+            console.warn("[responses] SSE parse failed for payload", payloadText.slice(0, 200));
+            continue;
+          }
+
+          const type = responseString(parsed.type) ?? eventName ?? "";
+          if (type === "response.output_text.delta") {
+            const delta = responseString(parsed.delta) ?? "";
+            if (!delta) continue;
+            assistantContent += delta;
+            if (!messageStarted) {
+              messageStarted = true;
+              yield {
+                type: "TEXT_MESSAGE_START",
+                messageId,
+                role: "assistant",
+                timestamp: Date.now(),
+                model: this.model,
+                rawEvent: parsed,
+              } as ExtendedStreamChunk;
+            }
+            yield {
+              type: "TEXT_MESSAGE_CONTENT",
+              messageId,
+              delta,
+              timestamp: Date.now(),
+              model: this.model,
+              rawEvent: parsed,
+            } as ExtendedStreamChunk;
+            continue;
+          }
+
+          if (type === "response.output_item.added" || type === "response.output_item.done") {
+            const item = asResponsesRecord(parsed.item);
+            if (item && item.type === "function_call") {
+              const toolCall = ensureToolCall({
+                itemId: responseString(item.id),
+                callId: responseString(item.call_id),
+                toolName: responseString(item.name),
+                index: responseNumber(parsed.output_index),
+              });
+              const start = emitToolStart(toolCall, parsed);
+              if (start) yield start;
+              const args = responseString(item.arguments);
+              if (args && args !== toolCall.args) {
+                const delta = args.startsWith(toolCall.args)
+                  ? args.slice(toolCall.args.length)
+                  : args;
+                toolCall.args = args;
+                if (delta) {
+                  yield {
+                    type: "TOOL_CALL_ARGS",
+                    toolCallId: toolCall.callId,
+                    delta,
+                    args: toolCall.args,
+                    timestamp: Date.now(),
+                    model: this.model,
+                    rawEvent: parsed,
+                  } as ExtendedStreamChunk;
+                }
+              }
+            }
+            continue;
+          }
+
+          if (
+            type === "response.function_call_arguments.delta" ||
+            type === "response.function_call_arguments.done"
+          ) {
+            const toolCall = ensureToolCall({
+              itemId: responseString(parsed.item_id),
+              callId: responseString(parsed.call_id),
+              toolName: responseString(parsed.name),
+              index: responseNumber(parsed.output_index),
+            });
+            const start = emitToolStart(toolCall, parsed);
+            if (start) yield start;
+            const argumentDelta =
+              type === "response.function_call_arguments.done"
+                ? (responseString(parsed.arguments) ?? "")
+                : (responseString(parsed.delta) ?? "");
+            if (!argumentDelta) continue;
+            const delta =
+              type === "response.function_call_arguments.done" &&
+              argumentDelta.startsWith(toolCall.args)
+                ? argumentDelta.slice(toolCall.args.length)
+                : argumentDelta;
+            toolCall.args =
+              type === "response.function_call_arguments.done"
+                ? argumentDelta
+                : toolCall.args + delta;
+            if (delta) {
+              yield {
+                type: "TOOL_CALL_ARGS",
+                toolCallId: toolCall.callId,
+                delta,
+                args: toolCall.args,
+                timestamp: Date.now(),
+                model: this.model,
+                rawEvent: parsed,
+              } as ExtendedStreamChunk;
+            }
+            continue;
+          }
+
+          if (type === "response.output_text.done") continue;
+
+          if (type === "response.completed" || type === "response.incomplete") {
+            sawTerminalEvent = true;
+            const responseRecord = asResponsesRecord(parsed.response) ?? parsed;
+            const responseUsage = asResponsesRecord(responseRecord.usage);
+            if (responseUsage) {
+              usage.promptTokens = responseNumber(responseUsage.input_tokens);
+              usage.completionTokens = responseNumber(responseUsage.output_tokens);
+              usage.reasoningTokens = extractReasoningTokens(responseUsage);
+            }
+            const status = responseString(responseRecord.status);
+            finishReason =
+              toolCalls.size > 0
+                ? "tool_calls"
+                : type === "response.incomplete" || status === "incomplete"
+                  ? "length"
+                  : "stop";
+            continue;
+          }
+
+          if (type === "response.failed" || type === "error" || type === "response.error") {
+            const responseRecord = asResponsesRecord(parsed.response);
+            const errorRecord =
+              asResponsesRecord(parsed.error) ?? asResponsesRecord(responseRecord?.error);
+            const errorMessage =
+              responseString(errorRecord?.message) ?? "Responses API request failed";
+            yield {
+              type: "RUN_ERROR",
+              runId,
+              error: {
+                message: errorMessage,
+                code: responseString(errorRecord?.code) ?? "responses_error",
+              },
+              timestamp: Date.now(),
+              model: this.model,
+            } as ExtendedStreamChunk;
+            return;
+          }
+        }
+
+        if (done) break;
+      }
+
+      if (messageStarted) {
+        yield {
+          type: "TEXT_MESSAGE_END",
+          messageId,
+          timestamp: Date.now(),
+          model: this.model,
+        } as ExtendedStreamChunk;
+      }
+
+      for (const toolCall of toolCalls.values()) {
+        let inputValue: unknown;
+        if (toolCall.args.trim()) {
+          try {
+            inputValue = JSON.parse(toolCall.args) as unknown;
+          } catch {
+            console.warn("[responses] tool call args parse failed for", toolCall.toolName);
+          }
+        }
+        yield {
+          type: "TOOL_CALL_END",
+          toolCallId: toolCall.callId,
+          toolName: toolCall.toolName,
+          ...(inputValue !== undefined ? { input: inputValue } : {}),
+          timestamp: Date.now(),
+          model: this.model,
+        } as ExtendedStreamChunk;
+      }
+
+      if (finishReason === null) {
+        if (sawTerminalEvent) {
+          finishReason = toolCalls.size > 0 ? "tool_calls" : "stop";
+        } else {
+          yield {
+            type: "RUN_ERROR",
+            runId,
+            error: {
+              message: "Upstream Responses stream ended without a terminal event",
+              code: "assistant_stream_interrupted",
+            },
+            timestamp: Date.now(),
+            model: this.model,
+          } as ExtendedStreamChunk;
+          return;
+        }
+      }
+
+      yield {
+        type: "RUN_FINISHED",
+        runId,
+        finishReason,
+        usage:
+          usage.promptTokens !== null || usage.completionTokens !== null
+            ? {
+                promptTokens: usage.promptTokens ?? 0,
+                completionTokens: usage.completionTokens ?? 0,
+                totalTokens: (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
+              }
+            : undefined,
+        timestamp: Date.now(),
+        model: this.model,
+      } as ExtendedStreamChunk;
+    } catch (error) {
+      yield {
+        type: "RUN_ERROR",
+        runId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          code: "stream_error",
+        },
+        timestamp: Date.now(),
+        model: this.model,
+      } as ExtendedStreamChunk;
+    } finally {
+      request.cleanup();
+    }
+  }
+
+  async structuredOutput(options: {
+    chatOptions: TextOptions;
+    outputSchema: Record<string, unknown>;
+  }): Promise<{ data: unknown; rawText: string }> {
+    const input = convertToResponsesInput(
+      options.chatOptions.messages ?? [],
+      options.chatOptions.systemPrompts,
+    );
+    const request = createRequestLifecycle({
+      externalSignal: options.chatOptions.abortController?.signal,
+      overallTimeoutMs: this.config.overallTimeout ?? this.config.timeout,
+      firstByteTimeoutMs: 0,
+    });
+
+    try {
+      const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/responses`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.config.apiKey}`,
+          ...this.config.headers,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input,
+          stream: false,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "structured_output",
+              schema: options.outputSchema,
+              strict: true,
+            },
+          },
+          ...(options.chatOptions.maxTokens !== undefined && {
+            max_output_tokens: options.chatOptions.maxTokens,
+          }),
+          ...options.chatOptions.modelOptions,
+        }),
+        signal: request.signal,
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 500)}`);
+      }
+      const json = (await response.json()) as unknown;
+      const rawText = extractResponsesText(json);
+      return { data: JSON.parse(rawText) as unknown, rawText };
+    } finally {
+      request.cleanup();
+    }
+  }
+}
+
+export function createResponsesAdapter(
+  config: ChatCompletionsAdapterConfig,
+  modelId: string,
+): ResponsesAdapter {
+  return new ResponsesAdapter(config, modelId);
+}

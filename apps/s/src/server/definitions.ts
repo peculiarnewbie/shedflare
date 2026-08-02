@@ -7,32 +7,26 @@ const LinkRow = Schema.Struct({
   hidePreview: Schema.Boolean,
   createdAt: Schema.String,
 });
+const ApiError = Schema.Struct({ error: Schema.String });
 
-const linksListEp: any = { ...HttpApiEndpoint.get("list", "/api/links") };
-linksListEp.success.add(Schema.Struct({ links: Schema.Array(LinkRow) }));
-
-const linksCreateEp: any = { ...HttpApiEndpoint.post("create", "/api/links") };
-linksCreateEp.payload.set("application/json", {
-  encoding: { _tag: "Json" },
-  schemas: [
-    Schema.Struct({
-      slug: Schema.String,
-      url: Schema.String,
-      hidePreview: Schema.optional(Schema.Boolean),
-    }),
-  ],
+const linksListEndpoint = HttpApiEndpoint.get("list", "/api/links", {
+  success: Schema.Struct({ links: Schema.Array(LinkRow) }),
 });
-linksCreateEp.success.add(LinkRow);
-linksCreateEp.error.add(Schema.Struct({ error: Schema.String }));
 
-const linksDeleteEp: any = { ...HttpApiEndpoint.delete("remove", "/api/links/:slug") };
-linksDeleteEp.params = Schema.Struct({ slug: Schema.String });
-linksDeleteEp.success.add(Schema.Struct({ ok: Schema.Boolean }));
+const linksCreateEndpoint = HttpApiEndpoint.post("create", "/api/links", {
+  payload: Schema.Struct({
+    slug: Schema.String,
+    url: Schema.String,
+    hidePreview: Schema.optional(Schema.Boolean),
+  }),
+  success: Schema.Union([LinkRow, ApiError]),
+});
 
-const linksGroup: any = HttpApiGroup.make("links");
-linksGroup.endpoints["list"] = linksListEp;
-linksGroup.endpoints["create"] = linksCreateEp;
-linksGroup.endpoints["remove"] = linksDeleteEp;
+const linksDeleteEndpoint = HttpApiEndpoint.delete("remove", "/api/links/:slug", {
+  params: Schema.Struct({ slug: Schema.String }),
+  success: Schema.Struct({ ok: Schema.Boolean }),
+});
 
-export const shortApi: any = HttpApi.make("s");
-shortApi.groups["links"] = linksGroup;
+export const shortApi = HttpApi.make("s").add(
+  HttpApiGroup.make("links").add(linksListEndpoint, linksCreateEndpoint, linksDeleteEndpoint),
+);

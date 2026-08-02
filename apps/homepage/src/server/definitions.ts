@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 
-const ExperienceRow = Schema.Struct({
+export const ExperienceRow = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
   workplace: Schema.String,
@@ -14,8 +14,9 @@ const ExperienceRow = Schema.Struct({
   showOnHome: Schema.Boolean,
   createdAt: Schema.String,
 });
+export type ExperienceRow = Schema.Schema.Type<typeof ExperienceRow>;
 
-const ProjectRow = Schema.Struct({
+export const ProjectRow = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
   tags: Schema.String,
@@ -27,121 +28,114 @@ const ProjectRow = Schema.Struct({
   showOnHome: Schema.Boolean,
   createdAt: Schema.String,
 });
+export type ProjectRow = Schema.Schema.Type<typeof ProjectRow>;
 
-const expListEp: any = { ...HttpApiEndpoint.get("list", "/api/experiences") };
-expListEp.success.add(Schema.Array(ExperienceRow));
+export const ApiError = Schema.Struct({ error: Schema.String });
+export type ApiError = Schema.Schema.Type<typeof ApiError>;
 
-const projListEp: any = { ...HttpApiEndpoint.get("list", "/api/projects") };
-projListEp.success.add(Schema.Array(ProjectRow));
-
-const expCreateEp: any = { ...HttpApiEndpoint.post("create", "/api/admin/experiences") };
-expCreateEp.payload.set("application/json", {
-  encoding: { _tag: "Json" },
-  schemas: [
-    Schema.Struct({
-      id: Schema.String,
-      title: Schema.String,
-      workplace: Schema.String,
-      url: Schema.String,
-      tags: Schema.String,
-      startDate: Schema.String,
-      endDate: Schema.optional(Schema.String),
-      body: Schema.String,
-      sortOrder: Schema.optional(Schema.Number),
-      showOnHome: Schema.optional(Schema.Boolean),
-    }),
-  ],
+export const ExperienceCreatePayload = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  workplace: Schema.String,
+  url: Schema.String,
+  tags: Schema.String,
+  startDate: Schema.String,
+  endDate: Schema.optional(Schema.String),
+  body: Schema.String,
+  sortOrder: Schema.optional(Schema.Number),
+  showOnHome: Schema.optional(Schema.Boolean),
 });
-expCreateEp.success.add(ExperienceRow);
-expCreateEp.error.add(Schema.Struct({ error: Schema.String }));
+export type ExperienceCreatePayload = Schema.Schema.Type<typeof ExperienceCreatePayload>;
 
-const expUpdateEp: any = { ...HttpApiEndpoint.put("update", "/api/admin/experiences/:id") };
-expUpdateEp.params = Schema.Struct({ id: Schema.String });
-expUpdateEp.payload.set("application/json", {
-  encoding: { _tag: "Json" },
-  schemas: [
-    Schema.Struct({
-      title: Schema.optional(Schema.String),
-      workplace: Schema.optional(Schema.String),
-      url: Schema.optional(Schema.String),
-      tags: Schema.optional(Schema.String),
-      startDate: Schema.optional(Schema.String),
-      endDate: Schema.optional(Schema.String),
-      body: Schema.optional(Schema.String),
-      sortOrder: Schema.optional(Schema.Number),
-      showOnHome: Schema.optional(Schema.Boolean),
-    }),
-  ],
+export const ExperienceUpdatePayload = Schema.Struct({
+  title: Schema.optional(Schema.String),
+  workplace: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.String),
+  tags: Schema.optional(Schema.String),
+  startDate: Schema.optional(Schema.String),
+  endDate: Schema.optional(Schema.String),
+  body: Schema.optional(Schema.String),
+  sortOrder: Schema.optional(Schema.Number),
+  showOnHome: Schema.optional(Schema.Boolean),
 });
-expUpdateEp.success.add(ExperienceRow);
-expUpdateEp.error.add(Schema.Struct({ error: Schema.String }));
+export type ExperienceUpdatePayload = Schema.Schema.Type<typeof ExperienceUpdatePayload>;
 
-const expDeleteEp: any = { ...HttpApiEndpoint.delete("remove", "/api/admin/experiences/:id") };
-expDeleteEp.params = Schema.Struct({ id: Schema.String });
-expDeleteEp.success.add(Schema.Struct({ ok: Schema.Boolean }));
-
-const projCreateEp: any = { ...HttpApiEndpoint.post("create", "/api/admin/projects") };
-projCreateEp.payload.set("application/json", {
-  encoding: { _tag: "Json" },
-  schemas: [
-    Schema.Struct({
-      id: Schema.String,
-      title: Schema.String,
-      tags: Schema.String,
-      image: Schema.String,
-      url: Schema.String,
-      githubUrl: Schema.String,
-      desc: Schema.String,
-      sortOrder: Schema.optional(Schema.Number),
-      showOnHome: Schema.optional(Schema.Boolean),
-    }),
-  ],
+export const ProjectCreatePayload = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  tags: Schema.String,
+  image: Schema.String,
+  url: Schema.String,
+  githubUrl: Schema.String,
+  desc: Schema.String,
+  sortOrder: Schema.optional(Schema.Number),
+  showOnHome: Schema.optional(Schema.Boolean),
 });
-projCreateEp.success.add(ProjectRow);
-projCreateEp.error.add(Schema.Struct({ error: Schema.String }));
+export type ProjectCreatePayload = Schema.Schema.Type<typeof ProjectCreatePayload>;
 
-const projUpdateEp: any = { ...HttpApiEndpoint.put("update", "/api/admin/projects/:id") };
-projUpdateEp.params = Schema.Struct({ id: Schema.String });
-projUpdateEp.payload.set("application/json", {
-  encoding: { _tag: "Json" },
-  schemas: [
-    Schema.Struct({
-      title: Schema.optional(Schema.String),
-      tags: Schema.optional(Schema.String),
-      image: Schema.optional(Schema.String),
-      url: Schema.optional(Schema.String),
-      githubUrl: Schema.optional(Schema.String),
-      desc: Schema.optional(Schema.String),
-      sortOrder: Schema.optional(Schema.Number),
-      showOnHome: Schema.optional(Schema.Boolean),
-    }),
-  ],
+export const ProjectUpdatePayload = Schema.Struct({
+  title: Schema.optional(Schema.String),
+  tags: Schema.optional(Schema.String),
+  image: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.String),
+  githubUrl: Schema.optional(Schema.String),
+  desc: Schema.optional(Schema.String),
+  sortOrder: Schema.optional(Schema.Number),
+  showOnHome: Schema.optional(Schema.Boolean),
 });
-projUpdateEp.success.add(ProjectRow);
-projUpdateEp.error.add(Schema.Struct({ error: Schema.String }));
+export type ProjectUpdatePayload = Schema.Schema.Type<typeof ProjectUpdatePayload>;
 
-const projDeleteEp: any = { ...HttpApiEndpoint.delete("remove", "/api/admin/projects/:id") };
-projDeleteEp.params = Schema.Struct({ id: Schema.String });
-projDeleteEp.success.add(Schema.Struct({ ok: Schema.Boolean }));
+const expListEndpoint = HttpApiEndpoint.get("list", "/api/experiences", {
+  success: Schema.Array(ExperienceRow),
+});
 
-const expGroup: any = HttpApiGroup.make("experiences");
-expGroup.endpoints["list"] = expListEp;
+const projListEndpoint = HttpApiEndpoint.get("list", "/api/projects", {
+  success: Schema.Array(ProjectRow),
+});
 
-const projGroup: any = HttpApiGroup.make("projects");
-projGroup.endpoints["list"] = projListEp;
+const expCreateEndpoint = HttpApiEndpoint.post("create", "/api/admin/experiences", {
+  payload: ExperienceCreatePayload,
+  success: Schema.Union([ExperienceRow, ApiError]),
+});
 
-const adminExpGroup: any = HttpApiGroup.make("admin-experiences");
-adminExpGroup.endpoints["create"] = expCreateEp;
-adminExpGroup.endpoints["update"] = expUpdateEp;
-adminExpGroup.endpoints["remove"] = expDeleteEp;
+const expUpdateEndpoint = HttpApiEndpoint.put("update", "/api/admin/experiences/:id", {
+  params: Schema.Struct({ id: Schema.String }),
+  payload: ExperienceUpdatePayload,
+  success: Schema.Union([ExperienceRow, ApiError]),
+});
 
-const adminProjGroup: any = HttpApiGroup.make("admin-projects");
-adminProjGroup.endpoints["create"] = projCreateEp;
-adminProjGroup.endpoints["update"] = projUpdateEp;
-adminProjGroup.endpoints["remove"] = projDeleteEp;
+const expDeleteEndpoint = HttpApiEndpoint.delete("remove", "/api/admin/experiences/:id", {
+  params: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ ok: Schema.Boolean }),
+});
 
-export const homepageApi: any = HttpApi.make("homepage");
-homepageApi.groups["experiences"] = expGroup;
-homepageApi.groups["projects"] = projGroup;
-homepageApi.groups["admin-experiences"] = adminExpGroup;
-homepageApi.groups["admin-projects"] = adminProjGroup;
+const projCreateEndpoint = HttpApiEndpoint.post("create", "/api/admin/projects", {
+  payload: ProjectCreatePayload,
+  success: Schema.Union([ProjectRow, ApiError]),
+});
+
+const projUpdateEndpoint = HttpApiEndpoint.put("update", "/api/admin/projects/:id", {
+  params: Schema.Struct({ id: Schema.String }),
+  payload: ProjectUpdatePayload,
+  success: Schema.Union([ProjectRow, ApiError]),
+});
+
+const projDeleteEndpoint = HttpApiEndpoint.delete("remove", "/api/admin/projects/:id", {
+  params: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ ok: Schema.Boolean }),
+});
+
+export const homepageApi = HttpApi.make("homepage").add(
+  HttpApiGroup.make("experiences").add(expListEndpoint),
+  HttpApiGroup.make("projects").add(projListEndpoint),
+  HttpApiGroup.make("admin-experiences").add(
+    expCreateEndpoint,
+    expUpdateEndpoint,
+    expDeleteEndpoint,
+  ),
+  HttpApiGroup.make("admin-projects").add(
+    projCreateEndpoint,
+    projUpdateEndpoint,
+    projDeleteEndpoint,
+  ),
+);

@@ -115,11 +115,10 @@ type UsageEnv = {
 };
 
 export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
-  const endpoint = (cfBillApi as any).groups["usage"].endpoints["usage"];
-  return (HttpApiBuilder.group as any)(cfBillApi, "usage", (handlers: any) => {
-    handlers.handlers.set("usage", {
-      endpoint,
-      handler: auth.createProtectedHandler(async () => {
+  return HttpApiBuilder.group(cfBillApi, "usage", (handlers) =>
+    handlers.handle(
+      "usage",
+      auth.createProtectedHandler(async () => {
         const period = monthBounds();
         const accountId = env.CLOUDFLARE_ACCOUNT_ID;
         const zoneId = env.CLOUDFLARE_ZONE_ID;
@@ -374,9 +373,6 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
 
         return { period, products };
       }),
-      isRaw: false,
-      uninterruptible: false,
-    });
-    return handlers;
-  });
+    ),
+  );
 }

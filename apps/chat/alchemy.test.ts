@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { make } from "alchemy/Test/Vitest";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
@@ -17,6 +16,7 @@ test.skipIf(!live)(
   "chat endpoints respond correctly",
   Effect.gen(function* () {
     const deployed = yield* deploy(ChatStack);
+    assert.ok(deployed.url);
     const base = deployed.url;
     const root = yield* Effect.promise(() => fetch(base));
     assert.equal(root.status, 200);
@@ -28,8 +28,14 @@ test.skipIf(!live)(
 
     const bootstrap = yield* Effect.promise(() => fetch(`${base}/api/bootstrap`));
     assert.equal(bootstrap.status, 200);
-    const bootstrapBody = (yield* Effect.promise(() => bootstrap.json())) as any;
-    assert.equal(bootstrapBody.session, null);
+    const bootstrapBody: unknown = yield* Effect.promise(() => bootstrap.json());
+    assert.equal(
+      typeof bootstrapBody === "object" &&
+        bootstrapBody !== null &&
+        "session" in bootstrapBody &&
+        bootstrapBody.session === null,
+      true,
+    );
   }),
   { timeout: 120_000 },
 );

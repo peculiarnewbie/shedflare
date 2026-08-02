@@ -1,5 +1,5 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { moneyApi, dataGroup as group } from "../definitions";
+import { moneyApi } from "../definitions";
 import { createDb } from "../d1-access";
 import { wrapHandler } from "./wrap-handler";
 
@@ -13,11 +13,10 @@ function json(data: unknown, status = 200) {
 }
 
 export function createDataGroup(env: Env) {
-  const endpoints = group.endpoints;
-  return (HttpApiBuilder.group as any)(moneyApi, "data", (handlers: any) => {
-    handlers.handlers.set("dump", {
-      endpoint: endpoints["dump"],
-      handler: wrapHandler(async (_req: Request): Promise<Response> => {
+  return HttpApiBuilder.group(moneyApi, "data", (handlers) =>
+    handlers.handleRaw(
+      "dump",
+      wrapHandler(async (_req: Request): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
         const data: Record<string, Record<string, unknown>> = {};
 
@@ -63,9 +62,6 @@ export function createDataGroup(env: Env) {
 
         return json({ data });
       }),
-      isRaw: true,
-      uninterruptible: false,
-    });
-    return handlers;
-  });
+    ),
+  );
 }

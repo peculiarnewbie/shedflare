@@ -19,14 +19,17 @@ import {
   clampExaResults,
   cloudflareBrowserMarkdown,
   createChatCompletionsAdapter,
+  createResponsesAdapter,
   exaSearch,
   ExaSearchError,
   extractReasoningTokens,
   extractChatCompletionText,
   clearEnvOverrideCache,
   filterModelsCatalog,
+  modelTransportFor,
   normalizeModelsCatalogResponse,
   getSignedAttachmentUrl,
+  getInlineAttachment,
   isImageAttachment,
   isOwnerEmail,
   isInlineTextAttachment,
@@ -900,6 +903,12 @@ describe("server helpers", () => {
     });
   });
 
+  it("uses the Responses transport for GPT 5.6 Luna", () => {
+    expect(modelTransportFor("gpt-5.6-luna")).toBe("responses");
+    expect(modelTransportFor("opencode-go/gpt-5.6-luna")).toBe("responses");
+    expect(modelTransportFor("kimi-k3")).toBe("chat-completions");
+  });
+
   it("env var override overrides local registry", () => {
     const { OPENCODE_GO_MODEL_ALLOWLIST: _, ...noAllowlist } = env;
     const overrideEnv = {
@@ -1019,6 +1028,113 @@ describe("server helpers", () => {
     ).toBe(64);
 
     expect(extractReasoningTokens({ completion_tokens: 42 })).toBe(null);
+  });
+
+  it("sends inline image data through the chat-completions adapter", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody: Record<string, unknown> | null = null;
+    globalThis.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Record<
+        string,
+        unknown
+      >;
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"I can see it."}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const adapter = createChatCompletionsAdapter(
+        { baseUrl: "https://api.example.com", apiKey: "test-key" },
+        "kimi-k3",
+      );
+      for await (const _chunk of chat({
+        adapter,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", content: "What is this?" },
+              {
+                type: "image",
+                source: { type: "data", mimeType: "image/png", value: "AAE=" },
+              },
+            ],
+          },
+        ],
+      })) {
+        // Drain the stream so the request completes.
+      }
+
+      const capturedBody = requestBody as unknown as Record<string, unknown>;
+      const messages = capturedBody.messages as Array<Record<string, unknown>>;
+      const content = messages[0]?.content as Array<Record<string, unknown>>;
+      expect(content[1]).toEqual({
+        type: "image_url",
+        image_url: { url: "data:image/png;base64,AAE=" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("uses the Responses API and preserves inline image input for Luna", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> | null = null;
+    globalThis.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      requestBody = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Record<
+        string,
+        unknown
+      >;
+      return new Response(
+        [
+          'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"I can see it."}\n\n',
+          'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":4,"output_tokens":5}}}\n\n',
+        ].join(""),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const adapter = createResponsesAdapter(
+        { baseUrl: "https://api.example.com", apiKey: "test-key" },
+        "gpt-5.6-luna",
+      );
+      const chunks = [];
+      for await (const chunk of chat({
+        adapter,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", content: "What is this?" },
+              {
+                type: "image",
+                source: { type: "data", mimeType: "image/jpeg", value: "AQI=" },
+              },
+            ],
+          },
+        ],
+      })) {
+        chunks.push(chunk);
+      }
+
+      expect(requestUrl).toBe("https://api.example.com/responses");
+      const capturedBody = requestBody as unknown as Record<string, unknown>;
+      const input = capturedBody.input as Array<Record<string, unknown>>;
+      const userMessage = input.find((item) => item.role === "user");
+      expect(userMessage?.content).toEqual([
+        { type: "input_text", text: "What is this?" },
+        { type: "input_image", image_url: "data:image/jpeg;base64,AQI=" },
+      ]);
+      expect(chunks.some((chunk) => chunk.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
+      expect(chunks.some((chunk) => chunk.type === "RUN_FINISHED")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("completes provider tool calls and preserves null assistant content on continuation", async () => {
@@ -1799,6 +1915,24 @@ describe("server helpers", () => {
     expect(payload?.action).toBe("read_attachment");
     expect(payload?.objectKey).toBe("thd_123/cat.png");
     expect(Number(payload?.expiresAt)).toBeGreaterThan(Date.now());
+  });
+
+  it("loads stored image bytes as inline model input", async () => {
+    const inline = await getInlineAttachment(
+      {
+        ...env,
+        UPLOADS: {
+          get: async () => ({
+            arrayBuffer: async () => new Uint8Array([0, 1, 255]).buffer as ArrayBuffer,
+            httpMetadata: { contentType: "image/jpeg" },
+          }),
+        } as unknown as R2Bucket,
+      },
+      "thd_123/cat.jpg",
+      "image/png",
+    );
+
+    expect(inline).toEqual({ mimeType: "image/jpeg", base64: "AAH/" });
   });
 
   it("sends useAutoprompt and contents options to the Exa API", async () => {

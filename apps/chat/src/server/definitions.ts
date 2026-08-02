@@ -1,21 +1,12 @@
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 
-const bootstrapEp: any = { ...HttpApiEndpoint.get("bootstrap", "/api/bootstrap") };
-const modelsEp: any = { ...HttpApiEndpoint.get("models", "/api/models") };
-const uploadPresignEp: any = { ...HttpApiEndpoint.post("presign", "/api/uploads/presign") };
-const uploadCompleteEp: any = { ...HttpApiEndpoint.post("complete", "/api/uploads/complete") };
+const bootstrapEndpoint = HttpApiEndpoint.get("bootstrap", "/api/bootstrap");
+const modelsEndpoint = HttpApiEndpoint.get("models", "/api/models");
+const uploadPresignEndpoint = HttpApiEndpoint.post("presign", "/api/uploads/presign");
+const uploadCompleteEndpoint = HttpApiEndpoint.post("complete", "/api/uploads/complete");
 
-const bootstrapGroup: any = HttpApiGroup.make("bootstrap");
-bootstrapGroup.endpoints["bootstrap"] = bootstrapEp;
-
-const modelsGroup: any = HttpApiGroup.make("models");
-modelsGroup.endpoints["models"] = modelsEp;
-
-const uploadsGroup: any = HttpApiGroup.make("uploads");
-uploadsGroup.endpoints["presign"] = uploadPresignEp;
-uploadsGroup.endpoints["complete"] = uploadCompleteEp;
-
-export const chatApi: any = HttpApi.make("chat");
-chatApi.groups["bootstrap"] = bootstrapGroup;
-chatApi.groups["models"] = modelsGroup;
-chatApi.groups["uploads"] = uploadsGroup;
+export const chatApi = HttpApi.make("chat").add(
+  HttpApiGroup.make("bootstrap").add(bootstrapEndpoint),
+  HttpApiGroup.make("models").add(modelsEndpoint),
+  HttpApiGroup.make("uploads").add(uploadPresignEndpoint, uploadCompleteEndpoint),
+);

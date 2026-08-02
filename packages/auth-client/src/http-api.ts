@@ -2,9 +2,9 @@ import { Effect } from "effect";
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { createAuthHandlers, type AuthEnv, type Session } from "./consumer";
 
-export interface HandlerContext {
-  params?: Record<string, unknown>;
-  payload?: unknown;
+export interface HandlerContext<Params = unknown, Payload = unknown> {
+  params?: Params;
+  payload?: Payload;
 }
 
 export function createHttpApiAuth(env: AuthEnv) {
@@ -17,13 +17,13 @@ export function createHttpApiAuth(env: AuthEnv) {
     });
   }
 
-  function createProtectedHandler<A>(
-    fn: (webReq: Request, session: Session, ctx: HandlerContext) => Promise<A>,
+  function createProtectedHandler<Params = unknown, Payload = unknown, A = unknown>(
+    fn: (webReq: Request, session: Session, ctx: HandlerContext<Params, Payload>) => Promise<A>,
   ) {
     return (ctx: {
       request: HttpServerRequest.HttpServerRequest;
-      params?: Record<string, unknown>;
-      payload?: unknown;
+      params?: Params;
+      payload?: Payload;
     }) =>
       Effect.gen(function* () {
         const webReq = yield* HttpServerRequest.toWeb(ctx.request);
