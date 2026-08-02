@@ -2,8 +2,8 @@ import { createId, nowIso, summarizeThreadTitle, type SyncServerEnvelope } from 
 import { OPENCODE_GO_BASE_URL, getDefaultModelId, type AppEnv } from "#/runtime";
 import { getTitleGenerationModelOptions } from "./model-config";
 import { syncLog, sanitizeGeneratedTitle } from "./sync-utils";
-import type { DataAccess } from "./data-access";
-import { normalizeThread } from "./data-access";
+import type { ChatRepository } from "./chat-repository";
+import { normalizeThread } from "./persistence-codecs";
 import type { EventStore } from "./event-store";
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@ export interface TitleGenerationInput {
 }
 
 export interface TitleGenerationContext {
-  access: DataAccess;
+  access: ChatRepository;
   eventStore: EventStore;
   env: AppEnv;
   broadcast: (envelope: SyncServerEnvelope) => void;

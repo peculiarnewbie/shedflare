@@ -26,11 +26,12 @@ import {
 import { Effect } from "effect";
 import * as SqlError from "effect/unstable/sql/SqlError";
 import { json, parseJsonRequest, parseInternalCommandBody, syncLog } from "./sync-utils";
-import migrationManifest from "../../drizzle/migrations";
-import { runMigrations } from "./migrator";
-import { resetForProtocolVersion } from "./schema-helpers";
+import { initializeChatDatabase } from "./database-initializer";
+import { BackupReader } from "./backup-reader";
+import { ChatRepository } from "./chat-repository";
 import { DataAccess } from "./data-access";
 import { EventStore } from "./event-store";
+import { SnapshotReader } from "./snapshot-reader";
 import {
   handleBootstrapSession,
   handleUpdateAccountSettings,
@@ -135,7 +136,10 @@ function shouldLogBroadcast(envelope: SyncServerEnvelope) {
 export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   private readonly database: EffectDatabase;
   private readonly db: ChatDrizzleDatabase;
-  private readonly chatAccess: DataAccess;
+  private readonly sqlAccess: DataAccess;
+  private readonly chatAccess: ChatRepository;
+  private readonly snapshots: SnapshotReader;
+  private readonly backups: BackupReader;
   private readonly eventStore: EventStore;
   private readonly assistantTurnControllers = new Map<string, AbortController>();
   private readonly activeTurnMessageIds = new Set<string>();
@@ -146,35 +150,19 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     super(ctx, env);
     this.database = new EffectDatabase(ctx.storage);
     this.db = this.database.drizzle;
-    this.chatAccess = new DataAccess(this.access, this.database);
-    this.eventStore = new EventStore(this.chatAccess);
+    this.sqlAccess = new DataAccess({ database: this.database, sql: this.access });
+    this.chatAccess = new ChatRepository(this.sqlAccess);
+    this.snapshots = new SnapshotReader(this.sqlAccess);
+    this.backups = new BackupReader({ access: this.sqlAccess, snapshots: this.snapshots });
+    this.eventStore = new EventStore({
+      sql: this.sqlAccess,
+      repository: this.chatAccess,
+      syncAccess: this.access,
+    });
     this.registerChatHandlers();
 
     this.initialized = ctx.blockConcurrencyWhile(async () => {
-      syncLog("migrate_start");
-      await this.database.runPromise(runMigrations(this.db, this.ctx.storage, migrationManifest));
-      syncLog("migrate_done");
-
-      const version = this.database.runSync(
-        this.access.queryOne<{ value: string }>(
-          `SELECT value FROM metadata WHERE key = 'sync_protocol_version'`,
-        ),
-      );
-      if (version?.value !== SYNC_PROTOCOL_VERSION) {
-        syncLog("protocol_version_reset", {
-          previous: version?.value ?? null,
-          current: SYNC_PROTOCOL_VERSION,
-        });
-        this.ctx.storage.transactionSync(() => {
-          resetForProtocolVersion((query, ...params) => {
-            this.ctx.storage.sql.exec(query, ...params);
-          });
-          this.ctx.storage.sql.exec(
-            `INSERT OR REPLACE INTO metadata (key, value) VALUES ('sync_protocol_version', ?)`,
-            SYNC_PROTOCOL_VERSION,
-          );
-        });
-      }
+      await initializeChatDatabase(this.database);
     });
   }
 
@@ -228,7 +216,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   }
 
   getSnapshot(): SyncSnapshot {
-    return this.chatAccess.getSnapshot();
+    return this.snapshots.getSnapshot();
   }
 
   protected getSnapshotEffect() {
@@ -282,14 +270,14 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       const createdAt =
         bodyRecord && typeof bodyRecord.createdAt === "string" ? bodyRecord.createdAt : nowIso();
       return Response.json(
-        this.chatAccess.getBackup({ createdAt, protocolVersion: SYNC_PROTOCOL_VERSION }),
+        this.backups.getBackup({ createdAt, protocolVersion: SYNC_PROTOCOL_VERSION }),
       );
     }
 
     if (url.pathname === "/history/threads" && request.method === "GET") {
       const limit = Number(url.searchParams.get("limit") ?? "");
       return Response.json(
-        this.chatAccess.getThreadSummaryPage({
+        this.snapshots.getThreadSummaryPage({
           workspaceId: url.searchParams.get("workspaceId"),
           before: url.searchParams.get("before"),
           limit: Number.isFinite(limit) ? limit : undefined,
@@ -300,7 +288,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
     const threadDetailMatch = url.pathname.match(/^\/history\/threads\/([^/]+)$/);
     if (threadDetailMatch && request.method === "GET") {
-      const snapshot = this.chatAccess.getThreadDetailSnapshot(
+      const snapshot = this.snapshots.getThreadDetailSnapshot(
         decodeURIComponent(threadDetailMatch[1]!),
         {
           includeSearch: url.searchParams.get("includeSearch") !== "false",
@@ -314,7 +302,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     const messageTraceMatch = url.pathname.match(/^\/history\/messages\/([^/]+)\/trace$/);
     if (messageTraceMatch && request.method === "GET") {
       return Response.json(
-        this.chatAccess.getMessageTraceSnapshot(decodeURIComponent(messageTraceMatch[1]!)),
+        this.snapshots.getMessageTraceSnapshot(decodeURIComponent(messageTraceMatch[1]!)),
       );
     }
 
@@ -694,6 +682,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   private buildHandlerContext(): CommandHandlerContext {
     return {
       access: this.chatAccess,
+      sql: this.sqlAccess,
       eventStore: this.eventStore,
       env: this.env,
       assistantTurnControllers: this.assistantTurnControllers,
@@ -809,7 +798,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       searchEnabled: params.search,
       status: "pending",
     });
-    const { normalizeMessage } = await import("./data-access");
+    const { normalizeMessage } = await import("./persistence-codecs");
     const normalized = normalizeMessage(newAssistantMessage, createId("srvop"));
     const newMessageId = normalized.id;
 
@@ -892,7 +881,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   // ─── Bootstrap ──────────────────────────────────────────────────
 
   private async ensureBootstrapped() {
-    const existing = this.chatAccess.queryOne<{ count: number }>(
+    const existing = this.sqlAccess.queryOne<{ count: number }>(
       "SELECT count(*) as count FROM workspaces",
     );
     if (Number(existing?.count ?? 0) === 0) {
@@ -907,7 +896,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
     if (!this.chatAccess.getAccountSettings()) {
       const { createAccountSettings } = await import("#/domain");
-      const { normalizeAccountSettings } = await import("./data-access");
+      const { normalizeAccountSettings } = await import("./persistence-codecs");
       const settings = createAccountSettings({ id: "default" });
       const event = await this.eventStore.appendServerEvent(null, "account_settings_upserted", {
         row: normalizeAccountSettings(settings, createId("srvop")),
