@@ -623,8 +623,7 @@ graph TB
 │   ├── sync-protocol/ # Shared DO sync engine base class
 │   ├── shedflare-alchemy/ # Deployment config + providers
 │   ├── auth-client/   # Auth consumer/issuer library
-│   ├── cli/           # Deprecated CLI
-│   └── cli-tui/       # Deprecated TUI installer
+│   └── cli/           # CLI for configuration, deployment, and secrets
 ├── docs/              # ← You are here
 ├── infra/             # Deprecated re-exports
 ├── alchemy.run.ts     # Root deployment stack
@@ -729,8 +728,7 @@ sequenceDiagram
     end
     LLM-->>DO: done
     DO->>C: event (message_completed)
-</pre
-          >
+</pre>
         </div>
 
         <h3 id="chat-sync">The Sync Protocol</h3>

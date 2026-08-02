@@ -145,7 +145,7 @@ export function createRouter(env: RawEnv) {
           status: assetResponse.status,
           statusText: assetResponse.statusText,
           headers,
-          webSocket: (assetResponse as any).webSocket,
+          webSocket: assetResponse.webSocket,
         });
       } catch (error) {
         if (error instanceof Response) return withVersionHeader(error);

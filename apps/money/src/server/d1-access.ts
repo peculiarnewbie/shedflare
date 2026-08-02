@@ -5,6 +5,17 @@ import * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 export type Db = DrizzleD1Database;
 
+type DbQuery = Parameters<Db["all"]>[0];
+
+/**
+ * The promise facade forwards D1's native `{ sql, params }` query shape to the
+ * Effect driver. Drizzle's public type only exposes SQLWrapper here, so keep
+ * that compatibility assertion at this dynamic-table boundary.
+ */
+export function rawD1Query(sql: string, params: readonly unknown[] = []): DbQuery {
+  return { sql, params } as unknown as DbQuery;
+}
+
 /**
  * Money's HTTP and command handlers are promise-based today. This facade keeps
  * that boundary while all actual database queries run through Drizzle's

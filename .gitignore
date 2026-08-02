@@ -8,6 +8,8 @@ coverage/
 .env.*
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
+!apps/*/.dev.vars.example
 .wrangler/
 **/.wrangler/
 .alchemy/
@@ -24,6 +26,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 shedflare.config.jsonc
+# Timestamped local backups of the desired-state config
+shedflare.config.jsonc*.bak
 apps/*/wrangler.jsonc
 apps/*/config.jsonc
 
