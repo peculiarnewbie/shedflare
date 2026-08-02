@@ -46,6 +46,7 @@ catalog:
   "@tokenami/unplugin": ^0.0.98
   tokenami: ^0.0.98
   "@valibot/to-json-schema": ^1.7.1
+  "@cloudflare/vitest-pool-workers": ^0.20.1
 
 catalogMode: prefer
 minimumReleaseAge: 0
