@@ -19,6 +19,8 @@ import {
   DEFAULT_SEARCHES_PER_TURN,
   SEARCHES_PER_TURN_OPTIONS,
   clampSearchesPerTurn,
+  compareThreadRecency,
+  compareWorkspaceRecency,
   createId,
   nowIso,
   resolveThreadMessagePath,
@@ -97,6 +99,7 @@ import { start as startConnection, isConnected } from "../lib/ws-connection";
 import { init as initSyncAdapter } from "../lib/sync-adapter";
 import { authFetch } from "../lib/auth-fetch";
 import { loadOlderThreads, loadThreadDetail } from "../lib/history";
+import { debugLog } from "../lib/client-debug";
 
 type SessionPayload = {
   user?: {
@@ -602,10 +605,10 @@ export default function Home() {
   const workspaces = createMemo(() =>
     (allWorkspaces() as Workspace[])
       .filter((workspace) => !workspace.archivedAt)
-      .sort((a, b) => b.sortKey - a.sortKey),
+      .sort(compareWorkspaceRecency),
   );
   const allWorkspacesNoFilter = createMemo(() =>
-    (allWorkspaces() as Workspace[]).sort((a, b) => b.sortKey - a.sortKey),
+    (allWorkspaces() as Workspace[]).sort(compareWorkspaceRecency),
   );
   const workspaceNameById = createMemo(() => {
     const map: Record<string, string> = {};
@@ -640,7 +643,7 @@ export default function Home() {
   const threads = createMemo(() =>
     (allThreads() as Thread[])
       .filter((thread) => thread.workspaceId === activeWorkspace()?.id && !thread.archivedAt)
-      .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt)),
+      .sort(compareThreadRecency),
   );
   const filteredThreads = createMemo(() => {
     const query = threadFilter().trim().toLowerCase();
@@ -675,6 +678,17 @@ export default function Home() {
   const selectedConversationThread = createMemo(
     () => (isDraftViewActive() ? activeDraft()?.thread : activeThread()) ?? null,
   );
+  const latestUserMessageForThread = (thread: Thread | undefined) => {
+    if (!thread) return null;
+    return (
+      resolveThreadMessagePath(
+        (allMessages() as Message[]).filter((message) => message.threadId === thread.id),
+        thread.headMessageId ?? null,
+      )
+        .filter((message) => message.role === "user")
+        .at(-1) ?? null
+    );
+  };
   const selectedThreadDetailState = createMemo(() => {
     const threadId = selectedConversationThread()?.id;
     return threadId ? threadDetailById[threadId] : null;
@@ -1013,17 +1027,41 @@ export default function Home() {
   createEffect(() => {
     const workspace = activeWorkspace();
     const thread = activeThread();
+    if (!workspace || !thread || isDraftViewActive()) return;
+
+    // A workspace can have no persisted thread entry yet (for example after
+    // switching to a workspace for the first time). Persist the same
+    // deterministic fallback that the UI displays so a reload retains it.
+    if (activeWorkspaceId() !== workspace.id) {
+      setActiveWorkspaceId(workspace.id);
+    }
+    if (activeThreadId() !== thread.id) {
+      setActiveThreadId(thread.id);
+    }
+  });
+
+  createEffect(() => {
+    const workspace = activeWorkspace();
+    const thread = activeThread();
     if (!workspace) return;
     if (getWorkspaceConversationView(workspace.id) === "draft" && getWorkspaceDraft(workspace.id)) {
       return;
     }
-    // Use thread-level preferences if set, otherwise fall back to workspace defaults
-    setComposer("modelId", thread?.modelId ?? workspace.defaultModelId);
+    // Use explicit thread values first. The message fallback preserves the
+    // settings of older threads created before these fields were persisted.
+    const lastUserMessage = latestUserMessageForThread(thread);
+    setComposer("modelId", thread?.modelId ?? lastUserMessage?.modelId ?? workspace.defaultModelId);
     setComposer(
       "reasoningLevel",
-      thread?.reasoningLevel ?? workspace.defaultReasoningLevel ?? "off",
+      thread?.reasoningLevel ??
+        lastUserMessage?.reasoningLevel ??
+        workspace.defaultReasoningLevel ??
+        "off",
     );
-    setComposer("search", thread?.searchEnabled ?? workspace.defaultSearchMode);
+    setComposer(
+      "search",
+      thread?.searchEnabled ?? lastUserMessage?.searchEnabled ?? workspace.defaultSearchMode,
+    );
     setComposer(
       "searchLimit",
       clampSearchesPerTurn(thread?.searchLimit ?? workspace.defaultSearchLimit),
@@ -1036,37 +1074,42 @@ export default function Home() {
     if (modelList.length === 0) return;
 
     const selectedId = composerModelId();
-    const selectedExists = modelList.some((model) => model.id === selectedId);
-    const workspaceDefault = workspace?.defaultModelId;
-    const defaultExists = Boolean(
-      workspaceDefault && modelList.some((model) => model.id === workspaceDefault),
+    const selectedCatalogModel = modelList.find(
+      (model) => model.id === selectedId || model.id === selectedId.split("/").at(-1),
     );
-    const fallbackId = defaultExists ? workspaceDefault : modelList[0]?.id;
+    const workspaceDefault = workspace?.defaultModelId;
+    const workspaceDefaultModel = modelList.find(
+      (model) => model.id === workspaceDefault || model.id === workspaceDefault?.split("/").at(-1),
+    );
+    const fallbackId = workspaceDefaultModel?.id ?? modelList[0]?.id;
     if (!fallbackId) return;
 
-    if (!selectedExists) {
+    if (!selectedCatalogModel || selectedCatalogModel.id !== selectedId) {
+      const nextModelId = selectedCatalogModel?.id ?? fallbackId;
       if (workspace && isDraftViewActive()) {
         updateWorkspaceDraft(workspace.id, (draft) => ({
           ...draft,
-          modelId: fallbackId,
+          modelId: nextModelId,
           updatedAt: nowIso(),
         }));
       } else {
-        setComposer("modelId", fallbackId);
+        setComposer("modelId", nextModelId);
       }
-    }
-
-    if (workspace && workspaceDefault !== fallbackId) {
-      updateWorkspacePreferences({ defaultModelId: fallbackId });
     }
   });
 
-  const selectedModel = createMemo(
-    () => (models()?.models ?? []).find((model) => model.id === composerModelId()) ?? null,
-  );
+  const modelFromCatalog = (modelId: string | null | undefined) => {
+    if (!modelId) return null;
+    const modelList = models()?.models ?? [];
+    return (
+      modelList.find((model) => model.id === modelId || model.id === modelId.split("/").at(-1)) ??
+      null
+    );
+  };
+
+  const selectedModel = createMemo(() => modelFromCatalog(composerModelId()));
   const modelInterleavedFieldFor = (modelId: string) =>
-    (models()?.models ?? []).find((model) => model.id === modelId)?.interleaved?.field?.trim() ||
-    null;
+    modelFromCatalog(modelId)?.interleaved?.field?.trim() || null;
   const selectedModelSupportsReasoning = createMemo(() => Boolean(selectedModel()?.reasoning));
   const selectedModelSupportsAttachments = createMemo(() => Boolean(selectedModel()?.attachment));
   const hasImageAttachments = createMemo(() =>
@@ -3162,8 +3205,9 @@ export default function Home() {
   ) => {
     const workspace = activeWorkspace();
     if (!workspace) return;
+    const current = workspacesCollection.get(workspace.id) as Workspace | undefined;
     updateWorkspaceAction({
-      ...workspace,
+      ...(current ?? workspace),
       ...changes,
       updatedAt: nowIso(),
     });
@@ -3177,6 +3221,11 @@ export default function Home() {
       ...changes,
       updatedAt: nowIso(),
     });
+  };
+
+  const currentActiveThread = () => {
+    const thread = activeThread();
+    return thread ? ((threadsCollection.get(thread.id) as Thread | undefined) ?? thread) : null;
   };
 
   const handleExpandReasoningSettingChange = (checked: boolean) => {
@@ -3203,7 +3252,7 @@ export default function Home() {
 
   const handleModelChange = (modelId: string) => {
     const workspace = activeWorkspace();
-    const thread = activeThread();
+    const thread = currentActiveThread();
     if (workspace && isDraftViewActive()) {
       updateWorkspaceDraft(workspace.id, (draft) => ({
         ...draft,
@@ -3212,18 +3261,18 @@ export default function Home() {
       }));
     } else {
       setComposer("modelId", modelId);
-      // Save to current thread for per-thread persistence only. The workspace
-      // default is intentionally not updated here; it should be changed from
-      // settings, not by switching models inside a thread.
       if (thread) {
         updateThreadAction({ ...thread, modelId, updatedAt: nowIso() });
       }
     }
+    // Keep new threads aligned with the last deliberate model choice while
+    // preserving explicit model overrides on existing threads.
+    updateWorkspacePreferences({ defaultModelId: modelId });
   };
 
   const handleSearchChange = (search: boolean) => {
     const workspace = activeWorkspace();
-    const thread = activeThread();
+    const thread = currentActiveThread();
     if (workspace && isDraftViewActive()) {
       updateWorkspaceDraft(workspace.id, (draft) => ({
         ...draft,
@@ -3242,7 +3291,7 @@ export default function Home() {
   const handleSearchLimitChange = (value: number) => {
     const searchLimit = clampSearchesPerTurn(value);
     const workspace = activeWorkspace();
-    const thread = activeThread();
+    const thread = currentActiveThread();
     if (workspace && isDraftViewActive()) {
       updateWorkspaceDraft(workspace.id, (draft) => ({
         ...draft,
@@ -3262,7 +3311,7 @@ export default function Home() {
 
   const handleReasoningChange = (reasoningLevel: ReasoningLevel) => {
     const workspace = activeWorkspace();
-    const thread = activeThread();
+    const thread = currentActiveThread();
     if (workspace && isDraftViewActive()) {
       updateWorkspaceDraft(workspace.id, (draft) => ({
         ...draft,
@@ -3368,7 +3417,7 @@ export default function Home() {
     const thread = selectedConversationThread();
     const workspace = activeWorkspace();
     const draftMode = isDraftViewActive();
-    console.log("[send] attempt", {
+    debugLog("send", "attempt", {
       activeThread: thread,
       activeWorkspace: workspace,
       text: composerText().trim(),
@@ -3384,7 +3433,7 @@ export default function Home() {
       (!composerText().trim() && composerAttachments().length === 0) ||
       composer.sending
     ) {
-      console.log("[send] blocked", {
+      debugLog("send", "blocked", {
         noThread: !thread,
         noConnection: !isConnected(),
         threadBusy: isSelectedThreadBusy(),

@@ -97,36 +97,8 @@ type SavedTurnParams = {
 
 const ALARM_INTERVAL_MS = 30_000;
 
-const STUCK_DEBUG_PREFIX = "CHAT_DEBUG_STUCK_GENERATING";
-
 function isTerminalTurnStatus(status: Message["status"] | undefined) {
   return status === "completed" || status === "failed" || status === "cancelled";
-}
-
-function envelopeDebugSummary(envelope: SyncServerEnvelope) {
-  if (envelope.type !== "event") {
-    return { type: envelope.type };
-  }
-  const payload = envelope.payload as Record<string, unknown>;
-  return {
-    type: envelope.type,
-    eventType: envelope.eventType,
-    serverSeq: envelope.serverSeq,
-    eventId: envelope.eventId,
-    messageId: typeof payload.messageId === "string" ? payload.messageId : null,
-    textLength: typeof payload.text === "string" ? payload.text.length : null,
-    deltaLength: typeof payload.delta === "string" ? payload.delta.length : null,
-    rowId:
-      payload.row && typeof payload.row === "object" && "id" in payload.row
-        ? String(payload.row.id)
-        : null,
-  };
-}
-
-function shouldLogBroadcast(envelope: SyncServerEnvelope) {
-  if (envelope.type !== "event") return true;
-  if (envelope.eventType !== "message_delta") return true;
-  return envelope.serverSeq % 25 === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -358,15 +330,8 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     }
   }
 
-  async webSocketClose(_ws: WebSocket, code?: number, reason?: string, wasClean?: boolean) {
+  async webSocketClose(_ws: WebSocket) {
     await this.initialized;
-    syncLog(`${STUCK_DEBUG_PREFIX}_server_ws_close`, {
-      code: code ?? null,
-      reason: reason ?? null,
-      wasClean: wasClean ?? null,
-      activeTurnCount: this.activeTurnMessageIds.size,
-      activeTurnMessageIds: [...this.activeTurnMessageIds],
-    });
     if (this.activeTurnMessageIds.size > 0) {
       syncLog("ws_close_pending_turns", {
         count: this.activeTurnMessageIds.size,
@@ -379,36 +344,15 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   protected broadcast(envelope: SyncServerEnvelope): void {
     const message = JSON.stringify(envelope);
     const sockets = this.ctx.getWebSockets();
-    const shouldLog = shouldLogBroadcast(envelope);
-    if (shouldLog) {
-      syncLog(`${STUCK_DEBUG_PREFIX}_server_broadcast_attempt`, {
-        ...envelopeDebugSummary(envelope),
-        socketCount: sockets.length,
-        jsonBytes: new TextEncoder().encode(message).length,
-      });
-    }
 
-    let sent = 0;
-    let failed = 0;
     for (const socket of sockets) {
       try {
         socket.send(message);
-        sent += 1;
       } catch (error) {
-        failed += 1;
-        syncLog(`${STUCK_DEBUG_PREFIX}_server_broadcast_send_error`, {
-          ...envelopeDebugSummary(envelope),
+        syncLog("ws_broadcast_send_error", {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-    }
-
-    if (shouldLog) {
-      syncLog(`${STUCK_DEBUG_PREFIX}_server_broadcast_result`, {
-        ...envelopeDebugSummary(envelope),
-        sent,
-        failed,
-      });
     }
   }
 
@@ -615,44 +559,18 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         this.activeTurnMessageIds.add(turnMessageId);
         void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
         syncLog("turn_params_saved", { messageId: turnMessageId, threadId: turnPayload.threadId });
-        syncLog(`${STUCK_DEBUG_PREFIX}_turn_followup_tracking_started`, {
-          opId,
-          commandType,
-          messageId: turnMessageId,
-          threadId: turnPayload.threadId,
-          modelId: turnPayload.modelId,
-          activeTurnMessageIds: [...this.activeTurnMessageIds],
-        });
-
         followUpPromise
           .then(() => {
-            const message = this.chatAccess.getMessage(turnMessageId);
-            syncLog(`${STUCK_DEBUG_PREFIX}_turn_followup_resolved`, {
-              opId,
-              commandType,
-              messageId: turnMessageId,
-              finalStatus: message?.status ?? null,
-              finalTextLength: message?.text.length ?? null,
-            });
             this.settleTrackedTurns([turnMessageId]);
             return undefined;
           })
           .catch((error: any) => {
-            const message = this.chatAccess.getMessage(turnMessageId);
             this.settleTrackedTurns([turnMessageId]);
             syncLog("follow_up_error", {
               opId,
               commandType,
               error: error instanceof Error ? error.message : String(error),
               stack: error instanceof Error ? error.stack : undefined,
-            });
-            syncLog(`${STUCK_DEBUG_PREFIX}_turn_followup_rejected`, {
-              opId,
-              commandType,
-              messageId: turnMessageId,
-              finalStatus: message?.status ?? null,
-              finalTextLength: message?.text.length ?? null,
-              error: error instanceof Error ? error.message : String(error),
             });
           });
       }

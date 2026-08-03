@@ -743,14 +743,6 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
     }
     throw error;
   } finally {
-    const finalMessage = ctx.access.getMessage(payload.assistantMessage.id);
-    syncLog("CHAT_DEBUG_STUCK_GENERATING_assistant_turn_finally", {
-      assistantMessageId: payload.assistantMessage.id,
-      threadId: payload.threadId,
-      finalStatus: finalMessage?.status ?? null,
-      finalTextLength: finalMessage?.text.length ?? null,
-      controllerStillRegistered: ctx.assistantTurnControllers.has(payload.assistantMessage.id),
-    });
     ctx.assistantTurnControllers.delete(payload.assistantMessage.id);
   }
 }

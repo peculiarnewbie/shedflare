@@ -35,6 +35,7 @@ import {
 } from "./collections";
 import { clearAllDraftState, clearWorkspaceDraft } from "./draft-state";
 import { setActiveWorkspaceId, setActiveThreadId, ensureActiveSelection } from "./ui-state";
+import { debugLog } from "./client-debug";
 
 // ---------------------------------------------------------------------------
 // Optimistic rollback tracking
@@ -537,7 +538,7 @@ export function sendMessageAction(input: {
     searchEnabled: input.search,
     status: "pending",
   });
-  console.log("[CHAT_DEBUG_STUCK_GENERATING] send_message_action_created", {
+  debugLog("send", "message_action_created", {
     opId,
     threadId: input.thread.id,
     userMessageId: userMessage.id,

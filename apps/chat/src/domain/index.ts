@@ -915,6 +915,34 @@ export function sortConversationMessages<
   });
 }
 
+/**
+ * Stable UI ordering for workspaces. `sortKey` is the primary order used by
+ * the sidebar; the timestamps and id make fallback selection deterministic
+ * when older snapshots contain equal sort keys.
+ */
+export function compareWorkspaceRecency(
+  left: Pick<Workspace, "id" | "sortKey" | "updatedAt">,
+  right: Pick<Workspace, "id" | "sortKey" | "updatedAt">,
+) {
+  return (
+    right.sortKey - left.sortKey ||
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    right.id.localeCompare(left.id)
+  );
+}
+
+/** Stable newest-first ordering for thread lists and selection fallbacks. */
+export function compareThreadRecency(
+  left: Pick<Thread, "id" | "lastMessageAt" | "updatedAt">,
+  right: Pick<Thread, "id" | "lastMessageAt" | "updatedAt">,
+) {
+  return (
+    right.lastMessageAt.localeCompare(left.lastMessageAt) ||
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    right.id.localeCompare(left.id)
+  );
+}
+
 export function slugify(value: string) {
   return value
     .toLowerCase()

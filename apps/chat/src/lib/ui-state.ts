@@ -1,5 +1,10 @@
 import { createSignal } from "solid-js";
-import type { Workspace, Thread } from "#/domain";
+import {
+  compareThreadRecency,
+  compareWorkspaceRecency,
+  type Workspace,
+  type Thread,
+} from "#/domain";
 
 // ---------------------------------------------------------------------------
 // Persisted signals
@@ -87,7 +92,7 @@ export function setActiveThreadId(threadId: string) {
  */
 export function ensureActiveSelection(workspaces: Workspace[], threads: Thread[]) {
   const currentWorkspaceId = activeWorkspaceId();
-  const validWorkspaces = workspaces.filter((w) => !w.archivedAt);
+  const validWorkspaces = workspaces.filter((w) => !w.archivedAt).sort(compareWorkspaceRecency);
   const nextWorkspace =
     validWorkspaces.find((w) => w.id === currentWorkspaceId) ?? validWorkspaces[0];
 
@@ -96,9 +101,9 @@ export function ensureActiveSelection(workspaces: Workspace[], threads: Thread[]
   }
 
   const selectedWorkspaceId = nextWorkspace?.id ?? currentWorkspaceId;
-  const validThreads = threads.filter(
-    (t) => t.workspaceId === selectedWorkspaceId && !t.archivedAt,
-  );
+  const validThreads = threads
+    .filter((t) => t.workspaceId === selectedWorkspaceId && !t.archivedAt)
+    .sort(compareThreadRecency);
   const currentThreadId = activeThreadId();
   const nextThread = validThreads.find((t) => t.id === currentThreadId) ?? validThreads[0];
 

@@ -1125,7 +1125,11 @@ function convertToResponsesTools(tools: Tool[] | undefined): Array<ResponsesReco
       properties: {},
       additionalProperties: false,
     },
-    strict: true,
+    // OpenCode Go rejects strict schemas that contain JSON Schema validation
+    // keywords such as minLength/minimum or optional properties. Tool input is
+    // validated again by each server handler, so keep provider-side validation
+    // non-strict for the Responses transport.
+    strict: false,
   }));
 }
 

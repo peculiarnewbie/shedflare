@@ -30,15 +30,14 @@ import {
 import { reconcileDraftState } from "./draft-state";
 import { confirmOp, rollbackOp } from "./actions";
 import { readCachedSnapshot, writeCachedSnapshot } from "./offline-cache";
-
-const STUCK_DEBUG_PREFIX = "CHAT_DEBUG_STUCK_GENERATING";
+import { debugLog, isChatDebugEnabled } from "./client-debug";
 
 function isBusyStatus(status: Message["status"]) {
   return status === "queued" || status === "pending" || status === "streaming";
 }
 
 function debugSync(event: string, details?: Record<string, unknown>) {
-  console.log(`[${STUCK_DEBUG_PREFIX}] ${event}`, details ?? {});
+  debugLog("sync", event, details);
 }
 
 function debugMessageSnapshot(messageId: string) {
@@ -581,7 +580,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
 
     switch (envelope.type) {
       case "hello_ack":
-        console.log("[sync] hello_ack", {
+        debugSync("hello_ack", {
           protocolVersion: envelope.protocolVersion,
           serverSeq: envelope.lastServerSeq,
           localSeq: conn.getLastServerSeq(),
@@ -613,7 +612,8 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
         break;
 
       case "sync_reset":
-        console.log(`[sync] sync_reset reason=${envelope.reason}`, {
+        debugSync("sync_reset", {
+          reason: envelope.reason,
           protocolVersion: envelope.protocolVersion,
           serverSeq: envelope.snapshot.serverSeq ?? null,
           tables: Object.keys(envelope.snapshot.tables ?? {}),
@@ -642,7 +642,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
   if (needsSelectionCheck) {
     const { workspaces: ws, threads: ts } = collectWorkspacesAndThreads();
     reconcileDraftState(ws, ts);
-    console.log("[sync] ensureActiveSelection", {
+    debugSync("ensure_active_selection", {
       workspaceCount: ws.length,
       threadCount: ts.length,
       workspaceIds: ws.map((w) => w.id),
@@ -661,7 +661,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
 
 export async function init() {
   conn.setOnEnvelopes(processEnvelopes);
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && isChatDebugEnabled()) {
     window.setInterval(() => {
       const busy = [...messages.state.values()]
         .map((message) => message as Message)
@@ -695,7 +695,7 @@ export async function init() {
   // Try to hydrate from IndexedDB cache before WS connects
   const cached = await readCachedSnapshot();
   if (cached) {
-    console.log("[sync] hydrating from offline cache", {
+    debugSync("offline_cache_hydrated", {
       lastServerSeq: cached.lastServerSeq,
       tableCount: Object.keys(cached.tables).length,
     });
@@ -708,11 +708,10 @@ export async function init() {
     // Reset to 0 so the server sends a full sync_reset on reconnect —
     // otherwise the client stays stuck with empty data and a cursor ahead
     // of the server head, receiving no events.
-    console.log(
-      "[sync] offline cache missing; resetting cursor from",
-      conn.getLastServerSeq(),
-      "to 0",
-    );
+    debugSync("offline_cache_missing_reset_cursor", {
+      from: conn.getLastServerSeq(),
+      to: 0,
+    });
     conn.setLastServerSeq(0);
   }
 }

@@ -61,7 +61,8 @@ function tryParseJsonCandidate(value: string) {
     try {
       return JSON.parse(candidate) as unknown;
     } catch {
-      console.warn("[assistant-errors] failed to parse candidate JSON", candidate.slice(0, 200));
+      // Error strings often contain several non-JSON wrappers before the
+      // useful payload. Failed candidates are expected and not actionable.
     }
   }
 

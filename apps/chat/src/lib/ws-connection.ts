@@ -7,6 +7,7 @@ import {
 import { createSignal } from "solid-js";
 import { refreshAuthSession } from "./auth-fetch";
 import * as pendingOps from "./pending-ops";
+import { debugLog } from "./client-debug";
 
 // ---------------------------------------------------------------------------
 // Persistent client identity & sync cursor
@@ -14,7 +15,6 @@ import * as pendingOps from "./pending-ops";
 
 const CLIENT_ID_KEY = "shedflare.clientId";
 const LAST_SERVER_SEQ_KEY = "shedflare.lastServerSeq";
-const STUCK_DEBUG_PREFIX = "CHAT_DEBUG_STUCK_GENERATING";
 
 function rawByteLength(value: string) {
   return new TextEncoder().encode(value).length;
@@ -134,11 +134,7 @@ const [isConnected, setIsConnected] = createSignal(false);
 export { isConnected };
 
 function syncLog(message: string, details?: Record<string, unknown>) {
-  if (details) {
-    console.log(`[ws] ${message}`, details);
-    return;
-  }
-  console.log(`[ws] ${message}`);
+  debugLog("ws", message, details);
 }
 
 function send(message: object) {
@@ -173,7 +169,7 @@ function connect() {
     try {
       parsed = JSON.parse(raw);
     } catch (error) {
-      console.warn(`[${STUCK_DEBUG_PREFIX}] ws_frame_json_parse_error`, {
+      console.warn("[ws] malformed sync frame", {
         rawBytes: rawByteLength(raw),
         preview: raw.slice(0, 300),
         error: error instanceof Error ? error.message : String(error),
@@ -182,7 +178,7 @@ function connect() {
     }
 
     if (shouldLogFrame(parsed)) {
-      console.log(`[${STUCK_DEBUG_PREFIX}] ws_frame_received`, {
+      debugLog("ws", "frame_received", {
         ...frameDebugSummary(parsed),
         rawBytes: rawByteLength(raw),
         lastServerSeq,
@@ -195,12 +191,12 @@ function connect() {
         enqueueEnvelope(envelope);
         return;
       }
-      console.warn(`[${STUCK_DEBUG_PREFIX}] ws_frame_decode_returned_null`, {
+      console.warn("[ws] sync frame decode returned null", {
         ...frameDebugSummary(parsed),
         rawBytes: rawByteLength(raw),
       });
     } catch (error) {
-      console.warn(`[${STUCK_DEBUG_PREFIX}] ws_frame_decode_error`, {
+      console.warn("[ws] sync frame decode failed", {
         ...frameDebugSummary(parsed),
         rawBytes: rawByteLength(raw),
         error: error instanceof Error ? error.message : String(error),
@@ -209,21 +205,18 @@ function connect() {
   });
 
   ws.addEventListener("close", (event) => {
-    syncLog("close", {
-      code: event.code,
-      reason: event.reason,
-      wasClean: event.wasClean,
-      lastServerSeq,
-      queuedFrames: incomingQueue.length,
-    });
-    console.warn(`[${STUCK_DEBUG_PREFIX}] ws_close`, {
+    const details = {
       code: event.code,
       reason: event.reason,
       wasClean: event.wasClean,
       lastServerSeq,
       queuedFrames: incomingQueue.length,
       pendingOps: pendingOps.unackedOpIds(),
-    });
+    } satisfies Record<string, unknown>;
+    syncLog("close", details);
+    if (!event.wasClean && event.code !== 1000 && event.code !== 1001) {
+      console.warn("[ws] unexpected close", details);
+    }
     setIsConnected(false);
     scheduleReconnect();
   });

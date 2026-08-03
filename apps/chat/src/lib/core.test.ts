@@ -1,6 +1,8 @@
 import {
   buildMultiSearchContext,
   clampSearchesPerTurn,
+  compareThreadRecency,
+  compareWorkspaceRecency,
   createAttachment,
   createMessage,
   createThread,
@@ -93,6 +95,34 @@ beforeEach(() => {
 });
 
 describe("domain helpers", () => {
+  it("orders workspace and thread fallbacks by recency, not snapshot insertion order", () => {
+    const olderWorkspace = {
+      ...createWorkspace({ name: "Older", defaultModelId: "old" }),
+      sortKey: 1,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const newerWorkspace = {
+      ...createWorkspace({ name: "Newer", defaultModelId: "new" }),
+      sortKey: 2,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    };
+    const olderThread = {
+      ...createThread({ workspaceId: olderWorkspace.id }),
+      lastMessageAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const newerThread = {
+      ...createThread({ workspaceId: olderWorkspace.id }),
+      lastMessageAt: "2026-01-02T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    };
+
+    expect([olderWorkspace, newerWorkspace].sort(compareWorkspaceRecency)[0]?.id).toBe(
+      newerWorkspace.id,
+    );
+    expect([olderThread, newerThread].sort(compareThreadRecency)[0]?.id).toBe(newerThread.id);
+  });
+
   it("preserves Worker WebSocket handles when wrapping responses", () => {
     const response = new Response(null, { status: 200 });
     const socket = {} as WebSocket;
@@ -1079,7 +1109,7 @@ describe("server helpers", () => {
     }
   });
 
-  it("uses the Responses API and preserves inline image input for Luna", async () => {
+  it("uses the Responses API, preserves images, and keeps function schemas non-strict", async () => {
     const originalFetch = globalThis.fetch;
     let requestUrl = "";
     let requestBody: Record<string, unknown> | null = null;
@@ -1103,6 +1133,19 @@ describe("server helpers", () => {
         { baseUrl: "https://api.example.com", apiKey: "test-key" },
         "gpt-5.6-luna",
       );
+      const lookupTool = toolDefinition({
+        name: "lookup",
+        description: "Look something up.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", minLength: 2, maxLength: 400 },
+            limit: { type: "number", minimum: 1, maximum: 5 },
+          },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      }).server(async () => "unused");
       const chunks = [];
       for await (const chunk of chat({
         adapter,
@@ -1118,6 +1161,7 @@ describe("server helpers", () => {
             ],
           },
         ],
+        tools: [lookupTool],
       })) {
         chunks.push(chunk);
       }
@@ -1130,6 +1174,8 @@ describe("server helpers", () => {
         { type: "input_text", text: "What is this?" },
         { type: "input_image", image_url: "data:image/jpeg;base64,AQI=" },
       ]);
+      const responseTools = capturedBody.tools as Array<Record<string, unknown>>;
+      expect(responseTools[0]?.strict).toBe(false);
       expect(chunks.some((chunk) => chunk.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
       expect(chunks.some((chunk) => chunk.type === "RUN_FINISHED")).toBe(true);
     } finally {
