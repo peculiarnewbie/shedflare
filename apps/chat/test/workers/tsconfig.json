@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"]
+  },
+  "include": [
+    "./**/*.ts",
+    "../../src/**/*.ts",
+    "../../drizzle/migrations/index.ts",
+    "../../vitest.workers.config.ts"
+  ]
+}

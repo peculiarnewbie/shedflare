@@ -501,8 +501,9 @@ next phase.
 
 ### 4. Deprecated re-exports
 
-- Update `infra/alchemy-config.ts` and `infra/alchemy-env.ts` to re-export through
-  their supported package paths or remove them if no consumer remains.
+- `infra/alchemy-config.ts` has been retired. The remaining deprecated
+  `infra/alchemy-env.ts` compatibility exports should be removed after its last
+  consumer migrates to `@shedflare/alchemy`.
 - Mark temporary type re-exports with a deletion condition, not an indefinite
   deprecation note.
 

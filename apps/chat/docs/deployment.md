@@ -1,71 +1,37 @@
-# Deployment Guide
+# Chat Deployment Guide
 
-Deploy Shedflare Auth first, then deploy Chat as an OpenAuth client with Vite+ and Wrangler.
+Alchemy is the supported deployment lifecycle for Shedflare. Deploy Auth first,
+then deploy Chat as an Auth client.
 
-## 1. Install and Log In
+## Configure
 
-```bash
-pnpm install
-pnpm --filter @shedflare/chat exec wrangler login
-```
+Keep `chat` selected in `shedflare.config.jsonc`. Optional non-secret settings,
+such as `DEFAULT_MODEL_ID`, belong under `apps.chat.vars`.
 
-## 2. Provision Cloudflare Resources
-
-The Worker config is `apps/chat/wrangler.jsonc`. One resource needs one-time setup; the rest are declared in config and provisioned on deploy.
-
-Create the private R2 bucket for attachments:
+Chat requires `OPENCODE_GO_API_KEY`. In an interactive deployment the CLI prompts
+for a missing required secret. In CI or a scripted deployment, provide it through
+the environment:
 
 ```bash
-pnpm --filter @shedflare/chat exec wrangler r2 bucket create shedflare-chat-uploads
+OPENCODE_GO_API_KEY=... pnpm deploy:chat
 ```
 
-No setup required for:
-
-- `SYNC_ENGINE` Durable Object — auto-provisioned on first deploy via the `migrations` block.
-- `BROWSER` Browser Rendering binding — enabled per-account in the Cloudflare dashboard.
-- custom domains — add a route in `wrangler.jsonc` or configure one in the Cloudflare dashboard.
-
-## 3. Configure Auth
-
-Chat uses the central Shedflare Auth Worker as its OpenAuth issuer. Deploy `@shedflare/auth` first, then set these vars in `apps/chat/wrangler.jsonc`:
-
-```jsonc
-"AUTH_ISSUER_URL": "https://sf-auth.example.com",
-"AUTH_CLIENT_ID": "shedflare-chat"
-```
-
-## 4. Configure Environment
-
-Plain variables live in `wrangler.jsonc` under `vars`. Secrets are set with `wrangler secret put` (or bulk-uploaded — see below).
-
-| Name                          | Kind   | Required | Description                                                                |
-| ----------------------------- | ------ | -------- | -------------------------------------------------------------------------- |
-| `APP_PUBLIC_URL`              | var    | yes      | Canonical public URL, e.g. `https://sf-chat.example.com`.                  |
-| `AUTH_ISSUER_URL`             | var    | yes      | Canonical public URL for `@shedflare/auth`.                                |
-| `AUTH_CLIENT_ID`              | var    | yes      | OAuth client ID for Chat, usually `shedflare-chat`.                        |
-| `OWNER_EMAIL`                 | var    | yes      | The single Google account allowed to sign in. Others get `/forbidden`.     |
-| `DEFAULT_MODEL_ID`            | var    | yes      | Model ID from your OpenCode Go catalog, or `"auto"` to let the app choose. |
-| `OPENCODE_GO_MODEL_ALLOWLIST` | var    | no       | Comma-separated model IDs to expose. Omit to show the full catalog.        |
-| `OPENCODE_GO_API_KEY`         | secret | yes      | OpenCode Go API key.                                                       |
-| `UPLOAD_TOKEN_SECRET`         | secret | yes      | Signs attachment URLs. Generate with `openssl rand -hex 32`.               |
-| `EXA_API_KEY`                 | secret | no       | Enables the paid Exa API. Without it, search uses Exa's free MCP endpoint. |
-
-**Bulk-upload secrets** by filling in `.dev.vars` (copy from `.dev.vars.example`) and running:
+After the Worker exists, a secret can also be rotated without a deployment:
 
 ```bash
-pnpm --filter @shedflare/chat exec wrangler secret bulk apps/chat/.dev.vars
+shedflare secret set chat OPENCODE_GO_API_KEY
 ```
 
-## 5. Deploy
+`UPLOAD_TOKEN_SECRET` is generated and managed by the Chat Alchemy stack.
+`EXA_API_KEY` is optional. Chat's Browser Rendering capability must be enabled
+for the Cloudflare account when the binding is used.
+
+## Deploy
 
 ```bash
 pnpm deploy:chat
 ```
 
-This runs the chat build followed by `wrangler deploy`, stamping the build with the current git SHA.
-
-## Local Development
-
-Copy `.dev.vars.example` to `.dev.vars` and fill in the same secrets used in production.
-
-Optionally set `DEV_AUTH_EMAIL` in `.dev.vars` to bypass Google sign-in on localhost when no auth cookie is present. This only affects local dev.
+The Alchemy stack provisions the uploads R2 bucket and sync Durable Object and
+deploys the Worker to the `prod` stage. Do not
+manually create those resources or deploy Chat with Wrangler.

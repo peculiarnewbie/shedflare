@@ -16,13 +16,14 @@ import {
 import { getDefaultModelId, type AppEnv } from "#/runtime";
 import { deleteAllData } from "./schema-helpers";
 import type { DataAccess } from "./data-access";
+import type { ChatRepository } from "./chat-repository";
 import {
   normalizeWorkspace,
   normalizeThread,
   normalizeMessage,
   normalizeAttachment,
   normalizeAccountSettings,
-} from "./data-access";
+} from "./persistence-codecs";
 import type { EventStore } from "./event-store";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,8 @@ export type DeferredFollowUp = () => Promise<void>;
 // ---------------------------------------------------------------------------
 
 export interface CommandHandlerContext {
-  access: DataAccess;
+  access: ChatRepository;
+  sql: DataAccess;
   eventStore: EventStore;
   env: AppEnv;
   assistantTurnControllers: Map<string, AbortController>;
@@ -85,7 +87,7 @@ export function handleBootstrapSession(
   ctx: CommandHandlerContext,
 ): CommandHandlerResult {
   const events: SyncServerEvent[] = [];
-  const workspaces = ctx.access.queryOne<{ count: number }>(
+  const workspaces = ctx.sql.queryOne<{ count: number }>(
     "SELECT count(*) as count FROM workspaces",
   );
   if (Number(workspaces?.count ?? 0) === 0) {
@@ -466,7 +468,7 @@ export function handleResetStorage(
   ctx: CommandHandlerContext,
 ): CommandHandlerResult {
   const events: SyncServerEvent[] = [];
-  deleteAllData(ctx.access.exec.bind(ctx.access));
+  deleteAllData(ctx.sql.exec.bind(ctx.sql));
   const workspace = {
     ...createWorkspace({
       name: "Default Workspace",

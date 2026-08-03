@@ -1,5 +1,9 @@
 # shedflare CLI — Plan
 
+> Historical design note. The repository now uses Alchemy as its supported
+> deployment lifecycle; follow `README.md` and `AGENTS.md` for current commands.
+> The Wrangler-centered design below is retained for context only.
+
 ## Purpose
 
 `shedflare` is an npm-publishable CLI that guides users through setting up and deploying a self-hosted Shedflare app suite to their Cloudflare account.
@@ -10,12 +14,12 @@
 packages/cli/        (npm: shedflare — published, Node-first)
   Dependencies: cac, @clack/prompts, nano-spawn, jsonc-parser, valibot
 
-packages/cli-tui/    (npm: @shedflare/tui — optional, requires OpenTUI Node support)
-  Depends on: @opentui/core
-  Imports from: shedflare core exports (not commands)
+The optional terminal UI was never implemented and is not part of the current
+workspace.
 ```
 
-**Critical rule:** The TUI is on hold until OpenTUI supports Node.js. All architectural preparation is done (separate package, core→TUI import boundary), but no TUI code is implemented yet. The core engine is designed to be UI-agnostic so the TUI can be dropped in later.
+**Historical note:** The TUI was on hold until OpenTUI supported Node.js. No TUI
+package shipped, and the core engine remains UI-agnostic.
 
 ## Command Surface
 

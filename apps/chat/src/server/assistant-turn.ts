@@ -53,8 +53,8 @@ import {
   previewText,
   looksLikeMissingRealtimeAccess,
 } from "./sync-utils";
-import type { DataAccess } from "./data-access";
-import { buildModelMessages } from "./data-access";
+import type { ChatRepository } from "./chat-repository";
+import { buildModelMessages } from "./model-message-builder";
 import type { EventStore } from "./event-store";
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ export type AssistantTurnPayload = Pick<
 };
 
 export interface AssistantTurnContext {
-  access: DataAccess;
+  access: ChatRepository;
   eventStore: EventStore;
   env: AppEnv;
   broadcast: (envelope: SyncServerEnvelope) => void;

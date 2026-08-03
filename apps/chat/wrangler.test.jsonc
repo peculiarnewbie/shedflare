@@ -1,0 +1,34 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "shedflare-chat-test",
+  "main": "test/workers/worker.ts",
+  "compatibility_date": "2026-03-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SYNC_ENGINE",
+        "class_name": "SyncEngineDurableObject",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SyncEngineDurableObject"],
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "shedflare-chat-test-uploads",
+    },
+  ],
+  "vars": {
+    "OPENCODE_GO_API_KEY": "test-opencode-key",
+    "DEFAULT_MODEL_ID": "test-model",
+    "APP_PUBLIC_URL": "https://chat.test",
+    "UPLOAD_TOKEN_SECRET": "test-upload-token-secret",
+    "OWNER_EMAIL": "owner@example.com",
+  },
+}

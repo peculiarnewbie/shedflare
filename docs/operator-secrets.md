@@ -1,7 +1,9 @@
 # Operator Secrets & Config Design
 
 Design doc for how Shedflare handles deployment config and secrets on Alchemy.
-Persisted before implementation — see also [`alchemy-plan.md`](../alchemy-plan.md).
+The implementation is now in `packages/shedflare-alchemy`; this document is
+retained as the design record. For current operational commands, see
+[`README.md`](../README.md) and [`AGENTS.md`](../AGENTS.md).
 
 ## Problem
 
@@ -11,16 +13,16 @@ systems that disagree:
 | System                  | File / mechanism             | Used by                                            |
 | ----------------------- | ---------------------------- | -------------------------------------------------- |
 | CLI init                | `shedflare.config.jsonc`     | `shedflare init`, `doctor`, `configure`            |
-| Alchemy stacks (actual) | `.env` / `process.env`       | `apps/*/alchemy.run.ts` via `infra/alchemy-env.ts` |
-| App manifests           | `apps/*/shedflare.app.jsonc` | CLI only — not read by Alchemy stacks              |
-| Per-app deployment docs | `apps/*/docs/deployment.md`  | Stale — still describe manual Wrangler setup       |
+| Alchemy stacks (actual) | `shedflare.config.jsonc` + environment | `apps/*/alchemy.run.ts` via `@shedflare/alchemy` |
+| App manifests           | `apps/*/shedflare.app.jsonc` | Core catalog consumed by Alchemy and the CLI       |
+| Per-app deployment docs | `apps/*/docs/deployment.md`  | Alchemy deployment guides                         |
 
 Additionally:
 
 - `secretEnv()` in `infra/alchemy-env.ts` requires secrets in `.env` on **every** deploy.
 - `shedflare init` prompts for secrets but does not persist them (no `putSecret` call).
-- `shedflare doctor` checks secrets via `wrangler secret list` in `apps/<app>/`, but
-  there is no `wrangler.jsonc` there anymore.
+- `shedflare doctor` checks secrets against the physical Worker name; it does not
+  require an app-local `wrangler.jsonc`.
 - Expecting people to put secrets in plain config files is not acceptable.
 
 ## Goals
@@ -271,9 +273,10 @@ Consumed by WorkerSecret declarations, CLI prompts, and doctor — single schema
 
 ### Wire `appConfig()` to config file
 
-Replace the parallel `.env`-only path in `infra/alchemy-env.ts`. Alchemy stacks load
-non-secrets from `shedflare.config.jsonc`. Delete or demote `infra/alchemy-config.ts`
-if unused after unification.
+Alchemy stacks now load non-secrets from `shedflare.config.jsonc` through
+`@shedflare/alchemy`. The old `infra/alchemy-config.ts` compatibility module has
+been retired; `infra/alchemy-env.ts` remains only as a deprecated compatibility
+layer until its final consumer migrates.
 
 ---
 

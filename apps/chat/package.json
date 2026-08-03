@@ -11,6 +11,7 @@
     "build": "vp build",
     "preview": "vp preview",
     "test": "vp test",
+    "test:workers": "vp exec vitest run --config vitest.workers.config.ts",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts && node scripts/build-migration-manifest.mjs && vp fmt drizzle/migrations/index.ts",
     "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
     "typecheck": "tsc --noEmit",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
+    "@cloudflare/vitest-pool-workers": "catalog:",
     "@cloudflare/workers-types": "^4.20260415.1",
     "@typescript/native-preview": "catalog:",
     "drizzle-kit": "catalog:",
@@ -51,6 +53,7 @@
     "vite": "catalog:",
     "vite-plugin-solid": "^2.11.12",
     "vite-plus": "catalog:",
+    "workers-vitest": "npm:vitest@^4.1.0",
     "wrangler": "catalog:"
   },
   "engines": {

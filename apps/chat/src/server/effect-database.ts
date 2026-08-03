@@ -17,7 +17,7 @@ export class EffectDatabase {
   private readonly runtime;
   readonly drizzle: ChatDrizzleDatabase;
 
-  constructor(storage: DurableObjectStorage) {
+  constructor(readonly storage: DurableObjectStorage) {
     this.runtime = ManagedRuntime.make(SqliteClient.layer({ storage }));
     this.drizzle = this.runtime.runSync(makeWithDefaults({ storage }));
   }

@@ -4,7 +4,8 @@ import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { HttpServerResponse } from "effect/unstable/http";
 import { fileTags, files, tags } from "../../db/schema";
 import { driveApi } from "../definitions";
-import type { HttpApiAuth } from "@shedflare/auth-client/http-api";
+import type { HandlerContext, HttpApiAuth } from "@shedflare/auth-client/http-api";
+import type { Session } from "@shedflare/auth-client/consumer";
 import { normalizeTag, parseUpdateBody, publicFile } from "./file-utils";
 
 type Db = DrizzleD1Database;
@@ -177,6 +178,25 @@ async function persistFile(
 }
 
 type FileEnv = { DB: D1Database; FILES: R2Bucket };
+type FileParams = { id: string };
+type MultipartPartParams = FileParams & { partNumber: string };
+
+type ProtectedHandler<Params, Result> = (
+  webReq: Request,
+  session: Session,
+  context: HandlerContext<Params>,
+) => Promise<Result>;
+
+function protectFile<Result>(auth: HttpApiAuth, handler: ProtectedHandler<FileParams, Result>) {
+  return auth.createProtectedHandler<FileParams, unknown, Result>(handler);
+}
+
+function protectMultipartPart<Result>(
+  auth: HttpApiAuth,
+  handler: ProtectedHandler<MultipartPartParams, Result>,
+) {
+  return auth.createProtectedHandler<MultipartPartParams, unknown, Result>(handler);
+}
 
 export async function listPublicFiles(env: FileEnv, _request: Request) {
   const db = drizzle(env.DB);
@@ -397,7 +417,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("multipartPart", (ctx) =>
-        auth.createProtectedHandler(async (webReq, _session, handlerCtx) => {
+        protectMultipartPart(auth, async (webReq, _session, handlerCtx) => {
           const idParam = handlerCtx.params?.id;
           const partNumberParam = handlerCtx.params?.partNumber;
           const id = typeof idParam === "string" ? idParam : "";
@@ -445,7 +465,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("multipartComplete", (ctx) =>
-        auth.createProtectedHandler(async (webReq, _session, handlerCtx) => {
+        protectFile(auth, async (webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
           const idParam = handlerCtx.params?.id;
           const id = typeof idParam === "string" ? idParam : "";
@@ -519,7 +539,7 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("multipartAbort", (ctx) =>
-        auth.createProtectedHandler(async (webReq, _session, handlerCtx) => {
+        protectFile(auth, async (webReq, _session, handlerCtx) => {
           const idParam = handlerCtx.params?.id;
           const id = typeof idParam === "string" ? idParam : "";
           const uploadId = uploadIdFrom(webReq);
@@ -545,9 +565,9 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("update", (ctx) =>
-        auth.createProtectedHandler(async (webReq, _session, handlerCtx) => {
+        protectFile(auth, async (webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
-          const id = handlerCtx.params?.id as string;
+          const id = handlerCtx.params?.id ?? "";
           const current = await getFile(db, id);
           if (!current)
             return HttpServerResponse.fromWeb(new Response("Not found", { status: 404 }));
@@ -586,9 +606,9 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("delete", (ctx) =>
-        auth.createProtectedHandler(async (_webReq, _session, handlerCtx) => {
+        protectFile(auth, async (_webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
-          const id = handlerCtx.params?.id as string;
+          const id = handlerCtx.params?.id ?? "";
           const row = await getFile(db, id);
           if (!row) return HttpServerResponse.fromWeb(new Response("Not found", { status: 404 }));
           await env.FILES.delete(row.objectKey);
@@ -597,9 +617,9 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("download", (ctx) =>
-        auth.createProtectedHandler(async (_webReq, _session, handlerCtx) => {
+        protectFile(auth, async (_webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
-          const id = handlerCtx.params?.id as string;
+          const id = handlerCtx.params?.id ?? "";
           const row = await getFile(db, id);
           if (!row) return HttpServerResponse.fromWeb(new Response("Not found", { status: 404 }));
 
@@ -618,9 +638,9 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("preview", (ctx) =>
-        auth.createProtectedHandler(async (_webReq, _session, handlerCtx) => {
+        protectFile(auth, async (_webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
-          const id = handlerCtx.params?.id as string;
+          const id = handlerCtx.params?.id ?? "";
           const row = await getFile(db, id);
           if (!row) return HttpServerResponse.fromWeb(new Response("Not found", { status: 404 }));
 

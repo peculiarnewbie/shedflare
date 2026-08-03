@@ -1,47 +1,35 @@
 # Auth Deployment Guide
 
-Deploy Shedflare Auth first. Other apps use it as their OpenAuth issuer.
+Alchemy is the supported deployment lifecycle for Shedflare. Deploy Auth first
+when deploying apps individually; the other apps use it as their issuer.
 
-## 1. Install and Log In
+## Configure
 
-```bash
-pnpm install
-pnpm --filter @shedflare/auth exec wrangler login
-```
-
-## 2. Provision KV
-
-Create the OpenAuth storage namespace and copy the returned ID into `apps/auth/wrangler.jsonc`.
+Create the desired-state config from the committed template if needed:
 
 ```bash
-pnpm --filter @shedflare/auth exec wrangler kv namespace create "OPENAUTH_STORAGE"
+cp shedflare.config.example.jsonc shedflare.config.jsonc
 ```
 
-## 3. Configure Google OAuth
+Keep `auth` selected in `shedflare.config.jsonc` and set the Google OAuth client
+ID at `apps.auth.vars.GOOGLE_CLIENT_ID`. The owner email comes from the root
+`ownerEmail` value, and the public URL comes from the root domain plus the Auth
+subdomain.
 
-Create a Google OAuth web client.
+Configure the Google client with this redirect URI:
 
-- Authorized JavaScript origin: `https://sf-auth.example.com`
-- Authorized redirect URI: `https://sf-auth.example.com/google/callback`
-
-Copy the Google client ID into `GOOGLE_CLIENT_ID` in `apps/auth/wrangler.jsonc`.
-
-## 4. Configure Auth
-
-Update `apps/auth/wrangler.jsonc`:
-
-```jsonc
-"vars": {
-  "APP_PUBLIC_URL": "https://sf-auth.example.com",
-  "GOOGLE_CLIENT_ID": "your-google-client-id",
-  "OWNER_EMAIL": "you@example.com"
-}
+```text
+https://auth.<your-domain>/google/callback
 ```
 
-## 5. Deploy
+Alchemy provisions the OpenAuth KV namespace from `apps/auth/alchemy.run.ts`.
+Do not create a separate KV namespace or edit a Wrangler config by hand.
+
+## Deploy
 
 ```bash
 pnpm deploy:auth
 ```
 
-Apps should set `AUTH_ISSUER_URL` to the deployed `APP_PUBLIC_URL` for this Worker.
+The command deploys the Auth Alchemy stack to the `prod` stage. For a temporary
+stage, use the direct Alchemy command documented in the root README.

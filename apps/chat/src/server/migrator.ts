@@ -1,5 +1,6 @@
 import { migrate } from "drizzle-orm/effect-sqlite-do/migrator";
-import type { ChatDrizzleDatabase } from "./effect-database";
+import { Effect } from "effect";
+import type { EffectDatabase } from "./effect-database";
 
 export type MigrationManifest = Record<string, string>;
 
@@ -24,6 +25,8 @@ function makeIdempotent(migrationSql: string): string {
 }
 
 function tableExists(sql: SqlStorage, tableName: string): boolean {
+  // sqlite_master/PRAGMA are migration introspection APIs, outside Drizzle's
+  // application-table boundary.
   return (
     [...sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", tableName)]
       .length > 0
@@ -121,12 +124,16 @@ function repairLegacyDatabase(storage: DurableObjectStorage, migrations: Migrati
   });
 }
 
-/** Uses Drizzle's Effect-native Durable Object migrator for normal upgrades. */
-export function runMigrations(
-  db: ChatDrizzleDatabase,
-  storage: DurableObjectStorage,
-  migrations: MigrationManifest,
-) {
-  repairLegacyDatabase(storage, migrations);
-  return migrate(db, { migrations });
-}
+export type MigrationInput = {
+  database: EffectDatabase;
+  migrations: MigrationManifest;
+};
+
+/** Uses the storage and Drizzle handles owned by one EffectDatabase instance. */
+export const migrateDatabase = Effect.fn("ChatDatabase.migrate")(function* ({
+  database,
+  migrations,
+}: MigrationInput) {
+  yield* Effect.sync(() => repairLegacyDatabase(database.storage, migrations));
+  yield* migrate(database.drizzle, { migrations });
+});

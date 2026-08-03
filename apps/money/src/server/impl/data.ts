@@ -1,6 +1,6 @@
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi } from "../definitions";
-import { createDb } from "../d1-access";
+import { createDb, rawD1Query } from "../d1-access";
 import { wrapHandler } from "./wrap-handler";
 
 type Env = { MONEY_DB: D1Database };
@@ -42,10 +42,9 @@ export function createDataGroup(env: Env) {
 
         for (const name of tables) {
           try {
-            const rows = await db.all<{ id?: string; key?: string } & Record<string, unknown>>({
-              sql: `SELECT * FROM ${name}`,
-              params: [],
-            } as any);
+            const rows = await db.all<{ id?: string; key?: string } & Record<string, unknown>>(
+              rawD1Query(`SELECT * FROM ${name}`),
+            );
             data[name] = {};
             for (const row of rows) {
               const id = row.id ?? row.key ?? null;
