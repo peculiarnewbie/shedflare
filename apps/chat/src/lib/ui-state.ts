@@ -77,7 +77,10 @@ export function activeThreadId(): string {
 }
 
 export function setActiveThreadId(threadId: string) {
-  const workspaceId = activeWorkspaceId();
+  setActiveThreadIdForWorkspace(activeWorkspaceId(), threadId);
+}
+
+export function setActiveThreadIdForWorkspace(workspaceId: string, threadId: string) {
   if (!workspaceId) return;
   setActiveThreadByWorkspaceId({ ...activeThreadByWorkspaceId(), [workspaceId]: threadId });
 }

@@ -82,6 +82,8 @@ import {
   setActiveWorkspaceId,
   activeThreadId,
   setActiveThreadId,
+  setActiveThreadIdForWorkspace,
+  ensureActiveSelection,
 } from "../lib/ui-state";
 import {
   activateWorkspaceDraftView,
@@ -100,6 +102,11 @@ import { init as initSyncAdapter } from "../lib/sync-adapter";
 import { authFetch } from "../lib/auth-fetch";
 import { loadOlderThreads, loadThreadDetail } from "../lib/history";
 import { debugLog } from "../lib/client-debug";
+import {
+  readChatNavigationState,
+  writeChatNavigationState,
+  type ChatNavigationState,
+} from "../lib/navigation-state";
 
 type SessionPayload = {
   user?: {
@@ -678,17 +685,96 @@ export default function Home() {
   const selectedConversationThread = createMemo(
     () => (isDraftViewActive() ? activeDraft()?.thread : activeThread()) ?? null,
   );
-  const latestUserMessageForThread = (thread: Thread | undefined) => {
+  const latestConversationMessageForThread = (thread: Thread | undefined) => {
     if (!thread) return null;
     return (
       resolveThreadMessagePath(
         (allMessages() as Message[]).filter((message) => message.threadId === thread.id),
         thread.headMessageId ?? null,
-      )
-        .filter((message) => message.role === "user")
-        .at(-1) ?? null
+      ).at(-1) ?? null
     );
   };
+
+  const [navigationReady, setNavigationReady] = createSignal(false);
+  const [navigationRevision, setNavigationRevision] = createSignal(0);
+  let initialNavigationStarted = false;
+  let navigationAttempt = 0;
+
+  const applyChatNavigation = async (state: ChatNavigationState) => {
+    const attempt = ++navigationAttempt;
+    let workspace = state.workspaceId
+      ? workspaces().find((candidate) => candidate.id === state.workspaceId)
+      : undefined;
+    let thread = state.threadId
+      ? (allThreads() as Thread[]).find((candidate) => candidate.id === state.threadId)
+      : undefined;
+
+    // The initial snapshot contains recent thread summaries. A URL is allowed
+    // to point at an older thread, so hydrate that detail before choosing the
+    // fallback thread or rewriting the URL.
+    if (state.threadId && !thread) {
+      try {
+        await loadThreadDetail(state.threadId);
+      } catch {
+        // An invalid/deleted URL selection falls back to the normal persisted
+        // selection below and is corrected by the URL sync effect.
+      }
+      if (attempt !== navigationAttempt) return;
+      thread = (allThreads() as Thread[]).find((candidate) => candidate.id === state.threadId);
+    }
+
+    if (thread) {
+      workspace =
+        workspaces().find((candidate) => candidate.id === thread!.workspaceId) ?? workspace;
+    }
+
+    if (workspace) {
+      setActiveWorkspaceId(workspace.id);
+      if (thread?.workspaceId === workspace.id) {
+        setActiveThreadIdForWorkspace(workspace.id, thread.id);
+      }
+
+      if (state.view === "draft" && getWorkspaceDraft(workspace.id)) {
+        activateWorkspaceDraftView(workspace.id);
+      } else {
+        activateWorkspaceThreadView(workspace.id);
+      }
+    }
+
+    ensureActiveSelection([...(allWorkspaces() as Workspace[])], [...(allThreads() as Thread[])]);
+  };
+
+  // The URL is the shareable selection when present. Local storage remains the
+  // fallback for the bare homepage and for workspaces without a URL yet.
+  createEffect(() => {
+    if (initialNavigationStarted || workspaces().length === 0) return;
+    initialNavigationStarted = true;
+    void applyChatNavigation(readChatNavigationState()).finally(() => {
+      setNavigationReady(true);
+    });
+  });
+
+  const handleNavigationPopState = () => setNavigationRevision((value) => value + 1);
+  window.addEventListener("popstate", handleNavigationPopState);
+  onCleanup(() => window.removeEventListener("popstate", handleNavigationPopState));
+
+  createEffect(() => {
+    const revision = navigationRevision();
+    if (!navigationReady() || revision === 0) return;
+    void applyChatNavigation(readChatNavigationState());
+  });
+
+  createEffect(() => {
+    if (!navigationReady()) return;
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    const draftView = isDraftViewActive();
+    writeChatNavigationState({
+      workspaceId: workspace.id,
+      threadId: draftView ? null : (activeThread()?.id ?? null),
+      view: draftView ? "draft" : "thread",
+    });
+  });
   const selectedThreadDetailState = createMemo(() => {
     const threadId = selectedConversationThread()?.id;
     return threadId ? threadDetailById[threadId] : null;
@@ -1040,6 +1126,7 @@ export default function Home() {
     }
   });
 
+  let lastComposerHydrationKey: string | null = null;
   createEffect(() => {
     const workspace = activeWorkspace();
     const thread = activeThread();
@@ -1047,20 +1134,29 @@ export default function Home() {
     if (getWorkspaceConversationView(workspace.id) === "draft" && getWorkspaceDraft(workspace.id)) {
       return;
     }
-    // Use explicit thread values first. The message fallback preserves the
-    // settings of older threads created before these fields were persisted.
-    const lastUserMessage = latestUserMessageForThread(thread);
-    setComposer("modelId", thread?.modelId ?? lastUserMessage?.modelId ?? workspace.defaultModelId);
+
+    const latestMessage = latestConversationMessageForThread(thread);
+    const hydrationKey = `${workspace.id}:${thread?.id ?? "none"}:${latestMessage?.id ?? "none"}`;
+    // Thread rows also change when the user deliberately changes the picker.
+    // Hydrate only when the conversation identity changes so that a local
+    // choice is not immediately overwritten by the old terminal message.
+    if (hydrationKey === lastComposerHydrationKey) return;
+    lastComposerHydrationKey = hydrationKey;
+
+    // The terminal message is the source of truth for the last turn. This
+    // prevents an older thread-level default from hiding the model that
+    // produced the visible conversation after a reload.
+    setComposer("modelId", latestMessage?.modelId ?? thread?.modelId ?? workspace.defaultModelId);
     setComposer(
       "reasoningLevel",
-      thread?.reasoningLevel ??
-        lastUserMessage?.reasoningLevel ??
+      latestMessage?.reasoningLevel ??
+        thread?.reasoningLevel ??
         workspace.defaultReasoningLevel ??
         "off",
     );
     setComposer(
       "search",
-      thread?.searchEnabled ?? lastUserMessage?.searchEnabled ?? workspace.defaultSearchMode,
+      latestMessage?.searchEnabled ?? thread?.searchEnabled ?? workspace.defaultSearchMode,
     );
     setComposer(
       "searchLimit",
@@ -1075,17 +1171,20 @@ export default function Home() {
 
     const selectedId = composerModelId();
     const selectedCatalogModel = modelList.find(
-      (model) => model.id === selectedId || model.id === selectedId.split("/").at(-1),
+      (model) =>
+        model.id === selectedId || model.id.split("/").at(-1) === selectedId.split("/").at(-1),
     );
     const workspaceDefault = workspace?.defaultModelId;
     const workspaceDefaultModel = modelList.find(
-      (model) => model.id === workspaceDefault || model.id === workspaceDefault?.split("/").at(-1),
+      (model) =>
+        model.id === workspaceDefault ||
+        model.id.split("/").at(-1) === workspaceDefault?.split("/").at(-1),
     );
     const fallbackId = workspaceDefaultModel?.id ?? modelList[0]?.id;
     if (!fallbackId) return;
 
-    if (!selectedCatalogModel || selectedCatalogModel.id !== selectedId) {
-      const nextModelId = selectedCatalogModel?.id ?? fallbackId;
+    if (selectedCatalogModel && selectedCatalogModel.id !== selectedId) {
+      const nextModelId = selectedCatalogModel.id;
       if (workspace && isDraftViewActive()) {
         updateWorkspaceDraft(workspace.id, (draft) => ({
           ...draft,
@@ -1095,6 +1194,16 @@ export default function Home() {
       } else {
         setComposer("modelId", nextModelId);
       }
+    } else if (!selectedId || selectedId === "auto") {
+      if (workspace && isDraftViewActive()) {
+        updateWorkspaceDraft(workspace.id, (draft) => ({
+          ...draft,
+          modelId: fallbackId,
+          updatedAt: nowIso(),
+        }));
+      } else {
+        setComposer("modelId", fallbackId);
+      }
     }
   });
 
@@ -1102,8 +1211,9 @@ export default function Home() {
     if (!modelId) return null;
     const modelList = models()?.models ?? [];
     return (
-      modelList.find((model) => model.id === modelId || model.id === modelId.split("/").at(-1)) ??
-      null
+      modelList.find(
+        (model) => model.id === modelId || model.id.split("/").at(-1) === modelId.split("/").at(-1),
+      ) ?? null
     );
   };
 
@@ -4164,6 +4274,11 @@ export default function Home() {
                           value={composerModelId()}
                           onChange={(event) => handleModelChange(event.currentTarget.value)}
                         >
+                          <Show when={composerModelId() && !selectedModel()}>
+                            <option value={composerModelId()}>
+                              {composerModelId()} (unavailable)
+                            </option>
+                          </Show>
                           <For each={models()?.models ?? []}>
                             {(model) => <option value={model.id}>{model.name}</option>}
                           </For>

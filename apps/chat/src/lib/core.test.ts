@@ -76,6 +76,7 @@ import {
 import { resetPendingOps } from "./pending-ops";
 import { processEnvelopes } from "./sync-adapter";
 import { getLastServerSeq, setLastServerSeq } from "./ws-connection";
+import { readChatNavigationState, withChatNavigationState } from "./navigation-state";
 import { normalizeAssistantError } from "../server/error-normalization";
 import { createVersionedResponseInit } from "../server/router";
 import {
@@ -121,6 +122,36 @@ describe("domain helpers", () => {
       newerWorkspace.id,
     );
     expect([olderThread, newerThread].sort(compareThreadRecency)[0]?.id).toBe(newerThread.id);
+  });
+
+  it("round-trips chat selection through URL parameters without dropping other params", () => {
+    const url = new URL(
+      "https://chat.example.com/?debug=1&workspaceId=old&threadId=old-thread#messages",
+    );
+    const next = withChatNavigationState(url, {
+      workspaceId: "wrk_new",
+      threadId: "thd_new",
+      view: "thread",
+    });
+
+    expect(readChatNavigationState(next)).toEqual({
+      workspaceId: "wrk_new",
+      threadId: "thd_new",
+      view: null,
+    });
+    expect(next.searchParams.get("debug")).toBe("1");
+    expect(next.hash).toBe("#messages");
+
+    const draftUrl = withChatNavigationState(next, {
+      workspaceId: "wrk_new",
+      threadId: null,
+      view: "draft",
+    });
+    expect(readChatNavigationState(draftUrl)).toEqual({
+      workspaceId: "wrk_new",
+      threadId: null,
+      view: "draft",
+    });
   });
 
   it("preserves Worker WebSocket handles when wrapping responses", () => {
