@@ -81,6 +81,18 @@ The `shedflare` GitHub organization and npm organization scope were reserved on 
 separate resources with separate access and release configuration; npm organization and publishing
 operations remain maintainer-managed.
 
+### Extraction status
+
+The shared packages were extracted with their Git history to
+[`shedflare/packages`](https://github.com/shedflare/packages) on 2026-08-08. That repository is now
+the canonical source for `@shedflare/auth-client`, `@shedflare/core`, `@shedflare/alchemy`,
+`@shedflare/test-utils`, and `@shedflare/ui`.
+
+The copies under this suite repository are a frozen compatibility snapshot until the maintainer
+publishes the initial npm releases and the suite is changed to consume those versions. Do not make
+new shared-package changes here; make them in `shedflare/packages` and bring them back only through a
+versioned package update. No npm publication was performed as part of the repository extraction.
+
 ## Shared package contract
 
 The initial `shedflare/packages` repository will contain:
