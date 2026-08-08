@@ -50,6 +50,7 @@ export default function FileRow(props: { file: DriveFile }) {
         <label class="row-checkbox" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
+            aria-label={`Select ${file.name}`}
             checked={ctx.selection().has(file.id)}
             onChange={() => ctx.toggleFileSelection(file.id)}
           />

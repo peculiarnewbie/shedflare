@@ -108,13 +108,27 @@ export class R2Mock {
     };
   }
 
-  async get(key: string) {
+  async get(
+    key: string,
+    options?: { range?: { offset?: number; length?: number; suffix?: number } },
+  ) {
     const entry = this.store.get(key);
     if (!entry) return null;
 
+    const requestedRange = options?.range;
+    const offset = requestedRange?.suffix
+      ? Math.max(0, entry.size - requestedRange.suffix)
+      : (requestedRange?.offset ?? 0);
+    const length = Math.min(
+      requestedRange?.suffix ?? requestedRange?.length ?? entry.size - offset,
+      entry.size - offset,
+    );
+    const body = requestedRange ? entry.body.slice(offset, offset + length) : entry.body;
+
     return {
-      body: new Response(entry.body as unknown as BodyInit).body!,
+      body: new Response(body as unknown as BodyInit).body!,
       size: entry.size,
+      range: requestedRange ? { offset, length } : undefined,
       writeHttpMetadata: (headers: Headers) => {
         for (const [k, v] of Object.entries(entry.httpMetadata)) {
           headers.set(k, v);

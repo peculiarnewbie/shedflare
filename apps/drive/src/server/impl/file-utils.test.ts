@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { normalizeTag, parseUpdateBody, publicFile } from "./file-utils";
+import { normalizeTag, parseByteRange, parseUpdateBody, publicFile } from "./file-utils";
 
 describe("normalizeTag", () => {
   test("trims and lowercases", () => {
@@ -17,6 +17,41 @@ describe("normalizeTag", () => {
   test("empty string stays empty", () => {
     expect(normalizeTag("")).toBe("");
     expect(normalizeTag("   ")).toBe("");
+  });
+});
+
+describe("parseByteRange", () => {
+  test("returns the full object when no range was requested", () => {
+    expect(parseByteRange(null, 100)).toEqual({ kind: "full" });
+  });
+
+  test("parses bounded, open-ended, and suffix ranges", () => {
+    expect(parseByteRange("bytes=10-19", 100)).toEqual({
+      kind: "partial",
+      offset: 10,
+      length: 10,
+    });
+    expect(parseByteRange("bytes=90-", 100)).toEqual({
+      kind: "partial",
+      offset: 90,
+      length: 10,
+    });
+    expect(parseByteRange("bytes=-15", 100)).toEqual({
+      kind: "partial",
+      offset: 85,
+      length: 15,
+    });
+  });
+
+  test("clamps ranges to the object and rejects invalid requests", () => {
+    expect(parseByteRange("bytes=95-200", 100)).toEqual({
+      kind: "partial",
+      offset: 95,
+      length: 5,
+    });
+    expect(parseByteRange("bytes=100-", 100)).toEqual({ kind: "unsatisfiable" });
+    expect(parseByteRange("bytes=20-10", 100)).toEqual({ kind: "unsatisfiable" });
+    expect(parseByteRange("bytes=0-1,4-5", 100)).toEqual({ kind: "unsatisfiable" });
   });
 });
 

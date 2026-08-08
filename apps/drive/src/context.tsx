@@ -1,4 +1,12 @@
-import { createContext, createEffect, createMemo, createSignal, useContext } from "solid-js";
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  useContext,
+} from "solid-js";
 import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
 import * as Schema from "effect/Schema";
 import type { ContextMenuState, SortBy, SortOrder, Toast, ViewMode } from "./types";
@@ -187,9 +195,24 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   const [editingId, setEditingId] = createSignal("");
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = createSignal("");
-  const [leftSidebarOpen, setLeftSidebarOpen] = createSignal(true);
+  const [leftSidebarOpen, setLeftSidebarOpen] = createSignal(
+    typeof window === "undefined" ||
+      typeof window.matchMedia !== "function" ||
+      window.matchMedia("(min-width: 901px)").matches,
+  );
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = createSignal(false);
   const [selection, setSelection] = createSignal(new Set<string>());
+
+  onMount(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const wideViewport = window.matchMedia("(min-width: 901px)");
+    const updateSidebarForViewport = (event: MediaQueryListEvent) => {
+      setLeftSidebarOpen(event.matches);
+    };
+
+    wideViewport.addEventListener("change", updateSidebarForViewport);
+    onCleanup(() => wideViewport.removeEventListener("change", updateSidebarForViewport));
+  });
 
   // ── Derived ───────────────────────────────
 
@@ -235,7 +258,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
       const session = await requestJson<SessionResponse>("/api/session", SessionResponse);
       setUserEmail(session.user.email);
       setUnauthorized(false);
-      await Promise.all([loadFiles(false, 0), loadTags()]);
+      await loadTags();
     } catch (err) {
       if (err instanceof Error && err.message.includes("Unauthorized")) {
         // Hint was stale (or this is the post-silent-auth sign-in screen): drop

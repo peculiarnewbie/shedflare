@@ -88,6 +88,19 @@ describe("FileCard", () => {
     expect(img?.src).toContain(`/api/files/${imageFile.id}/preview`);
   });
 
+  test("uses metadata-only loading for video previews", () => {
+    const videoFile: DriveFile = { ...baseFile, mimeType: "video/mp4" };
+    const { container } = render(() => (
+      <TestDriveProvider>
+        <FileCard file={videoFile} />
+      </TestDriveProvider>
+    ));
+    const video = container.querySelector("video");
+    expect(video).toBeTruthy();
+    expect(video?.preload).toBe("metadata");
+    expect(video?.src).toContain(`/api/files/${videoFile.id}/preview`);
+  });
+
   test("renders public badge when file is public", () => {
     const publicFile: DriveFile = { ...baseFile, isPublic: true };
     const view = render(() => (

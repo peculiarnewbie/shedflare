@@ -1,20 +1,36 @@
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { useDrive, fileGlyph, formatSize } from "../context";
 import type { DriveFile } from "../types";
-
-const PREVIEWABLE_TYPES = ["image/", "video/"];
-
-function isPreviewable(mimeType: string) {
-  return PREVIEWABLE_TYPES.some((prefix) => mimeType.startsWith(prefix));
-}
 
 export default function FileCard(props: { file: DriveFile }) {
   const ctx = useDrive();
   const file = props.file;
   const previewUrl = () => `/api/files/${file.id}/preview`;
-  const showPreview = () => isPreviewable(file.mimeType);
+  const isImage = () => file.mimeType.startsWith("image/");
+  const isVideo = () => file.mimeType.startsWith("video/");
+  const [loadVideoPreview, setLoadVideoPreview] = createSignal(false);
   const [renameValue, setRenameValue] = createSignal("");
   let renameInput!: HTMLInputElement;
+  let previewElement!: HTMLDivElement;
+
+  onMount(() => {
+    if (!isVideo()) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setLoadVideoPreview(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setLoadVideoPreview(true);
+        observer.disconnect();
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(previewElement);
+    onCleanup(() => observer.disconnect());
+  });
 
   const isEditing = () => ctx.editingId() === file.id;
 
@@ -57,26 +73,32 @@ export default function FileCard(props: { file: DriveFile }) {
       <label class="card-checkbox" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
+          aria-label={`Select ${file.name}`}
           checked={ctx.selection().has(file.id)}
           onChange={() => ctx.toggleFileSelection(file.id)}
         />
       </label>
 
-      <div class="card-preview">
+      <div
+        class="card-preview"
+        ref={(element) => {
+          previewElement = element;
+        }}
+      >
         <Show when={file.isPublic}>
           <span class="card-public-badge">Public</span>
         </Show>
         <Show
-          when={showPreview()}
+          when={isImage() || (isVideo() && loadVideoPreview())}
           fallback={
             <div class={`file-mark ${fileGlyph(file).toLowerCase()}`}>{fileGlyph(file)}</div>
           }
         >
-          <Show when={file.mimeType.startsWith("image/")}>
+          <Show when={isImage()}>
             <img src={previewUrl()} alt={file.name} loading="lazy" />
           </Show>
-          <Show when={file.mimeType.startsWith("video/")}>
-            <video src={previewUrl()} muted preload="metadata" />
+          <Show when={isVideo() && loadVideoPreview()}>
+            <video src={previewUrl()} muted playsinline preload="metadata" />
           </Show>
         </Show>
       </div>

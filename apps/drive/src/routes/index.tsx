@@ -42,13 +42,26 @@ function DriveShell() {
         <div class="drive-layout">
           <LeftSidebar />
 
+          <Show when={ctx.leftSidebarOpen()}>
+            <button
+              type="button"
+              class="left-sidebar-backdrop"
+              aria-label="Close navigation"
+              onClick={() => ctx.setLeftSidebarOpen(false)}
+            />
+          </Show>
+
           {/* Sidebar toggle */}
           <button
+            type="button"
             class="sidebar-toggle"
             onClick={() => ctx.setLeftSidebarOpen(!ctx.leftSidebarOpen())}
             title={ctx.leftSidebarOpen() ? "Collapse sidebar" : "Expand sidebar"}
+            aria-label={ctx.leftSidebarOpen() ? "Close navigation" : "Open navigation"}
+            aria-expanded={ctx.leftSidebarOpen()}
           >
             <svg
+              aria-hidden="true"
               viewBox="0 0 16 16"
               fill="currentColor"
               classList={{ flipped: !ctx.leftSidebarOpen() }}

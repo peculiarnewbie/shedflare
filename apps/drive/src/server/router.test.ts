@@ -247,6 +247,41 @@ describe("file API", () => {
     expect(res.status).toBe(404);
   });
 
+  test("GET /api/files/:id/preview streams requested byte ranges", async () => {
+    const form = new FormData();
+    form.set("file", new File(["0123456789"], "clip.mp4", { type: "video/mp4" }));
+    const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
+    const { file } = (await createRes.json()) as { file: { id: string } };
+
+    const previewRes = await router.fetch(
+      makeRequest(`/api/files/${file.id}/preview`, {
+        headers: { range: "bytes=2-5" },
+      }),
+    );
+
+    expect(previewRes.status).toBe(206);
+    expect(previewRes.headers.get("accept-ranges")).toBe("bytes");
+    expect(previewRes.headers.get("content-range")).toBe("bytes 2-5/10");
+    expect(previewRes.headers.get("content-length")).toBe("4");
+    expect(await previewRes.text()).toBe("2345");
+  });
+
+  test("GET /api/files/:id/preview rejects unsatisfiable byte ranges", async () => {
+    const form = new FormData();
+    form.set("file", new File(["short"], "clip.mp4", { type: "video/mp4" }));
+    const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
+    const { file } = (await createRes.json()) as { file: { id: string } };
+
+    const previewRes = await router.fetch(
+      makeRequest(`/api/files/${file.id}/preview`, {
+        headers: { range: "bytes=99-" },
+      }),
+    );
+
+    expect(previewRes.status).toBe(416);
+    expect(previewRes.headers.get("content-range")).toBe("bytes */5");
+  });
+
   test("PATCH /api/files/:id returns 404 for missing file", async () => {
     const res = await router.fetch(
       makeRequest("/api/files/nonexistent", {
@@ -358,6 +393,30 @@ describe("public file routes", () => {
     const pubRes = await router.fetch(makeRequest(`/public/files/${file.id}/download`));
     expect(pubRes.status).toBe(200);
     expect(await pubRes.text()).toBe("public content");
+  });
+
+  test("public previews support byte ranges", async () => {
+    const form = new FormData();
+    form.set("file", new File(["public video"], "public.mp4", { type: "video/mp4" }));
+    const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
+    const { file } = (await createRes.json()) as { file: { id: string } };
+    await router.fetch(
+      makeRequest(`/api/files/${file.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isPublic: true }),
+      }),
+    );
+
+    const previewRes = await router.fetch(
+      makeRequest(`/public/files/${file.id}/preview`, {
+        headers: { range: "bytes=-5" },
+      }),
+    );
+
+    expect(previewRes.status).toBe(206);
+    expect(previewRes.headers.get("content-range")).toBe("bytes 7-11/12");
+    expect(await previewRes.text()).toBe("video");
   });
 
   test("unpublished file returns 404 on public route", async () => {

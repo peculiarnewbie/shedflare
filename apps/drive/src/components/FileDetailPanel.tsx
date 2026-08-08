@@ -15,10 +15,10 @@ export default function FileDetailPanel() {
               <img src={previewUrl()} alt={f().name} />
             </Show>
             <Show when={f().mimeType.startsWith("video/")}>
-              <video src={previewUrl()} controls />
+              <video src={previewUrl()} controls playsinline preload="metadata" />
             </Show>
             <Show when={f().mimeType.startsWith("audio/")}>
-              <audio src={previewUrl()} controls class="detail-audio" />
+              <audio src={previewUrl()} controls preload="metadata" class="detail-audio" />
             </Show>
             <Show
               when={

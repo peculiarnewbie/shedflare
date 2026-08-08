@@ -2,6 +2,44 @@ export function normalizeTag(tag: string) {
   return tag.trim().toLowerCase().replaceAll(/\s+/g, " ");
 }
 
+export type ParsedByteRange =
+  | { kind: "full" }
+  | { kind: "partial"; offset: number; length: number }
+  | { kind: "unsatisfiable" };
+
+export function parseByteRange(header: string | null, size: number): ParsedByteRange {
+  if (!header) return { kind: "full" };
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match || (!match[1] && !match[2]) || size <= 0) {
+    return { kind: "unsatisfiable" };
+  }
+
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+      return { kind: "unsatisfiable" };
+    }
+    const length = Math.min(suffixLength, size);
+    return { kind: "partial", offset: size - length, length };
+  }
+
+  const offset = Number(match[1]);
+  const requestedEnd = match[2] ? Number(match[2]) : size - 1;
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(requestedEnd) ||
+    offset < 0 ||
+    offset >= size ||
+    requestedEnd < offset
+  ) {
+    return { kind: "unsatisfiable" };
+  }
+
+  const end = Math.min(requestedEnd, size - 1);
+  return { kind: "partial", offset, length: end - offset + 1 };
+}
+
 export function publicFile(row: Record<string, unknown>) {
   return {
     id: row.id as string,

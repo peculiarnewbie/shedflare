@@ -36,6 +36,32 @@ async function closeSidebar(page: Page) {
 }
 
 test.describe("Drive E2E", () => {
+  test("keeps the file browser usable on a phone viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/", { waitUntil: "networkidle" });
+
+    const sidebar = page.locator(".left-sidebar");
+    const navigationToggle = page.getByRole("button", { name: "Open navigation" });
+
+    await expect(page.locator(".drive-layout")).toBeVisible({ timeout: 15_000 });
+    await expect(sidebar).toHaveClass(/collapsed/);
+    await expect(navigationToggle).toBeVisible();
+    await expect(page.locator(".main-content")).toBeVisible();
+    const mainContentBox = await page.locator(".main-content").boundingBox();
+    expect(mainContentBox?.width).toBeGreaterThan(350);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      390,
+    );
+
+    await navigationToggle.click();
+    await expect(sidebar).not.toHaveClass(/collapsed/);
+    await expect(page.locator(".left-sidebar-backdrop")).toBeVisible();
+
+    await page.locator(".left-sidebar-backdrop").click({ position: { x: 380, y: 400 } });
+    await expect(sidebar).toHaveClass(/collapsed/);
+    await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  });
+
   test("paints the drive shell from the auth hint before the session probe resolves", async ({
     page,
   }) => {

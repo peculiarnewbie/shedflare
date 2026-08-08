@@ -6,7 +6,7 @@ import { fileTags, files, tags } from "../../db/schema";
 import { driveApi } from "../definitions";
 import type { HandlerContext, HttpApiAuth } from "@shedflare/auth-client/http-api";
 import type { Session } from "@shedflare/auth-client/consumer";
-import { normalizeTag, parseUpdateBody, publicFile } from "./file-utils";
+import { normalizeTag, parseByteRange, parseUpdateBody, publicFile } from "./file-utils";
 
 type Db = DrizzleD1Database;
 
@@ -181,6 +181,59 @@ type FileEnv = { DB: D1Database; FILES: R2Bucket };
 type FileParams = { id: string };
 type MultipartPartParams = FileParams & { partNumber: string };
 
+type StoredFile = {
+  objectKey: string;
+  name: string;
+  size: number;
+};
+
+async function serveStoredFile(options: {
+  bucket: R2Bucket;
+  file: StoredFile;
+  request: Request;
+  disposition: "inline" | "download";
+}) {
+  const { bucket, file, request, disposition } = options;
+  const requestedRange = parseByteRange(request.headers.get("range"), file.size);
+  if (requestedRange.kind === "unsatisfiable") {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "accept-ranges": "bytes",
+        "content-range": `bytes */${file.size}`,
+      },
+    });
+  }
+
+  const object = await bucket.get(
+    file.objectKey,
+    requestedRange.kind === "partial"
+      ? { range: { offset: requestedRange.offset, length: requestedRange.length } }
+      : undefined,
+  );
+  if (!object) return new Response("File object missing", { status: 404 });
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("accept-ranges", "bytes");
+  headers.set(
+    "content-disposition",
+    disposition === "download"
+      ? `attachment; filename="${file.name.replaceAll('"', "'")}"`
+      : "inline",
+  );
+
+  if (requestedRange.kind === "partial") {
+    const end = requestedRange.offset + requestedRange.length - 1;
+    headers.set("content-length", String(requestedRange.length));
+    headers.set("content-range", `bytes ${requestedRange.offset}-${end}/${file.size}`);
+    return new Response(object.body, { status: 206, headers });
+  }
+
+  headers.set("content-length", String(object.size));
+  return new Response(object.body, { headers });
+}
+
 type ProtectedHandler<Params, Result> = (
   webReq: Request,
   session: Session,
@@ -229,24 +282,13 @@ export async function servePublicFile(
   env: FileEnv,
   id: string,
   disposition: "inline" | "download",
+  request: Request,
 ) {
   const db = drizzle(env.DB);
   const row = await getFile(db, id);
   if (!row || !row.isPublic) return new Response("Not found", { status: 404 });
 
-  const object = await env.FILES.get(row.objectKey);
-  if (!object) return new Response("File object missing", { status: 404 });
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("content-length", String(object.size));
-  headers.set(
-    "content-disposition",
-    disposition === "download"
-      ? `attachment; filename="${row.name.replaceAll('"', "'")}"`
-      : "inline",
-  );
-  return new Response(object.body, { headers });
+  return await serveStoredFile({ bucket: env.FILES, file: row, request, disposition });
 }
 
 export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
@@ -278,7 +320,6 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
           const rows = await db
             .select({
               id: files.id,
-              objectKey: files.objectKey,
               name: files.name,
               mimeType: files.mimeType,
               size: files.size,
@@ -638,21 +679,20 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         })(ctx),
       )
       .handle("preview", (ctx) =>
-        protectFile(auth, async (_webReq, _session, handlerCtx) => {
+        protectFile(auth, async (webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
           const id = handlerCtx.params?.id ?? "";
           const row = await getFile(db, id);
           if (!row) return HttpServerResponse.fromWeb(new Response("Not found", { status: 404 }));
 
-          const object = await env.FILES.get(row.objectKey);
-          if (!object)
-            return HttpServerResponse.fromWeb(new Response("File object missing", { status: 404 }));
-
-          const headers = new Headers();
-          object.writeHttpMetadata(headers);
-          headers.set("content-length", String(object.size));
-          headers.set("content-disposition", "inline");
-          return HttpServerResponse.fromWeb(new Response(object.body, { headers }));
+          return HttpServerResponse.fromWeb(
+            await serveStoredFile({
+              bucket: env.FILES,
+              file: row,
+              request: webReq,
+              disposition: "inline",
+            }),
+          );
         })(ctx),
       ),
   );

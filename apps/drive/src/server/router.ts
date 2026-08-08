@@ -56,6 +56,7 @@ export function createRouter(env: Env) {
             env,
             decodeURIComponent(publicFileMatch[1]),
             publicFileMatch[2] === "download" ? "download" : "inline",
+            request,
           );
         }
 
