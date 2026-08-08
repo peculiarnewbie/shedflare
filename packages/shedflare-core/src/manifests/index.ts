@@ -1,5 +1,13 @@
 export { computeDeployOrder, resolveAppDependencies } from "./dependencies.ts";
-export { discoverManifests, loadManifest } from "./discover.ts";
+export {
+  createManifestCatalog,
+  discoverManifestDirectory,
+  discoverManifests,
+  loadManifest,
+  loadManifestFile,
+  parseManifest,
+  type ManifestCatalogEntry,
+} from "./discover.ts";
 export type {
   AppCategory,
   AppManifest,

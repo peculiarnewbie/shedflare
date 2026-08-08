@@ -7,15 +7,20 @@ import type { AppManifest, ManifestCatalog, ResourceDescriptor } from "./model.t
 import { AppManifestSchema } from "./schema.ts";
 import { parseJsonc } from "../jsonc.ts";
 
-function normalizeManifest(input: unknown, filePath: string): AppManifest {
+export interface ManifestCatalogEntry {
+  readonly manifest: AppManifest;
+  readonly source?: string;
+}
+
+export function parseManifest(input: unknown, source = "<manifest>"): AppManifest {
   const result = safeParse(AppManifestSchema, input);
   if (!result.success) {
     const issue = result.issues[0];
     const fieldPath = getDotPath(issue) ?? undefined;
     throw new CoreError(
       "MANIFEST_INVALID",
-      `${filePath}${fieldPath ? `:${fieldPath}` : ""} ${issue.message}`,
-      { filePath, fieldPath, expectation: issue.expected ?? undefined },
+      `${source}${fieldPath ? `:${fieldPath}` : ""} ${issue.message}`,
+      { filePath: source, fieldPath, expectation: issue.expected ?? undefined },
     );
   }
 
@@ -36,12 +41,16 @@ function normalizeManifest(input: unknown, filePath: string): AppManifest {
   };
 }
 
-export function loadManifest(root: string, appId: string): AppManifest {
-  const filePath = manifestPath(root, appId);
+export function loadManifestFile(filePath: string): AppManifest {
   if (!existsSync(filePath)) {
     throw new CoreError("MANIFEST_NOT_FOUND", `Manifest not found: ${filePath}`, { filePath });
   }
-  return normalizeManifest(parseJsonc(readFileSync(filePath, "utf8"), filePath), filePath);
+  return parseManifest(parseJsonc(readFileSync(filePath, "utf8"), filePath), filePath);
+}
+
+/** @deprecated Use loadManifestFile with an explicit manifest path. */
+export function loadManifest(root: string, appId: string): AppManifest {
+  return loadManifestFile(manifestPath(root, appId));
 }
 
 function dependencyCycle(manifests: ReadonlyMap<string, AppManifest>): string[] | undefined {
@@ -75,55 +84,23 @@ function dependencyCycle(manifests: ReadonlyMap<string, AppManifest>): string[] 
   return undefined;
 }
 
-export function discoverManifests(root: string): ManifestCatalog {
-  const appsDir = join(root, "apps");
-  const errors: CoreError[] = [];
+function buildManifestCatalog(
+  entries: Iterable<ManifestCatalogEntry>,
+  initialErrors: readonly CoreError[] = [],
+): ManifestCatalog {
+  const errors = [...initialErrors];
   const manifests = new Map<string, AppManifest>();
 
-  if (!existsSync(appsDir)) {
-    throw new CatalogValidationError([
-      new CoreError("MANIFEST_NOT_FOUND", `Apps directory not found: ${appsDir}`, {
-        filePath: appsDir,
-      }),
-    ]);
-  }
-
-  const entries = readdirSync(appsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .filter((entry) => existsSync(join(appsDir, entry.name, MANIFEST_FILENAME)))
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  for (const entry of entries) {
-    try {
-      const manifest = loadManifest(root, entry.name);
-      if (manifest.id !== entry.name) {
-        errors.push(
-          new CoreError(
-            "MANIFEST_ID_MISMATCH",
-            `Manifest ${manifestPath(root, entry.name)} declares id "${manifest.id}", but its directory is "${entry.name}"`,
-            { filePath: manifestPath(root, entry.name), fieldPath: "id" },
-          ),
-        );
-      }
-      if (manifests.has(manifest.id)) {
-        errors.push(
-          new CoreError(
-            "MANIFEST_INVALID",
-            `Duplicate manifest id "${manifest.id}" in ${manifestPath(root, entry.name)}`,
-            { filePath: manifestPath(root, entry.name), fieldPath: "id" },
-          ),
-        );
-      } else {
-        manifests.set(manifest.id, manifest);
-      }
-    } catch (error) {
+  for (const { manifest, source = `<manifest:${manifest.id}>` } of entries) {
+    if (manifests.has(manifest.id)) {
       errors.push(
-        error instanceof CoreError
-          ? error
-          : new CoreError("MANIFEST_INVALID", String(error), {
-              filePath: manifestPath(root, entry.name),
-            }),
+        new CoreError("MANIFEST_INVALID", `Duplicate manifest id "${manifest.id}" in ${source}`, {
+          filePath: source,
+          fieldPath: "id",
+        }),
       );
+    } else {
+      manifests.set(manifest.id, manifest);
     }
   }
 
@@ -134,7 +111,7 @@ export function discoverManifests(root: string): ManifestCatalog {
           new CoreError(
             "MANIFEST_DEPENDENCY_MISSING",
             `Manifest "${manifest.id}" depends on missing app "${dependency}"`,
-            { filePath: manifestPath(root, manifest.id), fieldPath: "dependsOn" },
+            { fieldPath: "dependsOn" },
           ),
         );
       }
@@ -155,4 +132,57 @@ export function discoverManifests(root: string): ManifestCatalog {
 
   const appIds = [...manifests.keys()].sort((left, right) => left.localeCompare(right));
   return { appIds, manifests };
+}
+
+export function createManifestCatalog(entries: Iterable<ManifestCatalogEntry>): ManifestCatalog {
+  return buildManifestCatalog(entries);
+}
+
+export function discoverManifestDirectory(appsDir: string): ManifestCatalog {
+  if (!existsSync(appsDir)) {
+    throw new CatalogValidationError([
+      new CoreError("MANIFEST_NOT_FOUND", `Apps directory not found: ${appsDir}`, {
+        filePath: appsDir,
+      }),
+    ]);
+  }
+
+  const errors: CoreError[] = [];
+  const manifests: ManifestCatalogEntry[] = [];
+  const entries = readdirSync(appsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .filter((entry) => existsSync(join(appsDir, entry.name, MANIFEST_FILENAME)))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  for (const entry of entries) {
+    const filePath = join(appsDir, entry.name, MANIFEST_FILENAME);
+    try {
+      const manifest = loadManifestFile(filePath);
+      if (manifest.id !== entry.name) {
+        errors.push(
+          new CoreError(
+            "MANIFEST_ID_MISMATCH",
+            `Manifest ${filePath} declares id "${manifest.id}", but its directory is "${entry.name}"`,
+            { filePath, fieldPath: "id" },
+          ),
+        );
+      }
+      manifests.push({ manifest, source: filePath });
+    } catch (error) {
+      errors.push(
+        error instanceof CoreError
+          ? error
+          : new CoreError("MANIFEST_INVALID", String(error), {
+              filePath,
+            }),
+      );
+    }
+  }
+
+  return buildManifestCatalog(manifests, errors);
+}
+
+/** @deprecated Use discoverManifestDirectory with an explicit apps directory. */
+export function discoverManifests(root: string): ManifestCatalog {
+  return discoverManifestDirectory(join(root, "apps"));
 }

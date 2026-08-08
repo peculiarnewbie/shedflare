@@ -7,8 +7,12 @@ import {
   CatalogValidationError,
   CoreError,
   computeDeployOrder,
+  createManifestCatalog,
+  discoverManifestDirectory,
   discoverManifests,
   loadManifest,
+  loadManifestFile,
+  parseManifest,
 } from "../src/index.ts";
 
 const temporaryRoots: string[] = [];
@@ -83,6 +87,27 @@ describe("current app catalog", () => {
 });
 
 describe("manifest validation", () => {
+  test("parses and catalogs manifests without a repository filesystem", () => {
+    const auth = parseManifest(JSON.parse(manifest("auth")), "inline:auth");
+    const drive = parseManifest(JSON.parse(manifest("drive", ["auth"])), "inline:drive");
+    const catalog = createManifestCatalog([
+      { manifest: drive, source: "inline:drive" },
+      { manifest: auth, source: "inline:auth" },
+    ]);
+
+    expect(catalog.appIds).toEqual(["auth", "drive"]);
+    expect(computeDeployOrder(["drive"], catalog)).toEqual(["auth", "drive"]);
+  });
+
+  test("loads an explicit manifest file and discovers an explicit apps directory", () => {
+    const root = temporaryRoot();
+    writeManifest(root, "standalone", manifest("standalone"));
+    const filePath = join(root, "apps", "standalone", "shedflare.app.jsonc");
+
+    expect(loadManifestFile(filePath).id).toBe("standalone");
+    expect(discoverManifestDirectory(join(root, "apps")).appIds).toEqual(["standalone"]);
+  });
+
   test("reports JSONC parse locations", () => {
     const root = temporaryRoot();
     writeManifest(root, "broken", '{ "id": "broken",');
