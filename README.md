@@ -2,6 +2,11 @@
 
 Shedflare is a self-hosted suite of personal productivity tools for Cloudflare. Each app is a standalone Worker deployed to your own Cloudflare account via [Alchemy](https://alchemy.run), managed from a single monorepo.
 
+> [!NOTE]
+> Shedflare is moving toward independently installable app repositories, with the suite becoming an
+> optional orchestration layer. See [ADR 0001](docs/architecture/0001-standalone-first-repositories.md)
+> for the accepted direction and migration gates.
+
 ## Apps
 
 | App           | Directory            | Description                                                        |
