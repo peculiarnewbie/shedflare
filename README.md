@@ -9,18 +9,18 @@ Shedflare is a self-hosted suite of personal productivity tools for Cloudflare. 
 
 ## Apps
 
-| App           | Directory            | Description                                                        |
-| ------------- | -------------------- | ------------------------------------------------------------------ |
-| Anki          | `apps/anki`          | Personal spaced-repetition cards and review                        |
-| Auth          | `apps/auth`          | OAuth2/OIDC authentication provider (OpenAuth)                     |
-| Chat          | `apps/chat`          | AI chat interface with browser automation and Durable Objects sync |
-| Homepage      | `apps/homepage`      | Personal homepage with profile, experience, and projects           |
-| Drive         | `apps/drive`         | File storage with R2, D1 metadata, tags, and search                |
-| Money         | `apps/money`         | Envelope-budgeting personal finance app                            |
-| CF Bill       | `apps/cf-bill`       | Cloudflare usage vs plan limits dashboard                          |
-| Routines      | `apps/routines`      | Daily routine tracker with progress visualization                  |
-| Observability | `apps/observability` | Centralized error collection from tail events                      |
-| Links         | `apps/s`             | Link shortener with dashboard                                      |
+| App           | Directory                                               | Description                                                        |
+| ------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| Anki          | `apps/anki`                                             | Personal spaced-repetition cards and review                        |
+| Auth          | `apps/auth`                                             | OAuth2/OIDC authentication provider (OpenAuth)                     |
+| Chat          | `apps/chat`                                             | AI chat interface with browser automation and Durable Objects sync |
+| Homepage      | `apps/homepage`                                         | Personal homepage with profile, experience, and projects           |
+| Drive         | [`shedflare/drive`](https://github.com/shedflare/drive) | Independently deployed file storage app                            |
+| Money         | `apps/money`                                            | Envelope-budgeting personal finance app                            |
+| CF Bill       | `apps/cf-bill`                                          | Cloudflare usage vs plan limits dashboard                          |
+| Routines      | `apps/routines`                                         | Daily routine tracker with progress visualization                  |
+| Observability | `apps/observability`                                    | Centralized error collection from tail events                      |
+| Links         | `apps/s`                                                | Link shortener with dashboard                                      |
 
 ## Quick Start
 
@@ -38,7 +38,6 @@ Deploy auth first if you want to deploy apps individually:
 ```bash
 pnpm deploy:auth
 pnpm deploy:chat
-pnpm deploy:drive
 pnpm deploy:anki
 pnpm deploy:homepage
 # ...etc
@@ -65,7 +64,6 @@ pnpm deploy
 # Individual apps
 pnpm deploy:auth
 pnpm deploy:chat
-pnpm deploy:drive
 pnpm deploy:money
 pnpm deploy:anki
 pnpm deploy:homepage
@@ -80,6 +78,9 @@ pnpm destroy:auth      # individual
 ```
 
 Deploy `@shedflare/auth` first if deploying individually — other apps use it as `AUTH_ISSUER_URL`.
+Drive production deployment is owned by the standalone
+[`shedflare/drive`](https://github.com/shedflare/drive) repository and is not part of suite deploy or
+destroy commands.
 
 For temporary stages, call Alchemy directly and pass a stage explicitly:
 

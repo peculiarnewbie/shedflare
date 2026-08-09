@@ -33,8 +33,17 @@ describe("mergeAdditionalAllowedClients", () => {
     ).toEqual(["https://drive.example.com"]);
   });
 
+  test("registers an independently deployed Shedflare client", () => {
+    expect(
+      mergeAdditionalAllowedClients(
+        {},
+        JSON.stringify({ "shedflare-drive": ["https://drive.example.com"] }),
+      ),
+    ).toEqual({ "shedflare-drive": ["https://drive.example.com"] });
+  });
+
   test.each([
-    ["unknown clients", JSON.stringify({ "shedflare-unknown": ["https://x.example.com"] })],
+    ["invalid client IDs", JSON.stringify({ drive: ["https://drive.example.com"] })],
     ["paths", JSON.stringify({ "shedflare-drive": ["https://preview.example.com/path"] })],
     ["insecure origins", JSON.stringify({ "shedflare-drive": ["http://preview.example.com"] })],
   ])("rejects %s", (_label, value) => {

@@ -109,10 +109,12 @@ Drive was extracted with its app history to
 canonical source for Drive. Its app-only frozen-lockfile install, checks, 102 tests, and build passed
 using public package releases. A temporary Cloudflare stage created an isolated Worker, D1 database,
 and R2 bucket; four browser tests exercised mobile navigation, authentication state, and the complete
-file upload, metadata, download, search, sharing, and deletion lifecycle. Alchemy then destroyed all
-three temporary resources. Existing production Drive resources and data were not changed. The
-`apps/drive` copy here is a frozen compatibility snapshot pending suite release orchestration; do not
-make new Drive changes in this repository.
+file upload, metadata, download, search, sharing, and deletion lifecycle. On 2026-08-09, the standalone
+repository took over the existing production `ShedflareDrive/prod` Alchemy state in place. The D1
+database ID, R2 bucket, Worker name, and custom domain did not change, and before/after file and byte
+counts matched. Drive is no longer composed by the suite root stack or exposed through suite deploy
+and destroy scripts. The `apps/drive` copy here is a frozen rollback snapshot; do not make new Drive
+changes in this repository and never destroy it from this checkout.
 
 ## Shared package contract
 

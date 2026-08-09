@@ -7,7 +7,6 @@ import { AnkiStack } from "./apps/anki/alchemy.run.ts";
 import { AuthStack } from "./apps/auth/alchemy.run.ts";
 import { CfBillStack } from "./apps/cf-bill/alchemy.run.ts";
 import { ChatStack } from "./apps/chat/alchemy.run.ts";
-import { DriveStack } from "./apps/drive/alchemy.run.ts";
 import { MoneyStack } from "./apps/money/alchemy.run.ts";
 import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { RoutinesStack } from "./apps/routines/alchemy.run.ts";
@@ -51,7 +50,6 @@ export default Alchemy.Stack(
     const auth = yield* AuthStack;
     const anki = yield* AnkiStack;
     const cfBill = yield* CfBillStack;
-    const drive = yield* DriveStack;
     const chat = yield* ChatStack;
     const money = yield* MoneyStack;
     const short = yield* ShortStack;
@@ -67,7 +65,6 @@ export default Alchemy.Stack(
         "anki",
         "cf-bill",
         "chat",
-        "drive",
         "homepage",
         "money",
         "routines",
@@ -100,7 +97,6 @@ export default Alchemy.Stack(
       ankiUrl: anki.output.url,
       homepageUrl: homepage.output.url,
       cfBillUrl: cfBill.output.url,
-      driveUrl: drive.output.url,
       chatUrl: chat.output.url,
       moneyUrl: money.output.url,
       shortUrl: short.output.url,

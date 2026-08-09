@@ -5,7 +5,11 @@
   "ownerEmail": "you@example.com",
   "apps": {
     "anki": {},
-    "auth": {},
+    "auth": {
+      "vars": {
+        "ADDITIONAL_ALLOWED_CLIENTS": "{\"shedflare-drive\":[\"https://drive.example.com\"]}",
+      },
+    },
     "cf-bill": {
       "vars": {
         "CLOUDFLARE_ACCOUNT_ID": "",
@@ -13,7 +17,6 @@
       },
     },
     "chat": {},
-    "drive": {},
     "homepage": {},
     "money": {},
     "observability": {},

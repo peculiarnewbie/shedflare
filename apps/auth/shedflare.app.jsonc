@@ -20,7 +20,7 @@
     "ADDITIONAL_ALLOWED_CLIENTS": {
       "from": "user",
       "default": "{}",
-      "description": "JSON map of enabled client IDs to additional canonical HTTPS origins",
+      "description": "JSON map of Shedflare client IDs to additional canonical HTTPS origins, including independently deployed apps",
     },
     "OWNER_EMAIL": {
       "from": "ownerEmail",

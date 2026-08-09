@@ -23,8 +23,6 @@
     "destroy:homepage": "vp exec alchemy destroy apps/homepage/alchemy.run.ts --stage prod --yes",
     "deploy:cf-bill": "vp build apps/cf-bill && vp exec jiti packages/cli/src/index.ts deploy cf-bill --yes",
     "destroy:cf-bill": "vp exec alchemy destroy apps/cf-bill/alchemy.run.ts --stage prod --yes",
-    "deploy:drive": "vp build apps/drive && vp exec jiti packages/cli/src/index.ts deploy drive --yes",
-    "destroy:drive": "vp exec alchemy destroy apps/drive/alchemy.run.ts --stage prod --yes",
     "deploy:chat": "vp build apps/chat && vp exec jiti packages/cli/src/index.ts deploy chat --yes",
     "destroy:chat": "vp exec alchemy destroy apps/chat/alchemy.run.ts --stage prod --yes",
     "deploy:money": "vp build apps/money && vp exec jiti packages/cli/src/index.ts deploy money --yes",

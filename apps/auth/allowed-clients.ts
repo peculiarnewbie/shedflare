@@ -39,13 +39,14 @@ export function mergeAdditionalAllowedClients(
   );
 
   for (const [clientId, origins] of Object.entries(additional)) {
-    if (!(clientId in merged)) {
-      throw new Error(`Additional origins reference unknown or disabled client ${clientId}.`);
+    if (!/^shedflare-[a-z0-9][a-z0-9-]*$/.test(clientId)) {
+      throw new Error(`Additional client ID must use the shedflare-<app> format: ${clientId}.`);
     }
     if (!Array.isArray(origins)) {
       throw new Error(`Additional origins for ${clientId} must be an array.`);
     }
 
+    merged[clientId] ??= [];
     for (const value of origins) {
       const origin = parseOrigin(value, clientId);
       if (!merged[clientId].includes(origin)) merged[clientId].push(origin);

@@ -17,8 +17,9 @@ ID at `apps.auth.vars.GOOGLE_CLIENT_ID`. The owner email comes from the root
 subdomain.
 
 Temporary app deployments can opt into the shared issuer by setting
-`apps.auth.vars.ADDITIONAL_ALLOWED_CLIENTS` to a JSON map. Each key must be an
-enabled client ID and each value is an array of canonical HTTPS origins:
+`apps.auth.vars.ADDITIONAL_ALLOWED_CLIENTS` to a JSON map. Each key must use
+the `shedflare-<app>` client ID format and each value is an array of canonical
+HTTPS origins:
 
 ```json
 {
@@ -26,7 +27,8 @@ enabled client ID and each value is an array of canonical HTTPS origins:
 }
 ```
 
-Configured app origins remain allowed; these entries only add callback origins.
+Configured suite app origins remain allowed; these entries add callback origins
+for previews and independently deployed apps.
 
 Configure the Google client with this redirect URI:
 
