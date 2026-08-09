@@ -88,10 +88,20 @@ The shared packages were extracted with their Git history to
 the canonical source for `@shedflare/auth-client`, `@shedflare/core`, `@shedflare/alchemy`,
 `@shedflare/test-utils`, and `@shedflare/ui`.
 
-The copies under this suite repository are a frozen compatibility snapshot until the maintainer
-publishes the initial npm releases and the suite is changed to consume those versions. Do not make
-new shared-package changes here; make them in `shedflare/packages` and bring them back only through a
-versioned package update. No npm publication was performed as part of the repository extraction.
+The copies under this suite repository are a frozen compatibility snapshot until the suite is
+changed to consume released versions. Do not make new shared-package changes here; make them in
+`shedflare/packages` and bring them back only through a versioned package update.
+
+The first public npm releases were published on 2026-08-09: `@shedflare/core@0.1.0`,
+`@shedflare/auth-client@0.1.0`, and `@shedflare/alchemy@0.1.0`. The remaining shared packages stay
+unpublished until an independent repository needs them.
+
+Anki was extracted with its app history to [`shedflare/anki`](https://github.com/shedflare/anki) on
+2026-08-09. That repository is now the canonical source for Anki. Its frozen-lockfile install,
+checks, tests, and build passed from an app-only checkout using the public package releases. A
+temporary non-production Cloudflare stage also planned, deployed, passed its public and auth smoke
+checks, and was destroyed successfully. The `apps/anki` copy here is a frozen compatibility
+snapshot pending suite release orchestration; do not make new Anki changes in this repository.
 
 ## Shared package contract
 
