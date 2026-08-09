@@ -93,8 +93,9 @@ changed to consume released versions. Do not make new shared-package changes her
 `shedflare/packages` and bring them back only through a versioned package update.
 
 The first public npm releases were published on 2026-08-09: `@shedflare/core@0.1.0`,
-`@shedflare/auth-client@0.1.0`, and `@shedflare/alchemy@0.1.0`. The remaining shared packages stay
-unpublished until an independent repository needs them.
+`@shedflare/auth-client@0.1.0`, `@shedflare/alchemy@0.1.0`, and
+`@shedflare/test-utils@0.1.0`. The remaining shared packages stay unpublished until an independent
+repository needs them.
 
 Anki was extracted with its app history to [`shedflare/anki`](https://github.com/shedflare/anki) on
 2026-08-09. That repository is now the canonical source for Anki. Its frozen-lockfile install,
@@ -102,6 +103,16 @@ checks, tests, and build passed from an app-only checkout using the public packa
 temporary non-production Cloudflare stage also planned, deployed, passed its public and auth smoke
 checks, and was destroyed successfully. The `apps/anki` copy here is a frozen compatibility
 snapshot pending suite release orchestration; do not make new Anki changes in this repository.
+
+Drive was extracted with its app history to
+[`shedflare/drive`](https://github.com/shedflare/drive) on 2026-08-09. That repository is now the
+canonical source for Drive. Its app-only frozen-lockfile install, checks, 102 tests, and build passed
+using public package releases. A temporary Cloudflare stage created an isolated Worker, D1 database,
+and R2 bucket; four browser tests exercised mobile navigation, authentication state, and the complete
+file upload, metadata, download, search, sharing, and deletion lifecycle. Alchemy then destroyed all
+three temporary resources. Existing production Drive resources and data were not changed. The
+`apps/drive` copy here is a frozen compatibility snapshot pending suite release orchestration; do not
+make new Drive changes in this repository.
 
 ## Shared package contract
 
