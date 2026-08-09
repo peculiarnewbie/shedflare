@@ -17,6 +17,11 @@
       "from": "user",
       "description": "Google OAuth client ID",
     },
+    "ADDITIONAL_ALLOWED_CLIENTS": {
+      "from": "user",
+      "default": "{}",
+      "description": "JSON map of enabled client IDs to additional canonical HTTPS origins",
+    },
     "OWNER_EMAIL": {
       "from": "ownerEmail",
       "description": "Deployment owner email",

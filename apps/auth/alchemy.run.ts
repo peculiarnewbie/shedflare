@@ -2,6 +2,7 @@ import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Shedflare from "@shedflare/alchemy";
 import * as Effect from "effect/Effect";
+import { mergeAdditionalAllowedClients } from "./allowed-clients.ts";
 
 export const AuthStack = Alchemy.Stack(
   "ShedflareAuth",
@@ -21,7 +22,7 @@ export const AuthStack = Alchemy.Stack(
         (catalog.manifests.get(appId)?.dependsOn.includes("auth") ?? false),
     );
 
-    const allowedClients: Record<string, string[]> = {};
+    const configuredClients: Record<string, string[]> = {};
     for (const appId of clientApps) {
       const selected =
         rootConfig.configVersion === 1
@@ -30,8 +31,12 @@ export const AuthStack = Alchemy.Stack(
       if (!selected) continue;
       const clientId = `shedflare-${appId}`;
       const origin = Shedflare.appStackConfig(rootConfig, appId, stage).url;
-      allowedClients[clientId] = [origin];
+      configuredClients[clientId] = [origin];
     }
+    const allowedClients = mergeAdditionalAllowedClients(
+      configuredClients,
+      Shedflare.optionalVar(config, "ADDITIONAL_ALLOWED_CLIENTS", "{}"),
+    );
 
     const storage = yield* Cloudflare.KV.Namespace("AuthStorage", {
       title: Shedflare.physicalName(stage, "auth", "storage"),

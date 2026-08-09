@@ -168,22 +168,23 @@ function getCookieValue(cookieHeader: string | null, name: string): string | nul
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-let parsedAllowedClients: Map<string, string[]> | null = null;
+let parsedAllowedClients: { source: string; clients: Map<string, string[]> } | null = null;
 
 function getAllowedClients(env: Env): Map<string, string[]> {
-  if (parsedAllowedClients) return parsedAllowedClients;
-  parsedAllowedClients = new Map();
+  if (parsedAllowedClients?.source === env.ALLOWED_CLIENTS) return parsedAllowedClients.clients;
+  const clients = new Map<string, string[]>();
   try {
     const raw = JSON.parse(env.ALLOWED_CLIENTS) as Record<string, string[]>;
     for (const [clientId, origins] of Object.entries(raw)) {
       if (Array.isArray(origins)) {
-        parsedAllowedClients.set(clientId, origins);
+        clients.set(clientId, origins);
       }
     }
   } catch {
     // Empty map — all client validation will fail
   }
-  return parsedAllowedClients;
+  parsedAllowedClients = { source: env.ALLOWED_CLIENTS, clients };
+  return clients;
 }
 
 function validateClientAndRedirectURI(env: Env, clientId: string, redirectURI: string): boolean {

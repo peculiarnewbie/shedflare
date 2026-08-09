@@ -16,6 +16,18 @@ ID at `apps.auth.vars.GOOGLE_CLIENT_ID`. The owner email comes from the root
 `ownerEmail` value, and the public URL comes from the root domain plus the Auth
 subdomain.
 
+Temporary app deployments can opt into the shared issuer by setting
+`apps.auth.vars.ADDITIONAL_ALLOWED_CLIENTS` to a JSON map. Each key must be an
+enabled client ID and each value is an array of canonical HTTPS origins:
+
+```json
+{
+  "shedflare-drive": ["https://drive-preview.example.com"]
+}
+```
+
+Configured app origins remain allowed; these entries only add callback origins.
+
 Configure the Google client with this redirect URI:
 
 ```text
