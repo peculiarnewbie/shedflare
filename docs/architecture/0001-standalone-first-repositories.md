@@ -62,6 +62,7 @@ shedflare/auth            optional shared SSO deployment
 shedflare/anki            standalone app
 shedflare/cf-bill         standalone app
 shedflare/chat            standalone app
+shedflare/discord         standalone personal Discord bot
 shedflare/drive           standalone app
 shedflare/homepage        standalone app
 shedflare/links           standalone app; current app id remains `s` until separately migrated
@@ -115,6 +116,27 @@ database ID, R2 bucket, Worker name, and custom domain did not change, and befor
 counts matched. Drive is no longer composed by the suite root stack or exposed through suite deploy
 and destroy scripts. The `apps/drive` copy here is a frozen rollback snapshot; do not make new Drive
 changes in this repository and never destroy it from this checkout.
+
+On 2026-08-09, the remaining deployables were extracted with their relevant path history to
+[`shedflare/auth`](https://github.com/shedflare/auth),
+[`shedflare/cf-bill`](https://github.com/shedflare/cf-bill),
+[`shedflare/chat`](https://github.com/shedflare/chat),
+[`shedflare/discord`](https://github.com/shedflare/discord),
+[`shedflare/homepage`](https://github.com/shedflare/homepage),
+[`shedflare/links`](https://github.com/shedflare/links),
+[`shedflare/money`](https://github.com/shedflare/money),
+[`shedflare/observability`](https://github.com/shedflare/observability),
+[`shedflare/routines`](https://github.com/shedflare/routines), and
+[`shedflare/site`](https://github.com/shedflare/site). Chat owns the former sync-protocol package as
+an internal deep module. Each repository installs from its own frozen lockfile and passed its local
+checks, normal non-live tests, and build without sibling paths. These repositories are now the
+canonical source for new application changes.
+
+Except for Drive's previously completed handoff, production state ownership has not moved. The
+suite copies remain frozen compatibility or rollback snapshots until each extracted stack passes an
+isolated deployment rehearsal and an explicitly approved production cutover. The suite still uses
+source composition temporarily; release transport, pinning, and orchestration remain a separate
+migration gate.
 
 ## Shared package contract
 

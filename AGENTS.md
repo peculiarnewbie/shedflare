@@ -47,28 +47,26 @@ packages/cli/           # Shedflare CLI (init, configure, doctor — deprecated)
 ### Design Rules
 
 - **`shedflare.config.jsonc`** is the gitignored desired-state source of truth. Version 2 is sparse: app presence means selected, and it stores only non-secret deviations from manifest defaults. `shedflare.config.example.jsonc` is the committed template.
-- **App manifests** (`apps/*/shedflare.app.jsonc`) are the catalog source of truth. They declare lifecycle, category, data sensitivity, vars, secrets, and resources; keep deployment metadata in sync with `alchemy.run.ts`.
+- **App manifests** (`apps/*/shedflare.app.jsonc`) remain the compatibility catalog until release orchestration replaces source composition. Extracted app repositories own new application changes.
 - **`@shedflare/core`** is the only implementation of manifest discovery, app identity, config validation, migration, config patching, and dependency ordering. Alchemy, the CLI, and the Console consume it; do not add a local manifest registry or config parser.
-- **Alchemy stacks** (`apps/*/alchemy.run.ts`) are the source of truth for Cloudflare resource declarations. If you modify a stack, run `pnpm deploy:<app>` to apply to `prod`.
-- **Production is the default supported deploy target.** Root deploy/destroy scripts pass `--stage prod`; use direct `vp exec alchemy ... --stage <name>` commands only for temporary or test stages.
+- **Alchemy stacks** in each standalone repository are the source of truth for extracted apps. Suite copies are frozen compatibility or rollback snapshots until release orchestration and production ownership cutover are complete.
+- **Never deploy merely because a stack changed.** Production deploy, destroy, and ownership cutover require explicit operator approval. Use isolated non-production stages for rehearsals.
 - **Non-production stages use derived subdomains.** `prod` uses configured subdomains as-is; any other stage appends the sanitized stage, e.g. `chat` + `dev-bolt` becomes `chat-dev-bolt.example.com`.
 - **Root `alchemy.run.ts`** wires auth URL into all child apps. Update when adding a new app.
 - **Non-secret config** (domain and vars like `DEFAULT_MODEL_ID`) goes in gitignored `shedflare.config.jsonc`; secrets and physical Cloudflare resource IDs do not. **Operator secrets** use `Shedflare.WorkerSecret` in Alchemy stacks (Cloudflare Worker is source of truth; set via `shedflare secret set` or env at deploy time). See `docs/operator-secrets.md`.
 - **Every interactive prompt must have a non-interactive flag equivalent** for CI and scripting.
 - **Run `shedflare doctor` to validate local and deployed state.** Use `shedflare config migrate --write` for an explicit, backed-up version-1 migration.
 
+### Extracted application freeze
+
+`auth`, `cf-bill`, `chat`, `discord`, `homepage`, `money`, `observability`, `routines`, and `s`/Links now have standalone repositories, as do Anki and Drive. Make new app changes in those repositories. Do not backport by copying sibling source; the suite must eventually consume versioned releases.
+
 ### Adding a New App
 
-1. Create `apps/<name>/`.
-2. Add `apps/<name>/shedflare.app.jsonc` with the app manifest.
-3. Add `apps/<name>/alchemy.run.ts` with the Alchemy stack (Worker, resources, bindings).
-4. Add `apps/<name>/alchemy.test.ts` with a live smoke test.
-5. Add `apps/<name>/.dev.vars.example` with required secrets.
-6. Run `pnpm registry:generate` to update the generated `@shedflare/core` app ID type.
-7. Add `deploy:<name>` and `destroy:<name>` scripts to root `package.json`.
-8. Update root `alchemy.run.ts` to compose the new stack.
-9. Update `shedflare.config.example.jsonc` with new app entry.
-10. Run `pnpm contract:check`; it verifies generated files, manifests, and the example config.
+1. Create an independent organization repository with its own manifest, Alchemy stack, package manager metadata, lockfile, checks, tests, and `AGENTS.md`.
+2. Consume only released semver shared packages; never add sibling paths or workspace dependencies.
+3. Add a pinned release to the suite registry once the release-orchestration transport exists.
+4. Rehearse on an isolated non-production stage before any production ownership cutover.
 
 ### Schema Convention
 
