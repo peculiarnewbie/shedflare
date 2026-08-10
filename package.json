@@ -6,6 +6,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "contributor:setup": "node scripts/setup-contributor-workspace.mjs",
+    "contributor:setup:test": "node --test scripts/setup-contributor-workspace.test.mjs",
     "dev:anki": "pnpm --filter @shedflare/anki dev",
     "dev:auth": "pnpm --filter @shedflare/auth dev",
     "dev:chat": "pnpm --filter @shedflare/chat dev",

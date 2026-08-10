@@ -7,6 +7,43 @@ Shedflare is a self-hosted suite of personal productivity tools for Cloudflare. 
 > optional orchestration layer. See [ADR 0001](docs/architecture/0001-standalone-first-repositories.md)
 > for the accepted direction and migration gates.
 
+## Contributor Workspace
+
+Changes that span Shedflare repositories use sibling checkouts, not a combined package-manager
+workspace. Create the local umbrella layout used by the maintainers:
+
+```bash
+mkdir shedflare
+git clone https://github.com/shedflare/shedflare.git shedflare/suite
+cd shedflare/suite
+node scripts/setup-contributor-workspace.mjs
+```
+
+The setup command clones every standalone repository beside `suite/` and adds umbrella guidance:
+
+```text
+shedflare/
+  AGENTS.md
+  suite/
+  packages/
+  anki/
+  auth/
+  cf-bill/
+  chat/
+  discord/
+  drive/
+  homepage/
+  links/
+  money/
+  observability/
+  routines/
+  site/
+```
+
+Use `--ssh` for SSH clone URLs or `--dry-run` to inspect the plan. Existing canonical clones are
+reused, and conflicting directories stop setup without being changed. Install and test only the
+repositories involved in your contribution; each remains independently installable and testable.
+
 ## Apps
 
 | App           | Directory                                               | Description                                                        |
