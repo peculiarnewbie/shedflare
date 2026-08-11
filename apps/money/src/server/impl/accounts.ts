@@ -27,10 +27,12 @@ export function createAccountsGroup(env: Env) {
             offbudget: number;
             closed: number;
             sort_order: number;
+            opening_balance: number;
             balance_current: number;
             last_reconciled: string | null;
           }>(
             sql`SELECT a.id, a.name, a.offbudget, a.closed, a.sort_order,
+                  COALESCE(a.balance_current, 0) AS opening_balance,
                   COALESCE(a.balance_current, 0) + COALESCE(SUM(CASE WHEN t.is_child = 0 THEN t.amount ELSE 0 END), 0) AS balance_current,
                   a.last_reconciled
            FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id
@@ -43,6 +45,7 @@ export function createAccountsGroup(env: Env) {
               offbudget: r.offbudget === 1,
               closed: r.closed === 1,
               sortOrder: r.sort_order,
+              openingBalance: Number(r.opening_balance),
               balanceCurrent: Number(r.balance_current),
               lastReconciled: r.last_reconciled,
             })),
@@ -66,6 +69,9 @@ export function createAccountsGroup(env: Env) {
               offbudget: s.accounts.offbudget,
               closed: s.accounts.closed,
               sortOrder: s.accounts.sortOrder,
+              openingBalance: sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0)`.mapWith(
+                Number,
+              ),
               balanceCurrent:
                 sql<number>`COALESCE(${s.accounts.balanceCurrent}, 0) + COALESCE(SUM(CASE WHEN ${s.transactions.isChild} = 0 THEN ${s.transactions.amount} ELSE 0 END), 0)`.mapWith(
                   Number,

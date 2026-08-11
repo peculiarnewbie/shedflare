@@ -103,6 +103,7 @@ export const AccountApiSchema = Schema.Struct({
   offbudget: Schema.Boolean,
   closed: Schema.Boolean,
   sortOrder: Schema.Number,
+  openingBalance: Schema.Number,
   balanceCurrent: Schema.Number,
   lastReconciled: Schema.NullOr(Schema.String),
 });
@@ -155,7 +156,7 @@ export const PayeeApiSchema = Schema.Struct({
   favorite: Schema.Boolean,
   createdAt: Schema.String,
   updatedAt: Schema.String,
-  transaction_count: Schema.Number,
+  transactionCount: Schema.Number,
 });
 export type PayeeApi = Schema.Schema.Type<typeof PayeeApiSchema>;
 

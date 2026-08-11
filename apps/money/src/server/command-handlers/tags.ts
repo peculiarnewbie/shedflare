@@ -16,13 +16,13 @@ export async function handleTagCommands(
     case "create_tag": {
       const pp = p as CommandPayloadMap["create_tag"];
       const r = createTag(pp);
-      await db.insert(s.tags).values(r);
+      await db.insert(s.tags).values(r).run();
       return { ok: true, data: { id: r.id } };
     }
     case "delete_tag": {
       const pp = p as CommandPayloadMap["delete_tag"];
-      await db.delete(s.transactionTags).where(eq(s.transactionTags.tagId, pp.id));
-      await db.delete(s.tags).where(eq(s.tags.id, pp.id));
+      await db.delete(s.transactionTags).where(eq(s.transactionTags.tagId, pp.id)).run();
+      await db.delete(s.tags).where(eq(s.tags.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "add_transaction_tag": {
@@ -32,7 +32,8 @@ export async function handleTagCommands(
         .values({ transactionId: pp.transactionId, tagId: pp.tagId })
         .onConflictDoNothing({
           target: [s.transactionTags.transactionId, s.transactionTags.tagId],
-        });
+        })
+        .run();
       return { ok: true, data: { transactionId: pp.transactionId, tagId: pp.tagId } };
     }
     case "remove_transaction_tag": {
@@ -44,7 +45,8 @@ export async function handleTagCommands(
             eq(s.transactionTags.transactionId, pp.transactionId),
             eq(s.transactionTags.tagId, pp.tagId),
           ),
-        );
+        )
+        .run();
       return { ok: true, data: { transactionId: pp.transactionId, tagId: pp.tagId } };
     }
     default:

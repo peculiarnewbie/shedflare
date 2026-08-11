@@ -61,6 +61,8 @@ function colRef(field: string): SQL {
       return sql`t.account_id`;
     case "category":
       return sql`t.category_id`;
+    case "payee":
+      return sql`t.payee`;
     case "amount":
       return sql`t.amount`;
     case "date":

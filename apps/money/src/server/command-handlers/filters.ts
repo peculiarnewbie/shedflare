@@ -17,7 +17,7 @@ export async function handleFilterCommands(
     case "create_filter": {
       const pp = p as CommandPayloadMap["create_filter"];
       const r = createTransactionFilter(pp.filter);
-      await db.insert(s.transactionFilters).values(r);
+      await db.insert(s.transactionFilters).values(r).run();
       return { ok: true, data: { id: r.id } };
     }
     case "update_filter": {
@@ -26,12 +26,16 @@ export async function handleFilterCommands(
       if (pp.fields.name !== undefined) set.name = pp.fields.name;
       if (pp.fields.conditions !== undefined) set.conditions = pp.fields.conditions;
       if (pp.fields.conditionsOp !== undefined) set.conditionsOp = pp.fields.conditionsOp;
-      await db.update(s.transactionFilters).set(set).where(eq(s.transactionFilters.id, pp.id));
+      await db
+        .update(s.transactionFilters)
+        .set(set)
+        .where(eq(s.transactionFilters.id, pp.id))
+        .run();
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_filter": {
       const pp = p as CommandPayloadMap["delete_filter"];
-      await db.delete(s.transactionFilters).where(eq(s.transactionFilters.id, pp.id));
+      await db.delete(s.transactionFilters).where(eq(s.transactionFilters.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     default:

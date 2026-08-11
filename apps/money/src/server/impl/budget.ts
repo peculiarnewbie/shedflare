@@ -1,10 +1,9 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi } from "../definitions";
 import { createDb } from "../d1-access";
 import { wrapHandler, validatedJson } from "./wrap-handler";
 import { BudgetOverviewResponseSchema, MonthBudgetResponseSchema } from "../../domain/schemas";
-import * as s from "../../db/schema";
 import { computeMonthBudget } from "../budget-engine";
 import { monthBoundaries } from "../../domain/types";
 
@@ -29,7 +28,9 @@ export function createBudgetGroup(env: Env) {
            FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id
            WHERE a.offbudget = 0 AND a.closed = 0 GROUP BY a.id)`,
           );
-          const accountCount = await db.$count(s.accounts, eq(s.accounts.closed, false));
+          const accountCountRow = await db.get<{ total: number }>(
+            sql`SELECT COUNT(*) AS total FROM accounts WHERE closed = 0`,
+          );
           const now = new Date();
           const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
           const { start: startDate, end: endDate } = monthBoundaries(monthKey);
@@ -46,7 +47,7 @@ export function createBudgetGroup(env: Env) {
           return validatedJson(BudgetOverviewResponseSchema, {
             netWorth: netWorthRow?.total ?? 0,
             onBudget: onBudgetRow?.total ?? 0,
-            accountCount: accountCount ?? 0,
+            accountCount: Number(accountCountRow?.total ?? 0),
             income: incomeRow?.total ?? 0,
             expense: expenseRow?.total ?? 0,
           });

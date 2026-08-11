@@ -42,12 +42,13 @@ export async function handleImportCommands(
               categoryId: row.categoryId,
               updatedAt: now,
             })
-            .where(eq(s.transactions.id, existing.id));
+            .where(eq(s.transactions.id, existing.id))
+            .run();
           updated++;
           continue;
         }
       }
-      await db.insert(s.transactions).values(row);
+      await db.insert(s.transactions).values(row).run();
       added++;
     } catch (e) {
       errors.push(`Failed: ${e instanceof Error ? e.message : "unknown"}`);

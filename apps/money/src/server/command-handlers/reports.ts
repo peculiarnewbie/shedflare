@@ -17,7 +17,7 @@ export async function handleReportCommands(
     case "create_report": {
       const pp = p as CommandPayloadMap["create_report"];
       const r = createCustomReport(pp.report);
-      await db.insert(s.customReports).values(r);
+      await db.insert(s.customReports).values(r).run();
       return { ok: true, data: { id: r.id } };
     }
     case "update_report": {
@@ -29,12 +29,12 @@ export async function handleReportCommands(
       if (f.endDate !== undefined) set.endDate = f.endDate;
       if (f.conditions !== undefined) set.conditions = f.conditions;
       if (f.graphType !== undefined) set.graphType = f.graphType;
-      await db.update(s.customReports).set(set).where(eq(s.customReports.id, pp.id));
+      await db.update(s.customReports).set(set).where(eq(s.customReports.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_report": {
       const pp = p as CommandPayloadMap["delete_report"];
-      await db.delete(s.customReports).where(eq(s.customReports.id, pp.id));
+      await db.delete(s.customReports).where(eq(s.customReports.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     default:

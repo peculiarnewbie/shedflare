@@ -36,6 +36,7 @@ export const SYNC_COMMAND_TYPES = [
   "reorder_categories",
   "create_payee",
   "update_payee",
+  "delete_payee",
   "merge_payees",
   "create_schedule",
   "update_schedule",

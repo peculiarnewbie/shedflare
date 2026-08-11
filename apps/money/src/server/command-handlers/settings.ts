@@ -16,6 +16,7 @@ export async function handleSettingCommands(
     .onConflictDoUpdate({
       target: s.settings.key,
       set: { value: p.value, updatedAt: nowIso() },
-    });
+    })
+    .run();
   return { ok: true, data: { key: p.key, value: p.value } };
 }

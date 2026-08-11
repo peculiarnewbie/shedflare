@@ -1,13 +1,17 @@
 /**
  * Payees page — manage and merge payees.
  */
-import { createSignal, For, Show, createEffect } from "solid-js";
+import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { PageState } from "../components/PageState";
+import type { PayeesResponse } from "../domain/schemas-client";
+import { listenForMoneyDataChanged } from "../lib/data-events";
+
+type PayeeRow = PayeesResponse["payees"][number];
 
 export default function PayeesPage() {
-  const [payees, setPayees] = createSignal<any[]>([]);
+  const [payees, setPayees] = createSignal<PayeeRow[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [newName, setNewName] = createSignal("");
@@ -16,6 +20,10 @@ export default function PayeesPage() {
 
   createEffect(() => {
     void loadPayees();
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadPayees));
   });
 
   async function loadPayees() {

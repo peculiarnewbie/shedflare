@@ -36,7 +36,8 @@ export async function handleBudgetCommands(
         .onConflictDoUpdate({
           target: s.budgets.id,
           set: { amount, updatedAt: now },
-        });
+        })
+        .run();
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
@@ -47,7 +48,8 @@ export async function handleBudgetCommands(
       await db
         .update(s.budgets)
         .set({ carryover, updatedAt: nowIso() })
-        .where(sql`${s.budgets.month} = ${month} AND ${s.budgets.categoryId} = ${categoryId}`);
+        .where(sql`${s.budgets.month} = ${month} AND ${s.budgets.categoryId} = ${categoryId}`)
+        .run();
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
@@ -62,7 +64,8 @@ export async function handleBudgetCommands(
         .onConflictDoUpdate({
           target: s.budgetMonths.id,
           set: { buffered: p.amount, updatedAt: now },
-        });
+        })
+        .run();
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }
@@ -90,15 +93,18 @@ export async function handleBudgetCommands(
           .where(sql`${s.budgets.month} = ${month} AND ${s.budgets.categoryId} = ${pb.categoryId}`)
           .all();
         if (!existing) {
-          await db.insert(s.budgets).values({
-            id: budgetId(month, pb.categoryId),
-            month,
-            categoryId: pb.categoryId,
-            amount: pb.amount,
-            carryover: pb.carryover,
-            createdAt: now,
-            updatedAt: now,
-          });
+          await db
+            .insert(s.budgets)
+            .values({
+              id: budgetId(month, pb.categoryId),
+              month,
+              categoryId: pb.categoryId,
+              amount: pb.amount,
+              carryover: pb.carryover,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run();
         }
       }
       const result = await computeMonthBudget(db, month);
@@ -144,7 +150,8 @@ export async function handleBudgetCommands(
             .onConflictDoUpdate({
               target: s.budgets.id,
               set: { amount: avg, updatedAt: now },
-            });
+            })
+            .run();
         }
       }
       const result = await computeMonthBudget(db, month);
@@ -191,7 +198,8 @@ export async function handleBudgetCommands(
             .onConflictDoUpdate({
               target: s.budgets.id,
               set: { amount: avg, updatedAt: now },
-            });
+            })
+            .run();
         }
       }
       const result = await computeMonthBudget(db, month);
@@ -201,7 +209,7 @@ export async function handleBudgetCommands(
     case "set_zero": {
       const p = payload as CommandPayloadMap["set_zero"];
       const month = toMonthInt(p.month);
-      await db.delete(s.budgets).where(eq(s.budgets.month, month));
+      await db.delete(s.budgets).where(eq(s.budgets.month, month)).run();
       const now = nowIso();
       const cats = await db
         .select({ id: s.categories.id })
@@ -210,15 +218,18 @@ export async function handleBudgetCommands(
         .all();
       for (const cat of cats) {
         const id = budgetId(month, cat.id);
-        await db.insert(s.budgets).values({
-          id,
-          month,
-          categoryId: cat.id,
-          amount: 0,
-          carryover: false,
-          createdAt: now,
-          updatedAt: now,
-        });
+        await db
+          .insert(s.budgets)
+          .values({
+            id,
+            month,
+            categoryId: cat.id,
+            amount: 0,
+            carryover: false,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
       }
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
@@ -257,7 +268,8 @@ export async function handleBudgetCommands(
             .onConflictDoUpdate({
               target: s.budgets.id,
               set: { amount, updatedAt: now },
-            });
+            })
+            .run();
         }
       }
       const result = await computeMonthBudget(db, month);
@@ -303,7 +315,8 @@ export async function handleBudgetCommands(
         .onConflictDoUpdate({
           target: s.budgets.id,
           set: { amount: fromAmount, updatedAt: now },
-        });
+        })
+        .run();
 
       await db
         .insert(s.budgets)
@@ -319,7 +332,8 @@ export async function handleBudgetCommands(
         .onConflictDoUpdate({
           target: s.budgets.id,
           set: { amount: toAmount, updatedAt: now },
-        });
+        })
+        .run();
 
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
@@ -335,7 +349,8 @@ export async function handleBudgetCommands(
         .onConflictDoUpdate({
           target: s.budgetMonths.id,
           set: { buffered: p.amount, updatedAt: now },
-        });
+        })
+        .run();
       const result = await computeMonthBudget(db, month);
       return { ok: true, data: { month, budget: result } };
     }

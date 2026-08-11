@@ -24,7 +24,7 @@ export async function handleCategoryCommands(
     case "create_category": {
       const p = payload as CommandPayloadMap["create_category"];
       const row = createCategory(p);
-      await db.insert(s.categories).values(row);
+      await db.insert(s.categories).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
@@ -35,7 +35,7 @@ export async function handleCategoryCommands(
       if (p.hidden !== undefined) set.hidden = p.hidden;
       if (p.groupId !== undefined) set.groupId = p.groupId;
       if (p.goalDef !== undefined) set.goalDef = p.goalDef;
-      await db.update(s.categories).set(set).where(eq(s.categories.id, p.id));
+      await db.update(s.categories).set(set).where(eq(s.categories.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
@@ -45,16 +45,17 @@ export async function handleCategoryCommands(
         await db
           .update(s.transactions)
           .set({ categoryId: p.transferToId })
-          .where(eq(s.transactions.categoryId, p.id));
+          .where(eq(s.transactions.categoryId, p.id))
+          .run();
       }
-      await db.delete(s.categories).where(eq(s.categories.id, p.id));
+      await db.delete(s.categories).where(eq(s.categories.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
     case "create_category_group": {
       const p = payload as CommandPayloadMap["create_category_group"];
       const row = createCategoryGroup(p);
-      await db.insert(s.categoryGroups).values(row);
+      await db.insert(s.categoryGroups).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
@@ -64,7 +65,7 @@ export async function handleCategoryCommands(
       if (p.name !== undefined) set.name = p.name;
       if (p.hidden !== undefined) set.hidden = p.hidden;
       if (p.isIncome !== undefined) set.isIncome = p.isIncome;
-      await db.update(s.categoryGroups).set(set).where(eq(s.categoryGroups.id, p.id));
+      await db.update(s.categoryGroups).set(set).where(eq(s.categoryGroups.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
@@ -75,7 +76,8 @@ export async function handleCategoryCommands(
         await db
           .update(s.categories)
           .set({ sortOrder: i, updatedAt: now })
-          .where(eq(s.categories.id, p.ids[i]));
+          .where(eq(s.categories.id, p.ids[i]))
+          .run();
       }
       return { ok: true, data: { count: p.ids.length } };
     }
@@ -86,11 +88,16 @@ export async function handleCategoryCommands(
         await db
           .update(s.categories)
           .set({ groupId: p.transferToGroupId })
-          .where(eq(s.categories.groupId, p.id));
+          .where(eq(s.categories.groupId, p.id))
+          .run();
       } else {
-        await db.update(s.categories).set({ groupId: null }).where(eq(s.categories.groupId, p.id));
+        await db
+          .update(s.categories)
+          .set({ groupId: null })
+          .where(eq(s.categories.groupId, p.id))
+          .run();
       }
-      await db.delete(s.categoryGroups).where(eq(s.categoryGroups.id, p.id));
+      await db.delete(s.categoryGroups).where(eq(s.categoryGroups.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 

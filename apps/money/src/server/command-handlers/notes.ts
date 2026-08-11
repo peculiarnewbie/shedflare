@@ -17,7 +17,7 @@ export async function handleNotesCommands(
     case "create_note": {
       const pp = p as CommandPayloadMap["create_note"];
       const r = createNote(pp);
-      await db.insert(s.notes).values(r);
+      await db.insert(s.notes).values(r).run();
       return { ok: true, data: { id: r.id } };
     }
     case "update_note": {
@@ -25,12 +25,13 @@ export async function handleNotesCommands(
       await db
         .update(s.notes)
         .set({ body: pp.body, updatedAt: nowIso() })
-        .where(eq(s.notes.id, pp.id));
+        .where(eq(s.notes.id, pp.id))
+        .run();
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_note": {
       const pp = p as CommandPayloadMap["delete_note"];
-      await db.delete(s.notes).where(eq(s.notes.id, pp.id));
+      await db.delete(s.notes).where(eq(s.notes.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "list_notes": {

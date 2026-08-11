@@ -21,7 +21,7 @@ export async function handleTransactionCommands(
     case "create_transaction": {
       const p = payload as CommandPayloadMap["create_transaction"];
       const row = createTransaction(p.row);
-      await db.insert(s.transactions).values(row);
+      await db.insert(s.transactions).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
@@ -40,15 +40,15 @@ export async function handleTransactionCommands(
       if (f.importedDescription !== undefined) set.importedDescription = f.importedDescription;
       if (f.sortOrder !== undefined) set.sortOrder = f.sortOrder;
 
-      await db.update(s.transactions).set(set).where(eq(s.transactions.id, p.id));
+      await db.update(s.transactions).set(set).where(eq(s.transactions.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
     case "delete_transaction": {
       const p = payload as CommandPayloadMap["delete_transaction"];
       // Cascade: remove split children first (no FK cascade in schema).
-      await db.delete(s.transactions).where(eq(s.transactions.parentId, p.id));
-      await db.delete(s.transactions).where(eq(s.transactions.id, p.id));
+      await db.delete(s.transactions).where(eq(s.transactions.parentId, p.id)).run();
+      await db.delete(s.transactions).where(eq(s.transactions.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
@@ -71,7 +71,7 @@ export async function handleTransactionCommands(
         };
       }
 
-      await db.delete(s.transactions).where(eq(s.transactions.parentId, p.parentId));
+      await db.delete(s.transactions).where(eq(s.transactions.parentId, p.parentId)).run();
       const results: string[] = [];
       for (const child of p.children) {
         const row = createTransaction({
@@ -83,7 +83,7 @@ export async function handleTransactionCommands(
           isChild: true,
           isParent: false,
         });
-        await db.insert(s.transactions).values(row);
+        await db.insert(s.transactions).values(row).run();
         results.push(row.id);
       }
 
@@ -95,7 +95,8 @@ export async function handleTransactionCommands(
           categoryId: null,
           updatedAt: nowIso(),
         })
-        .where(eq(s.transactions.id, p.parentId));
+        .where(eq(s.transactions.id, p.parentId))
+        .run();
 
       return { ok: true, data: { childIds: results, parentId: p.parentId } };
     }

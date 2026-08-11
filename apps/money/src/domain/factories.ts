@@ -32,7 +32,7 @@ export function createAccount(input: {
 
 export function createCategory(input: {
   name: string;
-  groupId: string;
+  groupId: string | null;
   isIncome?: boolean;
   sortOrder?: number;
 }) {

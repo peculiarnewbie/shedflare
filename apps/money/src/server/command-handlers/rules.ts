@@ -17,7 +17,7 @@ export async function handleRuleCommands(
     case "create_rule": {
       const pp = p as CommandPayloadMap["create_rule"];
       const r = createRule(pp.rule);
-      await db.insert(s.rules).values(r);
+      await db.insert(s.rules).values(r).run();
       return { ok: true, data: { id: r.id } };
     }
     case "update_rule": {
@@ -28,7 +28,7 @@ export async function handleRuleCommands(
       if (pp.fields.conditions !== undefined) set.conditions = pp.fields.conditions;
       if (pp.fields.actions !== undefined) set.actions = pp.fields.actions;
       if (pp.fields.active !== undefined) set.active = pp.fields.active;
-      await db.update(s.rules).set(set).where(eq(s.rules.id, pp.id));
+      await db.update(s.rules).set(set).where(eq(s.rules.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_rule": {
@@ -36,7 +36,8 @@ export async function handleRuleCommands(
       await db
         .update(s.rules)
         .set({ deleted: true, updatedAt: nowIso() })
-        .where(eq(s.rules.id, pp.id));
+        .where(eq(s.rules.id, pp.id))
+        .run();
       return { ok: true, data: { id: pp.id } };
     }
     default:

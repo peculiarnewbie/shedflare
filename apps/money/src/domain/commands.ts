@@ -140,7 +140,7 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
 
   create_category: Schema.Struct({
     name: Schema.String,
-    groupId: Schema.String,
+    groupId: NullableString,
     isIncome: Schema.optional(Schema.Boolean),
   }),
 
@@ -186,6 +186,10 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
     id: Schema.String,
     name: Schema.optional(Schema.String),
     favorite: Schema.optional(Schema.Boolean),
+  }),
+
+  delete_payee: Schema.Struct({
+    id: Schema.String,
   }),
 
   merge_payees: Schema.Struct({

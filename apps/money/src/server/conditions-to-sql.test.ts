@@ -65,6 +65,15 @@ describe("buildFilterWhereSql", () => {
     expect(params).toEqual(["%coffee%"]);
   });
 
+  test("payee filters target the payee column", () => {
+    const { whereClause, params } = buildFilterWhereSql(
+      [{ field: "payee", op: "contains", value: "market" }],
+      "and",
+    );
+    expect(whereClause).toContain("t.payee LIKE ?");
+    expect(params).toEqual(["%market%"]);
+  });
+
   test("'doesNotContain' uses NOT LIKE with % wildcards", () => {
     const { whereClause, params } = buildFilterWhereSql(
       [{ field: "notes", op: "doesNotContain", value: "tea" }],
@@ -145,6 +154,7 @@ describe("condition column references", () => {
     const cases: Array<[FilterCondition, RegExp]> = [
       [{ field: "account", op: "is", value: "x" }, /t\.account_id/],
       [{ field: "category", op: "is", value: "x" }, /t\.category_id/],
+      [{ field: "payee", op: "is", value: "x" }, /t\.payee/],
       [{ field: "amount", op: "is", value: 0 }, /t\.amount/],
       [{ field: "date", op: "is", value: "x" }, /t\.date/],
       [{ field: "notes", op: "is", value: "x" }, /t\.notes/],

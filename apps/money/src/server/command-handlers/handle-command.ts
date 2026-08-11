@@ -90,6 +90,7 @@ async function routeCommand(commandType: string, payload: unknown, db: Db): Prom
 
     case "create_payee":
     case "update_payee":
+    case "delete_payee":
     case "merge_payees":
       return handlePayeeCommands(commandType, payload as CommandPayloadMap[typeof commandType], db);
 

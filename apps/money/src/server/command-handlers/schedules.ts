@@ -105,7 +105,7 @@ export async function handleScheduleCommands(
     case "create_schedule": {
       const pp = p as CommandPayloadMap["create_schedule"];
       const row = createSchedule(pp.schedule);
-      await db.insert(s.schedules).values(row);
+      await db.insert(s.schedules).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
     case "update_schedule": {
@@ -118,12 +118,12 @@ export async function handleScheduleCommands(
       if (f.categoryId !== undefined) set.categoryId = f.categoryId;
       if (f.amount !== undefined) set.amount = f.amount;
       if (f.recurrenceRules !== undefined) set.recurrenceRules = f.recurrenceRules;
-      await db.update(s.schedules).set(set).where(eq(s.schedules.id, pp.id));
+      await db.update(s.schedules).set(set).where(eq(s.schedules.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_schedule": {
       const pp = p as CommandPayloadMap["delete_schedule"];
-      await db.delete(s.schedules).where(eq(s.schedules.id, pp.id));
+      await db.delete(s.schedules).where(eq(s.schedules.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "skip_schedule_date": {
@@ -134,7 +134,8 @@ export async function handleScheduleCommands(
       await db
         .update(s.schedules)
         .set({ ...next, updatedAt: nowIso() })
-        .where(eq(s.schedules.id, pp.id));
+        .where(eq(s.schedules.id, pp.id))
+        .run();
       return { ok: true, data: { id: pp.id, ...next } };
     }
     case "post_schedule_transaction": {
@@ -163,13 +164,14 @@ export async function handleScheduleCommands(
         date: schedule.nextDate ?? schedule.startDate ?? toDateOnly(new Date()),
         scheduleId: schedule.id,
       });
-      await db.insert(s.transactions).values(transaction);
+      await db.insert(s.transactions).values(transaction).run();
 
       const next = nextScheduleState(schedule);
       await db
         .update(s.schedules)
         .set({ ...next, updatedAt: nowIso() })
-        .where(eq(s.schedules.id, pp.scheduleId));
+        .where(eq(s.schedules.id, pp.scheduleId))
+        .run();
       return { ok: true, data: { id: pp.scheduleId, transactionId: transaction.id, ...next } };
     }
     default:

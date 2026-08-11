@@ -28,7 +28,7 @@ export async function handleAccountCommands(
         offBudget: p.offBudget,
         balance: p.balance,
       });
-      await db.insert(s.accounts).values(row);
+      await db.insert(s.accounts).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
@@ -41,13 +41,13 @@ export async function handleAccountCommands(
       if (p.name !== undefined) set.name = p.name;
       if (p.offBudget !== undefined) set.offbudget = p.offBudget;
 
-      await db.update(s.accounts).set(set).where(eq(s.accounts.id, p.id));
+      await db.update(s.accounts).set(set).where(eq(s.accounts.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
     case "delete_account": {
       const p = payload as CommandPayloadMap["delete_account"];
-      await db.delete(s.accounts).where(eq(s.accounts.id, p.id));
+      await db.delete(s.accounts).where(eq(s.accounts.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
@@ -56,7 +56,8 @@ export async function handleAccountCommands(
       await db
         .update(s.accounts)
         .set({ closed: true, updatedAt: nowIso() })
-        .where(eq(s.accounts.id, p.id));
+        .where(eq(s.accounts.id, p.id))
+        .run();
       return { ok: true, data: { id: p.id } };
     }
 
@@ -65,7 +66,8 @@ export async function handleAccountCommands(
       await db
         .update(s.accounts)
         .set({ closed: false, updatedAt: nowIso() })
-        .where(eq(s.accounts.id, p.id));
+        .where(eq(s.accounts.id, p.id))
+        .run();
       return { ok: true, data: { id: p.id } };
     }
 
@@ -76,7 +78,8 @@ export async function handleAccountCommands(
         await db
           .update(s.accounts)
           .set({ sortOrder: i, updatedAt: now })
-          .where(eq(s.accounts.id, p.ids[i]));
+          .where(eq(s.accounts.id, p.ids[i]))
+          .run();
       }
       return { ok: true, data: { count: p.ids.length } };
     }
@@ -93,7 +96,8 @@ export async function handleAccountCommands(
         .onConflictDoUpdate({
           target: s.exchangeRates.id,
           set: { usdToIdr: p.usdToIdr, updatedAt: nowIso() },
-        });
+        })
+        .run();
       return { ok: true, data: {} };
     }
 

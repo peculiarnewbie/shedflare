@@ -95,7 +95,18 @@ export function createRouter(env: Env) {
         return auth.withCookies(assetResponse, gate.setCookies);
       } catch (error) {
         if (error instanceof Response) return error;
-        return new Response("Internal Server Error", { status: 500 });
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          JSON.stringify({
+            message: "money request failed",
+            error: message,
+            method,
+            path: url.pathname,
+          }),
+        );
+        return url.pathname.startsWith("/api/")
+          ? Response.json({ error: "Internal server error" }, { status: 500 })
+          : new Response("Internal Server Error", { status: 500 });
       }
     },
   };

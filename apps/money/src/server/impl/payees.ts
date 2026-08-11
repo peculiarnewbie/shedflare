@@ -34,7 +34,7 @@ export function createPayeesGroup(env: Env) {
               favorite: r.favorite === 1,
               createdAt: r.created_at,
               updatedAt: r.updated_at,
-              transaction_count: Number(r.transaction_count),
+              transactionCount: Number(r.transaction_count),
             })),
           });
         }),

@@ -115,6 +115,7 @@ export const AccountApiSchema = S.Struct({
   offbudget: S.Boolean,
   closed: S.Boolean,
   sortOrder: S.Number,
+  openingBalance: S.Number,
   balanceCurrent: S.Number,
   lastReconciled: S.NullOr(S.String),
 });
@@ -164,7 +165,7 @@ const PayeeApiSchema = S.Struct({
   favorite: S.Boolean,
   createdAt: S.String,
   updatedAt: S.String,
-  transaction_count: S.Number,
+  transactionCount: S.Number,
 });
 
 const TransactionTagApiSchema = S.Struct({
