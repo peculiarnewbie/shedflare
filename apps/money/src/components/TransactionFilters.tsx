@@ -70,6 +70,19 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
       );
     },
   },
+  payee: {
+    label: "Payee",
+    ops: ["contains", "doesNotContain", "is", "isNot"],
+    render: (value, onChange) => (
+      <input
+        type="text"
+        class="filter-input"
+        placeholder="Search payees..."
+        value={typeof value === "string" ? value : ""}
+        onInput={(event) => onChange(event.currentTarget.value)}
+      />
+    ),
+  },
   category: {
     label: "Category",
     ops: ["is", "isNot"],

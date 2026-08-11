@@ -1,10 +1,12 @@
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, onMount, Show } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
-import AddTransactionModal from "../components/AddTransactionModal";
+import { useMoneyShell } from "../components/MoneyShellContext";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 import type { TransactionPatch, TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
 import type {
@@ -43,6 +45,8 @@ function toTransactionRow(tx: ApiTransactionRow): TransactionRow {
 }
 
 export default function AllTransactionsPage() {
+  const shell = useMoneyShell();
+  const [searchParams, setSearchParams] = useSearchParams<{ q?: string; view?: string }>();
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
   const [categories, setCategories] = createSignal<CategoryRow[]>([]);
   const [tagList, setTagList] = createSignal<TagRow[]>([]);
@@ -50,13 +54,41 @@ export default function AllTransactionsPage() {
     Record<string, { id: string; name: string; color: string | null }[]>
   >({});
   const [accounts, setAccounts] = createSignal<AccountRow[]>([]);
-  const [showAddTx, setShowAddTx] = createSignal(false);
+  const [searchQuery, setSearchQuery] = createSignal(searchParams.q ?? "");
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
 
   const [filterId, setFilterId] = createSignal<string | null>(null);
   const [filterConditions, setFilterConditions] = createSignal<Condition[]>([]);
   const [filterConditionsOp, setFilterConditionsOp] = createSignal<"and" | "or">("and");
+
+  createEffect(() => {
+    const query = searchParams.q ?? "";
+    if (query !== searchQuery()) setSearchQuery(query);
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadData));
+  });
+
+  const visibleTransactions = createMemo(() => {
+    const query = searchQuery().trim().toLocaleLowerCase();
+    const base =
+      searchParams.view === "uncategorized"
+        ? transactions().filter((transaction) => transaction.categoryId === null)
+        : transactions();
+    if (!query) return base;
+    const names = accountNames();
+    return base.filter((transaction) =>
+      [
+        transaction.payee,
+        transaction.notes,
+        transaction.categoryName,
+        names[transaction.accountId],
+        transaction.date,
+      ].some((value) => value?.toLocaleLowerCase().includes(query)),
+    );
+  });
 
   function handleFilterChange(
     conditions: Condition[],
@@ -188,21 +220,57 @@ export default function AllTransactionsPage() {
   return (
     <div class="page">
       <div class="page-header">
-        <h1 class="page-title">All Transactions</h1>
+        <div>
+          <h1 class="page-title">Transactions</h1>
+          <p class="page-subtitle page-subtitle-compact">
+            Search and edit activity across every account.
+          </p>
+        </div>
         <div class="page-actions">
-          <button class="btn btn-primary btn-sm" onClick={() => setShowAddTx(true)}>
+          <button class="btn btn-primary btn-sm" onClick={() => shell.openTransaction()}>
             + Add Transaction
           </button>
         </div>
       </div>
 
-      <Show when={showAddTx()}>
-        <AddTransactionModal
-          accounts={accounts()}
-          categories={categories()}
-          onClose={() => setShowAddTx(false)}
-          onCreated={loadData}
+      <div class="transaction-search">
+        <span aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          aria-label="Search transactions"
+          placeholder="Search payee, notes, category, or account…"
+          value={searchQuery()}
+          onInput={(event) => {
+            const query = event.currentTarget.value;
+            setSearchQuery(query);
+            setSearchParams({ q: query.trim() || undefined }, { replace: true });
+          }}
         />
+        <Show when={searchQuery()}>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            onClick={() => {
+              setSearchQuery("");
+              setSearchParams({ q: undefined }, { replace: true });
+            }}
+          >
+            Clear
+          </button>
+        </Show>
+      </div>
+
+      <Show when={searchParams.view === "uncategorized"}>
+        <div class="active-view-chip">
+          Uncategorized only
+          <button
+            type="button"
+            aria-label="Show all transactions"
+            onClick={() => setSearchParams({ view: undefined }, { replace: true })}
+          >
+            ×
+          </button>
+        </div>
       </Show>
 
       <TransactionFilters
@@ -218,11 +286,17 @@ export default function AllTransactionsPage() {
         loadingMessage="Loading transactions..."
       >
         <Show
-          when={transactions().length > 0}
-          fallback={<div class="empty-state">No transactions found.</div>}
+          when={visibleTransactions().length > 0}
+          fallback={
+            <div class="empty-state">
+              {searchQuery()
+                ? `No transactions match “${searchQuery()}”.`
+                : "No transactions found."}
+            </div>
+          }
         >
           <TransactionTable
-            transactions={transactions()}
+            transactions={visibleTransactions()}
             categories={categories()}
             txTags={txTags()}
             tagList={tagList()}
@@ -239,6 +313,8 @@ export default function AllTransactionsPage() {
                 "create_schedule",
                 {
                   schedule: {
+                    accountId: tx.accountId,
+                    categoryId: tx.categoryId,
                     name: tx.payee ?? "From transaction",
                     amount: tx.amount,
                     recurrenceRules: JSON.stringify({ type: "monthly" }),

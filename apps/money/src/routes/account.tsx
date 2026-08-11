@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, For, onCleanup, onMount, Show } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { execute, api } from "../lib/api";
@@ -7,11 +7,13 @@ import { usePrivacyMode } from "../lib/privacy";
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
-import AddTransactionModal from "../components/AddTransactionModal";
+import { useMoneyShell } from "../components/MoneyShellContext";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 import type { TagInfo, TransactionPatch, TransactionRow } from "../components/TransactionTable";
 import type { Condition } from "../components/TransactionFilters";
 import type {
   AccountApi,
+  AccountsResponse,
   AccountTransactionsResponse,
   CategoriesResponse,
 } from "../domain/schemas-client";
@@ -20,6 +22,7 @@ type CategoryRow = Pick<CategoriesResponse["categories"][number], "id" | "name">
   groupName: string | null;
 };
 type ApiTransactionRow = AccountTransactionsResponse["transactions"][number];
+type AccountOption = Pick<AccountsResponse["accounts"][number], "id" | "name" | "closed">;
 
 function toTransactionRow(tx: ApiTransactionRow): TransactionRow {
   return {
@@ -44,15 +47,16 @@ function toTransactionRow(tx: ApiTransactionRow): TransactionRow {
 export default function AccountPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const shell = useMoneyShell();
   const [account, setAccount] = createSignal<AccountApi | null>(null);
+  const [accountOptions, setAccountOptions] = createSignal<AccountOption[]>([]);
   const [transactions, setTransactions] = createSignal<TransactionRow[]>([]);
   const [categories, setCategories] = createSignal<CategoryRow[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [showImport, setShowImport] = createSignal(false);
-  const [showAddTx, setShowAddTx] = createSignal(false);
   const [showReconcile, setShowReconcile] = createSignal(false);
-  const accountId = params.id;
+  const accountId = () => params.id;
   const fmt = useCurrency();
   const privacyBlur = usePrivacyMode();
 
@@ -84,11 +88,15 @@ export default function AccountPage() {
     filterId();
     filterConditions();
     filterConditionsOp();
-    if (accountId) {
+    if (accountId()) {
       void loadAccount();
       void loadCategories();
       void loadTags();
     }
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadAccount));
   });
 
   async function loadAccount() {
@@ -101,12 +109,16 @@ export default function AccountPage() {
         : conditions.length > 0
           ? { conditions, conditionsOp: filterConditionsOp() }
           : undefined;
-      const [acctData, txData, txTagsData] = await Promise.all([
-        api.account(accountId),
-        api.accountTransactions(accountId, txQuery),
-        api.accountTags(accountId),
+      const [acctData, txData, txTagsData, accountsData] = await Promise.all([
+        api.account(accountId()),
+        api.accountTransactions(accountId(), txQuery),
+        api.accountTags(accountId()),
+        api.accounts(),
       ]);
       setAccount(acctData);
+      setAccountOptions(
+        accountsData.accounts.map(({ id, name, closed }) => ({ id, name, closed })),
+      );
       setTransactions(txData.transactions.map(toTransactionRow));
       const map: Record<string, { id: string; name: string; color: string | null }[]> = {};
       for (const tt of txTagsData.transactionTags ?? []) {
@@ -150,9 +162,17 @@ export default function AccountPage() {
     }
   }
 
-  function handleCloseAccount() {
-    if (!confirm("Close this account? It will be hidden from most views.")) return;
-    dispatch("close_account", { id: accountId });
+  async function handleCloseAccount() {
+    await dispatch(
+      "close_account",
+      { id: accountId() },
+      {
+        undoInfo: {
+          label: "Close account",
+          inverse: { commandType: "reopen_account", payload: { id: accountId() } },
+        },
+      },
+    ).promise;
     navigate("/accounts");
   }
 
@@ -183,9 +203,7 @@ export default function AccountPage() {
     }));
   }
 
-  const runningBalance = createMemo(() =>
-    transactions().reduce((sum, tx) => (tx.isChild ? sum : sum + (tx.amount ?? 0)), 0),
-  );
+  const runningBalance = createMemo(() => account()?.balanceCurrent ?? 0);
 
   return (
     <div class="page">
@@ -196,15 +214,29 @@ export default function AccountPage() {
         loadingMessage="Loading account..."
       >
         <div class="page-header">
-          <button class="btn btn-ghost btn-sm" onClick={() => navigate("/accounts")}>
-            ← Back
-          </button>
-          <h1 class="page-title">{account()?.name ?? params.id}</h1>
+          <div class="account-switcher-wrap">
+            <label for="account-switcher">Account</label>
+            <select
+              id="account-switcher"
+              class="account-switcher"
+              value={accountId()}
+              onChange={(event) =>
+                navigate(`/accounts/${event.currentTarget.value}`, { replace: true })
+              }
+            >
+              <For each={accountOptions().filter((option) => !option.closed)}>
+                {(option) => <option value={option.id}>{option.name}</option>}
+              </For>
+            </select>
+          </div>
           <div class="page-actions">
             <button class="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>
               Import CSV
             </button>
-            <button class="btn btn-primary btn-sm" onClick={() => setShowAddTx(true)}>
+            <button
+              class="btn btn-primary btn-sm"
+              onClick={() => shell.openTransaction({ initialAccountId: accountId() })}
+            >
               + Add Transaction
             </button>
             <button class="btn btn-secondary btn-sm" onClick={() => setShowReconcile(true)}>
@@ -219,7 +251,7 @@ export default function AccountPage() {
         <Show when={account()}>
           <div class="account-header">
             <div class={`account-balance-large ${privacyBlur().blurClass()}`}>
-              {fmt().formatCents(runningBalance() ?? account()?.balanceCurrent ?? 0)}
+              {fmt().formatCents(runningBalance())}
             </div>
             <Show when={account()?.lastReconciled}>
               {(lastReconciled) => (
@@ -230,29 +262,19 @@ export default function AccountPage() {
         </Show>
 
         <TransactionFilters
-          accountId={params.id}
+          accountId={accountId()}
           activeConditions={filterConditions()}
           activeConditionsOp={filterConditionsOp()}
           onConditionsChange={handleFilterChange}
         />
 
-        <Show when={showAddTx()}>
-          <AddTransactionModal
-            accounts={[]}
-            categories={categories()}
-            initialAccountId={accountId}
-            onClose={() => setShowAddTx(false)}
-            onCreated={loadAccount}
-          />
-        </Show>
-
         <Show when={showImport()}>
-          <ImportModal accountId={params.id} onClose={() => setShowImport(false)} />
+          <ImportModal accountId={accountId()} onClose={() => setShowImport(false)} />
         </Show>
 
         <Show when={showReconcile()}>
           <ReconcileModal
-            accountId={params.id}
+            accountId={accountId()}
             runningBalance={runningBalance()}
             transactions={reconciliableTransactions()}
             onClose={() => {
@@ -274,7 +296,8 @@ export default function AccountPage() {
             categories={categories()}
             txTags={txTags()}
             tagList={tagList()}
-            showBalance
+            showBalance={filterConditions().length === 0 && !filterId()}
+            openingBalance={account()?.openingBalance ?? 0}
             onReload={loadAccount}
             onTransactionPatch={patchTransaction}
             onTransactionRemove={removeTransaction}
@@ -286,6 +309,8 @@ export default function AccountPage() {
                 "create_schedule",
                 {
                   schedule: {
+                    accountId: tx.accountId,
+                    categoryId: tx.categoryId,
                     name: tx.payee ?? "From transaction",
                     amount: tx.amount,
                     recurrenceRules: JSON.stringify({ type: "monthly" }),

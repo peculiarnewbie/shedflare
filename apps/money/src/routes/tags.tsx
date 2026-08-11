@@ -1,10 +1,11 @@
 /**
  * Tags page — create and manage tags for transaction categorization.
  */
-import { createSignal, For, Show, createEffect } from "solid-js";
+import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { PageState } from "../components/PageState";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 
 export default function TagsPage() {
   const [tags, setTags] = createSignal<any[]>([]);
@@ -15,6 +16,10 @@ export default function TagsPage() {
 
   createEffect(() => {
     void loadTags();
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadTags));
   });
 
   async function loadTags() {

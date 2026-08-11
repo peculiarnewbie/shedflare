@@ -6,6 +6,7 @@ import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
 import type { CommandPayloadMap } from "../domain/commands";
+import { emitOperationFeedback } from "../lib/operation-feedback";
 
 export interface TransactionRow {
   id: string;
@@ -61,6 +62,7 @@ interface TransactionTableProps {
   txTags: Record<string, TagInfo[]>;
   tagList: TagInfo[];
   showBalance?: boolean;
+  openingBalance?: number;
   showAccount?: boolean;
   accountNames?: Record<string, string>;
   onCreateSchedule?: (tx: TransactionRow) => void;
@@ -107,7 +109,7 @@ export default function TransactionTable(props: TransactionTableProps) {
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
     const result: Array<TransactionRow & { balance: number }> = [];
-    let balance = 0;
+    let balance = props.openingBalance ?? 0;
     for (const tx of txs) {
       // Parent holds the full amount; children are category splits only.
       if (!tx.isChild) balance += tx.amount;
@@ -228,7 +230,6 @@ export default function TransactionTable(props: TransactionTableProps) {
   }
 
   function handleDelete(tx: TransactionRow) {
-    if (!confirm("Delete this transaction?")) return;
     const { promise } = dispatch(
       "delete_transaction",
       { id: tx.id },
@@ -246,6 +247,11 @@ export default function TransactionTable(props: TransactionTableProps) {
                 notes: tx.notes ?? undefined,
                 categoryId: tx.categoryId ?? null,
                 cleared: tx.cleared,
+                reconciled: tx.reconciled,
+                isParent: tx.isParent,
+                isChild: tx.isChild,
+                parentId: tx.parentId,
+                scheduleId: tx.scheduleId,
               },
             },
           },
@@ -318,9 +324,11 @@ export default function TransactionTable(props: TransactionTableProps) {
 
     const childSum = children.reduce((sum, c) => sum + c.amount, 0);
     if (childSum !== parent.amount) {
-      console.warn(
-        `[TransactionTable] split sum ${childSum} does not equal parent ${parent.amount}`,
-      );
+      emitOperationFeedback({
+        kind: "error",
+        message: `Split total must equal ${fmt().formatCents(parent.amount)}`,
+        undoable: false,
+      });
       return;
     }
 
@@ -401,15 +409,21 @@ export default function TransactionTable(props: TransactionTableProps) {
                 >
                   <span class="tx-col-cr">
                     <button
+                      type="button"
                       class="btn btn-icon btn-xs"
                       classList={{ "btn-ghost": !tx.cleared, "btn-primary": tx.cleared }}
                       style={{ padding: "2px 6px", "font-size": "0.65rem" }}
                       onClick={() => toggleCleared(tx)}
+                      aria-label={
+                        tx.cleared ? "Mark transaction uncleared" : "Mark transaction cleared"
+                      }
+                      aria-pressed={tx.cleared}
                       title={tx.cleared ? "Cleared" : "Uncleared"}
                     >
-                      C
+                      ✓
                     </button>
                     <button
+                      type="button"
                       class="btn btn-icon btn-xs"
                       classList={{
                         "btn-ghost": !tx.reconciled,
@@ -417,9 +431,15 @@ export default function TransactionTable(props: TransactionTableProps) {
                       }}
                       style={{ padding: "2px 6px", "font-size": "0.65rem" }}
                       onClick={() => toggleReconciled(tx)}
+                      aria-label={
+                        tx.reconciled
+                          ? "Mark transaction unreconciled"
+                          : "Mark transaction reconciled"
+                      }
+                      aria-pressed={tx.reconciled}
                       title={tx.reconciled ? "Reconciled" : "Not reconciled"}
                     >
-                      🔒
+                      R
                     </button>
                   </span>
 
@@ -438,29 +458,43 @@ export default function TransactionTable(props: TransactionTableProps) {
                         autofocus
                       />
                     ) : (
-                      <span onClick={() => startEdit(tx.id, "date")}>
+                      <button
+                        type="button"
+                        class="tx-inline-trigger"
+                        onClick={() => startEdit(tx.id, "date")}
+                        aria-label={`Edit date ${df().formatDate(tx.date)}`}
+                      >
                         {df().formatDate(tx.date)}
-                      </span>
+                      </button>
                     )}
                   </span>
 
                   <Show when={props.showAccount}>
-                    <span class="tx-col-account">{props.accountNames?.[tx.accountId] ?? "—"}</span>
+                    <span class="tx-col-account">
+                      <button
+                        type="button"
+                        class="tx-account-link"
+                        onClick={() => navigate(`/accounts/${tx.accountId}`)}
+                      >
+                        {props.accountNames?.[tx.accountId] ?? "—"}
+                      </button>
+                    </span>
                   </Show>
 
                   <span class="tx-col-payee">
                     <Show when={tx.scheduleId}>
-                      <span
-                        class="schedule-badge"
+                      <button
+                        type="button"
+                        class="schedule-badge schedule-badge-button"
                         title={`From schedule: ${tx.scheduleName ?? "Unknown"}`}
-                        style={{ cursor: "pointer", "margin-right": "4px" }}
+                        aria-label={`Open schedule ${tx.scheduleName ?? "Unknown"}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/schedules/${tx.scheduleId}`);
+                          navigate(`/schedules?focus=${encodeURIComponent(tx.scheduleId ?? "")}`);
                         }}
                       >
                         ↻
-                      </span>
+                      </button>
                     </Show>
                     {isEditing("payee") ? (
                       <input
@@ -478,9 +512,14 @@ export default function TransactionTable(props: TransactionTableProps) {
                       />
                     ) : (
                       <span classList={{ "tx-schedule-linked": !!tx.scheduleId }}>
-                        <span onClick={() => startEdit(tx.id, "payee")}>
+                        <button
+                          type="button"
+                          class="tx-inline-trigger"
+                          onClick={() => startEdit(tx.id, "payee")}
+                          aria-label={`Edit payee ${tx.payee ?? "empty"}`}
+                        >
                           {tx.isParent ? <em>Split</em> : (tx.payee ?? "—")}
-                        </span>
+                        </button>
                       </span>
                     )}
                   </span>
@@ -509,12 +548,15 @@ export default function TransactionTable(props: TransactionTableProps) {
                         </For>
                       </select>
                     ) : (
-                      <span
+                      <button
+                        type="button"
+                        class="tx-inline-trigger"
                         classList={{ "tx-split-label": tx.isParent }}
                         onClick={() => startEdit(tx.id, "category")}
+                        aria-label={`Edit category ${tx.categoryName ?? "Uncategorized"}`}
                       >
                         {tx.isParent ? "Split" : (tx.categoryName ?? "Uncategorized")}
-                      </span>
+                      </button>
                     )}
                   </span>
 
@@ -529,7 +571,8 @@ export default function TransactionTable(props: TransactionTableProps) {
                     >
                       <For each={props.txTags[tx.id] ?? []}>
                         {(tag) => (
-                          <span
+                          <button
+                            type="button"
                             class="tag-chip-sm"
                             style={{
                               background: tag.color ?? "#4f46e5",
@@ -540,7 +583,7 @@ export default function TransactionTable(props: TransactionTableProps) {
                             title={`Remove tag "${tag.name}"`}
                           >
                             {tag.name} ✕
-                          </span>
+                          </button>
                         )}
                       </For>
                       <button
@@ -618,12 +661,14 @@ export default function TransactionTable(props: TransactionTableProps) {
                         autofocus
                       />
                     ) : (
-                      <span
-                        class={privacyBlur().blurClass()}
+                      <button
+                        type="button"
+                        class={`tx-inline-trigger tx-amount-trigger ${privacyBlur().blurClass()}`}
                         onClick={() => startEdit(tx.id, "amount")}
+                        aria-label={`Edit amount ${formatCents(tx.amount ?? 0)}`}
                       >
                         {formatCents(tx.amount ?? 0)}
-                      </span>
+                      </button>
                     )}
                   </span>
 
@@ -634,25 +679,28 @@ export default function TransactionTable(props: TransactionTableProps) {
                   </Show>
 
                   <span class="tx-col-actions">
-                    <button
-                      class="btn btn-icon btn-ghost btn-xs"
-                      onClick={() => initSplit(tx)}
-                      title="Split transaction"
-                      disabled={!!tx.isChild || !!tx.isParent}
-                    >
-                      ⇄
-                    </button>
-                    <button
-                      class="btn btn-icon btn-ghost btn-xs"
-                      onClick={() => props.onCreateSchedule?.(tx)}
-                      title="Create schedule from this transaction"
-                      disabled={!!tx.isChild || !!tx.isParent}
-                    >
-                      📅
-                    </button>
-                    <button class="btn btn-icon btn-ghost btn-xs" onClick={() => handleDelete(tx)}>
-                      🗑️
-                    </button>
+                    <details class="tx-action-menu">
+                      <summary aria-label="Transaction actions">•••</summary>
+                      <div class="tx-action-popover">
+                        <button
+                          type="button"
+                          onClick={() => initSplit(tx)}
+                          disabled={!!tx.isChild || !!tx.isParent}
+                        >
+                          Split transaction
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onCreateSchedule?.(tx)}
+                          disabled={!!tx.isChild || !!tx.isParent}
+                        >
+                          Create schedule
+                        </button>
+                        <button type="button" class="danger" onClick={() => handleDelete(tx)}>
+                          Delete · Undo available
+                        </button>
+                      </div>
+                    </details>
                   </span>
                 </div>
 

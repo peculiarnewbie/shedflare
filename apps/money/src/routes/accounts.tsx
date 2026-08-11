@@ -1,7 +1,7 @@
 /**
  * Accounts page — list of all accounts with balances.
  */
-import { createSignal, createMemo, For, Show, createEffect, onCleanup } from "solid-js";
+import { createSignal, createMemo, For, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
@@ -10,6 +10,7 @@ import { usePrivacyMode } from "../lib/privacy";
 import { settingsCollection } from "../lib/collections";
 import { PageState } from "../components/PageState";
 import { useAccountForm } from "../lib/forms/accounts";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 
 interface AccountRow {
   id: string;
@@ -46,6 +47,10 @@ export default function AccountsPage() {
     void loadAccounts();
   });
 
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadAccounts));
+  });
+
   async function loadAccounts() {
     setError(null);
     try {
@@ -78,8 +83,26 @@ export default function AccountsPage() {
 
   async function handleDeleteAccount(account: AccountRow) {
     if (!confirm(`Delete ${account.name}? This will also delete its transactions.`)) return;
-    setAccounts((prev) => prev.filter((a) => a.id !== account.id));
-    await dispatch("delete_account", { id: account.id }).promise;
+    try {
+      await dispatch("delete_account", { id: account.id }).promise;
+    } finally {
+      await loadAccounts();
+    }
+  }
+
+  async function handleAccountClosed(account: AccountRow, closed: boolean) {
+    const commandType = closed ? "close_account" : "reopen_account";
+    const inverseType = closed ? "reopen_account" : "close_account";
+    await dispatch(
+      commandType,
+      { id: account.id },
+      {
+        undoInfo: {
+          label: closed ? "Close account" : "Reopen account",
+          inverse: { commandType: inverseType, payload: { id: account.id } },
+        },
+      },
+    ).promise;
     await loadAccounts();
   }
 
@@ -182,6 +205,7 @@ export default function AccountsPage() {
             navigate={navigate}
             formatBalance={formatBalance}
             onDelete={handleDeleteAccount}
+            onClosedChange={handleAccountClosed}
             blurClass={privacyBlur().blurClass()}
           />
           <RenderAccountGroup
@@ -190,6 +214,7 @@ export default function AccountsPage() {
             navigate={navigate}
             formatBalance={formatBalance}
             onDelete={handleDeleteAccount}
+            onClosedChange={handleAccountClosed}
             blurClass={privacyBlur().blurClass()}
           />
           <RenderAccountGroup
@@ -198,6 +223,7 @@ export default function AccountsPage() {
             navigate={navigate}
             formatBalance={formatBalance}
             onDelete={handleDeleteAccount}
+            onClosedChange={handleAccountClosed}
             blurClass={privacyBlur().blurClass()}
           />
         </Show>
@@ -212,6 +238,7 @@ function RenderAccountGroup(props: {
   navigate: (path: string) => void;
   formatBalance: (b: number | null) => string;
   onDelete: (account: AccountRow) => void;
+  onClosedChange: (account: AccountRow, closed: boolean) => void;
   blurClass?: string;
 }) {
   return (
@@ -221,23 +248,36 @@ function RenderAccountGroup(props: {
         <div class="account-list">
           <For each={props.accounts}>
             {(account) => (
-              <div class="account-card" onClick={() => props.navigate(`/accounts/${account.id}`)}>
-                <div class="account-info">
-                  <div class="account-name">{account.name}</div>
-                </div>
-                <div class={`account-balance ${props.blurClass ?? ""}`}>
-                  {props.formatBalance(account.balanceCurrent)}
-                </div>
+              <div class="account-card">
                 <button
-                  class="btn btn-icon btn-ghost btn-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.onDelete(account);
-                  }}
-                  title="Delete account"
+                  type="button"
+                  class="account-card-main"
+                  onClick={() => props.navigate(`/accounts/${account.id}`)}
                 >
-                  ×
+                  <div class="account-info">
+                    <div class="account-name">{account.name}</div>
+                    <span class="account-card-hint">Open ledger</span>
+                  </div>
+                  <div class={`account-balance ${props.blurClass ?? ""}`}>
+                    {props.formatBalance(account.balanceCurrent)}
+                  </div>
                 </button>
+                <details class="entity-menu">
+                  <summary aria-label={`Actions for ${account.name}`}>•••</summary>
+                  <div class="entity-menu-popover">
+                    <button
+                      type="button"
+                      onClick={() => props.onClosedChange(account, !account.closed)}
+                    >
+                      {account.closed ? "Reopen account" : "Close account"}
+                    </button>
+                    <Show when={account.closed}>
+                      <button type="button" class="danger" onClick={() => props.onDelete(account)}>
+                        Delete permanently
+                      </button>
+                    </Show>
+                  </div>
+                </details>
               </div>
             )}
           </For>
