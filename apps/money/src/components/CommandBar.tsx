@@ -1,6 +1,18 @@
 import { createEffect, createMemo, createSignal, For, Index, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { api } from "../lib/api";
+import { useMoneyShell } from "./MoneyShellContext";
+import type {
+  AccountsResponse,
+  CategoriesResponse,
+  PayeesResponse,
+  SchedulesResponse,
+} from "../domain/schemas-client";
+
+type AccountRow = AccountsResponse["accounts"][number];
+type PayeeRow = PayeesResponse["payees"][number];
+type CategoryRow = CategoriesResponse["categories"][number];
+type ScheduleRow = SchedulesResponse["schedules"][number];
 
 interface CmdResult {
   id: string;
@@ -39,17 +51,17 @@ function fuzzyFilter(query: string, items: CmdResult[]): CmdResult[] {
 
 export default function CommandBar(props: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
+  const shell = useMoneyShell();
   const [inputEl, setInputEl] = createSignal<HTMLInputElement>();
   const [query, setQuery] = createSignal("");
-  const [accounts, setAccounts] = createSignal<any[]>([]);
-  const [payees, setPayees] = createSignal<any[]>([]);
-  const [categories, setCategories] = createSignal<any[]>([]);
-  const [schedules, setSchedules] = createSignal<any[]>([]);
+  const [accounts, setAccounts] = createSignal<AccountRow[]>([]);
+  const [payees, setPayees] = createSignal<PayeeRow[]>([]);
+  const [categories, setCategories] = createSignal<CategoryRow[]>([]);
+  const [schedules, setSchedules] = createSignal<ScheduleRow[]>([]);
 
   const pages: CmdResult[] = [
-    { id: "/", label: "Dashboard", icon: "📊", action: () => navigate("/") },
+    { id: "/", label: "Overview", icon: "⌂", action: () => navigate("/") },
     { id: "/budget", label: "Budget", icon: "💰", action: () => navigate("/budget") },
-    { id: "/categories", label: "Categories", icon: "📁", action: () => navigate("/categories") },
     { id: "/accounts", label: "Accounts", icon: "🏦", action: () => navigate("/accounts") },
     {
       id: "/transactions",
@@ -94,7 +106,7 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
         label: p.name,
         description: "Payee",
         icon: "👤",
-        action: () => navigate(`/payees`),
+        action: () => navigate(`/transactions?q=${encodeURIComponent(p.name)}`),
       }),
     );
   }
@@ -106,7 +118,7 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
         label: c.name,
         description: "Category",
         icon: "📁",
-        action: () => navigate(`/categories`),
+        action: () => navigate(`/budget?category=${encodeURIComponent(c.id)}`),
       }),
     );
   }
@@ -118,7 +130,7 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
         label: s.name ?? "Untitled Schedule",
         description: "Schedule",
         icon: "🔄",
-        action: () => navigate(`/schedules/${s.id}`),
+        action: () => navigate(`/schedules?focus=${encodeURIComponent(s.id)}`),
       }),
     );
   }
@@ -126,6 +138,28 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   const sections = createMemo(() => {
     const q = query();
     const result: CmdSection[] = [];
+
+    const addTransaction: CmdResult = {
+      id: "add-transaction",
+      label: "Add transaction",
+      description: "Open the transaction composer",
+      icon: "+",
+      action: () => shell.openTransaction(),
+    };
+    const trimmedQuery = q.trim();
+    const actions: CmdResult[] = trimmedQuery
+      ? [
+          {
+            id: "search-transactions",
+            label: `Search transactions for “${trimmedQuery}”`,
+            description: "Search payees, notes, categories, and accounts",
+            icon: "⌕",
+            action: () => navigate(`/transactions?q=${encodeURIComponent(trimmedQuery)}`),
+          },
+          ...fuzzyFilter(q, [addTransaction]),
+        ]
+      : [addTransaction];
+    result.push({ title: "Actions", results: actions });
 
     const filteredPages = fuzzyFilter(q, pages);
     if (filteredPages.length > 0) {
@@ -162,6 +196,7 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
   const [selectedIndex, setSelectedIndex] = createSignal(0);
 
   createEffect(() => {
+    query();
     if (props.open) setSelectedIndex(0);
   });
 
@@ -209,7 +244,7 @@ export default function CommandBar(props: { open: boolean; onClose: () => void }
             ref={setInputEl}
             type="text"
             class="cmd-input"
-            placeholder="Search pages, accounts, payees..."
+            placeholder="Search transactions, accounts, payees..."
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
           />
