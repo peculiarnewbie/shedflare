@@ -1,17 +1,18 @@
 /**
  * Schedules page — recurring transaction templates.
  */
-import { createSignal, For, Show, createEffect } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { useDateFormat } from "../lib/date-format";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 
 export default function SchedulesPage() {
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams<{ focus?: string }>();
   const df = useDateFormat();
   const fmt = useCurrency();
   const privacyBlur = usePrivacyMode();
@@ -21,9 +22,22 @@ export default function SchedulesPage() {
   const [showForm, setShowForm] = createSignal(false);
   const [editingSchedule, setEditingSchedule] = createSignal<any>(null);
   const [showDiscover, setShowDiscover] = createSignal(false);
+  const [lastFocusedId, setLastFocusedId] = createSignal<string | null>(null);
 
   createEffect(() => {
     void loadSchedules();
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadSchedules));
+  });
+
+  createEffect(() => {
+    const focusId = searchParams.focus;
+    const focused = schedules().find((schedule) => schedule.id === focusId);
+    if (!focusId || !focused || lastFocusedId() === focusId) return;
+    setLastFocusedId(focusId);
+    handleEdit(focused);
   });
 
   async function loadSchedules() {
@@ -51,14 +65,17 @@ export default function SchedulesPage() {
             payload: {
               schedule: {
                 accountId: sched?.accountId ?? null,
+                payeeId: sched?.payeeId ?? null,
+                categoryId: sched?.categoryId ?? null,
                 name: sched?.name ?? "",
                 startDate: sched?.startDate ?? "",
                 amount: sched?.amount ?? 0,
                 recurrenceRules: sched?.recurrenceRules ?? JSON.stringify({ type: "monthly" }),
-                endMode: sched?.endMode ?? "never",
-                endDate: sched?.endDate ?? null,
-                endOccurrences: sched?.endOccurrences ?? null,
+                active: sched?.active ?? true,
+                completed: sched?.completed ?? false,
                 postsTransaction: sched?.postsTransaction ?? false,
+                customUpcomingLength: sched?.customUpcomingLength ?? null,
+                nextDate: sched?.nextDate ?? null,
               },
             },
           },
@@ -94,13 +111,12 @@ export default function SchedulesPage() {
   function handleFormClose() {
     setShowForm(false);
     setEditingSchedule(null);
+    if (searchParams.focus) setSearchParams({ focus: undefined }, { replace: true });
   }
 
-  function handleSaved(saved: any) {
-    if (editingSchedule()) {
-      setSchedules((prev) => prev.map((s) => (s.id === saved.id ? saved : s)));
-    }
+  function handleSaved() {
     handleFormClose();
+    void loadSchedules();
   }
 
   function parseRecurrenceConfig(rules: string): any {
@@ -213,13 +229,13 @@ export default function SchedulesPage() {
               {(schedule) => (
                 <div class="schedule-card">
                   <div class="schedule-info">
-                    <div
-                      class="schedule-name"
-                      onClick={() => navigate(`/schedules/${schedule.id}`)}
-                      style={{ cursor: "pointer" }}
+                    <button
+                      type="button"
+                      class="schedule-name schedule-name-button"
+                      onClick={() => handleEdit(schedule)}
                     >
                       {schedule.name ?? "Unnamed"}
-                    </div>
+                    </button>
                     <div class="schedule-meta">
                       {schedule.recurrenceRules && formatRecurrenceLabel(schedule.recurrenceRules)}
                       {schedule.nextDate && ` · Next: ${df().formatDate(schedule.nextDate)}`}
@@ -240,9 +256,20 @@ export default function SchedulesPage() {
                     <button class="btn btn-sm btn-ghost" onClick={() => handleEdit(schedule)}>
                       Edit
                     </button>
-                    <button class="btn btn-sm btn-ghost" onClick={() => handleDelete(schedule.id)}>
-                      🗑️
-                    </button>
+                    <details class="entity-menu">
+                      <summary aria-label={`More actions for ${schedule.name ?? "schedule"}`}>
+                        •••
+                      </summary>
+                      <div class="entity-menu-popover">
+                        <button
+                          type="button"
+                          class="danger"
+                          onClick={() => handleDelete(schedule.id)}
+                        >
+                          Delete · Undo available
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </div>
               )}
@@ -289,6 +316,16 @@ function ScheduleForm(props: {
   const [endOccurrences, setEndOccurrences] = createSignal(config().endOccurrences ?? 10);
   const [endDate, setEndDate] = createSignal(config().endDate ?? "");
   const [saving, setSaving] = createSignal(false);
+  let nameInput: HTMLInputElement | undefined;
+
+  onMount(() => {
+    nameInput?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving()) props.onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+  });
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -315,9 +352,10 @@ function ScheduleForm(props: {
     const rulesJson = JSON.stringify(rules);
     const startDate = existing()?.startDate ?? new Date().toISOString().slice(0, 10);
 
+    let operation: Promise<void>;
     if (isEdit()) {
       const old = existing();
-      dispatch(
+      operation = dispatch(
         "update_schedule",
         {
           id: old.id,
@@ -345,9 +383,9 @@ function ScheduleForm(props: {
             },
           },
         },
-      );
+      ).promise;
     } else {
-      dispatch(
+      operation = dispatch(
         "create_schedule",
         {
           schedule: {
@@ -366,25 +404,40 @@ function ScheduleForm(props: {
             }),
           },
         },
-      );
+      ).promise;
     }
 
-    setSaving(false);
-    props.onSaved?.({
-      ...existing(),
-      name: name().trim(),
-      amount: parsedAmount || null,
-      recurrenceRules: rulesJson,
-      startDate,
-    });
+    try {
+      await operation;
+      props.onSaved?.({
+        ...existing(),
+        name: name().trim(),
+        amount: parsedAmount || null,
+        recurrenceRules: rulesJson,
+        startDate,
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div class="modal-overlay" onClick={props.onClose}>
-      <div class="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="schedule-form-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div class="modal-header">
-          <h2>{isEdit() ? "Edit Schedule" : "New Schedule"}</h2>
-          <button class="modal-close" onClick={props.onClose}>
+          <h2 id="schedule-form-title">{isEdit() ? "Edit Schedule" : "New Schedule"}</h2>
+          <button
+            type="button"
+            class="modal-close"
+            onClick={props.onClose}
+            aria-label="Close schedule form"
+          >
             ✕
           </button>
         </div>
@@ -392,6 +445,9 @@ function ScheduleForm(props: {
           <div class="form-group">
             <label>Name</label>
             <input
+              ref={(element) => {
+                nameInput = element;
+              }}
               type="text"
               placeholder="e.g. Monthly Rent"
               value={name()}
@@ -513,6 +569,14 @@ function DiscoverModal(props: {
   const [error, setError] = createSignal<string | null>(null);
   const [created, setCreated] = createSignal<Set<string>>(new Set());
 
+  onMount(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") props.onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+  });
+
   createEffect(() => {
     void loadCandidates();
   });
@@ -553,10 +617,21 @@ function DiscoverModal(props: {
 
   return (
     <div class="modal-overlay" onClick={props.onClose}>
-      <div class="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+      <div
+        class="modal modal--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="discover-schedules-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div class="modal-header">
-          <h2>Discover Recurring Transactions</h2>
-          <button class="modal-close" onClick={props.onClose}>
+          <h2 id="discover-schedules-title">Discover Recurring Transactions</h2>
+          <button
+            type="button"
+            class="modal-close"
+            onClick={props.onClose}
+            aria-label="Close recurring transaction discovery"
+          >
             ✕
           </button>
         </div>

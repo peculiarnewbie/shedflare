@@ -1,11 +1,12 @@
 /**
  * Rules page — auto-categorization rules for transaction import.
  */
-import { createSignal, For, Show, createEffect } from "solid-js";
+import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 
 export default function RulesPage() {
   const [rules, setRules] = createSignal<any[]>([]);
@@ -16,6 +17,10 @@ export default function RulesPage() {
 
   createEffect(() => {
     void loadRules();
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadRules));
   });
 
   async function loadRules() {
