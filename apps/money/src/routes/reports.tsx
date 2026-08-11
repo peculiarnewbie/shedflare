@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show } from "solid-js";
+import { createSignal, createEffect, For, onCleanup, onMount, Show } from "solid-js";
 import { AreaChart, BarChart, DonutChart, BudgetBar } from "../charts";
 import type { TimeSeriesPoint, BarGroup, PieSlice, BudgetPair } from "../charts";
 import { dispatch } from "../lib/pending-ops";
@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { useCurrency, formatCentsValue, type NumberFormat } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 
 type ReportId =
   | "net-worth"
@@ -119,6 +120,15 @@ export default function ReportsPage() {
     } else {
       void loadReport(report);
     }
+  });
+
+  onMount(() => {
+    onCleanup(
+      listenForMoneyDataChanged(() => {
+        const report = activeReport();
+        return report === "custom" ? undefined : loadReport(report);
+      }),
+    );
   });
 
   async function loadReport(report: ReportId) {

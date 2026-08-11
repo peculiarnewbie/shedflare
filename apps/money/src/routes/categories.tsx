@@ -1,10 +1,11 @@
-import { createSignal, For, Show, createEffect, createMemo } from "solid-js";
+import { createSignal, For, Show, createEffect, createMemo, onCleanup, onMount } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { usePrivacyMode } from "../lib/privacy";
 import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
 import { useCategoryForm, useCategoryGroupForm } from "../lib/forms/categories";
+import { listenForMoneyDataChanged } from "../lib/data-events";
 
 interface CategoryGroup {
   id: string;
@@ -107,6 +108,10 @@ export default function CategoriesPage() {
 
   createEffect(() => {
     void loadData();
+  });
+
+  onMount(() => {
+    onCleanup(listenForMoneyDataChanged(loadData));
   });
 
   async function loadData() {
