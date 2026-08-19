@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export function parseDotEnv(source: string): Record<string, string> {
+export function parseDotEnv(source: string) {
   const values: Record<string, string> = {};
 
   for (const line of source.split(/\r?\n/)) {

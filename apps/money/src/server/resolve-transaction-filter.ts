@@ -1,5 +1,5 @@
 import type { FilterCondition } from "./conditions-to-sql";
-import { buildFilterSql } from "./conditions-to-sql";
+import { buildFilterSql, parseFilterConditions } from "./conditions-to-sql";
 import type { SQL } from "drizzle-orm";
 import type { Db } from "./d1-access";
 import * as s from "../db/schema";
@@ -24,8 +24,7 @@ export async function resolveTransactionFilter(db: Db, url: URL): Promise<Parsed
 
   if (conditionsParam) {
     try {
-      const parsed = JSON.parse(conditionsParam) as unknown;
-      if (Array.isArray(parsed)) conditions = parsed as FilterCondition[];
+      conditions = [...parseFilterConditions(conditionsParam)];
     } catch {
       conditions = [];
     }
@@ -37,7 +36,7 @@ export async function resolveTransactionFilter(db: Db, url: URL): Promise<Parsed
       .all();
     if (filterRow) {
       try {
-        conditions = JSON.parse((filterRow.conditions as string) ?? "[]") as FilterCondition[];
+        conditions = [...parseFilterConditions(filterRow.conditions ?? "[]")];
       } catch {
         conditions = [];
       }

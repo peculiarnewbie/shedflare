@@ -7,6 +7,8 @@ import { useCurrency, formatCentsValue, type NumberFormat } from "../lib/currenc
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
 import { listenForMoneyDataChanged } from "../lib/data-events";
+import * as Schema from "effect/Schema";
+import type { CustomReportResult, CustomReportsResponse } from "../domain/schemas-client";
 
 type ReportId =
   | "net-worth"
@@ -16,34 +18,61 @@ type ReportId =
   | "age-of-money"
   | "custom";
 
-interface CustomReport {
-  id: string;
-  name: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  graph_type: string | null;
-  mode: string | null;
-  group_by: string | null;
-  conditions: string | null;
-  metadata: string | null;
-  created_at: string;
+type CustomReport = CustomReportsResponse["reports"][number];
+type CustomReportRow = CustomReportResult["rows"][number];
+type ReportCell = CustomReportRow[keyof CustomReportRow];
+type ConditionalFormat = { field: string; op: string; value: string; color: string };
+const REPORT_COLUMNS = [
+  "id",
+  "date",
+  "amount",
+  "payee",
+  "notes",
+  "cleared",
+  "reconciled",
+  "category",
+  "account",
+  "month",
+  "total",
+  "count",
+  "groupName",
+] as const satisfies ReadonlyArray<keyof CustomReportRow>;
+
+const NumberFormatSchema = Schema.Literals(["comma-dot", "dot-comma", "space-dot"]);
+const NumberFormatFormSchema = Schema.Union([NumberFormatSchema, Schema.Literal("")]);
+const ReportMetadataSchema = Schema.Struct({
+  colors: Schema.optional(
+    Schema.Struct({
+      income: Schema.optional(Schema.String),
+      expense: Schema.optional(Schema.String),
+      balance: Schema.optional(Schema.String),
+      background: Schema.optional(Schema.String),
+    }),
+  ),
+  condFormat: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        field: Schema.String,
+        op: Schema.String,
+        value: Schema.String,
+        color: Schema.String,
+      }),
+    ),
+  ),
+  numberFormat: Schema.optional(NumberFormatSchema),
+});
+type ReportMetadata = Schema.Schema.Type<typeof ReportMetadataSchema>;
+interface WritableReportMetadata {
+  colors: NonNullable<ReportMetadata["colors"]>;
+  condFormat?: ConditionalFormat[];
+  numberFormat?: NumberFormat;
 }
 
-function formatReportCell(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    typeof value === "bigint"
-  ) {
-    return String(value);
-  }
-  return JSON.stringify(value);
+function formatReportCell(value: ReportCell): string {
+  return value == null ? "" : String(value);
 }
 
-const REPORTS: Array<{ id: ReportId; label: string; icon: string; description: string }> = [
+const REPORTS = [
   {
     id: "net-worth",
     label: "Net Worth",
@@ -65,7 +94,7 @@ const REPORTS: Array<{ id: ReportId; label: string; icon: string; description: s
     description: "How many days your money lasts",
   },
   { id: "custom", label: "Custom Reports", icon: "🔧", description: "Build your own reports" },
-];
+] satisfies ReadonlyArray<{ id: ReportId; label: string; icon: string; description: string }>;
 
 const GRAPH_TYPES = [
   { value: "area", label: "Area Chart" },
@@ -108,10 +137,12 @@ export default function ReportsPage() {
   const [formCondFormat, setFormCondFormat] = createSignal<
     Array<{ field: string; op: string; value: string; color: string }>
   >([]);
-  const [formNumberFormat, setFormNumberFormat] = createSignal("");
+  const [formNumberFormat, setFormNumberFormat] = createSignal<NumberFormat | "">("");
 
   // Custom report data (lazy loaded per-report)
-  const [customReportData, _setCustomReportData] = createSignal<Record<string, any>>({});
+  const [customReportData, _setCustomReportData] = createSignal(
+    new Map<string, CustomReportResult>(),
+  );
 
   createEffect(() => {
     const report = activeReport();
@@ -138,7 +169,7 @@ export default function ReportsPage() {
       switch (report) {
         case "net-worth": {
           const data = await api.reports.netWorth();
-          setNetWorthData(data.points as TimeSeriesPoint[]);
+          setNetWorthData([...data.points]);
           break;
         }
         case "cash-flow": {
@@ -155,12 +186,12 @@ export default function ReportsPage() {
         }
         case "spending": {
           const data = await api.reports.spending();
-          setSpendingData([...data.categories] as PieSlice[]);
+          setSpendingData([...data.categories]);
           break;
         }
         case "budget-analysis": {
           const data = await api.reports.budgetAnalysis();
-          setBudgetData(data.categories as BudgetPair[]);
+          setBudgetData([...data.categories]);
           break;
         }
         case "age-of-money": {
@@ -192,7 +223,7 @@ export default function ReportsPage() {
     setError(null);
     try {
       const data = await api.reports.custom();
-      setCustomReports([...data.reports] as any);
+      setCustomReports([...data.reports]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load custom reports");
     } finally {
@@ -221,12 +252,14 @@ export default function ReportsPage() {
   function openEditModal(report: CustomReport) {
     setEditingReport(report);
     setFormName(report.name ?? "");
-    setFormGraphType(report.graph_type ?? "area");
-    setFormStartDate(report.start_date ?? "");
-    setFormEndDate(report.end_date ?? "");
-    setFormGroupBy(report.group_by ?? "");
+    setFormGraphType(report.graphType ?? "area");
+    setFormStartDate(report.startDate ?? "");
+    setFormEndDate(report.endDate ?? "");
+    setFormGroupBy(report.groupBy ?? "");
     try {
-      const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
+      const meta = report.metadata
+        ? Schema.decodeUnknownSync(ReportMetadataSchema)(JSON.parse(report.metadata))
+        : undefined;
       if (meta?.colors) {
         setFormColorScheme({
           income: meta.colors.income ?? "#4ade80",
@@ -242,8 +275,8 @@ export default function ReportsPage() {
           background: "#1a1a2e",
         });
       }
-      setFormCondFormat(Array.isArray(meta?.condFormat) ? meta.condFormat : []);
-      setFormNumberFormat((meta?.numberFormat as string) ?? "");
+      setFormCondFormat(meta?.condFormat ? [...meta.condFormat] : []);
+      setFormNumberFormat(meta?.numberFormat ?? "");
     } catch {
       console.warn("[reports] failed to parse report metadata");
       setFormColorScheme({
@@ -259,9 +292,10 @@ export default function ReportsPage() {
   }
 
   function buildMetadata(): string {
-    const meta: any = { colors: formColorScheme() };
+    const meta: WritableReportMetadata = { colors: formColorScheme() };
     if (formCondFormat().length > 0) meta.condFormat = formCondFormat();
-    if (formNumberFormat()) meta.numberFormat = formNumberFormat();
+    const numberFormat = formNumberFormat();
+    if (numberFormat) meta.numberFormat = numberFormat;
     return JSON.stringify(meta);
   }
 
@@ -289,7 +323,7 @@ export default function ReportsPage() {
           startDate: formStartDate() || null,
           endDate: formEndDate() || null,
           groupBy: formGroupBy() || null,
-          conditions: [],
+          conditions: "[]",
           metadata: buildMetadata(),
         },
       });
@@ -307,7 +341,7 @@ export default function ReportsPage() {
   async function loadCustomReportData(reportId: string) {
     try {
       const data = await api.reports.customExecute(reportId);
-      _setCustomReportData((prev) => ({ ...prev, [reportId]: data }));
+      _setCustomReportData((previous) => new Map(previous).set(reportId, data));
     } catch {
       console.warn("[reports] failed to load custom report data");
     }
@@ -315,15 +349,17 @@ export default function ReportsPage() {
 
   function applyCondFormat(
     value: number,
-    row: Record<string, unknown>,
-    condFormat: Array<{ field: string; op: string; value: string; color: string }>,
+    row: CustomReportRow,
+    condFormat: ReadonlyArray<ConditionalFormat>,
   ): string | null {
     for (const rule of condFormat) {
+      const matchingColumn = REPORT_COLUMNS.find((column) => column === rule.field);
+      const cell = matchingColumn ? row[matchingColumn] : undefined;
       const raw =
         rule.field === "amount" || rule.field === "total"
           ? value
           : rule.field
-            ? Number(row[rule.field]) || formatReportCell(row[rule.field])
+            ? Number(cell) || formatReportCell(cell)
             : "";
       const matchValue = Number(rule.value);
       const strRaw = String(raw).toLowerCase();
@@ -359,17 +395,18 @@ export default function ReportsPage() {
   }
 
   function renderCustomReportTable(
-    rows: Array<Record<string, unknown>>,
-    colors: Record<string, string> | undefined,
-    condFormat: Array<{ field: string; op: string; value: string; color: string }> | undefined,
-    numberFormatOverride: string | undefined,
+    rows: ReadonlyArray<CustomReportRow>,
+    colors: ReportMetadata["colors"],
+    condFormat: ReadonlyArray<ConditionalFormat> | undefined,
+    numberFormatOverride: NumberFormat | undefined,
   ) {
     if (rows.length === 0) return <div class="chart-placeholder">No data</div>;
 
-    const keys = Object.keys(rows[0]);
+    const firstRow = rows[0];
+    const keys = REPORT_COLUMNS.filter((key) => firstRow[key] !== undefined);
     const _bg = colors?.background ?? "var(--surface)";
     const cur = fmt();
-    const nf = (numberFormatOverride as NumberFormat) || cur.numberFormat;
+    const nf = numberFormatOverride ?? cur.numberFormat;
 
     function fmtAmount(cents: number): string {
       return formatCentsValue(cents, cur.code, nf);
@@ -415,7 +452,7 @@ export default function ReportsPage() {
                           }}
                         >
                           {(key === "total" || key === "amount") && row[key] !== undefined
-                            ? fmtAmount(row[key] as number)
+                            ? fmtAmount(Number(row[key]))
                             : key === "cleared"
                               ? row[key]
                                 ? "✓"
@@ -439,15 +476,17 @@ export default function ReportsPage() {
   }
 
   function renderCustomReport(report: CustomReport) {
-    const graphType = report.graph_type ?? "area";
-    const result = customReportData()[report.id] as any;
+    const graphType = report.graphType ?? "area";
+    const result = customReportData().get(report.id);
     const rows = result?.rows ?? [];
     const groupBy = result?.groupBy ?? null;
-    let colors: Record<string, string> | undefined;
-    let condFormat: Array<{ field: string; op: string; value: string; color: string }> | undefined;
-    let numberFormat: string | undefined;
+    let colors: ReportMetadata["colors"];
+    let condFormat: ReadonlyArray<ConditionalFormat> | undefined;
+    let numberFormat: NumberFormat | undefined;
     try {
-      const meta = report.metadata ? (JSON.parse(report.metadata) as any) : null;
+      const meta = report.metadata
+        ? Schema.decodeUnknownSync(ReportMetadataSchema)(JSON.parse(report.metadata))
+        : undefined;
       colors = meta?.colors;
       condFormat = meta?.condFormat;
       numberFormat = meta?.numberFormat;
@@ -479,15 +518,15 @@ export default function ReportsPage() {
     if (graphType === "area") {
       let points: TimeSeriesPoint[];
       if (groupBy === "month") {
-        points = rows.map((r: any) => ({ date: r.month, value: r.total }));
+        points = rows.map((row) => ({ date: row.month ?? "", value: row.total ?? 0 }));
       } else if (groupBy === "category") {
-        points = rows.map((r: any) => ({
-          date: r.category,
-          value: r.total,
-          label: r.category,
+        points = rows.map((row) => ({
+          date: row.category ?? "Uncategorized",
+          value: row.total ?? 0,
+          label: row.category ?? "Uncategorized",
         }));
       } else {
-        points = rows.map((r: any) => ({ date: r.date, value: r.amount }));
+        points = rows.map((row) => ({ date: row.date ?? "", value: row.amount ?? 0 }));
       }
       return (
         <div classList={{ "privacy-blur": privacy().enabled }}>
@@ -506,14 +545,18 @@ export default function ReportsPage() {
     if (graphType === "bar") {
       let groups: BarGroup[];
       if (groupBy === "month") {
-        groups = rows.map((r: any) => ({
-          category: r.month,
-          values: [{ label: "Total", value: r.total, color: colors?.balance ?? "var(--primary)" }],
+        groups = rows.map((row) => ({
+          category: row.month ?? "",
+          values: [
+            { label: "Total", value: row.total ?? 0, color: colors?.balance ?? "var(--primary)" },
+          ],
         }));
       } else if (groupBy === "category") {
-        groups = rows.map((r: any) => ({
-          category: r.category,
-          values: [{ label: "Total", value: r.total, color: colors?.balance ?? "var(--primary)" }],
+        groups = rows.map((row) => ({
+          category: row.category ?? "Uncategorized",
+          values: [
+            { label: "Total", value: row.total ?? 0, color: colors?.balance ?? "var(--primary)" },
+          ],
         }));
       } else {
         const dateGroups: Record<string, number> = {};
@@ -542,15 +585,15 @@ export default function ReportsPage() {
     if (graphType === "donut") {
       let slices: PieSlice[];
       if (groupBy === "category") {
-        slices = rows.map((r: any, i: number) => ({
-          label: r.category,
-          value: Math.abs(r.total),
+        slices = rows.map((row, i) => ({
+          label: row.category ?? "Uncategorized",
+          value: Math.abs(row.total ?? 0),
           color: categoryColor(i),
         }));
       } else {
         const catMap: Record<string, number> = {};
         for (const r of rows) {
-          const cat = (r.category ?? "Uncategorized") as string;
+          const cat = r.category ?? "Uncategorized";
           catMap[cat] = (catMap[cat] ?? 0) + Math.abs(r.amount ?? 0);
         }
         let i = 0;
@@ -646,8 +689,8 @@ export default function ReportsPage() {
                           <div>
                             <strong>{report.name ?? "Untitled Report"}</strong>
                             <span class="custom-report-meta">
-                              {report.graph_type ?? "area"} &middot; {report.start_date ?? "any"} to{" "}
-                              {report.end_date ?? "any"}
+                              {report.graphType ?? "area"} &middot; {report.startDate ?? "any"} to{" "}
+                              {report.endDate ?? "any"}
                             </span>
                           </div>
                           <div class="custom-report-actions">
@@ -909,7 +952,11 @@ export default function ReportsPage() {
                   <label>Number Format</label>
                   <select
                     value={formNumberFormat()}
-                    onChange={(e) => setFormNumberFormat(e.currentTarget.value)}
+                    onChange={(e) =>
+                      setFormNumberFormat(
+                        Schema.decodeUnknownSync(NumberFormatFormSchema)(e.currentTarget.value),
+                      )
+                    }
                   >
                     <option value="">Use global setting</option>
                     <option value="comma-dot">1,234.56</option>

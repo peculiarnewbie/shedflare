@@ -7,7 +7,7 @@
     "build": "vp build",
     "check": "vp check src vite.config.ts",
     "test": "vp test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp check --no-fmt --no-lint",
     "prepare": "vp config"
   },
   "dependencies": {
@@ -15,7 +15,8 @@
     "@shedflare/core": "workspace:*",
     "@solidjs/router": "^0.15.4",
     "effect": "catalog:",
-    "solid-js": "^1.9.12"
+    "solid-js": "^1.9.12",
+    "valibot": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

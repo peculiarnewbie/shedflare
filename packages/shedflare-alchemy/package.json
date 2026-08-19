@@ -9,13 +9,14 @@
   },
   "scripts": {
     "check": "vp check src test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp check --no-fmt --no-lint",
     "test": "vp test"
   },
   "dependencies": {
     "@shedflare/core": "workspace:*",
     "alchemy": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "valibot": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

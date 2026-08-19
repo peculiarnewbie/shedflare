@@ -1,34 +1,45 @@
 import { describe, expect, test, beforeEach, vi } from "vite-plus/test";
 import { redoStack, undoStack, push, undo, redo } from "./undo-stack";
+import * as Schema from "effect/Schema";
 
-type FetchMock = ReturnType<typeof vi.fn>;
-
-interface GlobalWithFetch {
-  fetch: FetchMock;
+interface MockCommandData {
+  id?: string;
 }
-const g = globalThis as unknown as GlobalWithFetch;
+const RequestBodySchema = Schema.Struct({ commandType: Schema.String, payload: Schema.Unknown });
+let recordedRequestBody: string | null = null;
 
-function mockFetchOk(data: unknown = {}) {
-  g.fetch = vi.fn(
-    async () => new Response(JSON.stringify({ ok: true, data }), { status: 200 }),
-  ) as FetchMock;
+function mockFetchOk(data: MockCommandData = {}) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      recordedRequestBody = Schema.decodeUnknownSync(Schema.String)(init?.body);
+      return new Response(JSON.stringify({ ok: true, data }), { status: 200 });
+    }),
+  );
 }
 
 function mockFetchError(error: string) {
-  g.fetch = vi.fn(
-    async () => new Response(JSON.stringify({ ok: false, error }), { status: 200 }),
-  ) as FetchMock;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      recordedRequestBody = Schema.decodeUnknownSync(Schema.String)(init?.body);
+      return new Response(JSON.stringify({ ok: false, error }), { status: 200 });
+    }),
+  );
 }
 
-function fetchBody(): { commandType: string; payload: unknown } {
-  const lastCall = g.fetch.mock.calls.at(-1) as [string, RequestInit] | undefined;
-  if (!lastCall) throw new Error("no fetch call recorded");
-  return JSON.parse(lastCall[1].body as string) as { commandType: string; payload: unknown };
+function fetchBody() {
+  if (!recordedRequestBody) throw new Error("no fetch call recorded");
+  return Schema.decodeUnknownSync(RequestBodySchema)(JSON.parse(recordedRequestBody));
 }
 
 describe("undo-stack", () => {
   beforeEach(() => {
-    g.fetch = vi.fn(async () => new Response("{}", { status: 500 })) as FetchMock;
+    recordedRequestBody = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 500 })),
+    );
   });
 
   test("push appends an entry and clears the redo stack", () => {

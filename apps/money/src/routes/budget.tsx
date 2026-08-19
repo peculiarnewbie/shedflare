@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useNavigate, useSearchParams } from "@solidjs/router";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
@@ -12,11 +12,20 @@ import type {
   CategoryGroupsResponse,
   MonthBudget,
 } from "../domain/schemas-client";
+import * as Schema from "effect/Schema";
 
 type CategoryBudgetRow = MonthBudget["categories"][number];
 type CategoryDefinition = CategoriesResponse["categories"][number];
 type CategoryGroup = CategoryGroupsResponse["groups"][number];
 type GoalType = "none" | "monthly" | "byDate" | "refill" | "periodic" | "percentage";
+const GoalTypeSchema = Schema.Literals([
+  "none",
+  "monthly",
+  "byDate",
+  "refill",
+  "periodic",
+  "percentage",
+]);
 
 type GoalConfig = {
   type: Exclude<GoalType, "none">;
@@ -25,6 +34,13 @@ type GoalConfig = {
   frequency?: string;
   percentage?: number;
 };
+const GoalConfigSchema = Schema.Struct({
+  type: Schema.Literals(["monthly", "byDate", "refill", "periodic", "percentage"]),
+  amount: Schema.optional(Schema.Number),
+  targetDate: Schema.optional(Schema.String),
+  frequency: Schema.optional(Schema.String),
+  percentage: Schema.optional(Schema.Number),
+});
 
 interface GroupedBudget {
   groupName: string | null;
@@ -37,9 +53,7 @@ interface GroupedBudget {
 function parseGoal(goalDef: string | null): GoalConfig | null {
   if (!goalDef) return null;
   try {
-    const value = JSON.parse(goalDef) as unknown;
-    if (!value || typeof value !== "object" || !("type" in value)) return null;
-    return value as GoalConfig;
+    return Schema.decodeUnknownSync(GoalConfigSchema)(JSON.parse(goalDef));
   } catch {
     return null;
   }
@@ -249,7 +263,7 @@ export default function BudgetPage() {
           label: "Create category",
           inverse: (data) => ({
             commandType: "delete_category",
-            payload: { id: data.id as string },
+            payload: { id: requireCommandId(data) },
           }),
         },
       },
@@ -475,7 +489,11 @@ export default function BudgetPage() {
                   <select
                     id="goal-type"
                     value={goalType()}
-                    onChange={(event) => setGoalType(event.currentTarget.value as GoalType)}
+                    onChange={(event) =>
+                      setGoalType(
+                        Schema.decodeUnknownSync(GoalTypeSchema)(event.currentTarget.value),
+                      )
+                    }
                   >
                     <option value="none">No goal</option>
                     <option value="monthly">Monthly amount</option>

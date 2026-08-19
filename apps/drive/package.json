@@ -10,7 +10,8 @@
     "test": "vp test",
     "test:e2e": "vp exec jiti e2e.run.ts",
     "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp check --no-fmt --no-lint",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
     "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "db:migrate": "wrangler d1 migrations apply shedflare-drive --remote",
@@ -21,7 +22,8 @@
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
     "drizzle-orm": "catalog:",
-    "solid-js": "^1.9.12"
+    "solid-js": "^1.9.12",
+    "valibot": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
@@ -57,6 +59,9 @@
       },
       "DEV_AUTH_EMAIL": {
         "description": "Optional local-only development identity used on localhost."
+      },
+      "SECURE_UPLOAD_TOKEN_SECRET": {
+        "description": "Secret used to sign short-lived secure upload capabilities."
       }
     }
   }

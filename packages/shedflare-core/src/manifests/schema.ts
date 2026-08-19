@@ -28,6 +28,7 @@ export const VarDefinitionSchema = strictObject({
 export const SecretDefinitionSchema = strictObject({
   description: pipe(string(), minLength(1)),
   required: boolean(),
+  source: optional(picklist(["operator", "generated"]), "operator"),
 });
 
 const LegacyResourceFields = {

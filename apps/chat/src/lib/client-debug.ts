@@ -1,7 +1,9 @@
+import type { JsonObject } from "#/domain";
+
 const DEBUG_STORAGE_KEY = "shedflare.chat.debug";
 
 export function isChatDebugEnabled() {
-  if (typeof window === "undefined") return false;
+  if (!globalThis.window) return false;
 
   try {
     return (
@@ -17,7 +19,7 @@ export function isChatDebugEnabled() {
  * Chat diagnostics are opt-in. The sync path is hot enough that a normal
  * session should not write a console entry for every event or timer tick.
  */
-export function debugLog(scope: string, event: string, details?: Record<string, unknown>) {
+export function debugLog(scope: string, event: string, details?: JsonObject) {
   if (!isChatDebugEnabled()) return;
   if (details) {
     console.debug(`[${scope}] ${event}`, details);

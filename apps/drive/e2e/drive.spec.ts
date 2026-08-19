@@ -1,4 +1,21 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
+import * as Schema from "effect/Schema";
+import {
+  FileResponse,
+  FilesResponse,
+  PublicFilesResponse,
+  TagsResponse,
+} from "../src/shared/schema";
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonResponse = { json(): Promise<JsonValue> };
+
+async function decodeApiResponse<SchemaType extends Parameters<typeof Schema.decodeUnknownSync>[0]>(
+  response: JsonResponse,
+  schema: SchemaType,
+): Promise<SchemaType["Type"]> {
+  return Schema.decodeUnknownSync(schema)(await response.json());
+}
 
 async function uploadFile(
   page: Page,
@@ -23,7 +40,7 @@ async function uploadFile(
   });
   const resp = await uploadPromise;
   expect(resp.status()).toBe(201);
-  const body = (await resp.json()) as { file: { id: string } };
+  const body = await decodeApiResponse(resp, FileResponse);
   return body.file.id;
 }
 
@@ -146,14 +163,12 @@ test.describe("Drive E2E", () => {
     // ── Step 2: Verify file in list with metadata ──
     const listResp = await context.request.get("/api/files?limit=100&offset=0");
     expect(listResp.status()).toBe(200);
-    const listBody = (await listResp.json()) as {
-      files: Array<{ id: string; name: string; tags: string[]; description: string }>;
-    };
+    const listBody = await decodeApiResponse(listResp, FilesResponse);
     const uploaded = listBody.files.find((f) => f.id === fileId);
-    expect(uploaded).toBeDefined();
-    expect(uploaded!.name).toBe(fileName);
-    expect(uploaded!.tags).toContain("e2e");
-    expect(uploaded!.description).toBe("Created by e2e lifecycle test");
+    if (!uploaded) throw new Error(`Expected uploaded file ${fileId} in the file listing`);
+    expect(uploaded.name).toBe(fileName);
+    expect(uploaded.tags).toContain("e2e");
+    expect(uploaded.description).toBe("Created by e2e lifecycle test");
 
     // ── Step 3: Download original content ──
     const dlResp = await context.request.get(`/api/files/${fileId}/download`);
@@ -178,19 +193,19 @@ test.describe("Drive E2E", () => {
 
     // Verify rename via API
     const fileResp = await context.request.get(`/api/files?limit=100&offset=0`);
-    const fileList = (await fileResp.json()) as {
-      files: Array<{ id: string; name: string }>;
-    };
-    expect(fileList.files.find((f) => f.id === fileId)!.name).toBe(renamedName);
+    const fileList = await decodeApiResponse(fileResp, FilesResponse);
+    const renamedFile = fileList.files.find((file) => file.id === fileId);
+    if (!renamedFile) throw new Error(`Expected renamed file ${fileId} in the file listing`);
+    expect(renamedFile.name).toBe(renamedName);
 
     // ── Step 5: Search files (verify via API) ──
     const searchResp = await context.request.get(`/api/files?search=lifecycle-${ts}&limit=100`);
     expect(searchResp.status()).toBe(200);
-    const searchBody = (await searchResp.json()) as { files: Array<{ id: string }> };
+    const searchBody = await decodeApiResponse(searchResp, FilesResponse);
     expect(searchBody.files.find((f) => f.id === fileId)).toBeDefined();
 
     const emptyResp = await context.request.get(`/api/files?search=nonexistent-${ts}&limit=100`);
-    const emptyBody = (await emptyResp.json()) as { files: Array<{ id: string }> };
+    const emptyBody = await decodeApiResponse(emptyResp, FilesResponse);
     expect(emptyBody.files.find((f) => f.id === fileId)).toBeUndefined();
 
     // ── Step 6: Toggle public/private via UI ──
@@ -209,9 +224,7 @@ test.describe("Drive E2E", () => {
 
     const pubListResp = await context.request.get("/api/public/files");
     expect(pubListResp.status()).toBe(200);
-    const pubListBody = (await pubListResp.json()) as {
-      files: Array<{ id: string; name: string }>;
-    };
+    const pubListBody = await decodeApiResponse(pubListResp, PublicFilesResponse);
     expect(pubListBody.files.find((f) => f.id === fileId)).toBeDefined();
 
     const previewResp = await context.request.get(`/public/files/${fileId}/preview`);
@@ -232,7 +245,7 @@ test.describe("Drive E2E", () => {
     // ── Step 9: Verify tags endpoint ──
     const tagsResp = await context.request.get("/api/tags");
     expect(tagsResp.status()).toBe(200);
-    const tagsBody = (await tagsResp.json()) as { tags: Array<{ name: string; count: number }> };
+    const tagsBody = await decodeApiResponse(tagsResp, TagsResponse);
     expect(tagsBody.tags.find((t) => t.name === `lifecycle-${ts}`)).toBeDefined();
 
     // ── Step 10: Delete via UI ──

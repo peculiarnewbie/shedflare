@@ -1,4 +1,21 @@
 import spawn from "nano-spawn";
+import { array, object, optional, safeParse, string } from "valibot";
+
+const KvCreateResultSchema = object({ id: string() });
+const D1CreateResultSchema = object({ uuid: optional(string()), database_id: optional(string()) });
+const SecretListResultSchema = object({
+  result: optional(object({ secrets: optional(array(object({ name: string() }))) })),
+});
+
+function parseWranglerOutput<Schema extends Parameters<typeof safeParse>[0]>(
+  schema: Schema,
+  stdout: string,
+  operation: string,
+) {
+  const result = safeParse(schema, JSON.parse(stdout));
+  if (!result.success) throw new Error(`Wrangler returned an invalid ${operation} response.`);
+  return result.output;
+}
 
 export interface WranglerUser {
   email: string;
@@ -36,18 +53,18 @@ export async function login(): Promise<void> {
 
 export async function createKv(name: string): Promise<{ id: string }> {
   const result = await wrangler(["kv:namespace", "create", name]);
-  const parsed = JSON.parse(result.stdout) as { id: string };
-  return parsed;
+  return parseWranglerOutput(KvCreateResultSchema, result.stdout, "KV create");
 }
 
 export async function createD1(name: string): Promise<{ uuid: string }> {
   const result = await wrangler(["d1", "create", name]);
   const match = result.stdout.match(/database_id\s*=\s*"([a-f0-9-]+)"/i);
   if (!match) {
-    const parsed = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))) as {
-      uuid?: string;
-      database_id?: string;
-    };
+    const parsed = parseWranglerOutput(
+      D1CreateResultSchema,
+      result.stdout.slice(result.stdout.indexOf("{")),
+      "D1 create",
+    );
     return { uuid: parsed.uuid ?? parsed.database_id ?? "" };
   }
   return { uuid: match[1] };
@@ -113,9 +130,7 @@ export async function listSecrets(options?: {
     const args = ["secret", "list", "--format", "json"];
     if (options?.workerName) args.push("--name", options.workerName);
     const result = await wrangler(args, options);
-    const parsed = JSON.parse(result.stdout) as {
-      result?: { secrets?: Array<{ name: string }> };
-    };
+    const parsed = parseWranglerOutput(SecretListResultSchema, result.stdout, "secret list");
     if (parsed.result?.secrets) {
       return parsed.result.secrets.map((s) => s.name);
     }

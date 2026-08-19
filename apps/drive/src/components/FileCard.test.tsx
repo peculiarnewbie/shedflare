@@ -134,7 +134,9 @@ describe("FileCard", () => {
         <FileCard file={baseFile} />
       </TestDriveProvider>
     ));
-    fireEvent.click(container.querySelector("article")!);
+    const article = container.querySelector("article");
+    if (!article) throw new Error("Expected the file card article to render");
+    fireEvent.click(article);
     expect(selectedId).toBe("file-1");
   });
 
@@ -152,7 +154,8 @@ describe("FileCard", () => {
         <FileCard file={baseFile} />
       </TestDriveProvider>
     ));
-    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (!checkbox) throw new Error("Expected the file selection checkbox to render");
     fireEvent.click(checkbox);
     expect(toggledId).toBe("file-1");
   });

@@ -1,3 +1,4 @@
+import { type ExternalValue } from "#/domain";
 import { getRuntimeEnv, getSyncStub, requireSession, type AppEnv } from "#/runtime";
 
 export const CHAT_BACKUP_LATEST_KEY = "backups/chat/latest.json.gz";
@@ -49,7 +50,7 @@ export function selectExpiredChatBackupKeys(keys: string[], now: Date): string[]
   });
 }
 
-async function gzipJson(value: unknown): Promise<ArrayBuffer> {
+async function gzipJson(value: ExternalValue): Promise<ArrayBuffer> {
   const stream = new Blob([JSON.stringify(value)])
     .stream()
     .pipeThrough(new CompressionStream("gzip"));
@@ -91,7 +92,7 @@ export async function createChatBackup(
     throw new Error(`Backup export failed: ${response.status} ${await response.text()}`);
   }
 
-  const backup = await response.json();
+  const backup: ExternalValue = await response.json();
   const gzipped = await gzipJson(backup);
   const httpMetadata = { contentType: "application/json", contentEncoding: "gzip" };
   const customMetadata = { createdAt, app: "chat" };
@@ -112,6 +113,7 @@ export async function createChatBackup(
 
 export async function handleChatBackup(request: Request): Promise<Response> {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  // SAFETY: This route is installed only in the Chat worker, whose binding contract extends AppEnv.
   const env = getRuntimeEnv() as ChatBackupEnv;
   await requireSession(request, env, { refresh: false });
   return Response.json(await createChatBackup(env));

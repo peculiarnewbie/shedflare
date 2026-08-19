@@ -1,5 +1,6 @@
 import { createSelectSchema, createInsertSchema } from "drizzle-orm/effect-schema";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 import * as schema from "../db/schema";
 import {
   AccountIdSchema,
@@ -30,15 +31,11 @@ export const SettingSchema = createSelectSchema(schema.settings);
 export const NoteSchema = createSelectSchema(schema.notes);
 
 // Command input schemas (derive from Drizzle insert, strip server-managed fields)
-function omitFields<T extends Schema.Struct<any>>(
-  struct: T,
-  ...keys: Array<keyof T["fields"]>
-): Schema.Struct<Omit<T["fields"], (typeof keys)[number]>> {
-  const { ...all } = struct.fields;
-  for (const key of keys) {
-    delete (all as any)[key];
-  }
-  return Schema.Struct(all as any) as any;
+function omitFields<
+  const Fields extends Schema.Struct.Fields,
+  const Keys extends ReadonlyArray<keyof Fields>,
+>(struct: Schema.Struct<Fields>, ...keys: Keys) {
+  return struct.mapFields(Struct.omit(keys));
 }
 
 export const TransactionInput = omitFields(
@@ -374,7 +371,7 @@ export const ReportsBudgetAnalysisResponseSchema = Schema.Struct({
 });
 
 export const ReportsAgeOfMoneyResponseSchema = Schema.Struct({
-  days: Schema.Number,
+  days: Schema.NullOr(Schema.Number),
 });
 
 export const ReportsCrossoverResponseSchema = CrossoverSchema;
@@ -428,7 +425,10 @@ export const SettingsResponseSchema = Schema.Struct({
 });
 
 export const CommandResponseSchema = Schema.Union([
-  Schema.Struct({ ok: Schema.Literal(true), data: Schema.Record(Schema.String, Schema.Unknown) }),
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    data: Schema.Struct({ id: Schema.optional(Schema.String) }),
+  }),
   Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
 ]);
 

@@ -1,4 +1,4 @@
-import type { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
+import type { DataAccess as SyncDataAccess, SqlRow } from "@shedflare/sync-protocol";
 import { type EffectDatabase } from "./effect-database";
 
 // ---------------------------------------------------------------------------
@@ -34,11 +34,11 @@ export class DataAccess {
     return this.database.runSync(this.sql.exec(query, ...params));
   }
 
-  queryOne<T extends Record<string, unknown>>(query: string, ...params: unknown[]) {
+  queryOne<T extends SqlRow>(query: string, ...params: unknown[]) {
     return this.database.runSync(this.sql.queryOne<T>(query, ...params));
   }
 
-  queryAll<T extends Record<string, unknown>>(query: string, ...params: unknown[]) {
+  queryAll<T extends SqlRow>(query: string, ...params: unknown[]) {
     return this.database.runSync(this.sql.queryAll<T>(query, ...params));
   }
 

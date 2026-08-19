@@ -14,7 +14,8 @@
   },
   "scripts": {
     "check": "vp check src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "vp check --no-fmt --no-lint",
+    "test": "vp test"
   },
   "dependencies": {
     "effect": "catalog:"

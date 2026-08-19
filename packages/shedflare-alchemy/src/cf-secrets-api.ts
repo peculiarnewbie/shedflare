@@ -1,4 +1,16 @@
 import * as Redacted from "effect/Redacted";
+import {
+  array,
+  boolean,
+  literal,
+  object,
+  optional,
+  safeParse,
+  string,
+  unknown,
+  type GenericSchema,
+  type InferOutput,
+} from "valibot";
 
 /** Minimal credential shape from Alchemy's Cloudflare auth (avoids deep import paths). */
 export type CfCredentials =
@@ -23,9 +35,13 @@ const API_BASE = "https://api.cloudflare.com/client/v4";
 
 export class CfApiError extends Error {
   readonly status: number;
-  readonly errors?: unknown[];
+  readonly errors?: ReadonlyArray<{ readonly message: string }>;
 
-  constructor(message: string, status: number, errors?: unknown[]) {
+  constructor(
+    message: string,
+    status: number,
+    errors?: ReadonlyArray<{ readonly message: string }>,
+  ) {
     super(message);
     this.name = "CfApiError";
     this.status = status;
@@ -33,7 +49,7 @@ export class CfApiError extends Error {
   }
 }
 
-export function cfAuthHeaders(credentials: CfCredentials): Record<string, string> {
+export function cfAuthHeaders(credentials: CfCredentials) {
   switch (credentials.type) {
     case "oauth":
       return { Authorization: `Bearer ${Redacted.value(credentials.accessToken)}` };
@@ -47,32 +63,53 @@ export function cfAuthHeaders(credentials: CfCredentials): Record<string, string
   }
 }
 
-interface CfResponse<T> {
-  success: boolean;
-  result: T;
-  errors?: Array<{ message: string }>;
+const CfErrorSchema = object({ message: string() });
+
+type WorkerSecretRequest =
+  | { readonly name: string }
+  | { readonly name: string; readonly text: string; readonly type: "secret_text" };
+
+function cfResponseSchema<ResultSchema extends GenericSchema>(result: ResultSchema) {
+  return object({
+    success: literal(true),
+    result,
+    errors: optional(array(CfErrorSchema)),
+  });
 }
 
-async function cfRequest<T>(
+const CfFailureSchema = object({
+  success: boolean(),
+  errors: optional(array(CfErrorSchema)),
+});
+
+async function cfRequest<ResultSchema extends GenericSchema>(
   credentials: CfCredentials,
   method: string,
   path: string,
-  body?: unknown,
-): Promise<T> {
+  resultSchema: ResultSchema,
+  body?: WorkerSecretRequest,
+): Promise<InferOutput<ResultSchema>> {
+  const headers = new Headers(cfAuthHeaders(credentials));
+  if (body !== undefined) headers.set("Content-Type", "application/json");
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: {
-      ...cfAuthHeaders(credentials),
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const json = (await response.json()) as CfResponse<T>;
-  if (!response.ok || !json.success) {
-    throw new CfApiError(`Cloudflare API ${method} ${path} failed`, response.status, json.errors);
+  const jsonBody: unknown = await response.json().catch(() => null);
+  const success = safeParse(cfResponseSchema(resultSchema), jsonBody);
+  if (response.ok && success.success) return success.output.result;
+
+  const failure = safeParse(CfFailureSchema, jsonBody);
+  if (failure.success) {
+    throw new CfApiError(
+      `Cloudflare API ${method} ${path} failed`,
+      response.status,
+      failure.output.errors,
+    );
   }
-  return json.result;
+  throw new CfApiError(`Cloudflare API ${method} ${path} returned invalid JSON`, response.status);
 }
 
 export async function listWorkerSecretNames(
@@ -80,10 +117,11 @@ export async function listWorkerSecretNames(
   accountId: string,
   workerName: string,
 ): Promise<string[]> {
-  const secrets = await cfRequest<Array<{ name: string }>>(
+  const secrets = await cfRequest(
     credentials,
     "GET",
     `/accounts/${accountId}/workers/scripts/${encodeURIComponent(workerName)}/secrets`,
+    array(object({ name: string() })),
   );
   return secrets.map((s) => s.name).sort();
 }
@@ -99,6 +137,7 @@ export async function putWorkerSecret(
     credentials,
     "PUT",
     `/accounts/${accountId}/workers/scripts/${encodeURIComponent(workerName)}/secrets`,
+    unknown(),
     { name: binding, text: value, type: "secret_text" },
   );
 }
@@ -114,6 +153,7 @@ export async function deleteWorkerSecret(
       credentials,
       "DELETE",
       `/accounts/${accountId}/workers/scripts/${encodeURIComponent(workerName)}/secrets`,
+      unknown(),
       { name: binding },
     );
   } catch (error) {

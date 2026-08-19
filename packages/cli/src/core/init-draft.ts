@@ -40,11 +40,11 @@ export function createDraft(inputs: InitOptions): InitDraft {
 
   if (inputs.apps) {
     const raw = inputs.apps.split(",").map((s) => s.trim());
-    const unknown = raw.filter((a) => !(APP_IDS as readonly string[]).includes(a));
+    const unknown = raw.filter((appId) => !isAppId(appId));
     if (unknown.length > 0) {
       throw new Error(`Unknown app(s): ${unknown.join(", ")}. Valid apps: ${APP_IDS.join(", ")}`);
     }
-    selectedApps = raw as AppId[];
+    selectedApps = raw.filter(isAppId);
   } else {
     selectedApps = [...APP_IDS];
   }
@@ -130,7 +130,8 @@ export function createPlan(draft: InitDraft, manifests: Record<string, AppManife
 
     const secrets = manifests[appId].secrets ?? {};
     const appSecrets: Record<string, string> = {};
-    for (const key of Object.keys(secrets)) {
+    for (const [key, definition] of Object.entries(secrets)) {
+      if (definition.source === "generated") continue;
       appSecrets[key] = draft.secrets[appId]?.[key] ?? "";
     }
     resolvedSecrets[appId] = appSecrets;

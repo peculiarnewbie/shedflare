@@ -1,4 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
+import type { JsonObject } from "#/domain";
 
 export type TraceDrawerSpan = {
   id: string;
@@ -6,8 +7,8 @@ export type TraceDrawerSpan = {
   status: string;
   durationMs: number | null;
   errorMessage?: string | null;
-  attrs: Record<string, unknown>;
-  events: Record<string, unknown>[];
+  attrs: JsonObject;
+  events: JsonObject[];
   children: TraceDrawerSpan[];
 };
 
@@ -17,7 +18,7 @@ export type TraceDrawerTrace = {
   modelId: string | null | undefined;
   durationMs: number | null;
   errorMessage: string | null | undefined;
-  attrs: Record<string, unknown>;
+  attrs: JsonObject;
   spans: TraceDrawerSpan[];
   copyText: string;
 };

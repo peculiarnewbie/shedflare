@@ -68,7 +68,7 @@ export function getProviderModelOptions(
       overrideReason,
       modelOptions: {
         thinking: {
-          type: effectiveReasoningLevel === "off" ? ("disabled" as const) : ("enabled" as const),
+          type: effectiveReasoningLevel === "off" ? "disabled" : "enabled",
         },
       },
     };
@@ -80,10 +80,7 @@ export function getProviderModelOptions(
       overrideReason,
       modelOptions: {
         reasoning: {
-          effort:
-            effectiveReasoningLevel === "off"
-              ? ("none" as const)
-              : (effectiveReasoningLevel as "low" | "medium" | "high"),
+          effort: effectiveReasoningLevel === "off" ? "none" : effectiveReasoningLevel,
         },
       },
     };
@@ -94,10 +91,7 @@ export function getProviderModelOptions(
       effectiveReasoningLevel,
       overrideReason,
       modelOptions: {
-        reasoning_effort:
-          effectiveReasoningLevel === "off"
-            ? ("none" as const)
-            : (effectiveReasoningLevel as "low" | "medium" | "high"),
+        reasoning_effort: effectiveReasoningLevel === "off" ? "none" : effectiveReasoningLevel,
       },
     };
   }

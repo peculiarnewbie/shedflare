@@ -1,28 +1,31 @@
 import { describe, expect, test, beforeEach, vi } from "vite-plus/test";
-import { dispatch } from "./pending-ops";
+import { dispatch, requireCommandId } from "./pending-ops";
 import { undoStack, redoStack } from "./undo-stack";
 
-type FetchMock = ReturnType<typeof vi.fn>;
-interface GlobalWithFetch {
-  fetch: FetchMock;
+interface MockCommandData {
+  id?: string;
 }
-const g = globalThis as unknown as GlobalWithFetch;
 
-function mockFetchOk(data: unknown = {}) {
-  g.fetch = vi.fn(
-    async () => new Response(JSON.stringify({ ok: true, data }), { status: 200 }),
-  ) as FetchMock;
+function mockFetchOk(data: MockCommandData = {}) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ ok: true, data }), { status: 200 })),
+  );
 }
 
 function mockFetchError(error: string) {
-  g.fetch = vi.fn(
-    async () => new Response(JSON.stringify({ ok: false, error }), { status: 200 }),
-  ) as FetchMock;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ ok: false, error }), { status: 200 })),
+  );
 }
 
 describe("dispatch", () => {
   beforeEach(() => {
-    g.fetch = vi.fn(async () => new Response("{}", { status: 500 })) as FetchMock;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 500 })),
+    );
   });
 
   test("returns an opId and resolves on success", async () => {
@@ -74,7 +77,7 @@ describe("dispatch", () => {
           label: "undo",
           inverse: (data) => ({
             commandType: "delete_account",
-            payload: { id: (data as { id: string }).id },
+            payload: { id: requireCommandId(data) },
           }),
         },
       },

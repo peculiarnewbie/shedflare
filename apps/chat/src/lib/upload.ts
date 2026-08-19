@@ -1,4 +1,5 @@
 import { authFetch } from "./auth-fetch";
+import * as Schema from "effect/Schema";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -31,35 +32,26 @@ export type UploadResult = {
   previewUrl?: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const PresignResponseSchema = Schema.Struct({
+  attachment: Schema.Struct({
+    id: Schema.String,
+    threadId: Schema.String,
+    messageId: Schema.NullOr(Schema.String),
+    objectKey: Schema.String,
+    fileName: Schema.String,
+    mimeType: Schema.String,
+    sizeBytes: Schema.Number,
+    status: Schema.Literals(["ready", "queued", "uploading"]),
+  }),
+  uploadUrl: Schema.String,
+});
 
-function decodeAttachment(value: unknown): UploadResult["attachment"] | null {
-  if (!isRecord(value)) return null;
-  if (
-    typeof value.id !== "string" ||
-    typeof value.threadId !== "string" ||
-    (value.messageId !== null && typeof value.messageId !== "string") ||
-    typeof value.objectKey !== "string" ||
-    typeof value.fileName !== "string" ||
-    typeof value.mimeType !== "string" ||
-    typeof value.sizeBytes !== "number" ||
-    typeof value.status !== "string" ||
-    !["ready", "queued", "uploading"].includes(value.status)
-  ) {
+function decodePresignResponse(value: Parameters<ReturnType<typeof Schema.decodeUnknownSync>>[0]) {
+  try {
+    return Schema.decodeUnknownSync(PresignResponseSchema)(value);
+  } catch {
     return null;
   }
-  return value as UploadResult["attachment"];
-}
-
-function decodePresignResponse(
-  value: unknown,
-): { attachment: UploadResult["attachment"]; uploadUrl: string } | null {
-  if (!isRecord(value) || typeof value.uploadUrl !== "string") return null;
-  const attachment = decodeAttachment(value.attachment);
-  if (!attachment) return null;
-  return { attachment, uploadUrl: value.uploadUrl };
 }
 
 export async function uploadFile(
@@ -105,7 +97,7 @@ export async function uploadFile(
   const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
 
   return {
-    attachment: { ...attachment, status: "ready" as const },
+    attachment: { ...attachment, status: "ready" },
     previewUrl,
   };
 }

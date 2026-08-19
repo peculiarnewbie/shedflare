@@ -33,7 +33,7 @@ describe("createAccount", () => {
     expect(acc.mask).toBeNull();
     expect(acc.officialName).toBeNull();
     expect(acc.lastReconciled).toBeNull();
-    expect(typeof acc.createdAt).toBe("string");
+    expect(Number.isNaN(Date.parse(acc.createdAt))).toBe(false);
     expect(acc.createdAt).toBe(acc.updatedAt);
   });
 

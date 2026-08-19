@@ -1,16 +1,17 @@
 import { Cause, Effect } from "effect";
+import * as Schema from "effect/Schema";
 import { DataAccess } from "./data-access";
 import { SyncDecodeError, SyncStorageError, UnknownSyncCommandError } from "./errors";
 import { HandlerRegistry } from "./handler-registry";
 import type {
-  SyncClientEnvelope,
   SyncClientHello,
+  SyncClientCommand,
   SyncServerAck,
   SyncServerEnvelope,
   SyncServerEvent,
   SyncSnapshot,
 } from "./sync-types";
-import { isWebSocketRequest, json, nowIso, parseJson } from "./sync-utils";
+import { decodeSyncClientEnvelope, isWebSocketRequest, json, nowIso } from "./sync-utils";
 
 export type HandlerContext<Env> = {
   access: DataAccess;
@@ -21,6 +22,14 @@ type CommandResult = {
   ack: SyncServerAck | null;
   events: SyncServerEvent[];
 };
+
+const CommandPayloadRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
+
+const InternalCommandSchema = Schema.Struct({
+  opId: Schema.String,
+  commandType: Schema.String,
+  payload: Schema.optional(Schema.Unknown),
+});
 
 export abstract class SyncEngineDO<Env> {
   protected ctx: DurableObjectState;
@@ -74,11 +83,8 @@ export abstract class SyncEngineDO<Env> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const program = Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
-      const text = typeof message === "string" ? message : new TextDecoder().decode(message);
-      const envelope = yield* Effect.try({
-        try: () => parseJson<SyncClientEnvelope>(text),
-        catch: (cause) => new SyncDecodeError({ target: "clientEnvelope", cause }),
-      });
+      const text = message instanceof ArrayBuffer ? new TextDecoder().decode(message) : message;
+      const envelope = yield* decodeSyncClientEnvelope(text);
 
       switch (envelope.type) {
         case "hello":
@@ -205,7 +211,7 @@ export abstract class SyncEngineDO<Env> {
   protected processCommandEffect(
     opId: string,
     commandType: string,
-    payload: unknown,
+    payload: SyncClientCommand["payload"],
     doBroadcast: boolean,
   ) {
     return Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
@@ -218,10 +224,9 @@ export abstract class SyncEngineDO<Env> {
 
       const result = yield* this.executeTransaction(
         Effect.gen({ self: this }, function* (this: SyncEngineDO<Env>) {
-          const commandPayload =
-            payload && typeof payload === "object"
-              ? { ...(payload as Record<string, unknown>), commandType }
-              : payload;
+          const commandPayload = Schema.is(CommandPayloadRecordSchema)(payload)
+            ? { ...payload, commandType }
+            : payload;
           const handled = yield* handler(opId, commandPayload, {
             access: this.access,
             env: this.env,
@@ -292,18 +297,13 @@ export abstract class SyncEngineDO<Env> {
       try: () => request.json(),
       catch: (cause) => new SyncDecodeError({ target: "internalCommand", cause }),
     }).pipe(
-      Effect.catch(() => Effect.succeed(null)),
-      Effect.flatMap((value) => {
-        const body =
-          value && typeof value === "object" && !Array.isArray(value)
-            ? (value as Record<string, unknown>)
-            : null;
-        if (!body || typeof body.opId !== "string" || typeof body.commandType !== "string") {
-          return Effect.succeed(new Response("Invalid command body", { status: 400 }));
-        }
-        return this.processCommandEffect(body.opId, body.commandType, body.payload, true).pipe(
-          Effect.map((result) => Response.json({ ok: true, ack: result.ack })),
-        );
+      Effect.flatMap(Schema.decodeUnknownEffect(InternalCommandSchema)),
+      Effect.matchEffect({
+        onFailure: () => Effect.succeed(new Response("Invalid command body", { status: 400 })),
+        onSuccess: (body) =>
+          this.processCommandEffect(body.opId, body.commandType, body.payload, true).pipe(
+            Effect.map((result) => Response.json({ ok: true, ack: result.ack })),
+          ),
       }),
     );
   }

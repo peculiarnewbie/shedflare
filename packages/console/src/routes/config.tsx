@@ -1,7 +1,7 @@
 import { For, createEffect, createResource, createSignal } from "solid-js";
 import { apiGet, apiPatch } from "../lib/api";
 import { editableVars, hiddenSensitiveVarNames } from "../lib/config-vars";
-import type { ShedflareConfig } from "../api/types";
+import { ConfigResponseSchema, type ShedflareConfig } from "../api/types";
 
 function appVars(config: ShedflareConfig, appId: string): Record<string, string> | undefined {
   return config.configVersion === 1 ? config.vars[appId] : config.apps[appId]?.vars;
@@ -21,8 +21,12 @@ function varsToText(vars: Record<string, string> | undefined): string {
     .join("\n");
 }
 
-function varsFromText(text: string): Record<string, string> {
-  const vars: Record<string, string> = {};
+interface EnvVars {
+  [name: string]: string;
+}
+
+function varsFromText(text: string): EnvVars {
+  const vars: EnvVars = {};
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
@@ -44,7 +48,7 @@ export default function ConfigPage() {
   const [saving, setSaving] = createSignal(false);
   const [message, setMessage] = createSignal<string | null>(null);
   const [configRes, { refetch }] = createResource(() =>
-    apiGet<{ config: ShedflareConfig | null; configPath: string }>("/api/config"),
+    apiGet("/api/config", ConfigResponseSchema),
   );
 
   const [domain, setDomain] = createSignal("");

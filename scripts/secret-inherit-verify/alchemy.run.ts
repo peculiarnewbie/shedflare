@@ -18,25 +18,26 @@ export default Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const includeSecret = process.env.SHEDFLARE_VERIFY_INCLUDE_SECRET === "1";
 
-    const env: Record<string, string | Redacted.Redacted<string>> = {
-      PLAIN: "pattern-b-verify",
-    };
-    if (includeSecret) {
-      env.TEST_SECRET = Redacted.make(
-        process.env.TEST_SECRET ?? "shedflare-pattern-b-verify-secret",
-      );
-    }
-
-    const worker = yield* Cloudflare.Worker("VerifyWorker", {
-      name: physicalName(stage, "secret-verify"),
-      main: "scripts/secret-inherit-verify/worker.ts",
-      compatibility: {
-        date: "2026-03-22",
-        flags: ["nodejs_compat"],
-      },
-      env,
-      url: true,
-    });
+    const worker = includeSecret
+      ? yield* Cloudflare.Worker("VerifyWorker", {
+          name: physicalName(stage, "secret-verify"),
+          main: "scripts/secret-inherit-verify/worker.ts",
+          compatibility: { date: "2026-03-22", flags: ["nodejs_compat"] },
+          env: {
+            PLAIN: "pattern-b-verify",
+            TEST_SECRET: Redacted.make(
+              process.env.TEST_SECRET ?? "shedflare-pattern-b-verify-secret",
+            ),
+          },
+          url: true,
+        })
+      : yield* Cloudflare.Worker("VerifyWorker", {
+          name: physicalName(stage, "secret-verify"),
+          main: "scripts/secret-inherit-verify/worker.ts",
+          compatibility: { date: "2026-03-22", flags: ["nodejs_compat"] },
+          env: { PLAIN: "pattern-b-verify" },
+          url: true,
+        });
 
     return {
       workerName: worker.workerName,

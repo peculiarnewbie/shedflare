@@ -32,7 +32,7 @@ function notifyListeners() {
   for (const listener of listeners) listener();
 }
 
-function toSettingsMap(response: SettingsResponse): SettingsMap {
+function toSettingsMap(response: SettingsResponse) {
   const map: SettingsMap = {};
   for (const setting of response.settings) {
     map[setting.key] = setting.value;
@@ -47,7 +47,7 @@ const [settingsMap, setSettingsMap] = createSignal<SettingsMap>(readStorage());
 export function loadSettings() {
   fetch("/api/settings")
     .then((r) => r.json())
-    .then((data: unknown) => {
+    .then((data) => {
       const map = toSettingsMap(decodeSettings(data));
       setSettingsMap(map);
       writeStorage(map);

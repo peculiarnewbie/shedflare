@@ -1,6 +1,11 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { undo } from "../lib/undo-stack";
-import { OPERATION_FEEDBACK_EVENT, type OperationFeedback } from "../lib/operation-feedback";
+import {
+  OPERATION_FEEDBACK_EVENT,
+  OperationFeedbackSchema,
+  type OperationFeedback,
+} from "../lib/operation-feedback";
+import * as Schema from "effect/Schema";
 
 type Toast = OperationFeedback & { id: string };
 
@@ -27,7 +32,7 @@ export default function ToastCenter() {
   onMount(() => {
     const listener = (event: Event) => {
       if (!(event instanceof CustomEvent)) return;
-      addToast(event.detail as OperationFeedback);
+      addToast(Schema.decodeUnknownSync(OperationFeedbackSchema)(event.detail));
     };
     window.addEventListener(OPERATION_FEEDBACK_EVENT, listener);
     onCleanup(() => {

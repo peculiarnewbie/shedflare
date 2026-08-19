@@ -1,40 +1,60 @@
 import {
   createId,
+  decodeCommandInvocation,
+  isSyncCommandType,
   nowIso,
   type PendingSyncOp,
   type SyncClientCommand,
   type SyncCommandPayloadMap,
   type SyncCommandType,
 } from "#/domain";
+import * as Schema from "effect/Schema";
 
 const PENDING_OPS_KEY = "shedflare.pendingOps";
-
-function readJson<T>(key: string, fallback: T): T {
-  if (typeof localStorage === "undefined") return fallback;
-  const raw = localStorage.getItem(key);
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    console.warn("[pending-ops] failed to parse localStorage value for", key);
-    return fallback;
-  }
-}
 
 type TrackedOp = PendingSyncOp & {
   resolve: () => void;
   reject: (reason: string) => void;
 };
 
-const ops = new Map<string, TrackedOp>(
-  Object.entries(readJson<Record<string, PendingSyncOp>>(PENDING_OPS_KEY, {})).map(([key, op]) => [
-    key,
-    { ...op, resolve: () => {}, reject: () => {} },
-  ]),
+const StoredPendingOpsSchema = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    opId: Schema.String,
+    clientTs: Schema.String,
+    commandType: Schema.String,
+    payload: Schema.Any,
+  }),
 );
 
+function readPendingOps() {
+  const restored = new Map<string, TrackedOp>();
+  if (!globalThis.localStorage) return restored;
+  const raw = localStorage.getItem(PENDING_OPS_KEY);
+  if (!raw) return restored;
+  try {
+    const stored = Schema.decodeUnknownSync(StoredPendingOpsSchema)(JSON.parse(raw));
+    for (const [key, op] of Object.entries(stored)) {
+      if (!isSyncCommandType(op.commandType)) continue;
+      const invocation = decodeCommandInvocation(op.commandType, op.payload);
+      restored.set(key, {
+        opId: op.opId,
+        clientTs: op.clientTs,
+        ...invocation,
+        resolve: () => {},
+        reject: () => {},
+      });
+    }
+  } catch {
+    console.warn("[pending-ops] failed to parse persisted operations");
+  }
+  return restored;
+}
+
+const ops = readPendingOps();
+
 function persist() {
-  if (typeof localStorage === "undefined") return;
+  if (!globalThis.localStorage) return;
   const plain: Record<string, PendingSyncOp> = {};
   for (const [key, op] of ops) {
     plain[key] = {
@@ -48,9 +68,10 @@ function persist() {
 }
 
 /** Send function, set by ws-connection after init. */
-let sendFn: ((msg: object) => void) | null = null;
+type SyncCommandSender = (message: SyncClientCommand) => void;
+let sendFn: SyncCommandSender | null = null;
 
-export function setSendFn(fn: (msg: object) => void) {
+export function setSendFn(fn: SyncCommandSender) {
   sendFn = fn;
 }
 
@@ -73,7 +94,7 @@ export function dispatch<T extends SyncCommandType>(
   commandType: T,
   payload: SyncCommandPayloadMap[T],
   options?: { opId?: string },
-): { opId: string; promise: Promise<void> } {
+) {
   const opId = options?.opId ?? createId("op");
   const op: PendingSyncOp = {
     opId,
@@ -81,13 +102,13 @@ export function dispatch<T extends SyncCommandType>(
     commandType,
     payload,
   };
-  let resolve: () => void;
-  let reject: (reason: string) => void;
+  let resolve = () => {};
+  let reject = (_reason: string) => {};
   const promise = new Promise<void>((res, rej) => {
     resolve = res;
     reject = (reason: string) => rej(new Error(reason));
   });
-  ops.set(opId, { ...op, resolve: resolve!, reject: reject! });
+  ops.set(opId, { ...op, resolve, reject });
   persist();
   sendOp(op);
   return { opId, promise };

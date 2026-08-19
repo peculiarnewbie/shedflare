@@ -1,5 +1,12 @@
 import { toolDefinition } from "@tanstack/ai";
-import { createExtractRun, MAX_BROWSER_RENDERS_PER_TURN, type ExtractRun } from "#/domain";
+import { toStandardJsonSchema } from "@valibot/to-json-schema";
+import * as v from "valibot";
+import {
+  createExtractRun,
+  MAX_BROWSER_RENDERS_PER_TURN,
+  type ExtractRun,
+  type JsonObject,
+} from "#/domain";
 import {
   BrowserRenderError,
   cloudflareBrowserMarkdown,
@@ -37,16 +44,20 @@ type ExtractToolResult =
       hint: string;
     };
 
-const RENDER_ERROR_CLASSIFICATIONS: Record<
-  string,
-  {
-    reason: Exclude<
-      (ExtractToolResult & { ok: false })["reason"],
-      "invalid_url" | "duplicate_url" | "max_extracts_reached"
-    >;
-    hint: string;
-  }
-> = {
+type RenderFailureReason = Exclude<
+  (ExtractToolResult & { ok: false })["reason"],
+  "invalid_url" | "duplicate_url" | "max_extracts_reached"
+>;
+type RenderErrorClassification = { reason: RenderFailureReason; hint: string };
+type ClassifiedRenderError = RenderErrorClassification & { message: string };
+type CaughtError = Parameters<typeof String>[0];
+
+const ExtractToolArgsSchema = v.strictObject({
+  url: v.pipe(v.string(), v.minLength(4), v.maxLength(2048)),
+});
+const extractToolInputSchema = toStandardJsonSchema(ExtractToolArgsSchema);
+
+const RENDER_ERROR_CLASSIFICATIONS = {
   not_configured: {
     reason: "not_configured",
     hint: "The extract tool is not configured in this deployment. Answer without extracting.",
@@ -79,18 +90,11 @@ const RENDER_ERROR_CLASSIFICATIONS: Record<
     reason: "extract_http",
     hint: "The URL is malformed. Pass a full http(s) URL.",
   },
-};
+} satisfies Record<BrowserRenderError["reason"], RenderErrorClassification>;
 
 const RENDER_ERROR_UNKNOWN_HINT = "Unknown Browser Rendering error. Do not retry more than once.";
 
-function classifyRenderError(error: unknown): {
-  reason: Exclude<
-    (ExtractToolResult & { ok: false })["reason"],
-    "invalid_url" | "duplicate_url" | "max_extracts_reached"
-  >;
-  message: string;
-  hint: string;
-} {
+function classifyRenderError(error: CaughtError): ClassifiedRenderError {
   if (error instanceof BrowserRenderError) {
     const classification = RENDER_ERROR_CLASSIFICATIONS[error.reason] ?? {
       reason: "extract_unknown" as const,
@@ -153,8 +157,8 @@ export function createBrowserExtractTool(input: {
    * wants.
    */
   signal?: AbortSignal;
-  log?: (event: string, details?: Record<string, unknown>) => void;
-  trace?: <A>(name: string, attrs: Record<string, unknown>, run: () => Promise<A>) => Promise<A>;
+  log?: (event: string, details?: JsonObject) => void;
+  trace?: <A>(name: string, attrs: JsonObject, run: () => Promise<A>) => Promise<A>;
   onProgress?: (event: ToolProgressEvent) => void | Promise<void>;
   /**
    * Called whenever `state.extractRuns` changes (after the active row is
@@ -175,8 +179,7 @@ export function createBrowserExtractTool(input: {
 }) {
   const state: ExtractToolState = { extractRuns: [] };
   const urlCache = new Map<string, ExtractToolResult & { ok: true }>();
-  const trace =
-    input.trace ?? ((_: string, __: Record<string, unknown>, run: () => Promise<any>) => run());
+  const trace = input.trace ?? (<A>(_: string, __: JsonObject, run: () => Promise<A>) => run());
   const extract = input.extract ?? cloudflareBrowserMarkdown;
 
   /**
@@ -202,21 +205,19 @@ export function createBrowserExtractTool(input: {
       "",
       `Budget: at most ${MAX_BROWSER_RENDERS_PER_TURN} browser renders per assistant turn. The response is capped to the first ~12k characters; do not re-extract the same URL.`,
     ].join("\n"),
-    inputSchema: {
-      type: "object",
-      properties: {
-        url: {
-          type: "string",
-          description:
-            "Absolute http(s) URL of the page to extract. Must be a specific article/document URL, not a bare domain.",
-          minLength: 4,
-          maxLength: 2048,
-        },
-      },
-      required: ["url"],
-      additionalProperties: false,
-    },
-  }).server(async (args: any): Promise<ExtractToolResult> => {
+    inputSchema: extractToolInputSchema,
+  }).server(async (value): Promise<ExtractToolResult> => {
+    const decoded = v.safeParse(ExtractToolArgsSchema, value);
+    if (!decoded.success) {
+      return {
+        ok: false,
+        url: "",
+        error: `Invalid extract arguments: ${decoded.issues.map((issue) => issue.message).join("; ")}`,
+        reason: "invalid_url",
+        hint: "Pass one absolute http(s) article or document URL.",
+      };
+    }
+    const args = decoded.output;
     // Guard -1: the user already pressed Stop. The model may still be
     // emitting queued tool_calls from before the abort arrived; short-
     // circuit them instead of kicking off a Browser Rendering session we
@@ -225,13 +226,13 @@ export function createBrowserExtractTool(input: {
     if (input.signal?.aborted) {
       return {
         ok: false,
-        url: typeof args?.url === "string" ? args.url : "",
+        url: args.url,
         error: "Request was cancelled.",
         reason: "extract_unknown",
         hint: "The user cancelled the turn; do not retry.",
       };
     }
-    const rawUrl = typeof args?.url === "string" ? args.url : "";
+    const rawUrl = args.url ?? "";
     const parsed = normalizeExtractUrl(rawUrl);
 
     // Guard 0: invalid URL.

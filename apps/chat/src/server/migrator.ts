@@ -1,5 +1,6 @@
 import { migrate } from "drizzle-orm/effect-sqlite-do/migrator";
 import { Effect } from "effect";
+import * as Schema from "effect/Schema";
 import type { EffectDatabase } from "./effect-database";
 
 export type MigrationManifest = Record<string, string>;
@@ -37,7 +38,7 @@ function tableColumns(sql: SqlStorage, tableName: string): Set<string> {
   return new Set(
     [...sql.exec(`PRAGMA table_info(${tableName})`)]
       .map((row) => row.name)
-      .filter((name): name is string => typeof name === "string"),
+      .filter(Schema.is(Schema.String)),
   );
 }
 

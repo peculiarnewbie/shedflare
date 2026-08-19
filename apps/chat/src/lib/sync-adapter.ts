@@ -2,11 +2,11 @@ import {
   mergeAttachmentLink,
   SYNC_PROTOCOL_VERSION,
   TABLES,
-  type SyncEventPayloadMap,
+  type JsonObject,
   type SyncServerEnvelope,
   type SyncTables,
 } from "#/domain";
-import type { Workspace, Thread, Message, Attachment } from "#/domain";
+import type { Message } from "#/domain";
 import * as conn from "./ws-connection";
 import * as pendingOps from "./pending-ops";
 import { ensureActiveSelection } from "./ui-state";
@@ -26,6 +26,7 @@ import {
   getSyncWriter,
   resetCollections,
   TABLE_TO_COLLECTION,
+  type CollectionId,
 } from "./collections";
 import { reconcileDraftState } from "./draft-state";
 import { confirmOp, rollbackOp } from "./actions";
@@ -36,12 +37,12 @@ function isBusyStatus(status: Message["status"]) {
   return status === "queued" || status === "pending" || status === "streaming";
 }
 
-function debugSync(event: string, details?: Record<string, unknown>) {
+function debugSync(event: string, details?: JsonObject) {
   debugLog("sync", event, details);
 }
 
 function debugMessageSnapshot(messageId: string) {
-  const row = messages.get(messageId) as Message | undefined;
+  const row = messages.get(messageId);
   return row
     ? {
         exists: true,
@@ -69,18 +70,18 @@ function rowsById<T extends { id: string }>(rows: Iterable<T>) {
 
 function buildCachedSnapshotTables() {
   return {
-    [TABLES.workspaces]: rowsById(workspaces.state.values() as Iterable<Workspace>),
-    [TABLES.accountSettings]: rowsById(accountSettings.state.values() as Iterable<any>),
-    [TABLES.threads]: rowsById(threads.state.values() as Iterable<Thread>),
-    [TABLES.messages]: rowsById(messages.state.values() as Iterable<Message>),
-    [TABLES.messageParts]: rowsById(messageParts.state.values() as Iterable<any>),
-    [TABLES.attachments]: rowsById(attachments.state.values() as Iterable<Attachment>),
-    [TABLES.searchRuns]: rowsById(searchRuns.state.values() as Iterable<any>),
-    [TABLES.searchResults]: rowsById(searchResults.state.values() as Iterable<any>),
-    [TABLES.extractRuns]: rowsById(extractRuns.state.values() as Iterable<any>),
-    [TABLES.traceRuns]: rowsById(traceRuns.state.values() as Iterable<any>),
-    [TABLES.traceSpans]: rowsById(traceSpans.state.values() as Iterable<any>),
-    [TABLES.comparisonGroups]: rowsById(comparisonGroups.state.values() as Iterable<any>),
+    [TABLES.workspaces]: rowsById(workspaces.state.values()),
+    [TABLES.accountSettings]: rowsById(accountSettings.state.values()),
+    [TABLES.threads]: rowsById(threads.state.values()),
+    [TABLES.messages]: rowsById(messages.state.values()),
+    [TABLES.messageParts]: rowsById(messageParts.state.values()),
+    [TABLES.attachments]: rowsById(attachments.state.values()),
+    [TABLES.searchRuns]: rowsById(searchRuns.state.values()),
+    [TABLES.searchResults]: rowsById(searchResults.state.values()),
+    [TABLES.extractRuns]: rowsById(extractRuns.state.values()),
+    [TABLES.traceRuns]: rowsById(traceRuns.state.values()),
+    [TABLES.traceSpans]: rowsById(traceSpans.state.values()),
+    [TABLES.comparisonGroups]: rowsById(comparisonGroups.state.values()),
   };
 }
 
@@ -91,11 +92,10 @@ function coalesceDeltas(envelopes: EventEnvelope[]): EventEnvelope[] {
     if (
       previous?.eventType === "message_delta" &&
       envelope.eventType === "message_delta" &&
-      (previous.payload as SyncEventPayloadMap["message_delta"]).messageId ===
-        (envelope.payload as SyncEventPayloadMap["message_delta"]).messageId
+      previous.payload.messageId === envelope.payload.messageId
     ) {
-      const prev = previous.payload as SyncEventPayloadMap["message_delta"];
-      const next = envelope.payload as SyncEventPayloadMap["message_delta"];
+      const prev = previous.payload;
+      const next = envelope.payload;
       previous.serverSeq = envelope.serverSeq;
       previous.eventId = envelope.eventId;
       previous.causedByOpId = envelope.causedByOpId;
@@ -103,7 +103,7 @@ function coalesceDeltas(envelopes: EventEnvelope[]): EventEnvelope[] {
         ...prev,
         delta: `${prev.delta}${next.delta}`,
         updatedAt: next.updatedAt,
-      } as SyncEventPayloadMap[typeof previous.eventType];
+      };
       continue;
     }
     merged.push(envelope);
@@ -115,7 +115,7 @@ function coalesceDeltas(envelopes: EventEnvelope[]): EventEnvelope[] {
 // Helpers to push data through the sync writer (server-authoritative data)
 // ---------------------------------------------------------------------------
 
-const COLLECTION_MAP: Record<string, { get(key: string): unknown }> = {
+const COLLECTION_MAP = {
   workspaces,
   accountSettings,
   threads,
@@ -130,7 +130,7 @@ const COLLECTION_MAP: Record<string, { get(key: string): unknown }> = {
   comparisonGroups,
 };
 
-function hasRow(collectionId: string, key: string) {
+function hasRow(collectionId: CollectionId, key: string) {
   return Boolean(COLLECTION_MAP[collectionId]?.get(key));
 }
 
@@ -141,10 +141,10 @@ function hasRow(collectionId: string, key: string) {
 
 type BatchEntry = { type: "insert" | "update"; value: object } | { type: "delete"; key: string };
 
-let activeBatch: Map<string, BatchEntry[]> | null = null;
+let activeBatch: Map<CollectionId, BatchEntry[]> | null = null;
 
 function getPendingBatchValue<T extends { id: string }>(
-  collectionId: string,
+  collectionId: CollectionId,
   key: string,
 ): T | null {
   const ops = activeBatch?.get(collectionId);
@@ -155,6 +155,7 @@ function getPendingBatchValue<T extends { id: string }>(
       if (op.key === key) return null;
       continue;
     }
+    // SAFETY: callers request the row type owned by collectionId; batches only receive that collection's rows.
     const value = op.value as T;
     if (value.id === key) return value;
   }
@@ -165,7 +166,7 @@ function beginBatch() {
   activeBatch = new Map();
 }
 
-function pushBatchOp(collectionId: string, op: BatchEntry) {
+function pushBatchOp(collectionId: CollectionId, op: BatchEntry) {
   if (!activeBatch) {
     const writer = getSyncWriter(collectionId);
     if (!writer) return;
@@ -197,15 +198,15 @@ function flushBatch() {
   activeBatch = null;
 }
 
-function syncUpsert<T extends object>(collectionId: string, _key: string, value: T) {
+function syncUpsert<T extends object>(collectionId: CollectionId, _key: string, value: T) {
   pushBatchOp(collectionId, { type: hasRow(collectionId, _key) ? "update" : "insert", value });
 }
 
-function syncUpdate<T extends object>(collectionId: string, _key: string, value: T) {
+function syncUpdate<T extends object>(collectionId: CollectionId, _key: string, value: T) {
   pushBatchOp(collectionId, { type: "update", value });
 }
 
-function syncDelete(collectionId: string, key: string) {
+function syncDelete(collectionId: CollectionId, key: string) {
   pushBatchOp(collectionId, { type: "delete", key });
 }
 
@@ -213,21 +214,21 @@ function syncDelete(collectionId: string, key: string) {
 // Event handlers — server events → collection mutations
 // ---------------------------------------------------------------------------
 
-function applyEvent(eventType: string, payload: unknown) {
-  switch (eventType) {
+function applyEvent(envelope: EventEnvelope) {
+  switch (envelope.eventType) {
     case "workspace_upserted": {
-      const event = payload as SyncEventPayloadMap["workspace_upserted"];
+      const event = envelope.payload;
       syncUpsert("workspaces", event.row.id, event.row);
       break;
     }
     case "account_settings_upserted": {
-      const event = payload as SyncEventPayloadMap["account_settings_upserted"];
+      const event = envelope.payload;
       syncUpsert("accountSettings", event.row.id, event.row);
       break;
     }
     case "workspace_archived": {
-      const event = payload as SyncEventPayloadMap["workspace_archived"];
-      const existing = workspaces.get(event.id) as Workspace | undefined;
+      const event = envelope.payload;
+      const existing = workspaces.get(event.id);
       if (existing) {
         syncUpdate("workspaces", event.id, {
           ...existing,
@@ -238,13 +239,13 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "thread_upserted": {
-      const event = payload as SyncEventPayloadMap["thread_upserted"];
+      const event = envelope.payload;
       syncUpsert("threads", event.row.id, event.row);
       break;
     }
     case "thread_archived": {
-      const event = payload as SyncEventPayloadMap["thread_archived"];
-      const existing = threads.get(event.id) as Thread | undefined;
+      const event = envelope.payload;
+      const existing = threads.get(event.id);
       if (existing) {
         syncUpdate("threads", event.id, {
           ...existing,
@@ -255,24 +256,24 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "thread_deleted": {
-      const event = payload as SyncEventPayloadMap["thread_deleted"];
+      const event = envelope.payload;
       syncDelete("threads", event.id);
       // Remove all messages for this thread
       for (const [key, message] of messages.state.entries()) {
-        if ((message as any).threadId === event.id) {
-          syncDelete("messages", key as string);
+        if (message.threadId === event.id) {
+          syncDelete("messages", key);
         }
       }
       // Remove attachments for this thread
       for (const [key, attachment] of attachments.state.entries()) {
-        if ((attachment as any).threadId === event.id) {
-          syncDelete("attachments", key as string);
+        if (attachment.threadId === event.id) {
+          syncDelete("attachments", key);
         }
       }
       break;
     }
     case "message_upserted": {
-      const event = payload as SyncEventPayloadMap["message_upserted"];
+      const event = envelope.payload;
       if (event.row.role === "assistant" || isBusyStatus(event.row.status)) {
         debugSync("message_upserted_apply", {
           messageId: event.row.id,
@@ -285,10 +286,9 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "message_delta": {
-      const event = payload as SyncEventPayloadMap["message_delta"];
+      const event = envelope.payload;
       const existing =
-        getPendingBatchValue<Message>("messages", event.messageId) ??
-        (messages.get(event.messageId) as Message | undefined);
+        getPendingBatchValue<Message>("messages", event.messageId) ?? messages.get(event.messageId);
       if (existing) {
         // Guard: don't regress completed → streaming
         if (existing.status === "completed") {
@@ -314,10 +314,9 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "message_completed": {
-      const event = payload as SyncEventPayloadMap["message_completed"];
+      const event = envelope.payload;
       const existing =
-        getPendingBatchValue<Message>("messages", event.messageId) ??
-        (messages.get(event.messageId) as Message | undefined);
+        getPendingBatchValue<Message>("messages", event.messageId) ?? messages.get(event.messageId);
       debugSync("message_completed_apply_start", {
         messageId: event.messageId,
         incomingTextLength: event.text.length,
@@ -354,10 +353,9 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "message_failed": {
-      const event = payload as SyncEventPayloadMap["message_failed"];
+      const event = envelope.payload;
       const existing =
-        getPendingBatchValue<Message>("messages", event.messageId) ??
-        (messages.get(event.messageId) as Message | undefined);
+        getPendingBatchValue<Message>("messages", event.messageId) ?? messages.get(event.messageId);
       debugSync("message_failed_apply_start", {
         messageId: event.messageId,
         errorCode: event.errorCode,
@@ -381,31 +379,31 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "message_part_appended": {
-      const event = payload as SyncEventPayloadMap["message_part_appended"];
+      const event = envelope.payload;
       syncUpsert("messageParts", event.row.id, event.row);
       break;
     }
     case "attachment_upserted": {
-      const event = payload as SyncEventPayloadMap["attachment_upserted"];
-      const existing = attachments.get(event.row.id) as Attachment | undefined;
+      const event = envelope.payload;
+      const existing = attachments.get(event.row.id);
       const merged = mergeAttachmentLink(existing ?? null, event.row);
       syncUpsert("attachments", event.row.id, merged);
       break;
     }
     case "attachment_deleted": {
-      const event = payload as SyncEventPayloadMap["attachment_deleted"];
+      const event = envelope.payload;
       syncDelete("attachments", event.id);
       break;
     }
     case "search_runs_replaced": {
-      const event = payload as SyncEventPayloadMap["search_runs_replaced"];
+      const event = envelope.payload;
       // Delete existing runs for this message, then insert new ones
       const srWriter = getSyncWriter("searchRuns");
       if (srWriter) {
         srWriter.begin();
         for (const [key, row] of searchRuns.state.entries()) {
-          if ((row as any).messageId === event.messageId) {
-            srWriter.write({ key: key as string, type: "delete" });
+          if (row.messageId === event.messageId) {
+            srWriter.write({ key, type: "delete" });
           }
         }
         for (const row of event.rows) {
@@ -416,13 +414,13 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "search_results_replaced": {
-      const event = payload as SyncEventPayloadMap["search_results_replaced"];
+      const event = envelope.payload;
       const resWriter = getSyncWriter("searchResults");
       if (resWriter) {
         resWriter.begin();
         for (const [key, row] of searchResults.state.entries()) {
-          if ((row as any).messageId === event.messageId) {
-            resWriter.write({ key: key as string, type: "delete" });
+          if (row.messageId === event.messageId) {
+            resWriter.write({ key, type: "delete" });
           }
         }
         for (const row of event.rows) {
@@ -433,7 +431,7 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "extract_runs_replaced": {
-      const event = payload as SyncEventPayloadMap["extract_runs_replaced"];
+      const event = envelope.payload;
       // Same strategy as search_runs: fully replace this message's rows
       // rather than diff. Keeps the client in lockstep with state.extractRuns
       // on the server.
@@ -441,8 +439,8 @@ function applyEvent(eventType: string, payload: unknown) {
       if (erWriter) {
         erWriter.begin();
         for (const [key, row] of extractRuns.state.entries()) {
-          if ((row as any).messageId === event.messageId) {
-            erWriter.write({ key: key as string, type: "delete" });
+          if (row.messageId === event.messageId) {
+            erWriter.write({ key, type: "delete" });
           }
         }
         for (const row of event.rows) {
@@ -453,22 +451,22 @@ function applyEvent(eventType: string, payload: unknown) {
       break;
     }
     case "trace_run_upserted": {
-      const event = payload as SyncEventPayloadMap["trace_run_upserted"];
+      const event = envelope.payload;
       syncUpsert("traceRuns", event.row.id, event.row);
       break;
     }
     case "trace_span_upserted": {
-      const event = payload as SyncEventPayloadMap["trace_span_upserted"];
+      const event = envelope.payload;
       syncUpsert("traceSpans", event.row.id, event.row);
       break;
     }
     case "comparison_group_upserted": {
-      const event = payload as SyncEventPayloadMap["comparison_group_upserted"];
+      const event = envelope.payload;
       syncUpsert("comparisonGroups", event.row.id, event.row);
       break;
     }
     case "server_state_rebased": {
-      const event = payload as SyncEventPayloadMap["server_state_rebased"];
+      const event = envelope.payload;
       applySnapshot(event.snapshot.tables);
       break;
     }
@@ -484,13 +482,14 @@ export function applyPartialSnapshot(tables: SyncTables | undefined) {
   for (const [tableName, collectionId] of Object.entries(TABLE_TO_COLLECTION)) {
     const writer = getSyncWriter(collectionId);
     if (!writer) continue;
+    // SAFETY: TABLE_TO_COLLECTION contains only server table names represented by SyncTables.
     const rows = tables[tableName as keyof SyncTables];
     if (!rows) continue;
     writer.begin({ immediate: true });
     for (const [key, value] of Object.entries(rows)) {
       writer.write({
         type: hasRow(collectionId, key) ? "update" : "insert",
-        value: value as object,
+        value,
       });
     }
     writer.commit();
@@ -506,10 +505,11 @@ function applySnapshot(tables: SyncTables | undefined) {
     // Truncate and insert in one transaction
     writer.begin();
     writer.truncate();
+    // SAFETY: TABLE_TO_COLLECTION contains only server table names represented by SyncTables.
     const rows = tables[tableName as keyof SyncTables];
     if (rows) {
       for (const [_key, value] of Object.entries(rows)) {
-        writer.write({ type: "insert", value: value as object });
+        writer.write({ type: "insert", value });
       }
     }
     writer.commit();
@@ -521,10 +521,10 @@ function applySnapshot(tables: SyncTables | undefined) {
 // Envelope processor — called by ws-connection with batched envelopes
 // ---------------------------------------------------------------------------
 
-function collectWorkspacesAndThreads(): { workspaces: Workspace[]; threads: Thread[] } {
+function collectWorkspacesAndThreads() {
   return {
-    workspaces: [...workspaces.state.values()] as Workspace[],
-    threads: [...threads.state.values()] as Thread[],
+    workspaces: [...workspaces.state.values()],
+    threads: [...threads.state.values()],
   };
 }
 
@@ -539,8 +539,10 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
     if (envelope.type === "event") {
       // Collect consecutive events, coalesce deltas, apply
       const events: EventEnvelope[] = [];
-      while (envelopes[index]?.type === "event") {
-        events.push(envelopes[index] as EventEnvelope);
+      while (true) {
+        const candidate = envelopes[index];
+        if (candidate?.type !== "event") break;
+        events.push(candidate);
         index += 1;
       }
       const coalesced = coalesceDeltas(events);
@@ -554,7 +556,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
             causedByOpId: evt.causedByOpId ?? null,
           });
         }
-        applyEvent(evt.eventType, evt.payload);
+        applyEvent(evt);
         if (evt.eventType !== "message_delta") {
           shouldRefreshCachedSnapshot = true;
         }
@@ -562,9 +564,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
       flushBatch();
       for (const evt of coalesced) {
         if (evt.eventType === "message_completed" || evt.eventType === "message_failed") {
-          const payload = evt.payload as
-            | SyncEventPayloadMap["message_completed"]
-            | SyncEventPayloadMap["message_failed"];
+          const payload = evt.payload;
           debugSync("terminal_event_applied", {
             eventType: evt.eventType,
             serverSeq: evt.serverSeq,
@@ -624,7 +624,7 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
           pendingOps.clear();
         }
         applySnapshot(envelope.snapshot.tables);
-        if (typeof envelope.snapshot.serverSeq === "number") {
+        if (envelope.snapshot.serverSeq !== undefined) {
           conn.setLastServerSeq(envelope.snapshot.serverSeq);
         }
         needsSelectionCheck = true;
@@ -661,10 +661,9 @@ export function processEnvelopes(envelopes: SyncServerEnvelope[]) {
 
 export async function init() {
   conn.setOnEnvelopes(processEnvelopes);
-  if (typeof window !== "undefined" && isChatDebugEnabled()) {
+  if (globalThis.window && isChatDebugEnabled()) {
     window.setInterval(() => {
       const busy = [...messages.state.values()]
-        .map((message) => message as Message)
         .filter((message) => message.role === "assistant" && isBusyStatus(message.status))
         .map((message) => ({
           id: message.id,

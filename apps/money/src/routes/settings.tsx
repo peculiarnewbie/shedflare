@@ -8,11 +8,16 @@ import { settingsCollection } from "../lib/collections";
 import { loadSettings as loadSettingsStore, setSetting } from "../lib/settings-store";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
+import * as Schema from "effect/Schema";
 
 type BudgetType = "envelope" | "tracking";
 type Currency = "USD" | "IDR";
 type DateFormat = "iso" | "us" | "eu";
 type NumberFormat = "comma-dot" | "dot-comma" | "space-dot";
+const CurrencySchema = Schema.Literals(["USD", "IDR"]);
+const DateFormatSchema = Schema.Literals(["iso", "us", "eu"]);
+const FirstDaySchema = Schema.Literals(["sunday", "monday"]);
+const NumberFormatSchema = Schema.Literals(["comma-dot", "dot-comma", "space-dot"]);
 
 export default function SettingsPage() {
   const [exchangeRate, setExchangeRate] = createSignal(16000);
@@ -224,7 +229,9 @@ export default function SettingsPage() {
           <p class="settings-description">Choose your primary display currency.</p>
           <select
             value={currency()}
-            onChange={(e) => updateCurrency(e.currentTarget.value as Currency)}
+            onChange={(e) =>
+              updateCurrency(Schema.decodeUnknownSync(CurrencySchema)(e.currentTarget.value))
+            }
             style="max-width:200px"
           >
             <option value="USD">USD ($)</option>
@@ -238,7 +245,9 @@ export default function SettingsPage() {
           <p class="settings-description">Choose how dates are displayed throughout the app.</p>
           <select
             value={dateFormat()}
-            onChange={(e) => updateDateFormat(e.currentTarget.value as DateFormat)}
+            onChange={(e) =>
+              updateDateFormat(Schema.decodeUnknownSync(DateFormatSchema)(e.currentTarget.value))
+            }
             style="max-width:200px"
           >
             <option value="iso">ISO (2026-05-13)</option>
@@ -253,7 +262,9 @@ export default function SettingsPage() {
           <p class="settings-description">Set which day the calendar week starts on.</p>
           <select
             value={firstDayOfWeek()}
-            onChange={(e) => updateFirstDayOfWeek(e.currentTarget.value as "sunday" | "monday")}
+            onChange={(e) =>
+              updateFirstDayOfWeek(Schema.decodeUnknownSync(FirstDaySchema)(e.currentTarget.value))
+            }
             style="max-width:200px"
           >
             <option value="sunday">Sunday</option>
@@ -269,7 +280,11 @@ export default function SettingsPage() {
           </p>
           <select
             value={numberFormat()}
-            onChange={(e) => updateNumberFormat(e.currentTarget.value as NumberFormat)}
+            onChange={(e) =>
+              updateNumberFormat(
+                Schema.decodeUnknownSync(NumberFormatSchema)(e.currentTarget.value),
+              )
+            }
             style="max-width:200px"
           >
             <option value="comma-dot">1,234.56 (US/UK/Asia)</option>

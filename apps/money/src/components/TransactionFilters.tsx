@@ -2,6 +2,7 @@ import { createSignal, createEffect, For, Show, onCleanup } from "solid-js";
 import { dispatch } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import type { JSX } from "solid-js";
+import * as Schema from "effect/Schema";
 import type {
   AccountsResponse,
   CategoriesResponse,
@@ -20,11 +21,49 @@ type CondOp =
   | "isbetween"
   | "oneOf";
 
+const FIELD_NAMES = [
+  "account",
+  "payee",
+  "category",
+  "amount",
+  "date",
+  "notes",
+  "cleared",
+  "reconciled",
+] as const;
+type FieldName = (typeof FIELD_NAMES)[number];
+const FieldNameSchema = Schema.Literals(FIELD_NAMES);
+const CondOpSchema = Schema.Literals([
+  "is",
+  "isNot",
+  "contains",
+  "doesNotContain",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "isbetween",
+  "oneOf",
+]);
+const ConditionValueSchema = Schema.Union([
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Null,
+  Schema.Array(Schema.String),
+]);
+const ConditionSchema = Schema.Struct({
+  field: FieldNameSchema,
+  op: CondOpSchema,
+  value: ConditionValueSchema,
+  value2: Schema.optional(ConditionValueSchema),
+});
+
 export interface Condition {
-  field: string;
+  field: FieldName;
   op: CondOp;
-  value: unknown;
-  value2?: unknown;
+  value: string | number | boolean | null | string[];
+  value2?: string | number | boolean | null | string[];
 }
 
 type SavedFilter = Pick<FiltersResponse["filters"][number], "id" | "name" | "conditions"> & {
@@ -41,14 +80,14 @@ type FieldConfig = {
   label: string;
   ops: CondOp[];
   render: (
-    value: unknown,
-    onChange: (v: unknown) => void,
-    value2?: unknown,
-    onChange2?: (v: unknown) => void,
+    value: Condition["value"],
+    onChange: (value: Condition["value"]) => void,
+    value2?: Condition["value2"],
+    onChange2?: (value: Condition["value2"]) => void,
   ) => JSX.Element;
 };
 
-const FIELD_CONFIGS: Record<string, FieldConfig> = {
+const FIELD_CONFIGS = {
   account: {
     label: "Account",
     ops: ["is", "isNot"],
@@ -63,7 +102,7 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
           });
       });
       return (
-        <select value={String(value as string)} onChange={(e) => onChange(e.currentTarget.value)}>
+        <select value={String(value ?? "")} onChange={(e) => onChange(e.currentTarget.value)}>
           <option value="">Select account</option>
           <For each={accounts()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
         </select>
@@ -78,7 +117,7 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
         type="text"
         class="filter-input"
         placeholder="Search payees..."
-        value={typeof value === "string" ? value : ""}
+        value={String(value ?? "")}
         onInput={(event) => onChange(event.currentTarget.value)}
       />
     ),
@@ -105,7 +144,7 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
           });
       });
       return (
-        <select value={String(value as string)} onChange={(e) => onChange(e.currentTarget.value)}>
+        <select value={String(value ?? "")} onChange={(e) => onChange(e.currentTarget.value)}>
           <option value="">Select category</option>
           <For each={cats()}>
             {(c) => (
@@ -128,16 +167,16 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
           type="number"
           class="filter-input filter-input-num"
           placeholder="0"
-          value={String(value as string)}
+          value={String(value ?? "")}
           onInput={(e) => onChange(Number(e.currentTarget.value) * 100)}
         />
-        <Show when={typeof value2 !== "undefined"}>
+        <Show when={value2 !== undefined}>
           <span style={{ color: "var(--text-muted)" }}>to</span>
           <input
             type="number"
             class="filter-input filter-input-num"
             placeholder="0"
-            value={String(value2 as string)}
+            value={String(value2 ?? "")}
             onInput={(e) => onChange2?.(Number(e.currentTarget.value) * 100)}
           />
         </Show>
@@ -152,15 +191,15 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
         <input
           type="date"
           class="filter-input"
-          value={String(value as string)}
+          value={String(value ?? "")}
           onInput={(e) => onChange(e.currentTarget.value)}
         />
-        <Show when={typeof value2 !== "undefined"}>
+        <Show when={value2 !== undefined}>
           <span style={{ color: "var(--text-muted)" }}>to</span>
           <input
             type="date"
             class="filter-input"
-            value={String(value2 as string)}
+            value={String(value2 ?? "")}
             onInput={(e) => onChange2?.(e.currentTarget.value)}
           />
         </Show>
@@ -175,7 +214,7 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
         type="text"
         class="filter-input"
         placeholder="Search notes..."
-        value={String(value as string)}
+        value={String(value ?? "")}
         onInput={(e) => onChange(e.currentTarget.value)}
       />
     ),
@@ -208,9 +247,9 @@ const FIELD_CONFIGS: Record<string, FieldConfig> = {
       </label>
     ),
   },
-};
+} satisfies Record<FieldName, FieldConfig>;
 
-const OP_LABELS: Record<CondOp, string> = {
+const OP_LABELS = {
   is: "is",
   isNot: "is not",
   contains: "contains",
@@ -221,18 +260,18 @@ const OP_LABELS: Record<CondOp, string> = {
   lte: "<=",
   isbetween: "between",
   oneOf: "is any of",
-};
+} satisfies Record<CondOp, string>;
 
-function fieldLabel(f: string): string {
-  return FIELD_CONFIGS[f]?.label ?? f;
+function fieldLabel(field: FieldName): string {
+  return FIELD_CONFIGS[field].label;
 }
 
 function conditionLabel(cond: Condition): string {
   const f = fieldLabel(cond.field);
   const op = OP_LABELS[cond.op] ?? cond.op;
-  const v = String((cond.value as string) ?? "");
+  const v = String(cond.value ?? "");
   if (cond.op === "isbetween") {
-    return `${f} ${op} ${v} and ${String((cond.value2 as string) ?? "")}`;
+    return `${f} ${op} ${v} and ${String(cond.value2 ?? "")}`;
   }
   return `${f} ${op} ${v}`;
 }
@@ -253,11 +292,16 @@ export default function TransactionFilters(props: {
   const [showAddMenu, setShowAddMenu] = createSignal(false);
   const [showSavedMenu, setShowSavedMenu] = createSignal(false);
 
-  const [editField, setEditField] = createSignal("");
+  const [editField, setEditField] = createSignal<FieldName | null>(null);
   const [editOp, setEditOp] = createSignal<CondOp>("is");
-  const [editValue, setEditValue] = createSignal<unknown>("");
-  const [editValue2, setEditValue2] = createSignal<unknown>(undefined);
+  const [editValue, setEditValue] = createSignal<Condition["value"]>("");
+  const [editValue2, setEditValue2] = createSignal<Condition["value2"]>(undefined);
   const [showBuilder, setShowBuilder] = createSignal(false);
+  const activeFieldConfig = () => {
+    const field = editField();
+    return field ? FIELD_CONFIGS[field] : undefined;
+  };
+  const activeOps = (): ReadonlyArray<CondOp> => activeFieldConfig()?.ops ?? ["is"];
 
   const [saveName, setSaveName] = createSignal("");
   const [showSave, setShowSave] = createSignal(false);
@@ -281,9 +325,10 @@ export default function TransactionFilters(props: {
   });
 
   function addCondition() {
-    if (!editField()) return;
+    const field = editField();
+    if (!field) return;
     const newCond: Condition = {
-      field: editField(),
+      field,
       op: editOp(),
       value: editValue(),
       value2: editOp() === "isbetween" ? editValue2() : undefined,
@@ -291,7 +336,7 @@ export default function TransactionFilters(props: {
     const updated = [...props.activeConditions, newCond];
     props.onConditionsChange(updated, conditionsOp(), null);
     setShowBuilder(false);
-    setEditField("");
+    setEditField(null);
     setEditOp("is");
     setEditValue("");
     setEditValue2(undefined);
@@ -309,7 +354,14 @@ export default function TransactionFilters(props: {
   function loadFilter(filter: SavedFilter) {
     let conditions: Condition[];
     try {
-      conditions = JSON.parse(filter.conditions);
+      const decoded = Schema.decodeUnknownSync(Schema.Array(ConditionSchema))(
+        JSON.parse(filter.conditions),
+      );
+      conditions = decoded.map((condition) => ({
+        ...condition,
+        value: condition.value instanceof Array ? [...condition.value] : condition.value,
+        value2: condition.value2 instanceof Array ? [...condition.value2] : condition.value2,
+      }));
     } catch {
       console.warn("[TransactionFilters] failed to parse saved filter conditions");
       conditions = [];
@@ -391,20 +443,20 @@ export default function TransactionFilters(props: {
             </button>
             <Show when={showAddMenu()}>
               <div class="filter-dropdown" onClick={(e) => e.stopPropagation()}>
-                <For each={Object.entries(FIELD_CONFIGS)}>
-                  {([key, cfg]) => (
+                <For each={FIELD_NAMES}>
+                  {(key) => (
                     <button
                       class="filter-dropdown-item"
                       onClick={() => {
                         setShowAddMenu(false);
                         setEditField(key);
-                        setEditOp(cfg.ops[0]);
+                        setEditOp(FIELD_CONFIGS[key].ops[0]);
                         setEditValue("");
                         setEditValue2(undefined);
                         setShowBuilder(true);
                       }}
                     >
-                      {cfg.label}
+                      {FIELD_CONFIGS[key].label}
                     </button>
                   )}
                 </For>
@@ -479,11 +531,11 @@ export default function TransactionFilters(props: {
             <span class="filter-builder-label">Where</span>
             <select
               class="filter-input filter-input-select"
-              value={editField()}
+              value={editField() ?? ""}
               onChange={(e) => {
-                const field = e.currentTarget.value;
+                const field = Schema.decodeUnknownSync(FieldNameSchema)(e.currentTarget.value);
                 setEditField(field);
-                const ops = FIELD_CONFIGS[field]?.ops ?? ["is"];
+                const ops = FIELD_CONFIGS[field].ops;
                 setEditOp(ops[0]);
                 setEditValue("");
                 setEditValue2(undefined);
@@ -498,21 +550,14 @@ export default function TransactionFilters(props: {
               class="filter-input filter-input-select"
               value={editOp()}
               onChange={(e) => {
-                setEditOp(e.currentTarget.value as CondOp);
+                setEditOp(Schema.decodeUnknownSync(CondOpSchema)(e.currentTarget.value));
                 if (e.currentTarget.value !== "isbetween") setEditValue2(undefined);
               }}
             >
-              <For each={FIELD_CONFIGS[editField()]?.ops ?? ["is"]}>
-                {(op) => <option value={op}>{OP_LABELS[op]}</option>}
-              </For>
+              <For each={activeOps()}>{(op) => <option value={op}>{OP_LABELS[op]}</option>}</For>
             </select>
 
-            {FIELD_CONFIGS[editField()]?.render(
-              editValue(),
-              setEditValue,
-              editValue2(),
-              setEditValue2,
-            )}
+            {activeFieldConfig()?.render(editValue(), setEditValue, editValue2(), setEditValue2)}
 
             <div class="filter-builder-actions">
               <button class="btn btn-primary btn-xs" onClick={addCondition}>

@@ -4,12 +4,12 @@ export interface ModelCapabilitySource {
   reasoning?: boolean;
   tool_call?: boolean;
   interleaved?: { field: string } | null;
-  modalities?: { input: string[]; output: string[] };
+  modalities?: { input: readonly string[]; output: readonly string[] };
   family?: string;
   limit?: { context?: number; output?: number };
 }
 
-export const MODEL_CAPABILITY_REGISTRY: Record<string, ModelCapabilitySource> = {
+export const MODEL_CAPABILITY_REGISTRY = {
   "gpt-5.6-luna": {
     attachment: true,
     transport: "responses",
@@ -151,9 +151,15 @@ export const MODEL_CAPABILITY_REGISTRY: Record<string, ModelCapabilitySource> = 
     family: "mimo-v2.5",
     limit: { context: 1000000, output: 128000 },
   },
-};
+} satisfies Record<string, ModelCapabilitySource>;
+
+export function modelCapabilityFor(modelId: string): ModelCapabilitySource | undefined {
+  return Object.entries(MODEL_CAPABILITY_REGISTRY).find(
+    ([registeredModelId]) => registeredModelId === modelId,
+  )?.[1];
+}
 
 export function modelTransportFor(modelId: string) {
   const catalogModelId = modelId.split("/").pop() ?? modelId;
-  return MODEL_CAPABILITY_REGISTRY[catalogModelId]?.transport ?? "chat-completions";
+  return modelCapabilityFor(catalogModelId)?.transport ?? "chat-completions";
 }

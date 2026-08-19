@@ -15,7 +15,7 @@ import {
 // ---------------------------------------------------------------------------
 
 // Effect Schema validators for each command type (used for validation in command handlers)
-export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
+export const CommandPayloadSchemas = {
   create_account: Schema.Struct({
     name: Schema.String,
     offBudget: Schema.optional(Schema.Boolean),
@@ -198,7 +198,10 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
   }),
 
   create_schedule: Schema.Struct({
-    schedule: ScheduleInput,
+    schedule: Schema.Struct({
+      ...ScheduleInput.fields,
+      recurrenceRules: Schema.String,
+    }),
   }),
 
   update_schedule: Schema.Struct({
@@ -306,12 +309,14 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
   }),
 
   update_note: Schema.Struct({
+    id: Schema.String,
     noteableType: Schema.String,
     noteableId: Schema.String,
     body: Schema.String,
   }),
 
   delete_note: Schema.Struct({
+    id: Schema.String,
     noteableType: Schema.String,
     noteableId: Schema.String,
   }),
@@ -319,7 +324,7 @@ export const CommandPayloadSchemas: Record<string, Schema.Schema<any>> = {
   list_notes: Schema.Struct({
     noteableType: Schema.String,
   }),
-};
+} as const;
 
 // ---------------------------------------------------------------------------
 // Typed command payload maps (derived from Effect schemas — single source)
@@ -332,12 +337,25 @@ export type SyncCommandPayloadMap = {
   [K in keyof CommandPayloadMap]: CommandPayloadMap[K];
 };
 
+export type CommandInvocation = {
+  [K in keyof CommandPayloadMap]: { commandType: K; payload: CommandPayloadMap[K] };
+}[keyof CommandPayloadMap];
+
 /** Decode and validate a command payload at runtime. Throws on invalid input. */
-export function decodeCommand<K extends keyof typeof CommandPayloadSchemas>(
+export function decodeCommand<K extends keyof typeof CommandPayloadSchemas, Input>(
   commandType: K,
-  input: unknown,
+  input: Input,
 ): CommandPayloadMap[K] {
-  return Schema.decodeUnknownSync((CommandPayloadSchemas as any)[commandType])(
-    input,
-  ) as CommandPayloadMap[K];
+  const decoded = Schema.decodeUnknownSync(CommandPayloadSchemas[commandType])(input);
+  // SAFETY: commandType selects the same schema used to define CommandPayloadMap[K].
+  return decoded as CommandPayloadMap[K];
+}
+
+export function decodeCommandInvocation<Input>(
+  commandType: keyof CommandPayloadMap,
+  input: Input,
+): CommandInvocation {
+  const payload = decodeCommand(commandType, input);
+  // SAFETY: decodeCommand uses the schema selected by commandType, preserving the invocation pair.
+  return { commandType, payload } as CommandInvocation;
 }

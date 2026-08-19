@@ -5,14 +5,14 @@ interface Props {
   product: ProductUsage;
 }
 
-const PRODUCT_ICONS: Record<string, string> = {
+const PRODUCT_ICONS = {
   workers: "⚡",
   kv: "🗂",
   d1: "🗄",
   durableObjects: "⚙",
   r2: "📦",
   http: "🌐",
-};
+} satisfies Record<string, string>;
 
 export default function UsageCard(props: Props) {
   const icon = PRODUCT_ICONS[props.product.id] ?? "📊";

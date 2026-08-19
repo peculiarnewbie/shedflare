@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "build": "vp check --no-fmt --no-lint",
+    "typecheck": "vp check --no-fmt --no-lint",
     "check": "vp check src alchemy.run.ts drizzle.config.ts",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts"
   },

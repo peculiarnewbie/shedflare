@@ -3,7 +3,7 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createTransaction } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 type TransactionCommand =
@@ -12,22 +12,23 @@ type TransactionCommand =
   | "delete_transaction"
   | "split_transaction";
 
+type TransactionInvocation = Extract<CommandInvocation, { commandType: TransactionCommand }>;
+
 export async function handleTransactionCommands(
-  commandType: TransactionCommand,
-  payload: CommandPayloadMap[TransactionCommand],
+  command: TransactionInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (commandType) {
+  switch (command.commandType) {
     case "create_transaction": {
-      const p = payload as CommandPayloadMap["create_transaction"];
+      const p = command.payload;
       const row = createTransaction(p.row);
       await db.insert(s.transactions).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
     case "update_transaction": {
-      const p = payload as CommandPayloadMap["update_transaction"];
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const p = command.payload;
+      const set: Partial<typeof s.transactions.$inferInsert> = { updatedAt: nowIso() };
       const f = p.fields;
       if (f.accountId !== undefined) set.accountId = f.accountId;
       if (f.categoryId !== undefined) set.categoryId = f.categoryId;
@@ -45,7 +46,7 @@ export async function handleTransactionCommands(
     }
 
     case "delete_transaction": {
-      const p = payload as CommandPayloadMap["delete_transaction"];
+      const p = command.payload;
       // Cascade: remove split children first (no FK cascade in schema).
       await db.delete(s.transactions).where(eq(s.transactions.parentId, p.id)).run();
       await db.delete(s.transactions).where(eq(s.transactions.id, p.id)).run();
@@ -53,7 +54,7 @@ export async function handleTransactionCommands(
     }
 
     case "split_transaction": {
-      const p = payload as CommandPayloadMap["split_transaction"];
+      const p = command.payload;
       const [parent] = await db
         .select()
         .from(s.transactions)
@@ -102,6 +103,6 @@ export async function handleTransactionCommands(
     }
 
     default:
-      return { ok: false, error: "Unknown transaction command: " + String(commandType) };
+      return { ok: false, error: "Unknown transaction command" };
   }
 }

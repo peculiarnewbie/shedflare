@@ -2,18 +2,39 @@
  * Rules page — auto-categorization rules for transaction import.
  */
 import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
 import { listenForMoneyDataChanged } from "../lib/data-events";
+import * as Schema from "effect/Schema";
+import type {
+  RulesResponse,
+  SchedulesResponse,
+  TransactionsResponse,
+} from "../domain/schemas-client";
+
+type Rule = RulesResponse["rules"][number];
+type Transaction = TransactionsResponse["transactions"][number];
+const RuleConditionSchema = Schema.Struct({
+  field: Schema.String,
+  op: Schema.String,
+  value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Array(Schema.String)]),
+  value2: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
+});
+type RuleCondition = Schema.Schema.Type<typeof RuleConditionSchema>;
+const RuleActionSchema = Schema.Struct({
+  op: Schema.String,
+  field: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.String),
+});
 
 export default function RulesPage() {
-  const [rules, setRules] = createSignal<any[]>([]);
+  const [rules, setRules] = createSignal<Rule[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
-  const [testingRule, setTestingRule] = createSignal<any>(null);
+  const [testingRule, setTestingRule] = createSignal<Rule | null>(null);
 
   createEffect(() => {
     void loadRules();
@@ -148,21 +169,32 @@ export default function RulesPage() {
 
 // ─── Condition matching logic (mirrors server-side import.ts) ────────────
 
-function matchCondition(cond: any, tx: any): boolean {
+function transactionField(condition: RuleCondition, transaction: Transaction) {
+  switch (condition.field) {
+    case "payee":
+      return transaction.payee;
+    case "imported_description":
+      return transaction.importedDescription;
+    case "notes":
+      return transaction.notes;
+    case "account":
+      return transaction.accountName;
+    case "amount":
+      return transaction.amount;
+    case "date":
+      return transaction.date ? new Date(transaction.date) : null;
+    case "cleared":
+      return transaction.cleared;
+    default:
+      return "";
+  }
+}
+
+function matchCondition(cond: RuleCondition, tx: Transaction): boolean {
   if (!cond || !cond.field) return false;
   const op = cond.op ?? "is";
 
-  const fieldResolvers: Record<string, () => any> = {
-    payee: () => tx.payee,
-    imported_description: () => tx.imported_description ?? tx.importedDescription,
-    notes: () => tx.notes,
-    account: () => tx.account_name ?? tx.accountName ?? tx.account,
-    amount: () => tx.amount,
-    date: () => (tx.date ? new Date(tx.date) : null),
-    cleared: () => tx.cleared ?? true,
-  };
-
-  const fieldValue = fieldResolvers[cond.field]?.() ?? "";
+  const fieldValue = transactionField(cond, tx) ?? "";
 
   switch (op) {
     case "is": {
@@ -178,7 +210,8 @@ function matchCondition(cond: any, tx: any): boolean {
     }
     case "oneOf": {
       const fv = String(fieldValue ?? "").toLowerCase();
-      return ((cond.value as string[]) ?? []).map((v: string) => v.toLowerCase()).includes(fv);
+      const values = cond.value instanceof Array ? cond.value : [String(cond.value)];
+      return values.map((value) => value.toLowerCase()).includes(fv);
     }
     case "contains": {
       const fv = String(fieldValue ?? "").toLowerCase();
@@ -223,10 +256,12 @@ function matchCondition(cond: any, tx: any): boolean {
 function ruleMatchesTransaction(
   conditionsJson: string,
   conditionsOp: string | undefined,
-  tx: any,
+  tx: Transaction,
 ): boolean {
   try {
-    const conditions = JSON.parse(conditionsJson) as Array<any>;
+    const conditions = Schema.decodeUnknownSync(Schema.Array(RuleConditionSchema))(
+      JSON.parse(conditionsJson),
+    );
     if (conditions.length === 0) return false;
     if (conditionsOp === "or") {
       return conditions.some((cond) => matchCondition(cond, tx));
@@ -240,9 +275,9 @@ function ruleMatchesTransaction(
 
 // ─── Rule Test Modal ──────────────────────────────────────────────────────
 
-function RuleTestModal(props: { rule: any; onClose: () => void }) {
+function RuleTestModal(props: { rule: Rule; onClose: () => void }) {
   const fmt = useCurrency();
-  const [transactions, setTransactions] = createSignal<any[]>([]);
+  const [transactions, setTransactions] = createSignal<Transaction[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -257,12 +292,10 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
       const txData = await api.transactions();
       const allTx = txData.transactions ?? [];
 
-      const conditionsOp = props.rule.conditions_op ?? props.rule.conditionsOp ?? "and";
+      const conditionsOp = props.rule.conditionsOp ?? "and";
       const conditionsStr = props.rule.conditions ?? "[]";
 
-      const matched = allTx.filter((tx: any) =>
-        ruleMatchesTransaction(conditionsStr, conditionsOp, tx),
-      );
+      const matched = allTx.filter((tx) => ruleMatchesTransaction(conditionsStr, conditionsOp, tx));
       setTransactions(matched);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load transactions");
@@ -274,11 +307,13 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
   const conditionsStr = props.rule.conditions ?? "[]";
   let conditionsLabel = conditionsStr.slice(0, 120);
   try {
-    const parsed = JSON.parse(conditionsStr) as Array<any>;
+    const parsed = Schema.decodeUnknownSync(Schema.Array(RuleConditionSchema))(
+      JSON.parse(conditionsStr),
+    );
     conditionsLabel = parsed
       .map(
-        (c: any) =>
-          `${c.field} ${c.op} ${Array.isArray(c.value) ? c.value.join(", ") : c.value}${c.value2 != null ? `-${c.value2}` : ""}`,
+        (c) =>
+          `${c.field} ${c.op} ${c.value instanceof Array ? c.value.join(", ") : String(c.value)}${c.value2 != null ? `-${c.value2}` : ""}`,
       )
       .join(", ");
   } catch {
@@ -350,8 +385,8 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
                           <td class="tx-col-date">{tx.date?.slice(0, 10)}</td>
                           <td>{tx.payee ?? ""}</td>
                           <td class="tx-col-amount">{fmt().formatCents(tx.amount ?? 0)}</td>
-                          <td>{tx.category_name ?? ""}</td>
-                          <td>{tx.account_name ?? ""}</td>
+                          <td>{tx.categoryName ?? ""}</td>
+                          <td>{tx.accountName ?? ""}</td>
                         </tr>
                       )}
                     </For>
@@ -373,9 +408,11 @@ function RuleTestModal(props: { rule: any; onClose: () => void }) {
 
 function summarizeActions(actionsJson: string): string {
   try {
-    const actions = JSON.parse(actionsJson) as Array<any>;
+    const actions = Schema.decodeUnknownSync(Schema.Array(RuleActionSchema))(
+      JSON.parse(actionsJson),
+    );
     return actions
-      .map((a: any) => {
+      .map((a) => {
         if (a.op === "delete-transaction") return "Delete transaction";
         if (a.op === "prepend-notes") return `Prepend notes: "${(a.value ?? "").slice(0, 30)}"`;
         if (a.op === "append-notes") return `Append notes: "${(a.value ?? "").slice(0, 30)}"`;
@@ -390,7 +427,7 @@ function summarizeActions(actionsJson: string): string {
   }
 }
 
-const CONDITION_FIELD_META: Record<string, { type: string; ops: string[]; label: string }> = {
+const CONDITION_FIELD_META = {
   payee: {
     type: "text",
     label: "Payee",
@@ -414,9 +451,9 @@ const CONDITION_FIELD_META: Record<string, { type: string; ops: string[]; label:
   },
   date: { type: "date", label: "Date", ops: ["is", "isapprox", "gt", "gte", "lt", "lte"] },
   cleared: { type: "boolean", label: "Cleared", ops: ["is"] },
-};
+} as const;
 
-const OP_LABELS: Record<string, string> = {
+const OP_LABELS = {
   is: "is",
   isNot: "is not",
   oneOf: "is one of",
@@ -429,31 +466,57 @@ const OP_LABELS: Record<string, string> = {
   gte: "greater than or equal",
   lt: "less than",
   lte: "less than or equal",
-};
+} as const;
 
-const ACTION_OP_LABELS: Record<string, string> = {
+const ACTION_OP_LABELS = {
   set: "Set field",
   "prepend-notes": "Prepend notes",
   "append-notes": "Append notes",
   "delete-transaction": "Delete transaction",
   "link-schedule": "Link schedule",
-};
+} as const;
+
+type ConditionField = keyof typeof CONDITION_FIELD_META;
+type ConditionOp = keyof typeof OP_LABELS;
+const ConditionFieldSchema = Schema.Literals([
+  "payee",
+  "imported_description",
+  "notes",
+  "account",
+  "amount",
+  "date",
+  "cleared",
+]);
+const ConditionOpSchema = Schema.Literals([
+  "is",
+  "isNot",
+  "oneOf",
+  "contains",
+  "doesNotContain",
+  "matches",
+  "isapprox",
+  "isbetween",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+]);
 
 function RuleForm(props: { onClose: () => void }) {
-  const [conditionField, setConditionField] = createSignal("payee");
-  const [conditionOp, setConditionOp] = createSignal("contains");
+  const [conditionField, setConditionField] = createSignal<ConditionField>("payee");
+  const [conditionOp, setConditionOp] = createSignal<ConditionOp>("contains");
   const [conditionValue, setConditionValue] = createSignal("");
   const [conditionValue2, setConditionValue2] = createSignal("");
   const [actionOp, setActionOp] = createSignal("set");
   const [actionField, setActionField] = createSignal("category");
   const [actionValue, setActionValue] = createSignal("");
   const [scheduleId, setScheduleId] = createSignal("");
-  const [schedules, setSchedules] = createSignal<any[]>([]);
+  const [schedules, setSchedules] = createSignal<SchedulesResponse["schedules"]>([]);
   const [saving, setSaving] = createSignal(false);
 
   const fieldMeta = () => CONDITION_FIELD_META[conditionField()] ?? CONDITION_FIELD_META.payee;
 
-  const availableOps = () => fieldMeta().ops;
+  const availableOps = (): ReadonlyArray<ConditionOp> => fieldMeta().ops;
 
   // Reset op when field changes if current op not available
   createEffect(() => {
@@ -520,7 +583,10 @@ function RuleForm(props: { onClose: () => void }) {
       {
         undoInfo: {
           label: "Create rule",
-          inverse: (data) => ({ commandType: "delete_rule", payload: { id: data.id as string } }),
+          inverse: (data) => ({
+            commandType: "delete_rule",
+            payload: { id: requireCommandId(data) },
+          }),
         },
       },
     );
@@ -543,13 +609,22 @@ function RuleForm(props: { onClose: () => void }) {
           <div class="form-row">
             <select
               value={conditionField()}
-              onChange={(e) => setConditionField(e.currentTarget.value)}
+              onChange={(e) =>
+                setConditionField(
+                  Schema.decodeUnknownSync(ConditionFieldSchema)(e.currentTarget.value),
+                )
+              }
             >
               <For each={Object.entries(CONDITION_FIELD_META)}>
                 {([value, meta]) => <option value={value}>{meta.label}</option>}
               </For>
             </select>
-            <select value={conditionOp()} onChange={(e) => setConditionOp(e.currentTarget.value)}>
+            <select
+              value={conditionOp()}
+              onChange={(e) =>
+                setConditionOp(Schema.decodeUnknownSync(ConditionOpSchema)(e.currentTarget.value))
+              }
+            >
               <For each={availableOps()}>
                 {(op) => <option value={op}>{OP_LABELS[op] ?? op}</option>}
               </For>

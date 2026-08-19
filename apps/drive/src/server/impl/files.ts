@@ -7,6 +7,7 @@ import { driveApi } from "../definitions";
 import type { HandlerContext, HttpApiAuth } from "@shedflare/auth-client/http-api";
 import type { Session } from "@shedflare/auth-client/consumer";
 import { normalizeTag, parseByteRange, parseUpdateBody, publicFile } from "./file-utils";
+import { array, looseObject, number, optional, safeParse, string, union } from "valibot";
 
 type Db = DrizzleD1Database;
 
@@ -24,7 +25,7 @@ type UploadMetadata = {
   tags: string[];
 };
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse<Body>(body: Body, status = 200) {
   return HttpServerResponse.fromWeb(
     new Response(JSON.stringify(body), {
       status,
@@ -37,37 +38,40 @@ function errorResponse(status: number, code: string, error: string, retryable = 
   return jsonResponse({ code, error, retryable }, status);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+const TagsInputSchema = union([string(), array(string())]);
+const UploadMetadataSchema = looseObject({
+  name: string(),
+  mimeType: optional(string(), "application/octet-stream"),
+  description: optional(string(), ""),
+  size: number(),
+  tags: optional(TagsInputSchema),
+});
+const UploadedPartSchema = looseObject({ partNumber: number(), etag: string() });
+const CompleteUploadSchema = looseObject({
+  uploadId: string(),
+  parts: array(UploadedPartSchema),
+});
+
+function parseTags<Value>(value: Value): string[] {
+  const result = safeParse(TagsInputSchema, value);
+  if (!result.success) return [];
+  const values = Array.isArray(result.output) ? result.output : result.output.split(",");
+  return Array.from(new Set(values.map(normalizeTag).filter(Boolean))).slice(0, 20);
 }
 
-function parseTags(value: unknown): string[] {
-  const values =
-    typeof value === "string"
-      ? value.split(",")
-      : Array.isArray(value)
-        ? value.filter((tag): tag is string => typeof tag === "string")
-        : [];
-  return Array.from(new Set(values.map(normalizeTag).filter(Boolean) as string[])).slice(0, 20);
-}
-
-function parseUploadMetadata(value: unknown): UploadMetadata | null {
-  if (!isRecord(value)) return null;
-
-  const name = typeof value.name === "string" ? value.name.trim() : "";
-  const mimeType =
-    typeof value.mimeType === "string" && value.mimeType.trim()
-      ? value.mimeType.trim()
-      : "application/octet-stream";
-  const description = typeof value.description === "string" ? value.description.trim() : "";
-  const size = value.size;
+function parseUploadMetadata<Value>(value: Value): UploadMetadata | null {
+  const result = safeParse(UploadMetadataSchema, value);
+  if (!result.success) return null;
+  const name = result.output.name.trim();
+  const mimeType = result.output.mimeType.trim() || "application/octet-stream";
+  const description = result.output.description.trim();
+  const size = result.output.size;
 
   if (
     !name ||
     name.length > 512 ||
     mimeType.length > 255 ||
     description.length > 10_000 ||
-    typeof size !== "number" ||
     !Number.isSafeInteger(size) ||
     size < 0 ||
     size > MAX_MULTIPART_FILE_BYTES
@@ -75,7 +79,7 @@ function parseUploadMetadata(value: unknown): UploadMetadata | null {
     return null;
   }
 
-  return { name, mimeType, size, description, tags: parseTags(value.tags) };
+  return { name, mimeType, size, description, tags: parseTags(result.output.tags) };
 }
 
 function uploadIdFrom(request: Request) {
@@ -87,20 +91,15 @@ function isFileId(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function parseUploadedParts(value: unknown): R2UploadedPart[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MULTIPART_PARTS) {
+function parseUploadedParts<Value>(value: Value): R2UploadedPart[] | null {
+  const result = safeParse(array(UploadedPartSchema), value);
+  if (!result.success || result.output.length === 0 || result.output.length > MAX_MULTIPART_PARTS) {
     return null;
   }
 
   const parts: R2UploadedPart[] = [];
-  for (const [index, part] of value.entries()) {
-    if (
-      !isRecord(part) ||
-      part.partNumber !== index + 1 ||
-      typeof part.etag !== "string" ||
-      !part.etag ||
-      part.etag.length > 256
-    ) {
+  for (const [index, part] of result.output.entries()) {
+    if (part.partNumber !== index + 1 || !part.etag || part.etag.length > 256) {
       return null;
     }
     parts.push({ partNumber: part.partNumber, etag: part.etag });
@@ -383,8 +382,10 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
           const now = new Date().toISOString();
           const formName = form.get("name");
           const formDescription = form.get("description");
-          const name = typeof formName === "string" ? formName.trim() : file.name;
-          const description = typeof formDescription === "string" ? formDescription.trim() : "";
+          const parsedName = safeParse(string(), formName);
+          const parsedDescription = safeParse(string(), formDescription);
+          const name = parsedName.success ? parsedName.output.trim() : file.name;
+          const description = parsedDescription.success ? parsedDescription.output.trim() : "";
           const tagNames = parseTags(form.get("tags"));
           const objectKey = `files/${id}`;
           const metadata: UploadMetadata = {
@@ -461,9 +462,12 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         protectMultipartPart(auth, async (webReq, _session, handlerCtx) => {
           const idParam = handlerCtx.params?.id;
           const partNumberParam = handlerCtx.params?.partNumber;
-          const id = typeof idParam === "string" ? idParam : "";
-          const partNumber =
-            typeof partNumberParam === "string" ? Number(partNumberParam) : Number.NaN;
+          const parsedId = safeParse(string(), idParam);
+          const parsedPartNumber = safeParse(string(), partNumberParam);
+          const id = parsedId.success ? parsedId.output : "";
+          const partNumber = parsedPartNumber.success
+            ? Number(parsedPartNumber.output)
+            : Number.NaN;
           const uploadId = uploadIdFrom(webReq);
           const contentLength = Number(webReq.headers.get("content-length") ?? "0");
 
@@ -509,15 +513,16 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
         protectFile(auth, async (webReq, _session, handlerCtx) => {
           const db = drizzle(env.DB);
           const idParam = handlerCtx.params?.id;
-          const id = typeof idParam === "string" ? idParam : "";
+          const parsedId = safeParse(string(), idParam);
+          const id = parsedId.success ? parsedId.output : "";
           const body = await webReq.json().catch(() => null);
           const metadata = parseUploadMetadata(body);
-          const uploadId = isRecord(body) ? body.uploadId : null;
-          const parts = isRecord(body) ? parseUploadedParts(body.parts) : null;
+          const completion = safeParse(CompleteUploadSchema, body);
+          const uploadId = completion.success ? completion.output.uploadId : null;
+          const parts = completion.success ? parseUploadedParts(completion.output.parts) : null;
 
           if (
             !isFileId(id) ||
-            typeof uploadId !== "string" ||
             !uploadId ||
             uploadId.length > 2_048 ||
             !metadata ||
@@ -582,7 +587,8 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
       .handle("multipartAbort", (ctx) =>
         protectFile(auth, async (webReq, _session, handlerCtx) => {
           const idParam = handlerCtx.params?.id;
-          const id = typeof idParam === "string" ? idParam : "";
+          const parsedId = safeParse(string(), idParam);
+          const id = parsedId.success ? parsedId.output : "";
           const uploadId = uploadIdFrom(webReq);
           if (!isFileId(id) || !uploadId) {
             return errorResponse(
@@ -627,11 +633,8 @@ export function createFileHandlersGroup(env: FileEnv, auth: HttpApiAuth) {
           const name = body.name?.trim() || current.name;
           const description = body.description?.trim() ?? current.description ?? "";
           const isPublic = body.isPublic ?? Boolean(current.isPublic);
-          const tagNames: string[] = Array.isArray(body.tags)
-            ? Array.from(new Set(body.tags.map(normalizeTag).filter(Boolean) as string[])).slice(
-                0,
-                20,
-              )
+          const tagNames: string[] = body.tags
+            ? Array.from(new Set(body.tags.map(normalizeTag).filter(Boolean))).slice(0, 20)
             : (current.tags?.split(",") ?? []);
           const now = new Date().toISOString();
 

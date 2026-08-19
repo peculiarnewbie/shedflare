@@ -375,7 +375,7 @@ export const ReportsBudgetAnalysisResponseSchema = S.Struct({
   ),
 });
 export const ReportsAgeOfMoneyResponseSchema = S.Struct({
-  days: S.Number,
+  days: S.NullOr(S.Number),
 });
 export const ReportsCrossoverResponseSchema = CrossoverSchema;
 export const ReportsHeatmapResponseSchema = S.Struct({
@@ -403,7 +403,7 @@ export const SettingsResponseSchema = S.Struct({
   ),
 });
 export const CommandResponseSchema = S.Union([
-  S.Struct({ ok: S.Literal(true), data: S.Record(S.String, S.Unknown) }),
+  S.Struct({ ok: S.Literal(true), data: S.Struct({ id: S.optional(S.String) }) }),
   S.Struct({ ok: S.Literal(false), error: S.String }),
 ]);
 

@@ -5,10 +5,14 @@ import { consoleApiPlugin } from "./src/server/vite-plugin.ts";
 
 const port = Number(process.env.CONSOLE_PORT ?? 5174);
 
+function vitePlugin<PluginValue>(plugin: PluginValue): Plugin[] {
+  // SAFETY: vite-plugin-solid and Vite+ install structurally equivalent Vite Plugin types from
+  // separate package instances; Vite consumes this plugin through their shared runtime contract.
+  return [plugin as Plugin];
+}
+
 export default defineConfig({
-  // vite-plugin-solid and Vite+ expose structurally equivalent Plugin types from
-  // separate package instances. Bridge that package boundary here.
-  plugins: [solid() as unknown as Plugin[], consoleApiPlugin()],
+  plugins: [...vitePlugin(solid()), consoleApiPlugin()],
   server: {
     port,
     strictPort: true,

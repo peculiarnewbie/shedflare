@@ -3,38 +3,39 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createPayee } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 type PayeeCommand = "create_payee" | "update_payee" | "delete_payee" | "merge_payees";
 
+type PayeeInvocation = Extract<CommandInvocation, { commandType: PayeeCommand }>;
+
 export async function handlePayeeCommands(
-  c: PayeeCommand,
-  p: CommandPayloadMap[PayeeCommand],
+  command: PayeeInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (c) {
+  switch (command.commandType) {
     case "create_payee": {
-      const pp = p as CommandPayloadMap["create_payee"];
+      const pp = command.payload;
       const row = createPayee(pp);
       await db.insert(s.payees).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
     case "update_payee": {
-      const pp = p as CommandPayloadMap["update_payee"];
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const pp = command.payload;
+      const set: Partial<typeof s.payees.$inferInsert> = { updatedAt: nowIso() };
       if (pp.name !== undefined) set.name = pp.name;
       if (pp.favorite !== undefined) set.favorite = pp.favorite;
       await db.update(s.payees).set(set).where(eq(s.payees.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_payee": {
-      const pp = p as CommandPayloadMap["delete_payee"];
+      const pp = command.payload;
       await db.delete(s.payees).where(eq(s.payees.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "merge_payees": {
-      const pp = p as CommandPayloadMap["merge_payees"];
+      const pp = command.payload;
       const [target] = await db
         .select({ name: s.payees.name })
         .from(s.payees)
@@ -65,6 +66,6 @@ export async function handlePayeeCommands(
       return { ok: true, data: { targetId: pp.targetId } };
     }
     default:
-      return { ok: false, error: "Unknown payee command: " + String(c) };
+      return { ok: false, error: "Unknown payee command" };
   }
 }

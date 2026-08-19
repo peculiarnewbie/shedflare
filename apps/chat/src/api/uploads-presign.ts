@@ -1,30 +1,29 @@
 import { createAttachment } from "#/domain";
 import { createUploadUrl, getRuntimeEnv, requireSession, signUploadToken } from "#/runtime";
 import { runApiTrace } from "../server/api-tracing";
+import * as Schema from "effect/Schema";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-function asString(value: unknown, fallback: string) {
-  return typeof value === "string" ? value : fallback;
-}
+const UploadPresignBodySchema = Schema.Struct({
+  sizeBytes: Schema.Number,
+  mimeType: Schema.optional(Schema.String),
+  fileName: Schema.optional(Schema.String),
+  threadId: Schema.String,
+});
 
 async function parseUploadPresignBody(request: Request) {
-  let value: unknown;
   try {
-    value = await request.json();
+    const body = Schema.decodeUnknownSync(UploadPresignBodySchema)(await request.json());
+    return {
+      sizeBytes: body.sizeBytes,
+      mimeType: body.mimeType ?? "application/octet-stream",
+      fileName: body.fileName ?? "upload.bin",
+      threadId: body.threadId,
+    };
   } catch {
     throw new Response("Invalid JSON", { status: 400 });
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Response("Expected JSON object", { status: 400 });
-  }
-  const body = value as Record<string, unknown>;
-  return {
-    sizeBytes: Number(body.sizeBytes ?? 0),
-    mimeType: asString(body.mimeType, "application/octet-stream"),
-    fileName: asString(body.fileName, "upload.bin"),
-    threadId: asString(body.threadId, ""),
-  };
 }
 
 export async function handleUploadPresign(request: Request): Promise<Response> {

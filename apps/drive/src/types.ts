@@ -18,6 +18,9 @@ export type MultipartPartResponse = SharedSchema.MultipartPartResponse;
 export const SessionResponse = SharedSchema.SessionResponse;
 export type SessionResponse = SharedSchema.SessionResponse;
 
+export const SecureUploadCommandResponse = SharedSchema.SecureUploadCommandResponse;
+export type SecureUploadCommandResponse = SharedSchema.SecureUploadCommandResponse;
+
 export const TagSummary = SharedSchema.TagSummary;
 export type TagSummary = SharedSchema.TagSummary;
 

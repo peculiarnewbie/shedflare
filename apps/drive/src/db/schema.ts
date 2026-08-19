@@ -43,6 +43,28 @@ export const fileTags = sqliteTable(
   (table) => [primaryKey({ columns: [table.fileId, table.tagId] })],
 );
 
+export const secureUploadStartCapabilities = sqliteTable(
+  "secure_upload_start_capabilities",
+  {
+    nonce: text("nonce").primaryKey(),
+    expiresAt: integer("expires_at").notNull(),
+    consumedAt: integer("consumed_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("idx_secure_upload_starts_expires_at").on(table.expiresAt)],
+);
+
+export const secureUploadSessions = sqliteTable(
+  "secure_upload_sessions",
+  {
+    uploadId: text("upload_id").primaryKey(),
+    fileId: text("file_id").notNull().unique(),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("idx_secure_upload_sessions_expires_at").on(table.expiresAt)],
+);
+
 export type FileRow = typeof files.$inferSelect;
 export type NewFileRow = typeof files.$inferInsert;
 export type TagRow = typeof tags.$inferSelect;

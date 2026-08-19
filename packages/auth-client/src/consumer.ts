@@ -1,5 +1,6 @@
 import { createClient } from "@openauthjs/openauth/client";
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify } from "jose";
+import { nullable, number, object, safeParse, string } from "valibot";
 import { AUTH_HINT_COOKIE } from "./client";
 
 export type AuthEnv = {
@@ -66,10 +67,19 @@ export function getCookie(request: Request, name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function authenticateE2eRequest(request: Request, env: AuthEnv): Session | null {
+async function secretsEqual(provided: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
+}
+
+async function authenticateE2eRequest(request: Request, env: AuthEnv): Promise<Session | null> {
   if (!env.E2E_AUTH_EMAIL || !env.E2E_AUTH_TOKEN) return null;
   const token = request.headers.get("x-shedflare-e2e-token");
-  if (token !== env.E2E_AUTH_TOKEN) return null;
+  if (!token || !(await secretsEqual(token, env.E2E_AUTH_TOKEN))) return null;
   return { email: normalizeEmail(env.E2E_AUTH_EMAIL) };
 }
 
@@ -103,8 +113,8 @@ export function isDocumentRequest(request: Request): boolean {
   return accept.includes("text/html");
 }
 
-export function validateReturnTo(input: unknown): string | null {
-  if (typeof input !== "string") return null;
+export function validateReturnTo(input: string | null | undefined): string | null {
+  if (input === null || input === undefined) return null;
   // Decode first, then validate the result: validating the still-encoded form
   // lets `/%2Fevil` slip through (it isn't "//…" until decoded), turning into a
   // protocol-relative open redirect once used as a Location.
@@ -152,6 +162,14 @@ function constantTimeEqual(a: string, b: string): boolean {
 
 type StatePayload = { nonce: string; returnTo: string | null };
 
+const StatePayloadSchema = object({ nonce: string(), returnTo: nullable(string()) });
+const AccessPropertiesSchema = object({ email: string() });
+const TokenResponseSchema = object({
+  access_token: string(),
+  refresh_token: string(),
+  expires_in: number(),
+});
+
 function encodeState(returnTo: string | null, nonce: string): string {
   return base64urlEncode(JSON.stringify({ nonce, returnTo }));
 }
@@ -160,12 +178,12 @@ function decodeState(state: string): StatePayload | null {
   const decoded = base64urlDecode(state);
   if (!decoded) return null;
   try {
-    const parsed = JSON.parse(decoded) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const record = parsed as Record<string, unknown>;
-    const nonce = typeof record.nonce === "string" ? record.nonce : "";
-    const returnTo = validateReturnTo(record.returnTo);
-    return { nonce, returnTo };
+    const parsed = safeParse(StatePayloadSchema, JSON.parse(decoded));
+    if (!parsed.success) return null;
+    return {
+      nonce: parsed.output.nonce,
+      returnTo: validateReturnTo(parsed.output.returnTo),
+    };
   } catch {
     return null;
   }
@@ -196,9 +214,9 @@ export function createAuthHandlers(env: AuthEnv) {
       try {
         const { payload } = await jwtVerify(token, getJwks(), { issuer: env.AUTH_ISSUER_URL });
         if (payload.mode !== "access") return { kind: "invalid" };
-        const properties = payload.properties as { email?: unknown } | undefined;
-        return typeof properties?.email === "string"
-          ? { kind: "ok", email: normalizeEmail(properties.email) }
+        const properties = safeParse(AccessPropertiesSchema, payload.properties);
+        return properties.success
+          ? { kind: "ok", email: normalizeEmail(properties.output.email) }
           : { kind: "invalid" };
       } catch (error) {
         if (error instanceof joseErrors.JWTExpired) return { kind: "expired" };
@@ -214,20 +232,13 @@ export function createAuthHandlers(env: AuthEnv) {
   }
 
   async function parseTokenResponse(response: Response) {
-    const jsonBody = await response.json().catch(() => null);
-    if (!jsonBody || typeof jsonBody !== "object" || Array.isArray(jsonBody)) return null;
-    const tokens = jsonBody as Record<string, unknown>;
-    if (
-      typeof tokens.access_token !== "string" ||
-      typeof tokens.refresh_token !== "string" ||
-      typeof tokens.expires_in !== "number"
-    ) {
-      return null;
-    }
+    const jsonBody: unknown = await response.json().catch(() => null);
+    const tokens = safeParse(TokenResponseSchema, jsonBody);
+    if (!tokens.success) return null;
     return {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
+      accessToken: tokens.output.access_token,
+      refreshToken: tokens.output.refresh_token,
+      expiresIn: tokens.output.expires_in,
     };
   }
 
@@ -263,7 +274,7 @@ export function createAuthHandlers(env: AuthEnv) {
     request: Request,
     options?: { refresh?: boolean },
   ): Promise<Session | null> {
-    const e2eSession = authenticateE2eRequest(request, env);
+    const e2eSession = await authenticateE2eRequest(request, env);
     if (e2eSession) return e2eSession;
 
     if (env.DEV_AUTH_EMAIL && isLocalRequest(request)) {

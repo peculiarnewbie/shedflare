@@ -12,7 +12,7 @@ export {
 } from "./chat-completions-adapter.js";
 export { chat } from "@tanstack/ai";
 import { createStructuredLogger, decodeAppEnv, type AppEnv } from "#/effect";
-import { MODEL_CAPABILITY_REGISTRY, type ModelCapabilitySource } from "#/server/model-capabilities";
+import { modelCapabilityFor, type ModelCapabilitySource } from "#/server/model-capabilities";
 export { modelTransportFor } from "#/server/model-capabilities";
 import {
   createLocalJWKSet,
@@ -25,10 +25,13 @@ import {
 import {
   createId,
   decodeSyncSnapshot,
+  type ExternalValue,
   type SyncCommandPayloadMap,
   type SyncCommandType,
   type SyncSnapshot,
 } from "#/domain";
+import * as Schema from "effect/Schema";
+import type { Browser, BrowserWorker } from "@cloudflare/puppeteer";
 import {
   createAuthHandlers,
   getCookie,
@@ -81,16 +84,16 @@ const logger = createStructuredLogger("chat-runtime");
 type ExaSearchResult = {
   title?: string;
   url: string;
-  highlights?: string[];
+  highlights?: readonly string[];
   text?: string;
   summary?: string | null;
   publishedDate?: string | null;
-  highlightScores?: number[];
+  highlightScores?: readonly number[];
   score?: number | null;
 };
 
 type ExaSearchResponse = {
-  results?: ExaSearchResult[];
+  results?: readonly ExaSearchResult[];
   autopromptString?: string | null;
 };
 
@@ -107,80 +110,61 @@ type TokenResponse = {
   expires_in: number;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const TokenResponseSchema = Schema.Struct({
+  access_token: Schema.NonEmptyString,
+  refresh_token: Schema.NonEmptyString,
+  expires_in: Schema.Number,
+});
+const InternalCommandResponseSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  snapshot: Schema.optional(Schema.Any),
+  reason: Schema.optional(Schema.String),
+  code: Schema.optional(Schema.String),
+});
+const ExaSearchResponseSchema = Schema.Struct({
+  results: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        title: Schema.optional(Schema.String),
+        url: Schema.String,
+        highlights: Schema.optional(Schema.Array(Schema.String)),
+        text: Schema.optional(Schema.String),
+        summary: Schema.optional(Schema.NullOr(Schema.String)),
+        publishedDate: Schema.optional(Schema.NullOr(Schema.String)),
+        highlightScores: Schema.optional(Schema.Array(Schema.Number)),
+        score: Schema.optional(Schema.NullOr(Schema.Number)),
+      }),
+    ),
+  ),
+  autopromptString: Schema.optional(Schema.NullOr(Schema.String)),
+});
 
-export function decodeTokenResponse(value: unknown): TokenResponse | null {
-  if (!isRecord(value)) return null;
-  if (
-    typeof value.access_token !== "string" ||
-    !value.access_token ||
-    typeof value.refresh_token !== "string" ||
-    !value.refresh_token ||
-    typeof value.expires_in !== "number"
-  ) {
+export function decodeTokenResponse(value: ExternalValue): TokenResponse | null {
+  try {
+    return Schema.decodeUnknownSync(TokenResponseSchema)(value);
+  } catch {
     return null;
   }
-  return {
-    access_token: value.access_token,
-    refresh_token: value.refresh_token,
-    expires_in: value.expires_in,
-  };
 }
 
-function decodeInternalCommandResponse(value: unknown): InternalCommandResponse | null {
-  if (!isRecord(value) || typeof value.ok !== "boolean") return null;
-  const snapshot = value.snapshot === undefined ? undefined : decodeSyncSnapshot(value.snapshot);
-  if (value.snapshot !== undefined && !snapshot) return null;
-  if (value.reason !== undefined && typeof value.reason !== "string") return null;
-  if (value.code !== undefined && typeof value.code !== "string") return null;
-  return { ok: value.ok, snapshot: snapshot ?? undefined, reason: value.reason, code: value.code };
-}
-
-function decodeExaSearchResponse(value: unknown): ExaSearchResponse | null {
-  if (!isRecord(value)) return null;
-  if (
-    value.autopromptString !== undefined &&
-    value.autopromptString !== null &&
-    typeof value.autopromptString !== "string"
-  )
+function decodeInternalCommandResponse(value: ExternalValue): InternalCommandResponse | null {
+  try {
+    const decoded = Schema.decodeUnknownSync(InternalCommandResponseSchema)(value);
+    const snapshot =
+      decoded.snapshot === undefined ? undefined : decodeSyncSnapshot(decoded.snapshot);
+    if (decoded.snapshot !== undefined && !snapshot) return null;
+    return { ...decoded, snapshot: snapshot ?? undefined };
+  } catch {
     return null;
-  if (value.results !== undefined) {
-    if (!Array.isArray(value.results)) return null;
-    for (const result of value.results) {
-      if (!isRecord(result) || typeof result.url !== "string") return null;
-      if (result.title !== undefined && typeof result.title !== "string") return null;
-      if (
-        result.highlights !== undefined &&
-        (!Array.isArray(result.highlights) ||
-          !result.highlights.every((item) => typeof item === "string"))
-      )
-        return null;
-      if (result.text !== undefined && typeof result.text !== "string") return null;
-      if (
-        result.summary !== undefined &&
-        result.summary !== null &&
-        typeof result.summary !== "string"
-      )
-        return null;
-      if (
-        result.publishedDate !== undefined &&
-        result.publishedDate !== null &&
-        typeof result.publishedDate !== "string"
-      )
-        return null;
-      if (
-        result.highlightScores !== undefined &&
-        (!Array.isArray(result.highlightScores) ||
-          !result.highlightScores.every((item) => typeof item === "number"))
-      )
-        return null;
-      if (result.score !== undefined && result.score !== null && typeof result.score !== "number")
-        return null;
-    }
   }
-  return value as ExaSearchResponse;
+}
+
+function decodeExaSearchResponse(value: ExternalValue): ExaSearchResponse | null {
+  try {
+    return Schema.decodeUnknownSync(ExaSearchResponseSchema)(value);
+  } catch {
+    return null;
+  }
 }
 
 export type AccessSession = {
@@ -205,7 +189,7 @@ export function getRuntimeEnv() {
   return env;
 }
 
-export function setRuntimeEnv(input: unknown) {
+export function setRuntimeEnv(input: Parameters<typeof decodeAppEnv>[0]) {
   const env = decodeAppEnv(input);
   globalThis.__env__ = env;
   return env;
@@ -238,7 +222,7 @@ let jwksPromise: Promise<ReturnType<typeof createLocalJWKSet>> | null = null;
 let jwksLoadedAt = 0;
 
 async function loadJwks(env: AppEnv) {
-  const namespace = env.OPENAUTH_STORAGE as KVNamespace;
+  const namespace: KVNamespace = env.OPENAUTH_STORAGE;
   const keys: JWK[] = [];
   for (const prefix of ["signing:key", "oauth:key"] as const) {
     let cursor: string | undefined;
@@ -253,7 +237,7 @@ async function loadJwks(env: AppEnv) {
         const alg =
           stored.alg ?? (prefix === "oauth:key" ? LEGACY_SIGNING_ALG : SIGNING_ALG_DEFAULT);
         const publicKey = await importSPKI(stored.publicKey, alg, { extractable: true });
-        const jwk = (await exportJWK(publicKey)) as JWK;
+        const jwk = await exportJWK(publicKey);
         jwk.kid = stored.id;
         jwk.use = "sig";
         jwk.alg = alg;
@@ -272,7 +256,8 @@ function getJwks(env: AppEnv) {
     jwksLoadedAt = Date.now();
     jwksPromise = loadJwks(env);
   }
-  return jwksPromise!;
+  if (!jwksPromise) jwksPromise = loadJwks(env);
+  return jwksPromise;
 }
 
 function invalidateJwks() {
@@ -288,9 +273,10 @@ async function verifyAccessLocally(token: string, env: AppEnv): Promise<LocalVer
       const jwks = await getJwks(env);
       const { payload } = await jwtVerify(token, jwks, { issuer: env.APP_PUBLIC_URL });
       if (payload.mode !== "access") return { kind: "invalid" };
-      const properties = payload.properties as { email?: unknown } | undefined;
-      const email = properties?.email;
-      if (typeof email !== "string" || !email) return { kind: "invalid" };
+      const properties = Schema.decodeUnknownSync(Schema.Struct({ email: Schema.NonEmptyString }))(
+        payload.properties,
+      );
+      const email = properties.email;
       return { kind: "ok", email };
     } catch (error) {
       if (error instanceof joseErrors.JWTExpired) return { kind: "expired" };
@@ -319,16 +305,20 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
       }),
       signal: controller.signal,
     });
-    const response = await createAuthIssuer(env).fetch(
-      tokenRequest,
-      env as unknown as Record<string, unknown>,
-      {} as ExecutionContext,
-    );
+    const issuerEnv = Object.fromEntries(Object.entries(env));
+    const executionContext = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } satisfies ExecutionContext;
+    const response = await createAuthIssuer(env).fetch(tokenRequest, issuerEnv, executionContext);
     if (!response.ok) {
       let errorCode: string | undefined;
       try {
-        const body = (await response.clone().json()) as unknown;
-        if (isRecord(body) && typeof body.error === "string") errorCode = body.error;
+        const body = Schema.decodeUnknownSync(
+          Schema.Struct({ error: Schema.optional(Schema.String) }),
+        )(await response.clone().json());
+        errorCode = body.error;
       } catch {
         console.warn("[auth] failed to parse token endpoint error body");
       }
@@ -386,15 +376,18 @@ function getSharedConsumerAuth(env: AppEnv): SharedConsumerAuth | null {
     env.DEV_AUTH_EMAIL ?? "",
   ].join("\u001f");
   if (!sharedConsumerAuth || sharedConsumerAuth.key !== key) {
+    const authConfig = {
+      AUTH_ISSUER_URL: issuerUrl,
+      AUTH_CLIENT_ID: clientId,
+      APP_PUBLIC_URL: env.APP_PUBLIC_URL,
+      OWNER_EMAIL: env.OWNER_EMAIL,
+    };
+    const configuredAuth = env.DEV_AUTH_EMAIL
+      ? { ...authConfig, DEV_AUTH_EMAIL: env.DEV_AUTH_EMAIL }
+      : authConfig;
     sharedConsumerAuth = {
       key,
-      handlers: createAuthHandlers({
-        AUTH_ISSUER_URL: issuerUrl,
-        AUTH_CLIENT_ID: clientId,
-        APP_PUBLIC_URL: env.APP_PUBLIC_URL,
-        OWNER_EMAIL: env.OWNER_EMAIL,
-        ...(env.DEV_AUTH_EMAIL ? { DEV_AUTH_EMAIL: env.DEV_AUTH_EMAIL } : {}),
-      }),
+      handlers: createAuthHandlers(configuredAuth),
     };
   }
   return sharedConsumerAuth.handlers;
@@ -406,13 +399,10 @@ function createOwnerSession(
   options: { name?: string; tokens?: AccessSession["tokens"] } = {},
 ): AccessSession | null {
   if (!isOwnerEmail(email, env.OWNER_EMAIL)) return null;
-  return {
-    user: {
-      email: normalizeEmail(email),
-      ...(options.name ? { name: options.name } : {}),
-    },
-    ...(options.tokens ? { tokens: options.tokens } : {}),
-  };
+  const user = options.name
+    ? { email: normalizeEmail(email), name: options.name }
+    : { email: normalizeEmail(email) };
+  return options.tokens ? { user, tokens: options.tokens } : { user };
 }
 
 export async function getSession(
@@ -519,23 +509,71 @@ export async function sendInternalSyncCommand<T extends SyncCommandType>(
 export const OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 const MODELS_CATALOG_URL = `${OPENCODE_GO_BASE_URL}/models`;
 
+const CatalogModelSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.optional(Schema.String),
+  attachment: Schema.optional(Schema.Boolean),
+  transport: Schema.optional(Schema.Literals(["chat-completions", "responses"])),
+  reasoning: Schema.optional(Schema.Boolean),
+  tool_call: Schema.optional(Schema.Boolean),
+  interleaved: Schema.optional(Schema.NullOr(Schema.Struct({ field: Schema.String }))),
+  modalities: Schema.optional(
+    Schema.Struct({ input: Schema.Array(Schema.String), output: Schema.Array(Schema.String) }),
+  ),
+  family: Schema.optional(Schema.String),
+  limit: Schema.optional(
+    Schema.Struct({
+      context: Schema.optional(Schema.Number),
+      output: Schema.optional(Schema.Number),
+    }),
+  ),
+});
+const CatalogProviderSchema = Schema.Struct({
+  id: Schema.optional(Schema.String),
+  api: Schema.optional(Schema.String),
+  models: Schema.optional(Schema.Record(Schema.String, CatalogModelSchema)),
+});
+const ModelsCatalogSchema = Schema.Record(Schema.String, CatalogProviderSchema);
+const FlatModelsResponseSchema = Schema.Struct({
+  data: Schema.Array(Schema.Struct({ id: Schema.String })),
+});
+const CapabilityOverrideSchema = Schema.Struct({
+  attachment: Schema.optional(Schema.Boolean),
+  transport: Schema.optional(Schema.Literals(["chat-completions", "responses"])),
+  reasoning: Schema.optional(Schema.Boolean),
+  tool_call: Schema.optional(Schema.Boolean),
+  interleaved: Schema.optional(Schema.NullOr(Schema.Struct({ field: Schema.String }))),
+  modalities: Schema.optional(
+    Schema.Struct({ input: Schema.Array(Schema.String), output: Schema.Array(Schema.String) }),
+  ),
+  family: Schema.optional(Schema.String),
+  limit: Schema.optional(
+    Schema.Struct({
+      context: Schema.optional(Schema.Number),
+      output: Schema.optional(Schema.Number),
+    }),
+  ),
+});
+const CapabilityOverridesSchema = Schema.Record(Schema.String, CapabilityOverrideSchema);
+type ModelsCatalog = Schema.Schema.Type<typeof ModelsCatalogSchema>;
+
 export async function purgeModelsCatalogCache(cache: Cache) {
   await cache.delete(new Request(MODELS_CATALOG_URL));
 }
 
-export function normalizeModelsCatalogResponse(raw: any): any {
-  if (Array.isArray(raw?.data)) {
+export function normalizeModelsCatalogResponse(raw: ExternalValue): ModelsCatalog {
+  if (Schema.is(FlatModelsResponseSchema)(raw)) {
     return {
       "opencode-go": {
         id: "opencode-go",
         api: OPENCODE_GO_BASE_URL,
         models: Object.fromEntries(
-          raw.data.map((m: any, index: number) => [String(index), { id: m.id, name: m.id }]),
+          raw.data.map((model, index) => [String(index), { id: model.id, name: model.id }]),
         ),
       },
     };
   }
-  return raw;
+  return Schema.decodeUnknownSync(ModelsCatalogSchema)(raw);
 }
 
 export async function fetchModelsCatalog(env: AppEnv, cache: Cache) {
@@ -578,7 +616,7 @@ function parseEnvCapabilityOverrides(
   if (!raw) return {};
   if (envOverrideCache) return envOverrideCache;
   try {
-    envOverrideCache = JSON.parse(raw) as Record<string, ModelCapabilitySource>;
+    envOverrideCache = Schema.decodeUnknownSync(CapabilityOverridesSchema)(JSON.parse(raw));
   } catch {
     console.warn("[env] failed to parse OPENCODE_GO_MODEL_CAPABILITIES", raw.slice(0, 200));
     envOverrideCache = {};
@@ -590,7 +628,7 @@ export function clearEnvOverrideCache() {
   envOverrideCache = null;
 }
 
-export function filterModelsCatalog(raw: any, env: AppEnv) {
+export function filterModelsCatalog(raw: ModelsCatalog, env: AppEnv) {
   const provider = raw["opencode-go"] ?? {};
   const allowed = new Set(
     (env.OPENCODE_GO_MODEL_ALLOWLIST ?? "")
@@ -599,12 +637,12 @@ export function filterModelsCatalog(raw: any, env: AppEnv) {
       .filter(Boolean),
   );
   const overrides = parseEnvCapabilityOverrides(env.OPENCODE_GO_MODEL_CAPABILITIES);
-  const models = Object.values<any>(provider.models ?? {})
+  const models = Object.values(provider.models ?? {})
     .filter((model) => allowed.size === 0 || allowed.has(model.id))
     .map((model) => {
-      const registry = MODEL_CAPABILITY_REGISTRY[model.id] ?? {};
+      const registry = modelCapabilityFor(model.id) ?? {};
       const override = overrides[model.id] ?? {};
-      const merged: Record<string, any> = {
+      const merged = {
         ...model,
         ...registry,
         ...override,
@@ -615,20 +653,9 @@ export function filterModelsCatalog(raw: any, env: AppEnv) {
         id: model.id,
         name: model.name ?? model.id,
         attachment: !!(merged.attachment || merged.modalities?.input?.includes("image")),
-        reasoning: !!(
-          merged.reasoning ||
-          (merged.interleaved &&
-            typeof merged.interleaved === "object" &&
-            merged.interleaved.field === "reasoning_content")
-        ),
+        reasoning: !!(merged.reasoning || merged.interleaved?.field === "reasoning_content"),
         toolCall: !!merged.tool_call,
-        interleaved:
-          merged.interleaved && typeof merged.interleaved === "object"
-            ? {
-                field:
-                  typeof merged.interleaved.field === "string" ? merged.interleaved.field : null,
-              }
-            : null,
+        interleaved: merged.interleaved ? { field: merged.interleaved.field } : null,
         context: merged.limit?.context ?? null,
         output: merged.limit?.output ?? null,
         family: merged.family ?? "unknown",
@@ -677,7 +704,9 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-function toExaError(error: unknown, fallbackReason: "timeout" | "network"): ExaSearchError {
+type CaughtError = Parameters<typeof String>[0];
+
+function toExaError(error: CaughtError, fallbackReason: "timeout" | "network"): ExaSearchError {
   if (error instanceof ExaSearchError) return error;
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
@@ -863,7 +892,7 @@ export async function exaSearch(
   const clampedResults = clampExaResults(numResults);
   const json = await runExaSearchRequest(apiKey, trimmedQuery, clampedResults, signal);
   const results = (json.results ?? [])
-    .filter((result) => typeof result?.url === "string" && result.url)
+    .filter((result) => Boolean(result.url))
     .map((result) => ({
       id: createId("src"),
       title: result.title ?? result.url,
@@ -879,32 +908,33 @@ export async function exaSearch(
 export function extractChatCompletionText(
   content: string | Array<{ type?: string; text?: string }> | undefined,
 ) {
-  if (typeof content === "string") return content.trim();
+  if (Schema.is(Schema.String)(content)) return content.trim();
   if (!Array.isArray(content)) return "";
   return content
-    .filter((part) => part?.type === "text" && typeof part.text === "string")
-    .map((part) => part.text!.trim())
+    .filter((part) => part?.type === "text" && Schema.is(Schema.String)(part.text))
+    .map((part) => part.text?.trim() ?? "")
     .filter(Boolean)
     .join("\n")
     .trim();
 }
 
-function coerceTokenCount(value: unknown) {
-  const tokens =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && value.trim()
-        ? Number(value)
-        : NaN;
+function coerceTokenCount(value: ExternalValue) {
+  const tokens = Schema.is(Schema.Number)(value)
+    ? value
+    : Schema.is(Schema.String)(value) && value.trim()
+      ? Number(value)
+      : NaN;
   if (!Number.isFinite(tokens)) return null;
   return Math.max(0, Math.round(tokens));
 }
 
-export function extractReasoningTokens(usage: unknown) {
-  if (!usage || typeof usage !== "object") return null;
+const ExternalRecordSchema = Schema.Record(Schema.String, Schema.Any);
 
-  const queue: Record<string, unknown>[] = [usage as Record<string, unknown>];
-  const seen = new Set<Record<string, unknown>>();
+export function extractReasoningTokens(usage: ExternalValue) {
+  if (!Schema.is(ExternalRecordSchema)(usage)) return null;
+
+  const queue = [usage];
+  const seen = new Set<Schema.Schema.Type<typeof ExternalRecordSchema>>();
 
   while (queue.length > 0) {
     const current = queue.shift()!;
@@ -923,9 +953,7 @@ export function extractReasoningTokens(usage: unknown) {
       "usage",
     ]) {
       const nested = current[key];
-      if (nested && typeof nested === "object") {
-        queue.push(nested as Record<string, unknown>);
-      }
+      if (Schema.is(ExternalRecordSchema)(nested)) queue.push(nested);
     }
   }
 
@@ -933,11 +961,22 @@ export function extractReasoningTokens(usage: unknown) {
 }
 
 export function parseExaMcpTextResponse(responseText: string) {
+  const responseSchema = Schema.Struct({
+    result: Schema.Struct({
+      content: Schema.Array(
+        Schema.Struct({ type: Schema.String, text: Schema.optional(Schema.String) }),
+      ),
+    }),
+  });
   for (const line of responseText.split("\n")) {
     if (!line.startsWith("data: ")) continue;
-    const payload = JSON.parse(line.slice(6));
-    const text = payload?.result?.content?.find?.((item: any) => item?.type === "text")?.text;
-    if (typeof text === "string" && text.trim()) return text.trim();
+    try {
+      const payload = Schema.decodeUnknownSync(responseSchema)(JSON.parse(line.slice(6)));
+      const text = payload.result.content.find((item) => item.type === "text")?.text;
+      if (text?.trim()) return text.trim();
+    } catch {
+      continue;
+    }
   }
   return "";
 }
@@ -1062,7 +1101,7 @@ export class BrowserRenderError extends Error {
 }
 
 function toBrowserRenderError(
-  error: unknown,
+  error: CaughtError,
   fallbackReason: "timeout" | "network",
 ): BrowserRenderError {
   if (error instanceof BrowserRenderError) return error;
@@ -1093,7 +1132,6 @@ function toBrowserRenderError(
  * — we prepend `https://` to be forgiving.
  */
 export function normalizeExtractUrl(input: string): URL | null {
-  if (typeof input !== "string") return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
   // If the caller provided an explicit scheme other than http(s), bail
@@ -1145,7 +1183,8 @@ function extractMarkdownInPage(): string {
     document.querySelector('[role="main"]') ||
     document.body;
   if (!root) return "";
-  const clone = root.cloneNode(true) as Element;
+  const clone = root.cloneNode(true);
+  if (!(clone instanceof Element)) return "";
   const drop = clone.querySelectorAll(
     "script, style, noscript, nav, footer, header, aside, iframe, form, button, input, " +
       'select, textarea, [aria-hidden="true"], [role="navigation"], [role="banner"], ' +
@@ -1163,29 +1202,33 @@ function extractMarkdownInPage(): string {
     for (const child of Array.from(element.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE) {
         out += (child.textContent ?? "").replace(/\s+/g, " ");
-      } else if (child.nodeType === Node.ELEMENT_NODE) {
-        const el = child as Element;
+      } else if (child instanceof Element) {
+        const el = child;
         const tag = el.tagName.toLowerCase();
-        const renderer = INLINE_RENDERERS[tag];
+        const renderer = INLINE_RENDERERS.get(tag);
         out += renderer ? renderer(el, renderInline) : renderInline(el);
       }
     }
     return out;
   }
 
-  const INLINE_RENDERERS: Record<string, (el: Element, render: typeof renderInline) => string> = {
-    a: (el, render) => {
-      const href = (el as HTMLAnchorElement).href?.trim();
-      const label = render(el).trim();
-      return href && label && href !== label ? `[${label}](${href})` : label;
-    },
-    code: (el, render) => `\`${render(el)}\``,
-    b: (el, render) => `**${render(el)}**`,
-    strong: (el, render) => `**${render(el)}**`,
-    i: (el, render) => `*${render(el)}*`,
-    em: (el, render) => `*${render(el)}*`,
-    br: () => "\n",
-  };
+  type InlineRenderer = (el: Element, render: typeof renderInline) => string;
+  const INLINE_RENDERERS = new Map<string, InlineRenderer>([
+    [
+      "a",
+      (el, render) => {
+        const href = el instanceof HTMLAnchorElement ? el.href.trim() : "";
+        const label = render(el).trim();
+        return href && label && href !== label ? `[${label}](${href})` : label;
+      },
+    ],
+    ["code", (el, render) => `\`${render(el)}\``],
+    ["b", (el, render) => `**${render(el)}**`],
+    ["strong", (el, render) => `**${render(el)}**`],
+    ["i", (el, render) => `*${render(el)}*`],
+    ["em", (el, render) => `*${render(el)}*`],
+    ["br", () => "\n"],
+  ]);
   function walk(element: Element) {
     const tag = element.tagName.toLowerCase();
     if (tag === "pre") {
@@ -1260,7 +1303,7 @@ export async function cloudflareBrowserMarkdown(
   rawUrl: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const binding = env.BROWSER as unknown;
+  const binding: BrowserWorker | undefined = env.BROWSER;
   if (!binding) {
     throw new BrowserRenderError("Browser Rendering binding is not configured", {
       status: null,
@@ -1291,7 +1334,7 @@ export async function cloudflareBrowserMarkdown(
 
   let lastError: BrowserRenderError | null = null;
   for (let attempt = 1; attempt <= BROWSER_RENDER_MAX_ATTEMPTS; attempt++) {
-    let browser: any = null;
+    let browser: Browser | null = null;
     // Listener that tears down the in-flight browser session when the
     // caller aborts. Closing the browser mid-`page.goto` / `page.evaluate`
     // makes those calls reject, which propagates back into the catch
@@ -1305,7 +1348,7 @@ export async function cloudflareBrowserMarkdown(
       // close the browser in `finally` to release the concurrent-session
       // slot — the underlying session stays warm server-side.
       const puppeteer = (await import("@cloudflare/puppeteer")).default;
-      browser = await puppeteer.launch(binding as any, {
+      browser = await puppeteer.launch(binding, {
         keep_alive: 60_000,
       });
       if (signal) {
@@ -1470,7 +1513,28 @@ export async function createUploadUrl(request: Request, objectKey: string) {
   return url.toString();
 }
 
-export async function signUploadToken(env: AppEnv, payload: Record<string, unknown>) {
+const UploadAttachmentTokenSchema = Schema.Struct({
+  action: Schema.Literal("upload_attachment"),
+  attachmentId: Schema.String,
+  objectKey: Schema.String,
+  threadId: Schema.String,
+  fileName: Schema.String,
+  mimeType: Schema.String,
+  sizeBytes: Schema.Number,
+  expiresAt: Schema.Number,
+});
+const ReadAttachmentTokenSchema = Schema.Struct({
+  action: Schema.Literal("read_attachment"),
+  objectKey: Schema.String,
+  expiresAt: Schema.Number,
+});
+export const UploadTokenSchema = Schema.Union([
+  UploadAttachmentTokenSchema,
+  ReadAttachmentTokenSchema,
+]);
+export type UploadTokenPayload = Schema.Schema.Type<typeof UploadTokenSchema>;
+
+export async function signUploadToken(env: AppEnv, payload: UploadTokenPayload) {
   const data = encoder.encode(JSON.stringify(payload));
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -1497,5 +1561,11 @@ export async function verifyUploadToken(env: AppEnv, token: string) {
   );
   const valid = await crypto.subtle.verify("HMAC", keyMaterial, signatureBytes, payloadBytes);
   if (!valid) return null;
-  return JSON.parse(new TextDecoder().decode(payloadBytes)) as Record<string, unknown>;
+  try {
+    return Schema.decodeUnknownSync(UploadTokenSchema)(
+      JSON.parse(new TextDecoder().decode(payloadBytes)),
+    );
+  } catch {
+    return null;
+  }
 }

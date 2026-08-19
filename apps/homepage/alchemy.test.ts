@@ -3,6 +3,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import assert from "node:assert/strict";
 import HomepageStack from "./alchemy.run";
+import * as Schema from "effect/Schema";
 
 const live = process.env.SHEDFLARE_LIVE_ALCHEMY_TESTS === "1";
 
@@ -24,14 +25,10 @@ test.skipIf(!live)(
 
     const profile = yield* Effect.promise(() => fetch(`${base}/api/profile`));
     assert.equal(profile.status, 200);
-    const profileData: unknown = yield* Effect.promise(() => profile.json());
-    assert.equal(
-      typeof profileData === "object" &&
-        profileData !== null &&
-        "name" in profileData &&
-        typeof profileData.name === "string",
-      true,
+    const profileData = Schema.decodeUnknownSync(Schema.Struct({ name: Schema.String }))(
+      yield* Effect.promise(() => profile.json()),
     );
+    assert.ok(profileData.name.length > 0);
 
     const experiences = yield* Effect.promise(() => fetch(`${base}/api/experiences`));
     assert.equal(experiences.status, 200);

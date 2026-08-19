@@ -1,10 +1,17 @@
-import { createId, nowIso, summarizeThreadTitle, type SyncServerEnvelope } from "#/domain";
+import {
+  createId,
+  nowIso,
+  summarizeThreadTitle,
+  type ExternalValue,
+  type SyncServerEnvelope,
+} from "#/domain";
 import { OPENCODE_GO_BASE_URL, getDefaultModelId, modelTransportFor, type AppEnv } from "#/runtime";
 import { getTitleGenerationModelOptions } from "./model-config";
 import { syncLog, sanitizeGeneratedTitle } from "./sync-utils";
 import type { ChatRepository } from "./chat-repository";
 import { normalizeThread } from "./persistence-codecs";
 import type { EventStore } from "./event-store";
+import * as Schema from "effect/Schema";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,34 +31,50 @@ export interface TitleGenerationContext {
   broadcast: (envelope: SyncServerEnvelope) => void;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
+const ChatCompletionTitleResponse = Schema.Struct({
+  choices: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ message: Schema.optional(Schema.Struct({ content: Schema.String })) }),
+    ),
+  ),
+});
+const ResponsesTitleResponse = Schema.Struct({
+  output_text: Schema.optional(Schema.String),
+  output: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        content: Schema.optional(
+          Schema.Array(Schema.Struct({ text: Schema.optional(Schema.String) })),
+        ),
+      }),
+    ),
+  ),
+});
 
-function extractChatCompletionTitle(value: unknown) {
-  const response = asRecord(value);
-  const choices = response?.choices;
-  const firstChoice = Array.isArray(choices) ? asRecord(choices[0]) : null;
-  const message = asRecord(firstChoice?.message);
-  return typeof message?.content === "string" ? message.content : null;
-}
-
-function extractResponsesTitle(value: unknown) {
-  const response = asRecord(value);
-  if (typeof response?.output_text === "string") return response.output_text;
-
-  const output = Array.isArray(response?.output) ? response.output : [];
-  for (const item of output) {
-    const record = asRecord(item);
-    const content = Array.isArray(record?.content) ? record.content : [];
-    for (const part of content) {
-      const contentPart = asRecord(part);
-      if (typeof contentPart?.text === "string") return contentPart.text;
-    }
+function extractChatCompletionTitle(value: ExternalValue): string | null {
+  try {
+    return (
+      Schema.decodeUnknownSync(ChatCompletionTitleResponse)(value).choices?.[0]?.message?.content ??
+      null
+    );
+  } catch {
+    return null;
   }
-  return null;
+}
+
+function extractResponsesTitle(value: ExternalValue): string | null {
+  try {
+    const response = Schema.decodeUnknownSync(ResponsesTitleResponse)(value);
+    if (response.output_text) return response.output_text;
+    for (const item of response.output ?? []) {
+      for (const part of item.content ?? []) {
+        if (part.text) return part.text;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -115,22 +138,26 @@ export async function generateThreadTitle(
       },
     );
     if (response.ok) {
-      const data = (await response.json()) as unknown;
+      const data: ExternalValue = await response.json();
       const generated = useResponses
         ? extractResponsesTitle(data)
         : extractChatCompletionTitle(data);
-      if (typeof generated === "string") {
+      if (generated !== null) {
         title = sanitizeGeneratedTitle(generated) ?? title;
       } else {
-        const record = asRecord(data);
-        const choices = record?.choices;
-        const firstChoice = Array.isArray(choices) ? asRecord(choices[0]) : null;
+        const diagnostic = Schema.decodeUnknownSync(
+          Schema.Struct({
+            choices: Schema.optional(
+              Schema.Array(Schema.Struct({ message: Schema.optional(Schema.Any) })),
+            ),
+          }),
+        )(data);
         syncLog("title_generation_no_content", {
           threadId: input.threadId,
           modelId,
           transport: useResponses ? "responses" : "chat-completions",
-          hasChoices: Array.isArray(choices),
-          hasMessage: firstChoice?.message != null,
+          hasChoices: (diagnostic.choices?.length ?? 0) > 0,
+          hasMessage: diagnostic.choices?.[0]?.message != null,
         });
       }
     } else {

@@ -6,6 +6,7 @@ import {
   clampSearchesPerTurn,
   createSearchRun,
   decodeSearchResultRow,
+  type JsonObject,
   type SearchResult,
   type SearchRun,
 } from "#/domain";
@@ -147,11 +148,14 @@ type SearchToolResult =
       disableFurtherToolCalls?: boolean;
     };
 
-function classifyExaError(error: unknown): {
+type ExaErrorClassification = {
   reason: ExaFailureReason;
   message: string;
   hint: string;
-} {
+};
+type CaughtError = Parameters<typeof String>[0];
+
+function classifyExaError(error: CaughtError): ExaErrorClassification {
   if (error instanceof ExaSearchError) {
     switch (error.reason) {
       case "timeout":
@@ -223,8 +227,8 @@ export function createExaSearchTool(input: {
    * instead of running to completion.
    */
   signal?: AbortSignal;
-  log?: (event: string, details?: Record<string, unknown>) => void;
-  trace?: <A>(name: string, attrs: Record<string, unknown>, run: () => Promise<A>) => Promise<A>;
+  log?: (event: string, details?: JsonObject) => void;
+  trace?: <A>(name: string, attrs: JsonObject, run: () => Promise<A>) => Promise<A>;
   onProgress?: (event: SearchProgressEvent) => void | Promise<void>;
   onSearchStateChange?: (state: Readonly<SearchToolState>) => void | Promise<void>;
   maxSearchesPerTurn?: number;
@@ -251,8 +255,7 @@ export function createExaSearchTool(input: {
       searchResults: [...state.searchResults],
     });
   };
-  const trace =
-    input.trace ?? ((_: string, __: Record<string, unknown>, run: () => Promise<any>) => run());
+  const trace = input.trace ?? (<A>(_: string, __: JsonObject, run: () => Promise<A>) => run());
 
   const tool = toolDefinition({
     name: "exa_web_search",
@@ -269,13 +272,8 @@ export function createExaSearchTool(input: {
     // loop; doing it here as well keeps direct execute() calls safe.
     const decoded = v.safeParse(SearchToolArgsSchema, value);
     if (!decoded.success) {
-      const rawQuery =
-        typeof value === "object" &&
-        value !== null &&
-        "query" in value &&
-        typeof value.query === "string"
-          ? value.query
-          : "";
+      const partial = v.safeParse(v.object({ query: v.optional(v.string()) }), value);
+      const rawQuery = partial.success ? (partial.output.query ?? "") : "";
       const query = rawQuery.trim().replace(/\s+/g, " ");
       const reason: SearchFailureReason = !query
         ? "empty_query"
@@ -508,18 +506,18 @@ export function createExaSearchTool(input: {
             queryCache.set(queryKey, context);
             await publishState();
             const budgetExhausted = reservedSearches >= maxSearchesPerTurn;
-            return {
+            const result: SearchToolResult = {
               ok: true,
               query,
               resultCount,
               context,
-              ...(budgetExhausted
-                ? {
-                    disableFurtherToolCalls: true,
-                    hint: "Search budget is exhausted. Do not call tools again; answer using the search results already provided.",
-                  }
-                : {}),
-            } satisfies SearchToolResult;
+            };
+            if (budgetExhausted) {
+              result.disableFurtherToolCalls = true;
+              result.hint =
+                "Search budget is exhausted. Do not call tools again; answer using the search results already provided.";
+            }
+            return result;
           } catch (error) {
             const { reason, message, hint } = classifyExaError(error);
             // If the user pressed Stop mid-search, the cancel handler already
@@ -562,14 +560,15 @@ export function createExaSearchTool(input: {
             // turn; we want the model to see the failure, adjust, and
             // continue (or decide to answer without search).
             const budgetExhausted = reservedSearches >= maxSearchesPerTurn;
-            return {
+            const result: SearchToolResult = {
               ok: false,
               query,
               error: cancelled ? "Request was cancelled." : message,
               reason: cancelled ? "exa_unknown" : reason,
               hint: cancelled ? "The user cancelled the turn; do not retry." : hint,
-              ...(budgetExhausted ? { disableFurtherToolCalls: true } : {}),
-            } satisfies SearchToolResult;
+            };
+            if (budgetExhausted) result.disableFurtherToolCalls = true;
+            return result;
           }
         });
       });

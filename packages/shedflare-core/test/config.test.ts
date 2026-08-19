@@ -5,10 +5,12 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   CoreError,
   discoverManifests,
+  isAppSelected,
   loadConfig,
   migrateConfig,
   patchConfig,
   resolveAppConfig,
+  selectedAppIds,
   validateConfig,
   writeConfigMigration,
 } from "../src/index.ts";
@@ -74,6 +76,15 @@ describe("config validation and resolution", () => {
       stageSubdomain: "chat",
       vars: { DEFAULT_MODEL_ID: "auto" },
     });
+    expect(selectedAppIds(config)).toEqual(["chat", "drive"]);
+    expect(isAppSelected(config, "money")).toBe(false);
+  });
+
+  test("excludes disabled legacy apps from deployment selection", () => {
+    const config = validateConfig(legacyConfig, catalog);
+
+    expect(selectedAppIds(config)).toEqual(["auth", "chat"]);
+    expect(isAppSelected(config, "drive")).toBe(false);
   });
 
   test("rejects future versions, unknown apps, and unknown fields", () => {

@@ -1,7 +1,7 @@
 export { inspectConfig, loadConfig, validateConfig, writeConfig } from "./load.ts";
 export { migrateConfig, writeConfigMigration } from "./migrate.ts";
 export { patchConfig } from "./patch.ts";
-export { resolveAppConfig, stageSubdomain } from "./resolve.ts";
+export { isAppSelected, resolveAppConfig, selectedAppIds, stageSubdomain } from "./resolve.ts";
 export {
   AppSelectionPatchSchema,
   AppSelectionSchema,

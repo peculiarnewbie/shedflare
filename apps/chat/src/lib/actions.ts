@@ -261,7 +261,7 @@ export function createComparisonAction(input: {
   // Link attachments to user messages
   for (const attachmentId of input.attachmentIds ?? []) {
     for (const userMessage of userMessages) {
-      const existing = attachments.get(attachmentId) as Attachment | undefined;
+      const existing = attachments.get(attachmentId);
       if (!existing) continue;
       rollbackEntries.push(restoreRow("attachments", attachments, existing));
       applyLocalUpdate("attachments", {
@@ -304,7 +304,7 @@ export function deleteThreadAction(threadId: string) {
   applyLocalDelete("threads", threadId);
   // Also optimistically remove messages belonging to this thread
   for (const [key, message] of messages.state.entries()) {
-    if ((message as any).threadId === threadId) {
+    if (message.threadId === threadId) {
       applyLocalDelete("messages", key);
     }
   }
@@ -320,9 +320,9 @@ export function forkThreadAction(input: {
   const opId = createId("op");
 
   // Walk message path from fork point back to root
-  const allMessages = [...messages.state.values()] as Message[];
+  const allMessages = [...messages.state.values()];
   const threadMessages = allMessages.filter((m) => m.threadId === input.sourceThreadId);
-  const sourceThread = threads.get(input.sourceThreadId) as Thread | undefined;
+  const sourceThread = threads.get(input.sourceThreadId);
   const path = resolveThreadMessagePath(threadMessages, sourceThread?.headMessageId ?? null);
 
   // Find the fork index — we copy everything up to and including sourceMessageId
@@ -380,7 +380,7 @@ export function forkThreadAction(input: {
   }
 
   // Clone attachments belonging to the copied messages
-  const allAttachments = [...attachments.state.values()] as Attachment[];
+  const allAttachments = [...attachments.state.values()];
   const sourceAttachments = allAttachments.filter(
     (a) => a.threadId === input.sourceThreadId && a.messageId && originalIds.has(a.messageId),
   );
@@ -399,7 +399,7 @@ export function forkThreadAction(input: {
         mimeType: original.mimeType,
         sizeBytes: original.sizeBytes,
         sha256: original.sha256,
-        status: original.status as "ready" | "queued" | "uploading" | "failed",
+        status: original.status,
       }),
       width: original.width,
       height: original.height,
@@ -581,7 +581,7 @@ export function sendMessageAction(input: {
 
   // Link attachments to the user message locally for immediate UI feedback.
   for (const attachmentId of input.attachmentIds ?? []) {
-    const existing = attachments.get(attachmentId) as Attachment | undefined;
+    const existing = attachments.get(attachmentId);
     if (!existing) continue;
     rollbackEntries.push(restoreRow("attachments", attachments, existing));
     applyLocalUpdate("attachments", {
@@ -742,7 +742,7 @@ export function editUserMessageAction(input: {
   const clonedAttachments: Attachment[] = [];
 
   for (const attachmentId of input.attachmentIds ?? []) {
-    const existing = attachments.get(attachmentId) as Attachment | undefined;
+    const existing = attachments.get(attachmentId);
     if (!existing || existing.status !== "ready") continue;
     const clonedAttachment = {
       ...createAttachment({
@@ -817,7 +817,7 @@ export function resetAllData() {
   // Tell server to wipe all DO state
   dispatch("reset_storage", {}, { opId });
   // Clear local state
-  if (typeof localStorage !== "undefined") {
+  if (globalThis.localStorage) {
     localStorage.removeItem("shedflare.lastServerSeq");
     localStorage.removeItem("shedflare.activeWorkspaceId");
     localStorage.removeItem("shedflare.activeThreadId");

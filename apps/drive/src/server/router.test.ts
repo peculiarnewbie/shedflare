@@ -1,16 +1,45 @@
 import { describe, expect, test, beforeEach } from "vite-plus/test";
-import { createRouter } from "./router";
-import { createTestD1, D1Shim } from "../test/d1-shim";
-import { R2Mock } from "../test/r2-mock";
+import { spawnSync } from "node:child_process";
+import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
+import * as Schema from "effect/Schema";
+import { createRouter, type Env } from "./router";
+import { secureUploadSessions } from "../db/schema";
+import { asD1Database, createTestD1, D1Shim } from "../test/d1-shim";
+import { asR2Bucket, R2Mock } from "../test/r2-mock";
+import {
+  DeleteResponse,
+  FileResponse,
+  FilesResponse,
+  MultipartPartResponse,
+  MultipartUploadResponse,
+  SecureUploadCommandResponse,
+  TagsResponse,
+} from "../shared/schema";
 import { MULTIPART_PART_SIZE, SINGLE_UPLOAD_MAX_BYTES } from "./impl/files";
+import {
+  SECURE_UPLOAD_MAX_BYTES,
+  SECURE_UPLOAD_PART_SIZE,
+  signSecureUploadCapability,
+} from "./secure-upload-capability";
 
-function makeTestEnv(db: D1Shim, files: R2Mock) {
+const SecureUploadSessionResponse = Schema.Struct({ sessionToken: Schema.String });
+
+async function decodeJson<SchemaType extends Parameters<typeof Schema.decodeUnknownSync>[0]>(
+  response: Response,
+  schema: SchemaType,
+): Promise<SchemaType["Type"]> {
+  return Schema.decodeUnknownSync(schema)(await response.json());
+}
+
+function makeTestEnv(db: D1Shim, files: R2Mock): Env {
   return {
-    DB: db as unknown as D1Database,
-    FILES: files as unknown as R2Bucket,
+    DB: asD1Database(db),
+    FILES: asR2Bucket(files),
     AUTH_ISSUER_URL: "https://auth.test.example.com",
     AUTH_CLIENT_ID: "shedflare-drive-test",
     APP_PUBLIC_URL: "https://drive.test.example.com",
+    SECURE_UPLOAD_TOKEN_SECRET: "test-secure-upload-token-secret-at-least-32-bytes",
     OWNER_EMAIL: "test@example.com",
     DEV_AUTH_EMAIL: "test@example.com",
     ASSETS: {
@@ -31,13 +60,13 @@ describe("file API", () => {
   beforeEach(() => {
     db = createTestD1();
     r2 = new R2Mock();
-    router = createRouter(makeTestEnv(db, r2) as never);
+    router = createRouter(makeTestEnv(db, r2));
   });
 
   test("GET /api/files returns empty list", async () => {
     const res = await router.fetch(makeRequest("/api/files"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { files: unknown[]; nextOffset: number | null };
+    const body = await decodeJson(res, FilesResponse);
     expect(body.files).toEqual([]);
     expect(body.nextOffset).toBeNull();
   });
@@ -51,9 +80,7 @@ describe("file API", () => {
 
     const res = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
     expect(res.status).toBe(201);
-    const body = (await res.json()) as {
-      file: { id: string; name: string; description: string; tags: string[] };
-    };
+    const body = await decodeJson(res, FileResponse);
     expect(body.file.name).toBe("custom-name.txt");
     expect(body.file.description).toBe("a test file");
     expect(body.file.tags).toContain("work");
@@ -66,7 +93,7 @@ describe("file API", () => {
 
     const res = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { file: { name: string } };
+    const body = await decodeJson(res, FileResponse);
     expect(body.file.name).toBe("original.txt");
   });
 
@@ -111,11 +138,7 @@ describe("file API", () => {
       }),
     );
     expect(createRes.status).toBe(201);
-    const session = (await createRes.json()) as {
-      fileId: string;
-      uploadId: string;
-      partSize: number;
-    };
+    const session = await decodeJson(createRes, MultipartUploadResponse);
     expect(session.partSize).toBe(MULTIPART_PART_SIZE);
 
     const firstChunk = new Uint8Array(MULTIPART_PART_SIZE);
@@ -131,7 +154,7 @@ describe("file API", () => {
         }),
       );
       expect(partRes.status).toBe(200);
-      uploadedParts.push((await partRes.json()) as { partNumber: number; etag: string });
+      uploadedParts.push(await decodeJson(partRes, MultipartPartResponse));
     }
 
     const completeRes = await router.fetch(
@@ -150,15 +173,13 @@ describe("file API", () => {
       }),
     );
     expect(completeRes.status).toBe(201);
-    const completed = (await completeRes.json()) as {
-      file: { id: string; name: string; size: number; tags: string[] };
-    };
+    const completed = await decodeJson(completeRes, FileResponse);
     expect(completed.file).toMatchObject({
       id: session.fileId,
       name: "large-video.mp4",
       size,
     });
-    expect(completed.file.tags.sort()).toEqual(["archive", "video"]);
+    expect(completed.file.tags.toSorted()).toEqual(["archive", "video"]);
 
     const downloadRes = await router.fetch(makeRequest(`/api/files/${session.fileId}/download`));
     expect(downloadRes.status).toBe(200);
@@ -180,7 +201,7 @@ describe("file API", () => {
         }),
       }),
     );
-    const session = (await createRes.json()) as { fileId: string; uploadId: string };
+    const session = await decodeJson(createRes, MultipartUploadResponse);
 
     const abortRes = await router.fetch(
       makeRequest(`/api/files/multipart/${session.fileId}`, {
@@ -202,13 +223,11 @@ describe("file API", () => {
 
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
     expect(createRes.status).toBe(201);
-    const { file } = (await createRes.json()) as {
-      file: { id: string; name: string; tags: string[] };
-    };
+    const { file } = await decodeJson(createRes, FileResponse);
     expect(file.tags).toHaveLength(2);
 
     const listRes = await router.fetch(makeRequest("/api/files"));
-    const { files } = (await listRes.json()) as { files: Array<{ id: string }> };
+    const { files } = await decodeJson(listRes, FilesResponse);
     expect(files).toHaveLength(1);
     expect(files[0].id).toBe(file.id);
 
@@ -220,9 +239,7 @@ describe("file API", () => {
       }),
     );
     expect(updateRes.status).toBe(200);
-    const updated = (await updateRes.json()) as {
-      file: { name: string; isPublic: boolean };
-    };
+    const updated = await decodeJson(updateRes, FileResponse);
     expect(updated.file.name).toBe("renamed.txt");
     expect(updated.file.isPublic).toBe(true);
 
@@ -234,11 +251,11 @@ describe("file API", () => {
       makeRequest(`/api/files/${file.id}`, { method: "DELETE" }),
     );
     expect(deleteRes.status).toBe(200);
-    const deleteBody = (await deleteRes.json()) as { ok: boolean };
+    const deleteBody = await decodeJson(deleteRes, DeleteResponse);
     expect(deleteBody.ok).toBe(true);
 
     const afterDelete = await router.fetch(makeRequest("/api/files"));
-    const { files: remaining } = (await afterDelete.json()) as { files: unknown[] };
+    const { files: remaining } = await decodeJson(afterDelete, FilesResponse);
     expect(remaining).toHaveLength(0);
   });
 
@@ -251,7 +268,7 @@ describe("file API", () => {
     const form = new FormData();
     form.set("file", new File(["0123456789"], "clip.mp4", { type: "video/mp4" }));
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
-    const { file } = (await createRes.json()) as { file: { id: string } };
+    const { file } = await decodeJson(createRes, FileResponse);
 
     const previewRes = await router.fetch(
       makeRequest(`/api/files/${file.id}/preview`, {
@@ -270,7 +287,7 @@ describe("file API", () => {
     const form = new FormData();
     form.set("file", new File(["short"], "clip.mp4", { type: "video/mp4" }));
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
-    const { file } = (await createRes.json()) as { file: { id: string } };
+    const { file } = await decodeJson(createRes, FileResponse);
 
     const previewRes = await router.fetch(
       makeRequest(`/api/files/${file.id}/preview`, {
@@ -297,7 +314,7 @@ describe("file API", () => {
     const form = new FormData();
     form.set("file", new File(["x"], "f.txt", { type: "text/plain" }));
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
-    const { file } = (await createRes.json()) as { file: { id: string } };
+    const { file } = await decodeJson(createRes, FileResponse);
 
     const res = await router.fetch(
       makeRequest(`/api/files/${file.id}`, {
@@ -322,14 +339,238 @@ describe("file API", () => {
     }
 
     const res = await router.fetch(makeRequest("/api/files?limit=2&offset=0"));
-    const body = (await res.json()) as { files: unknown[]; nextOffset: number | null };
+    const body = await decodeJson(res, FilesResponse);
     expect(body.files).toHaveLength(2);
     expect(body.nextOffset).toBe(2);
 
     const page2 = await router.fetch(makeRequest("/api/files?limit=2&offset=2"));
-    const body2 = (await page2.json()) as { files: unknown[]; nextOffset: number | null };
+    const body2 = await decodeJson(page2, FilesResponse);
     expect(body2.files).toHaveLength(1);
     expect(body2.nextOffset).toBeNull();
+  });
+});
+
+describe("secure upload commands", () => {
+  let db: D1Shim;
+  let r2: R2Mock;
+  let env: ReturnType<typeof makeTestEnv>;
+  let router: ReturnType<typeof createRouter>;
+
+  beforeEach(() => {
+    db = createTestD1();
+    r2 = new R2Mock();
+    env = makeTestEnv(db, r2);
+    router = createRouter(env);
+  });
+
+  async function createCommand() {
+    const response = await router.fetch(
+      makeRequest("/api/secure-uploads/command", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expiresInSeconds: 120 }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    return decodeJson(response, SecureUploadCommandResponse);
+  }
+
+  test("creates a two-minute command with one file path placeholder", async () => {
+    const before = Date.now();
+    const result = await createCommand();
+    const expiry = new Date(result.expiresAt).getTime();
+
+    expect(result.command).toContain("bash -o pipefail -c");
+    expect(result.command).toContain("'http://localhost/api/secure-uploads/client/");
+    expect(result.command).toContain("| bash -s --");
+    expect(result.command).not.toContain("python");
+    expect(result.command).toContain('"<path-to-file>"');
+    expect(result.command.match(/<path-to-file>/gu)).toHaveLength(1);
+    expect(result.maxBytes).toBe(SECURE_UPLOAD_MAX_BYTES);
+    expect(expiry).toBeGreaterThanOrEqual(before + 119_000);
+    expect(expiry).toBeLessThanOrEqual(before + 121_000);
+  });
+
+  test("secure command performs a multipart upload without an authenticated session", async () => {
+    const { command } = await createCommand();
+    const clientUrl = command.match(/-- '([^']+)'/u)?.[1];
+    expect(clientUrl).toBeTruthy();
+    const clientPath = new URL(clientUrl ?? "http://localhost").pathname;
+    const clientResponse = await router.fetch(makeRequest(clientPath));
+    expect(clientResponse.status).toBe(200);
+    const script = await clientResponse.text();
+    expect(script).toContain("#!/usr/bin/env bash");
+    expect(script).toContain("max_bytes=524288000");
+    expect(script).not.toContain("python");
+    const syntaxCheck = spawnSync("bash", ["-n"], { input: script, encoding: "utf8" });
+    expect(syntaxCheck.stderr).toBe("");
+    expect(syntaxCheck.status).toBe(0);
+
+    const startToken = clientPath.match(/^\/api\/secure-uploads\/client\/(.+)\.sh$/u)?.[1];
+    expect(startToken).toBeTruthy();
+    const bytes = new TextEncoder().encode("uploaded from a secure command");
+    const startBody = new URLSearchParams({
+      name: "remote.txt",
+      mimeType: "text/plain",
+      size: String(bytes.byteLength),
+    });
+    const startResponse = await router.fetch(
+      makeRequest(`/api/secure-uploads/start/${startToken}`, {
+        method: "POST",
+        headers: { accept: "text/plain" },
+        body: startBody,
+      }),
+    );
+    expect(startResponse.status).toBe(201);
+    const [sessionToken, partSize] = (await startResponse.text()).trim().split("\t");
+    expect(Number(partSize)).toBe(SECURE_UPLOAD_PART_SIZE);
+
+    const partResponse = await router.fetch(
+      makeRequest(`/api/secure-uploads/session/${sessionToken}/parts/1`, {
+        method: "PUT",
+        headers: { accept: "text/plain", "content-length": String(bytes.byteLength) },
+        body: bytes,
+      }),
+    );
+    expect(partResponse.status).toBe(200);
+    const etag = (await partResponse.text()).trim();
+
+    const completeBody = new URLSearchParams({
+      name: "remote.txt",
+      mimeType: "text/plain",
+      size: String(bytes.byteLength),
+      partNumber: "1",
+      etag,
+    });
+    const completeResponse = await router.fetch(
+      makeRequest(`/api/secure-uploads/session/${sessionToken}/complete`, {
+        method: "POST",
+        headers: { accept: "text/plain" },
+        body: completeBody,
+      }),
+    );
+    expect(completeResponse.status).toBe(201);
+    expect(await completeResponse.text()).toBe("ok\n");
+    const listResponse = await router.fetch(makeRequest("/api/files"));
+    const listed = await decodeJson(listResponse, FilesResponse);
+    expect(listed.files).toHaveLength(1);
+    expect(listed.files[0]).toMatchObject({
+      name: "remote.txt",
+      size: bytes.byteLength,
+      isPublic: false,
+    });
+    expect(r2.has(`files/${listed.files[0]?.id}`)).toBe(true);
+    expect(r2.pendingMultipartUploads).toBe(0);
+  });
+
+  test("consumes a start capability exactly once", async () => {
+    const { command } = await createCommand();
+    const clientUrl = command.match(/-- '([^']+)'/u)?.[1] ?? "";
+    const startToken = new URL(clientUrl).pathname.match(
+      /^\/api\/secure-uploads\/client\/(.+)\.sh$/u,
+    )?.[1];
+    const startRequest = () =>
+      makeRequest(`/api/secure-uploads/start/${startToken}`, {
+        method: "POST",
+        body: new URLSearchParams({
+          name: "single-use.txt",
+          mimeType: "text/plain",
+          size: "4",
+        }),
+      });
+
+    const first = await router.fetch(startRequest());
+    expect(first.status).toBe(201);
+    const session = await decodeJson(first, SecureUploadSessionResponse);
+
+    const replay = await router.fetch(startRequest());
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toMatchObject({ code: "upload_token_already_used" });
+    expect(r2.pendingMultipartUploads).toBe(1);
+
+    const abort = await router.fetch(
+      makeRequest(`/api/secure-uploads/session/${session.sessionToken}`, { method: "DELETE" }),
+    );
+    expect(abort.status).toBe(200);
+    expect(r2.pendingMultipartUploads).toBe(0);
+  });
+
+  test("cleans up tracked expired multipart sessions", async () => {
+    const upload = await r2.createMultipartUpload("files/expired-file");
+    await drizzle(env.DB)
+      .insert(secureUploadSessions)
+      .values({
+        uploadId: upload.uploadId,
+        fileId: "expired-file",
+        expiresAt: Date.now() - 1,
+        createdAt: Date.now() - 10_000,
+      });
+
+    await createCommand();
+
+    expect(r2.pendingMultipartUploads).toBe(0);
+    const remaining = await drizzle(env.DB)
+      .select()
+      .from(secureUploadSessions)
+      .where(eq(secureUploadSessions.uploadId, upload.uploadId));
+    expect(remaining).toEqual([]);
+  });
+
+  test("rejects files larger than 500 MB before creating an R2 upload", async () => {
+    const { command } = await createCommand();
+    const clientUrl = command.match(/-- '([^']+)'/u)?.[1] ?? "";
+    const startToken = new URL(clientUrl).pathname.match(
+      /^\/api\/secure-uploads\/client\/(.+)\.sh$/u,
+    )?.[1];
+    const response = await router.fetch(
+      makeRequest(`/api/secure-uploads/start/${startToken}`, {
+        method: "POST",
+        body: new URLSearchParams({
+          name: "too-large.bin",
+          mimeType: "application/octet-stream",
+          size: String(SECURE_UPLOAD_MAX_BYTES + 1),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(r2.pendingMultipartUploads).toBe(0);
+  });
+
+  test("rejects expired and tampered start capabilities", async () => {
+    const expired = await signSecureUploadCapability(env, {
+      kind: "secure-upload-start",
+      expiresAt: Date.now() - 1,
+      maxBytes: SECURE_UPLOAD_MAX_BYTES,
+      nonce: crypto.randomUUID(),
+    });
+    const expiredResponse = await router.fetch(
+      makeRequest(`/api/secure-uploads/client/${expired}.sh`),
+    );
+    expect(expiredResponse.status).toBe(401);
+
+    const { command } = await createCommand();
+    const clientUrl = command.match(/-- '([^']+)'/u)?.[1] ?? "";
+    const tamperedUrl = new URL(clientUrl);
+    const token =
+      tamperedUrl.pathname.match(/^\/api\/secure-uploads\/client\/(.+)\.sh$/u)?.[1] ?? "";
+    const [payload, signature = ""] = token.split(".");
+    const replacement = signature.startsWith("a") ? "b" : "a";
+    tamperedUrl.pathname = `/api/secure-uploads/client/${payload}.${replacement}${signature.slice(1)}.sh`;
+    const tamperedResponse = await router.fetch(makeRequest(tamperedUrl.pathname));
+    expect(tamperedResponse.status).toBe(401);
+  });
+
+  test("requires the Drive session to create commands", async () => {
+    const { DEV_AUTH_EMAIL: _devAuthEmail, ...unauthenticatedEnv } = makeTestEnv(
+      createTestD1(),
+      new R2Mock(),
+    );
+    const unauthenticatedRouter = createRouter(unauthenticatedEnv);
+    const response = await unauthenticatedRouter.fetch(
+      makeRequest("/api/secure-uploads/command", { method: "POST" }),
+    );
+    expect(response.status).toBe(401);
   });
 });
 
@@ -341,13 +582,13 @@ describe("tags API", () => {
   beforeEach(() => {
     db = createTestD1();
     r2 = new R2Mock();
-    router = createRouter(makeTestEnv(db, r2) as never);
+    router = createRouter(makeTestEnv(db, r2));
   });
 
   test("GET /api/tags returns empty list", async () => {
     const res = await router.fetch(makeRequest("/api/tags"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { tags: unknown[] };
+    const body = await decodeJson(res, TagsResponse);
     expect(body.tags).toEqual([]);
   });
 
@@ -358,7 +599,7 @@ describe("tags API", () => {
     await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
 
     const res = await router.fetch(makeRequest("/api/tags"));
-    const body = (await res.json()) as { tags: Array<{ name: string; count: number }> };
+    const body = await decodeJson(res, TagsResponse);
     expect(body.tags).toHaveLength(2);
     const names = body.tags.map((t) => t.name).sort();
     expect(names).toEqual(["personal", "work"]);
@@ -373,14 +614,14 @@ describe("public file routes", () => {
   beforeEach(() => {
     db = createTestD1();
     r2 = new R2Mock();
-    router = createRouter(makeTestEnv(db, r2) as never);
+    router = createRouter(makeTestEnv(db, r2));
   });
 
   test("public file download works after publishing", async () => {
     const form = new FormData();
     form.set("file", new File(["public content"], "pub.txt", { type: "text/plain" }));
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
-    const { file } = (await createRes.json()) as { file: { id: string } };
+    const { file } = await decodeJson(createRes, FileResponse);
 
     await router.fetch(
       makeRequest(`/api/files/${file.id}`, {
@@ -399,7 +640,7 @@ describe("public file routes", () => {
     const form = new FormData();
     form.set("file", new File(["public video"], "public.mp4", { type: "video/mp4" }));
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
-    const { file } = (await createRes.json()) as { file: { id: string } };
+    const { file } = await decodeJson(createRes, FileResponse);
     await router.fetch(
       makeRequest(`/api/files/${file.id}`, {
         method: "PATCH",
@@ -423,7 +664,7 @@ describe("public file routes", () => {
     const form = new FormData();
     form.set("file", new File(["private"], "priv.txt", { type: "text/plain" }));
     const createRes = await router.fetch(makeRequest("/api/files", { method: "POST", body: form }));
-    const { file } = (await createRes.json()) as { file: { id: string } };
+    const { file } = await decodeJson(createRes, FileResponse);
 
     const pubRes = await router.fetch(makeRequest(`/public/files/${file.id}/download`));
     expect(pubRes.status).toBe(404);
@@ -434,9 +675,8 @@ describe("auth enforcement", () => {
   test("unauthenticated request to /api/files returns 401", async () => {
     const db = createTestD1();
     const r2 = new R2Mock();
-    const env = makeTestEnv(db, r2);
-    delete (env as Record<string, unknown>).DEV_AUTH_EMAIL;
-    const router = createRouter(env as never);
+    const { DEV_AUTH_EMAIL: _devAuthEmail, ...env } = makeTestEnv(db, r2);
+    const router = createRouter(env);
 
     const res = await router.fetch(makeRequest("/api/files"));
     expect(res.status).toBe(401);
@@ -445,9 +685,8 @@ describe("auth enforcement", () => {
   test("unauthenticated request to /api/tags returns 401", async () => {
     const db = createTestD1();
     const r2 = new R2Mock();
-    const env = makeTestEnv(db, r2);
-    delete (env as Record<string, unknown>).DEV_AUTH_EMAIL;
-    const router = createRouter(env as never);
+    const { DEV_AUTH_EMAIL: _devAuthEmail, ...env } = makeTestEnv(db, r2);
+    const router = createRouter(env);
 
     const res = await router.fetch(makeRequest("/api/tags"));
     expect(res.status).toBe(401);

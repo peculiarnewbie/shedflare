@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { getDotPath, safeParse } from "valibot";
+import { getDotPath, looseObject, optional, safeParse, unknown } from "valibot";
 import { CoreError } from "../errors.ts";
 import { parseJsonc } from "../jsonc.ts";
 import type { ManifestCatalog } from "../manifests/model.ts";
@@ -14,7 +14,9 @@ import type {
 } from "./model.ts";
 import { ShedflareConfigV1Schema, ShedflareConfigV2Schema } from "./schema.ts";
 
-function parseConfigVersionOne(input: unknown): ShedflareConfigV1 {
+const ConfigHeaderSchema = looseObject({ configVersion: optional(unknown()) });
+
+function parseConfigVersionOne<Input>(input: Input): ShedflareConfigV1 {
   const result = safeParse(ShedflareConfigV1Schema, input);
   if (!result.success) {
     const issue = result.issues[0];
@@ -26,18 +28,19 @@ function parseConfigVersionOne(input: unknown): ShedflareConfigV1 {
   }
 
   const config = result.output;
-  return {
-    ...(config.$schema === undefined ? {} : { $schema: config.$schema }),
+  const parsed = {
     configVersion: 1,
     domain: config.domain,
     ownerEmail: config.ownerEmail,
     apps: Object.fromEntries(
       Object.entries(config.apps).map(([appId, selection]) => [
         appId,
-        {
-          ...(selection.enabled === undefined ? {} : { enabled: selection.enabled }),
-          subdomain: selection.subdomain,
-        } satisfies LegacyAppSelection,
+        (() => {
+          const app = { subdomain: selection.subdomain } satisfies LegacyAppSelection;
+          return selection.enabled === undefined
+            ? app
+            : ({ ...app, enabled: selection.enabled } satisfies LegacyAppSelection);
+        })(),
       ]),
     ),
     vars: Object.fromEntries(
@@ -46,10 +49,11 @@ function parseConfigVersionOne(input: unknown): ShedflareConfigV1 {
     resources: Object.fromEntries(
       Object.entries(config.resources ?? {}).map(([appId, resources]) => [appId, { ...resources }]),
     ),
-  };
+  } satisfies ShedflareConfigV1;
+  return config.$schema === undefined ? parsed : { ...parsed, $schema: config.$schema };
 }
 
-function parseConfigVersionTwo(input: unknown): ShedflareConfigV2 {
+function parseConfigVersionTwo<Input>(input: Input): ShedflareConfigV2 {
   const result = safeParse(ShedflareConfigV2Schema, input);
   if (!result.success) {
     const issue = result.issues[0];
@@ -61,21 +65,32 @@ function parseConfigVersionTwo(input: unknown): ShedflareConfigV2 {
   }
 
   const config = result.output;
-  return {
-    ...(config.$schema === undefined ? {} : { $schema: config.$schema }),
+  const parsed = {
     configVersion: 2,
     domain: config.domain,
     ownerEmail: config.ownerEmail,
     apps: Object.fromEntries(
       Object.entries(config.apps).map(([appId, selection]) => [
         appId,
-        {
-          ...(selection.subdomain === undefined ? {} : { subdomain: selection.subdomain }),
-          ...(selection.vars === undefined ? {} : { vars: { ...selection.vars } }),
-        } satisfies AppSelection,
+        (() => {
+          if (selection.subdomain !== undefined && selection.vars !== undefined) {
+            return {
+              subdomain: selection.subdomain,
+              vars: { ...selection.vars },
+            } satisfies AppSelection;
+          }
+          if (selection.subdomain !== undefined) {
+            return { subdomain: selection.subdomain } satisfies AppSelection;
+          }
+          if (selection.vars !== undefined) {
+            return { vars: { ...selection.vars } } satisfies AppSelection;
+          }
+          return {} satisfies AppSelection;
+        })(),
       ]),
     ),
-  };
+  } satisfies ShedflareConfigV2;
+  return config.$schema === undefined ? parsed : { ...parsed, $schema: config.$schema };
 }
 
 function assertKnownApps(config: ShedflareConfig, catalog: ManifestCatalog): void {
@@ -96,20 +111,17 @@ function assertKnownApps(config: ShedflareConfig, catalog: ManifestCatalog): voi
   }
 }
 
-function versionDisplay(value: unknown): string {
-  return JSON.stringify(value) ?? "undefined";
-}
-
-export function validateConfig(input: unknown, catalog: ManifestCatalog): ShedflareConfig {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
+export function validateConfig<Input>(input: Input, catalog: ManifestCatalog): ShedflareConfig {
+  const header = safeParse(ConfigHeaderSchema, input);
+  if (!header.success) {
     throw new CoreError("CONFIG_INVALID", "Config must be an object.");
   }
 
-  const versionValue = "configVersion" in input ? input.configVersion : undefined;
+  const versionValue = header.output.configVersion;
   if (versionValue !== undefined && versionValue !== 2) {
     throw new CoreError(
       "CONFIG_VERSION_UNSUPPORTED",
-      `Unsupported configVersion ${versionDisplay(versionValue)}. Supported versions are 1 and 2.`,
+      `Unsupported configVersion ${JSON.stringify(versionValue) ?? "undefined"}. Supported versions are 1 and 2.`,
       { fieldPath: "configVersion" },
     );
   }

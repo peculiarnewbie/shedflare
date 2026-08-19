@@ -20,6 +20,7 @@ export async function handleModels(request: Request): Promise<Response> {
     },
     run: async () => {
       await requireSession(request, env, { refresh: false });
+      // SAFETY: Cloudflare Workers exposes the documented nonstandard default cache on CacheStorage.
       const cache = (globalThis.caches as CacheStorage & { default: Cache }).default;
       const url = new URL(request.url);
       if (url.searchParams.has("purge")) {

@@ -12,12 +12,14 @@ import {
   useContext,
 } from "solid-js";
 import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
+import { object, parse, string } from "valibot";
 import "./app.css";
 import { BUILD_INFO } from "./lib/build-info";
 import Dashboard from "./routes/index";
 import NotFound from "./routes/not-found";
 
 type Session = { email: string } | null;
+const SessionResponseSchema = object({ user: object({ email: string() }) });
 
 interface SessionCtrl {
   session: Accessor<Session>;
@@ -50,7 +52,7 @@ function createSessionSignal(): SessionCtrl {
     try {
       const res = await fetch("/api/session");
       if (res.ok) {
-        const data = (await res.json()) as { user: { email: string } };
+        const data = parse(SessionResponseSchema, await res.json());
         setSession(data.user);
       } else if (res.status === 401) {
         // Probe contradicts the hint: drop it so it can't paint a stale shell.

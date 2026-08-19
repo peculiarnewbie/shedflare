@@ -64,6 +64,7 @@ pnpm deploy
 # Individual apps
 pnpm deploy:auth
 pnpm deploy:chat
+pnpm deploy:drive
 pnpm deploy:money
 pnpm deploy:anki
 pnpm deploy:homepage
@@ -78,9 +79,7 @@ pnpm destroy:auth      # individual
 ```
 
 Deploy `@shedflare/auth` first if deploying individually — other apps use it as `AUTH_ISSUER_URL`.
-Drive production deployment is owned by the standalone
-[`shedflare/drive`](https://github.com/shedflare/drive) repository and is not part of suite deploy or
-destroy commands.
+Drive is part of the suite deploy and destroy lifecycle and can also be deployed independently.
 
 For temporary stages, call Alchemy directly and pass a stage explicitly:
 

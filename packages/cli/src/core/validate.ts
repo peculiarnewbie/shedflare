@@ -1,5 +1,4 @@
-import type { AppId } from "./manifests.js";
-import { APP_IDS, loadManifest, getWorkspaceRoot } from "./manifests.js";
+import { APP_IDS, isAppId, loadManifest, getWorkspaceRoot } from "./manifests.js";
 import { isAppSelected, loadConfig, validateConfig } from "./config.js";
 import * as wrangler from "./wrangler.js";
 import { physicalWorkerName } from "./worker-names.js";
@@ -71,8 +70,7 @@ export async function runDoctor(): Promise<CheckResult[]> {
   // Alchemy stack files
   if (config) {
     for (const appId of Object.keys(config.apps)) {
-      if (!(APP_IDS as readonly string[]).includes(appId) || !isAppSelected(config, appId))
-        continue;
+      if (!isAppId(appId) || !isAppSelected(config, appId)) continue;
 
       const stackPath = `${getWorkspaceRoot()}/apps/${appId}/alchemy.run.ts`;
       const { existsSync } = await import("node:fs");
@@ -108,12 +106,12 @@ async function getMissingSecrets(config: import("./config.js").ShedflareConfig):
   const requireSecrets: string[] = [];
 
   for (const appId of Object.keys(config.apps)) {
-    if (!(APP_IDS as readonly string[]).includes(appId) || !isAppSelected(config, appId)) continue;
+    if (!isAppId(appId) || !isAppSelected(config, appId)) continue;
 
     try {
-      const manifes = loadManifest(appId as AppId);
+      const manifes = loadManifest(appId);
       const requiredSecrets = Object.entries(manifes.secrets)
-        .filter(([_, d]) => d.required)
+        .filter(([, definition]) => definition.required && definition.source === "operator")
         .map(([name]) => name);
       if (requiredSecrets.length === 0) continue;
 

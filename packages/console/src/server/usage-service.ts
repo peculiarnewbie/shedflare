@@ -13,6 +13,16 @@ import {
   workersByScriptQuery,
   workersQuery,
 } from "./queries.ts";
+import {
+  array,
+  nullable,
+  number,
+  object,
+  optional,
+  string,
+  type GenericSchema,
+  type InferOutput,
+} from "valibot";
 
 export interface UsageMetric {
   label: string;
@@ -57,10 +67,16 @@ function elapsedDays(period: UsagePeriod): number {
   return Math.max(1, Math.ceil((end - start) / 86_400_000));
 }
 
+interface ComparableLimits {
+  free: number;
+  paid: number;
+  label?: string;
+}
+
 function comparableLimits(
   limits: { free: number; paid: number; unit: string },
   period: UsagePeriod,
-): { free: number; paid: number; label?: string } {
+): ComparableLimits {
   if (limits.unit === "/day") {
     const days = elapsedDays(period);
     return {
@@ -74,10 +90,93 @@ function comparableLimits(
   return { free: limits.free, paid: limits.paid, label: limits.unit };
 }
 
-function safeSum(items: { sum?: Record<string, number | null> }[], key: string): number {
+const OptionalNumber = optional(nullable(number()));
+const SumGroupSchema = object({
+  sum: optional(
+    object({
+      requests: OptionalNumber,
+      errors: OptionalNumber,
+      bytes: OptionalNumber,
+      rowsRead: OptionalNumber,
+      rowsWritten: OptionalNumber,
+    }),
+  ),
+});
+type SumGroup = InferOutput<typeof SumGroupSchema>;
+const AccountAnalyticsSchema = object({
+  viewer: optional(
+    object({
+      accounts: optional(
+        array(
+          object({
+            workersInvocationsAdaptive: optional(
+              array(
+                object({
+                  sum: optional(object({ requests: OptionalNumber, errors: OptionalNumber })),
+                  dimensions: optional(object({ scriptName: optional(string()) })),
+                }),
+              ),
+            ),
+            d1AnalyticsAdaptiveGroups: optional(array(SumGroupSchema)),
+            kvOperationsAdaptiveGroups: optional(
+              array(
+                object({
+                  count: OptionalNumber,
+                  dimensions: optional(object({ actionType: optional(string()) })),
+                }),
+              ),
+            ),
+            kvStorageAdaptiveGroups: optional(
+              array(object({ max: optional(object({ byteCount: OptionalNumber })) })),
+            ),
+            durableObjectsInvocationsAdaptiveGroups: optional(array(SumGroupSchema)),
+            durableObjectsStorageGroups: optional(
+              array(object({ max: optional(object({ storedBytes: OptionalNumber })) })),
+            ),
+            r2OperationsAdaptiveGroups: optional(
+              array(
+                object({
+                  sum: optional(object({ requests: OptionalNumber })),
+                  dimensions: optional(object({ actionType: optional(string()) })),
+                }),
+              ),
+            ),
+            r2StorageAdaptiveGroups: optional(
+              array(object({ max: optional(object({ payloadSize: OptionalNumber })) })),
+            ),
+          }),
+        ),
+      ),
+    }),
+  ),
+});
+const ZoneAnalyticsSchema = object({
+  viewer: optional(
+    object({
+      zones: optional(array(object({ httpRequests1mGroups: optional(array(SumGroupSchema)) }))),
+    }),
+  ),
+});
+
+function safeSum(items: readonly SumGroup[], key: string): number {
   let total = 0;
-  for (const item of items) total += item.sum?.[key] ?? 0;
+  for (const item of items) {
+    if (key === "requests") total += item.sum?.requests ?? 0;
+    else if (key === "rowsRead") total += item.sum?.rowsRead ?? 0;
+    else if (key === "rowsWritten") total += item.sum?.rowsWritten ?? 0;
+  }
   return total;
+}
+
+type ProductLimit = (typeof PLAN_LIMITS)[number];
+
+function productLimit<ProductId extends ProductLimit["id"]>(
+  id: ProductId,
+): Extract<ProductLimit, { id: ProductId }> {
+  const product = PLAN_LIMITS.find((candidate) => candidate.id === id);
+  if (!product) throw new Error(`Missing plan limits for ${id}`);
+  // SAFETY: the successful runtime equality check above establishes the matching id variant.
+  return product as Extract<ProductLimit, { id: ProductId }>;
 }
 
 function formatBytes(bytes: number): string {
@@ -129,9 +228,13 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
   const { accountId, apiToken: token, zoneId } = env;
   const queryErrors: string[] = [];
 
-  async function query(label: string, fn: string) {
+  async function query<ResultSchema extends GenericSchema>(
+    label: string,
+    fn: string,
+    schema: ResultSchema,
+  ) {
     try {
-      return await cfGraphql<unknown>(token, fn);
+      return await cfGraphql(token, fn, schema);
     } catch (e) {
       queryErrors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
       return null;
@@ -149,28 +252,25 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     r2StorageResult,
     httpResult,
   ] = await Promise.all([
-    query("workers", workersQuery(accountId, period.start, period.end)),
-    query("d1", d1Query(accountId, period.start, period.end)),
-    query("kvOps", kvOpsQuery(accountId, period.start, period.end)),
-    query("kvStorage", kvStorageQuery(accountId, period.start, period.end)),
-    query("durableObjects", doQuery(accountId, period.start, period.end)),
-    query("doStorage", doStorageQuery(accountId, period.start, period.end)),
-    query("r2", r2Query(accountId, period.start, period.end)),
-    query("r2Storage", r2StorageQuery(accountId, period.start, period.end)),
-    zoneId ? query("http", httpQuery(zoneId, period.start, period.end)) : Promise.resolve(null),
+    query("workers", workersQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("d1", d1Query(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("kvOps", kvOpsQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("kvStorage", kvStorageQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("durableObjects", doQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("doStorage", doStorageQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("r2", r2Query(accountId, period.start, period.end), AccountAnalyticsSchema),
+    query("r2Storage", r2StorageQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+    zoneId
+      ? query("http", httpQuery(zoneId, period.start, period.end), ZoneAnalyticsSchema)
+      : Promise.resolve(null),
   ]);
 
   const products: ProductUsage[] = [];
 
-  const workersData = workersResult as {
-    viewer?: {
-      accounts?: Array<{ workersInvocationsAdaptive?: Array<{ sum?: { requests?: number } }> }>;
-    };
-  };
-  const workersInvocations = workersData?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0];
+  const workersInvocations = workersResult?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0];
   if (workersInvocations) {
     const sum = workersInvocations.sum ?? {};
-    const limits = PLAN_LIMITS.find((p) => p.id === "workers")!.metrics;
+    const limits = productLimit("workers").metrics;
     products.push({
       id: "workers",
       name: "Workers",
@@ -186,26 +286,24 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     });
   }
 
-  const d1Groups =
-    (d1Result as { viewer?: { accounts?: Array<{ d1AnalyticsAdaptiveGroups?: unknown[] }> } })
-      ?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups ?? [];
+  const d1Groups = d1Result?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups ?? [];
   if (d1Groups.length > 0) {
-    const limits = PLAN_LIMITS.find((p) => p.id === "d1")!.metrics;
+    const limits = productLimit("d1").metrics;
     products.push({
       id: "d1",
       name: "D1",
       metrics: [
         {
           label: "Rows Read",
-          used: safeSum(d1Groups as { sum?: Record<string, number> }[], "rowsRead"),
-          unit: formatCount(safeSum(d1Groups as { sum?: Record<string, number> }[], "rowsRead")),
+          used: safeSum(d1Groups, "rowsRead"),
+          unit: formatCount(safeSum(d1Groups, "rowsRead")),
           limits: comparableLimits(limits.rowsRead, period),
           note: "GraphQL Analytics estimate; not billing-grade.",
         },
         {
           label: "Rows Written",
-          used: safeSum(d1Groups as { sum?: Record<string, number> }[], "rowsWritten"),
-          unit: formatCount(safeSum(d1Groups as { sum?: Record<string, number> }[], "rowsWritten")),
+          used: safeSum(d1Groups, "rowsWritten"),
+          unit: formatCount(safeSum(d1Groups, "rowsWritten")),
           limits: comparableLimits(limits.rowsWritten, period),
           note: "GraphQL Analytics estimate; not billing-grade.",
         },
@@ -213,25 +311,16 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     });
   }
 
-  const kvOps =
-    (kvOpsResult as { viewer?: { accounts?: Array<{ kvOperationsAdaptiveGroups?: unknown[] }> } })
-      ?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups ?? [];
+  const kvOps = kvOpsResult?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups ?? [];
   if (kvOps.length > 0) {
-    const limits = PLAN_LIMITS.find((p) => p.id === "kv")!.metrics;
-    const ops = kvOps as Array<{ count: number; dimensions?: { actionType?: string } }>;
-    const reads = ops
+    const limits = productLimit("kv").metrics;
+    const reads = kvOps
       .filter((o) => o.dimensions?.actionType === "read")
-      .reduce((s, o) => s + o.count, 0);
-    const writes = ops
+      .reduce((s, o) => s + (o.count ?? 0), 0);
+    const writes = kvOps
       .filter((o) => o.dimensions?.actionType === "write")
-      .reduce((s, o) => s + o.count, 0);
-    const storage = (
-      kvStorageResult as {
-        viewer?: {
-          accounts?: Array<{ kvStorageAdaptiveGroups?: Array<{ max?: { byteCount?: number } }> }>;
-        };
-      }
-    )?.viewer?.accounts?.[0]?.kvStorageAdaptiveGroups?.[0]?.max;
+      .reduce((s, o) => s + (o.count ?? 0), 0);
+    const storage = kvStorageResult?.viewer?.accounts?.[0]?.kvStorageAdaptiveGroups?.[0]?.max;
     const metrics: UsageMetric[] = [
       {
         label: "Reads",
@@ -259,32 +348,19 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     products.push({ id: "kv", name: "Workers KV", metrics });
   }
 
-  const doGroups =
-    (
-      doResult as {
-        viewer?: { accounts?: Array<{ durableObjectsInvocationsAdaptiveGroups?: unknown[] }> };
-      }
-    )?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
+  const doGroups = doResult?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
   if (doGroups.length > 0) {
-    const limits = PLAN_LIMITS.find((p) => p.id === "durableObjects")!.metrics;
+    const limits = productLimit("durableObjects").metrics;
     const metrics: UsageMetric[] = [
       {
         label: "Requests",
-        used: safeSum(doGroups as { sum?: Record<string, number> }[], "requests"),
-        unit: formatCount(safeSum(doGroups as { sum?: Record<string, number> }[], "requests")),
+        used: safeSum(doGroups, "requests"),
+        unit: formatCount(safeSum(doGroups, "requests")),
         limits: comparableLimits(limits.requests, period),
         note: "GraphQL Analytics estimate; not billing-grade.",
       },
     ];
-    const doStorage = (
-      doStorageResult as {
-        viewer?: {
-          accounts?: Array<{
-            durableObjectsStorageGroups?: Array<{ max?: { storedBytes?: number } }>;
-          }>;
-        };
-      }
-    )?.viewer?.accounts?.[0]?.durableObjectsStorageGroups?.[0]?.max;
+    const doStorage = doStorageResult?.viewer?.accounts?.[0]?.durableObjectsStorageGroups?.[0]?.max;
     if (doStorage?.storedBytes != null) {
       metrics.push({
         label: "Storage",
@@ -296,28 +372,16 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     products.push({ id: "durableObjects", name: "Durable Objects", metrics });
   }
 
-  const r2Ops =
-    (r2Result as { viewer?: { accounts?: Array<{ r2OperationsAdaptiveGroups?: unknown[] }> } })
-      ?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups ?? [];
-  const r2Storage = (
-    r2StorageResult as {
-      viewer?: {
-        accounts?: Array<{ r2StorageAdaptiveGroups?: Array<{ max?: { payloadSize?: number } }> }>;
-      };
-    }
-  )?.viewer?.accounts?.[0]?.r2StorageAdaptiveGroups?.[0]?.max;
+  const r2Ops = r2Result?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups ?? [];
+  const r2Storage = r2StorageResult?.viewer?.accounts?.[0]?.r2StorageAdaptiveGroups?.[0]?.max;
   const storageBytes = r2Storage?.payloadSize ?? 0;
 
   if (r2Ops.length > 0 || storageBytes > 0) {
-    const limits = PLAN_LIMITS.find((p) => p.id === "r2")!.metrics;
-    const ops = r2Ops as Array<{
-      sum?: { requests?: number };
-      dimensions?: { actionType?: string };
-    }>;
-    const classA = ops
+    const limits = productLimit("r2").metrics;
+    const classA = r2Ops
       .filter((o) => CLASS_A_OPS.has(o.dimensions?.actionType ?? ""))
       .reduce((s, o) => s + (o.sum?.requests ?? 0), 0);
-    const classB = ops
+    const classB = r2Ops
       .filter((o) => CLASS_B_OPS.has(o.dimensions?.actionType ?? ""))
       .reduce((s, o) => s + (o.sum?.requests ?? 0), 0);
     products.push({
@@ -348,17 +412,9 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
     });
   }
 
-  const httpGroup = (
-    httpResult as {
-      viewer?: {
-        zones?: Array<{
-          httpRequests1mGroups?: Array<{ sum?: { requests?: number; bytes?: number } }>;
-        }>;
-      };
-    }
-  )?.viewer?.zones?.[0]?.httpRequests1mGroups?.[0];
+  const httpGroup = httpResult?.viewer?.zones?.[0]?.httpRequests1mGroups?.[0];
   if (httpGroup) {
-    const limits = PLAN_LIMITS.find((p) => p.id === "http")!.metrics;
+    const limits = productLimit("http").metrics;
     products.push({
       id: "http",
       name: "HTTP / Bandwidth",
@@ -386,16 +442,11 @@ export async function fetchUsage(env: CfEnv): Promise<UsageResponse> {
 
 export async function fetchScriptUsage(env: CfEnv): Promise<ScriptUsage[]> {
   const period = monthBounds();
-  const data = await cfGraphql<{
-    viewer?: {
-      accounts?: Array<{
-        workersInvocationsAdaptive?: Array<{
-          sum?: { requests?: number; errors?: number };
-          dimensions?: { scriptName?: string };
-        }>;
-      }>;
-    };
-  }>(env.apiToken, workersByScriptQuery(env.accountId, period.start, period.end));
+  const data = await cfGraphql(
+    env.apiToken,
+    workersByScriptQuery(env.accountId, period.start, period.end),
+    AccountAnalyticsSchema,
+  );
 
   const rows = data.viewer?.accounts?.[0]?.workersInvocationsAdaptive ?? [];
   return rows
@@ -419,6 +470,18 @@ export interface BillableUsageRecord {
   EffectiveCost?: number;
 }
 
+const BillableUsageRecordSchema = object({
+  x_BillableMetricId: optional(string()),
+  x_BillableMetricName: optional(string()),
+  x_ProductFamilyName: optional(string()),
+  ConsumedQuantity: number(),
+  ConsumedUnit: string(),
+  ChargePeriodStart: string(),
+  ChargePeriodEnd: string(),
+  BilledCost: optional(number()),
+  EffectiveCost: optional(number()),
+});
+
 export async function fetchBillableUsage(env: CfEnv): Promise<{
   records: BillableUsageRecord[];
   error?: string;
@@ -426,7 +489,11 @@ export async function fetchBillableUsage(env: CfEnv): Promise<{
   try {
     const records = await (
       await import("./cf-client.ts")
-    ).cfGet<BillableUsageRecord[]>(env.apiToken, `/accounts/${env.accountId}/billable/usage`);
+    ).cfGet(
+      env.apiToken,
+      `/accounts/${env.accountId}/billable/usage`,
+      array(BillableUsageRecordSchema),
+    );
     return { records };
   } catch (e) {
     return {

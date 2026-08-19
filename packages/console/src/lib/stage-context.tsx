@@ -8,6 +8,7 @@ import {
   useContext,
 } from "solid-js";
 import { apiGet } from "./api";
+import { StageListSchema } from "../api/types";
 
 export interface StageList {
   stages: string[];
@@ -44,7 +45,7 @@ function persistStage(stage: string): void {
 }
 
 export function StageProvider(props: { children: JSX.Element }) {
-  const [availableStages] = createResource(() => apiGet<StageList>("/api/stages"));
+  const [availableStages] = createResource(() => apiGet("/api/stages", StageListSchema));
 
   const [selectedStage, setSelectedStage] = createSignal<string>(
     loadPersistedStage() ?? availableStages()?.currentStage ?? "prod",

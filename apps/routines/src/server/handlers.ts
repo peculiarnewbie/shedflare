@@ -1,10 +1,20 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import * as schema from "../db/schema";
 import type { Database } from "./db";
+import {
+  array,
+  fallback,
+  looseObject,
+  number,
+  optional,
+  parse,
+  string,
+  type InferOutput,
+} from "valibot";
 
 const DEFAULT_SLEEP_TIME = "22:00";
 
-function json(data: unknown, status = 200) {
+function json<Data>(data: Data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "content-type": "application/json" },
@@ -17,7 +27,12 @@ function todayStr(): string {
 
 /** Sunday-anchored week bounds for a YYYY-MM-DD string, computed in UTC to
  * avoid server-timezone drift (the date string is already the user's local day). */
-function weekBounds(dateStr: string): { start: string; end: string } {
+interface WeekBounds {
+  start: string;
+  end: string;
+}
+
+function weekBounds(dateStr: string): WeekBounds {
   const [y, m, d] = dateStr.split("-").map(Number);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   const startMs = Date.UTC(y, m - 1, d - dow);
@@ -67,13 +82,44 @@ export async function listRoutines(database: Database) {
   return json({ routines });
 }
 
-export async function createRoutine(database: Database, body: unknown) {
-  const { name, durationMinutes, color, weeklyTarget } = (body ?? {}) as {
-    name?: string;
-    durationMinutes?: number;
-    color?: string;
-    weeklyTarget?: number;
+const RoutineInputSchema = looseObject({
+  name: fallback(string(), ""),
+  durationMinutes: fallback(number(), 0),
+  color: optional(string()),
+  weeklyTarget: optional(number()),
+});
+const CompletionInputSchema = looseObject({
+  routineId: fallback(string(), ""),
+  date: fallback(string(), ""),
+});
+const ReorderInputSchema = looseObject({ ids: optional(array(string())) });
+const SleepTimeInputSchema = looseObject({ sleepTime: fallback(string(), "") });
+
+interface RoutineUpdate {
+  name: string;
+  durationMinutes: number;
+  updatedAt: string;
+  color?: string;
+  weeklyTarget?: number;
+}
+
+function routineUpdate(input: InferOutput<typeof RoutineInputSchema>): RoutineUpdate {
+  const base = {
+    name: input.name.trim(),
+    durationMinutes: input.durationMinutes,
+    updatedAt: new Date().toISOString(),
   };
+  const weeklyTarget =
+    input.weeklyTarget === undefined ? undefined : Math.max(0, Math.floor(input.weeklyTarget));
+  if (input.color && weeklyTarget !== undefined)
+    return { ...base, color: input.color, weeklyTarget };
+  if (input.color) return { ...base, color: input.color };
+  if (weeklyTarget !== undefined) return { ...base, weeklyTarget };
+  return base;
+}
+
+export async function createRoutine<Body>(database: Database, body: Body) {
+  const { name, durationMinutes, color, weeklyTarget } = parse(RoutineInputSchema, body ?? {});
 
   if (!name?.trim() || !durationMinutes || durationMinutes <= 0) {
     return json({ error: "name and a positive durationMinutes are required" }, 400);
@@ -97,13 +143,9 @@ export async function createRoutine(database: Database, body: unknown) {
   return json({ success: true, id });
 }
 
-export async function updateRoutine(database: Database, id: string, body: unknown) {
-  const { name, durationMinutes, color, weeklyTarget } = (body ?? {}) as {
-    name?: string;
-    durationMinutes?: number;
-    color?: string;
-    weeklyTarget?: number;
-  };
+export async function updateRoutine<Body>(database: Database, id: string, body: Body) {
+  const input = parse(RoutineInputSchema, body ?? {});
+  const { name, durationMinutes } = input;
 
   if (!name?.trim() || !durationMinutes || durationMinutes <= 0) {
     return json({ error: "name and a positive durationMinutes are required" }, 400);
@@ -111,15 +153,7 @@ export async function updateRoutine(database: Database, id: string, body: unknow
 
   await database
     .update(schema.routines)
-    .set({
-      name: name.trim(),
-      durationMinutes,
-      ...(color ? { color } : {}),
-      ...(weeklyTarget === undefined
-        ? {}
-        : { weeklyTarget: Math.max(0, Math.floor(weeklyTarget)) }),
-      updatedAt: new Date().toISOString(),
-    })
+    .set(routineUpdate(input))
     .where(eq(schema.routines.id, id));
 
   return json({ success: true });
@@ -130,8 +164,8 @@ export async function deleteRoutine(database: Database, id: string) {
   return json({ success: true });
 }
 
-export async function toggleCompletion(database: Database, body: unknown) {
-  const { routineId, date } = (body ?? {}) as { routineId?: string; date?: string };
+export async function toggleCompletion<Body>(database: Database, body: Body) {
+  const { routineId, date } = parse(CompletionInputSchema, body ?? {});
   if (!routineId || !date) {
     return json({ error: "routineId and date are required" }, 400);
   }
@@ -167,9 +201,9 @@ export async function toggleCompletion(database: Database, body: unknown) {
   return json({ success: true, completed: true });
 }
 
-export async function reorderRoutines(database: Database, body: unknown) {
-  const { ids } = (body ?? {}) as { ids?: string[] };
-  if (!Array.isArray(ids)) {
+export async function reorderRoutines<Body>(database: Database, body: Body) {
+  const { ids } = parse(ReorderInputSchema, body ?? {});
+  if (!ids) {
     return json({ error: "ids array is required" }, 400);
   }
 
@@ -202,8 +236,8 @@ export async function getCompletions(database: Database, from: string | null, to
   return json({ completions: completions.filter((c) => c.completed) });
 }
 
-export async function setSleepTime(database: Database, body: unknown) {
-  const { sleepTime } = (body ?? {}) as { sleepTime?: string };
+export async function setSleepTime<Body>(database: Database, body: Body) {
+  const { sleepTime } = parse(SleepTimeInputSchema, body ?? {});
   if (!sleepTime || !/^\d{2}:\d{2}$/.test(sleepTime)) {
     return json({ error: "sleepTime must be in HH:MM format" }, 400);
   }

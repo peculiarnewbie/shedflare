@@ -4,15 +4,25 @@
  */
 import { describe, expect, test } from "vite-plus/test";
 import { createMoneyTestD1 } from "./d1-shim";
+import * as Schema from "effect/Schema";
+
+const TableRowsSchema = Schema.Struct({
+  results: Schema.Array(Schema.Struct({ name: Schema.String })),
+});
+const RateRowsSchema = Schema.Struct({
+  results: Schema.Array(Schema.Struct({ id: Schema.String, usd_to_idr: Schema.Number })),
+});
 
 describe("test infra", () => {
   test("createMoneyTestD1 initialises all money tables", async () => {
     const d1 = createMoneyTestD1();
-    const rows = (await d1
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-      )
-      .all()) as unknown as { results: Array<{ name: string }> };
+    const rows = Schema.decodeUnknownSync(TableRowsSchema)(
+      await d1
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .all(),
+    );
 
     const tables = rows.results.map((r) => r.name);
     expect(tables).toEqual(
@@ -40,9 +50,9 @@ describe("test infra", () => {
 
   test("default exchange rate is inserted", async () => {
     const d1 = createMoneyTestD1();
-    const { results } = (await d1
-      .prepare("SELECT id, usd_to_idr FROM exchange_rates")
-      .all()) as unknown as { results: Array<{ id: string; usd_to_idr: number }> };
+    const { results } = Schema.decodeUnknownSync(RateRowsSchema)(
+      await d1.prepare("SELECT id, usd_to_idr FROM exchange_rates").all(),
+    );
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("latest");
     expect(results[0].usd_to_idr).toBe(16000);

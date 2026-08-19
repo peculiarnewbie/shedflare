@@ -1,5 +1,7 @@
 import {
   createId,
+  type ExternalValue,
+  type JsonObject,
   type TraceRun,
   type TraceSpan,
   type TraceSpanKind,
@@ -47,7 +49,7 @@ export type StructuredLogEntry = {
   scope: string;
   event: string;
   level?: "debug" | "info" | "warn" | "error";
-  details?: Record<string, unknown>;
+  details?: JsonObject;
 };
 
 export interface TraceRecorderService {
@@ -60,14 +62,14 @@ export interface TraceRecorderService {
     threadId: string | null;
     workspaceId: string | null;
     modelId: string | null;
-    attrs?: Record<string, unknown>;
+    attrs?: JsonObject;
   }): Promise<void>;
   finishTraceRun(input: {
     traceRunId: string;
     status: TraceStatus;
     errorCode?: string | null;
     errorMessage?: string | null;
-    attrs?: Record<string, unknown>;
+    attrs?: JsonObject;
   }): Promise<void>;
   startSpan(input: {
     spanId: string;
@@ -77,15 +79,15 @@ export interface TraceRecorderService {
     messageId: string | null;
     name: string;
     kind: TraceSpanKind;
-    attrs?: Record<string, unknown>;
+    attrs?: JsonObject;
   }): Promise<void>;
   finishSpan(input: {
     spanId: string;
     status: TraceStatus;
     errorCode?: string | null;
     errorMessage?: string | null;
-    attrs?: Record<string, unknown>;
-    events?: Record<string, unknown>[];
+    attrs?: JsonObject;
+    events?: JsonObject[];
   }): Promise<void>;
   log(entry: StructuredLogEntry): Promise<void>;
 }
@@ -207,10 +209,13 @@ export type AppError =
   | SyncFailureError
   | UnknownUpstreamError;
 
-function serializeError(error: unknown) {
+function serializeError(error: ExternalValue) {
   if (error instanceof Error) {
+    const tagged = Schema.is(Schema.Struct({ _tag: Schema.optional(Schema.String) }))(error)
+      ? error
+      : null;
     return {
-      errorCode: (error as { _tag?: string })._tag ?? error.name ?? "Error",
+      errorCode: tagged?._tag ?? error.name ?? "Error",
       errorMessage: error.message,
     };
   }
@@ -243,18 +248,14 @@ function errorFromExit(exit: Exit.Exit<unknown, unknown>) {
   return serializeError(Cause.pretty(exit.cause));
 }
 
-export function decodeAppEnv(input: unknown) {
+export function decodeAppEnv(input: ExternalValue) {
   return Schema.decodeUnknownSync(AppEnvConfig)(input);
 }
 
-export function createStructuredLogger(scope: string, defaults: Record<string, unknown> = {}) {
+export function createStructuredLogger(scope: string, defaults: JsonObject = {}) {
   return {
     scope,
-    log(
-      event: string,
-      details?: Record<string, unknown>,
-      level: StructuredLogEntry["level"] = "info",
-    ) {
+    log(event: string, details?: JsonObject, level: StructuredLogEntry["level"] = "info") {
       const entry = {
         scope,
         event,
@@ -298,8 +299,8 @@ export function makeTraceRecorder(input: {
   ) => Promise<void> | void;
 }): TraceRecorderService {
   const logger = input.logger ?? createStructuredLogger(input.scope);
-  const runs = new Map<string, { startedAt: number; attrs: Record<string, unknown> }>();
-  const spans = new Map<string, { startedAt: number; attrs: Record<string, unknown> }>();
+  const runs = new Map<string, { startedAt: number; attrs: JsonObject }>();
+  const spans = new Map<string, { startedAt: number; attrs: JsonObject }>();
 
   return {
     scope: input.scope,
@@ -324,7 +325,7 @@ export function makeTraceRecorder(input: {
         errorCode: null,
         errorMessage: null,
         attrsJson: JSON.stringify(traceRun.attrs ?? {}),
-      } as TraceRun);
+      } satisfies Parameters<NonNullable<typeof input.onTraceRunStart>>[0]);
       logger.log("trace_run_started", {
         traceRunId: traceRun.traceRunId,
         traceId: traceRun.traceId,
@@ -351,7 +352,7 @@ export function makeTraceRecorder(input: {
           ...existing?.attrs,
           ...traceRun.attrs,
         }),
-      } as TraceRun);
+      } satisfies Parameters<NonNullable<typeof input.onTraceRunFinish>>[0]);
       logger.log(
         "trace_run_finished",
         {
@@ -387,7 +388,7 @@ export function makeTraceRecorder(input: {
         errorMessage: null,
         attrsJson: JSON.stringify(span.attrs ?? {}),
         eventsJson: JSON.stringify([]),
-      } as TraceSpan);
+      } satisfies Parameters<NonNullable<typeof input.onSpanStart>>[0]);
       logger.log("trace_span_started", {
         traceRunId: span.traceRunId,
         traceId: span.traceId,
@@ -415,7 +416,7 @@ export function makeTraceRecorder(input: {
           ...span.attrs,
         }),
         eventsJson: JSON.stringify(span.events ?? []),
-      } as TraceSpan);
+      } satisfies Parameters<NonNullable<typeof input.onSpanFinish>>[0]);
       logger.log(
         "trace_span_finished",
         {
@@ -454,16 +455,19 @@ export function makeRootTraceContext(input: {
   } satisfies TraceContextValue;
 }
 
-export function runAppEffect<A, E, R>(effect: Effect.Effect<A, E, R>, input: AppRuntimeInput) {
-  return Effect.runPromise(
-    effect.pipe(Effect.provide(AppRuntime.layer(input))) as Effect.Effect<A, E, never>,
-  );
+type AppRuntimeServices = AppEnv | TraceRecorderService | TraceContextValue;
+
+export function runAppEffect<A, E>(
+  effect: Effect.Effect<A, E, AppRuntimeServices>,
+  input: AppRuntimeInput,
+) {
+  return Effect.runPromise(effect.pipe(Effect.provide(AppRuntime.layer(input))));
 }
 
 export function traceEffect<A, E, R>(
   name: string,
   kind: TraceSpanKind,
-  attrs: Record<string, unknown>,
+  attrs: JsonObject,
   effect: Effect.Effect<A, E, R>,
 ) {
   return Effect.gen(function* () {

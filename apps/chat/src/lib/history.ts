@@ -1,10 +1,16 @@
 import {
   decodeSyncSnapshot,
+  decodeComparisonGroupRow,
+  decodeThreadRow,
+  ComparisonGroupRow,
   TABLES,
+  ThreadRow,
+  type ExternalValue,
   type ComparisonGroup,
   type SyncSnapshot,
   type Thread,
 } from "#/domain";
+import * as Schema from "effect/Schema";
 import { applyPartialSnapshot } from "./sync-adapter";
 import { authFetch } from "./auth-fetch";
 
@@ -15,29 +21,34 @@ export type ThreadSummaryPage = {
   nextCursor: string | null;
 };
 
-function rowsById<T extends { id: string }>(rows: T[]): Record<string, T> {
+function rowsById<T extends { id: string }>(rows: T[]) {
   const result: Record<string, T> = {};
   for (const row of rows) result[row.id] = row;
   return result;
 }
 
-function isThreadSummaryPage(value: unknown): value is ThreadSummaryPage {
-  if (typeof value !== "object" || value === null) return false;
-  const page = value as Record<string, unknown>;
-  return (
-    typeof page.serverSeq === "number" &&
-    Array.isArray(page.threads) &&
-    Array.isArray(page.comparisonGroups) &&
-    (typeof page.nextCursor === "string" || page.nextCursor === null)
-  );
+const ThreadSummaryPageSchema = Schema.Struct({
+  serverSeq: Schema.Number,
+  threads: Schema.Array(ThreadRow),
+  comparisonGroups: Schema.Array(ComparisonGroupRow),
+  nextCursor: Schema.NullOr(Schema.String),
+});
+
+function decodeThreadSummaryPage(value: ExternalValue): ThreadSummaryPage {
+  const page = Schema.decodeUnknownSync(ThreadSummaryPageSchema)(value);
+  return {
+    ...page,
+    threads: page.threads.map(decodeThreadRow),
+    comparisonGroups: page.comparisonGroups.map(decodeComparisonGroupRow),
+  };
 }
 
-async function fetchJson(url: URL | string) {
+async function fetchJson(url: URL | string): Promise<ExternalValue> {
   const response = await authFetch(url);
   if (!response.ok) {
     throw new Error(`History request failed: ${response.status}`);
   }
-  return response.json() as Promise<unknown>;
+  return response.json();
 }
 
 export async function loadOlderThreads(input: {
@@ -50,8 +61,7 @@ export async function loadOlderThreads(input: {
   if (input.before) url.searchParams.set("before", input.before);
   if (input.limit) url.searchParams.set("limit", String(input.limit));
 
-  const body = await fetchJson(url);
-  if (!isThreadSummaryPage(body)) throw new Error("Invalid thread history response");
+  const body = decodeThreadSummaryPage(await fetchJson(url));
 
   applyPartialSnapshot({
     [TABLES.threads]: rowsById(body.threads),

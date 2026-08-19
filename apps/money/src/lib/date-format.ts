@@ -5,11 +5,17 @@ import { settingsCollection } from "./settings-store";
 type DateFormat = "iso" | "us" | "eu";
 
 function getSettingValue(key: string): string | undefined {
-  const setting = settingsCollection.state.get(key) as { key: string; value: string } | undefined;
+  const setting = settingsCollection.state.get(key);
   return setting?.value;
 }
 
-function partsFromDate(d: Date): { y: number; m: string; day: string } {
+interface DateParts {
+  y: number;
+  m: string;
+  day: string;
+}
+
+function partsFromDate(d: Date): DateParts {
   return {
     y: d.getFullYear(),
     m: String(d.getMonth() + 1).padStart(2, "0"),

@@ -1,4 +1,4 @@
-export { D1Shim, createD1Shim } from "@shedflare/test-utils/d1-shim";
+export { D1Shim, asD1Database, createD1Shim } from "@shedflare/test-utils/d1-shim";
 
 import { join } from "node:path";
 import { applyDrizzleMigrations } from "@shedflare/test-utils/migrations";

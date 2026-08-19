@@ -63,9 +63,9 @@ export const SYNC_COMMAND_TYPES = [
 ] as const;
 
 export type SyncCommandType = (typeof SYNC_COMMAND_TYPES)[number];
-
-export function isSyncCommandType(value: unknown): value is SyncCommandType {
-  return typeof value === "string" && SYNC_COMMAND_TYPES.includes(value as SyncCommandType);
+const SyncCommandTypeSchema = Schema.Literals(SYNC_COMMAND_TYPES);
+export function isSyncCommandType<Value>(value: Value): value is Value & SyncCommandType {
+  return Schema.is(SyncCommandTypeSchema)(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,20 +129,41 @@ type PrefixToBrand = {
 };
 
 export function createId<P extends (typeof PREFIXES)[number]>(prefix: P): PrefixToBrand[P] {
+  // SAFETY: each fixed prefix is mapped to the corresponding opaque ID brand above.
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}` as PrefixToBrand[P];
 }
 
 /** Cast a known-valid string to a branded ID type. Use at trust boundaries (after validation). */
 export function castId<T extends string>(id: string): T {
+  // SAFETY: callers use this only after loading an ID from its owning persisted column.
   return id as T;
 }
 
 // ---------------------------------------------------------------------------
 // CommandResult — shared return type for all command handlers
 // ---------------------------------------------------------------------------
-export type CommandResult =
-  | { ok: true; data: Record<string, unknown> }
-  | { ok: false; error: string };
+export interface CommandData {
+  id?: string;
+  count?: number;
+  month?: number;
+  budget?: object | null;
+  added?: number;
+  updated?: number;
+  errors?: string[];
+  childIds?: string[];
+  parentId?: string;
+  targetId?: string;
+  transactionId?: string;
+  tagId?: string;
+  key?: string;
+  value?: string;
+  nextDate?: string | null;
+  completed?: boolean;
+  recurrenceRules?: string;
+  notes?: object[];
+}
+
+export type CommandResult = { ok: true; data: CommandData } | { ok: false; error: string };
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -183,11 +204,13 @@ export function formatCalendarDate(d: Date): string {
  * Inclusive calendar-month range for YYYY-MM keys.
  * Use `date >= start AND date <= end` (or `date < exclusiveEnd`).
  */
-export function monthBoundaries(monthKey: string): {
+export interface MonthBoundaries {
   start: string;
   end: string;
   exclusiveEnd: string;
-} {
+}
+
+export function monthBoundaries(monthKey: string): MonthBoundaries {
   const [y, m] = monthKey.split("-").map(Number);
   const start = `${y}-${String(m).padStart(2, "0")}-01`;
   const endDate = new Date(y, m, 0);

@@ -15,7 +15,7 @@ export default function FileCard(props: { file: DriveFile }) {
 
   onMount(() => {
     if (!isVideo()) return;
-    if (typeof IntersectionObserver === "undefined") {
+    if (!("IntersectionObserver" in globalThis)) {
       setLoadVideoPreview(true);
       return;
     }
@@ -56,7 +56,7 @@ export default function FileCard(props: { file: DriveFile }) {
       classList={{ selected: ctx.selection().has(file.id) }}
       onClick={(e) => {
         e.stopPropagation();
-        if ((e.target as HTMLElement).closest(".card-checkbox")) return;
+        if (e.target instanceof Element && e.target.closest(".card-checkbox")) return;
         if (ctx.selection().size > 0) {
           ctx.toggleFileSelection(file.id);
         } else {

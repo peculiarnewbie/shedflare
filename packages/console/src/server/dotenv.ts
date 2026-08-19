@@ -2,8 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "./repo-root.ts";
 
-export function parseDotEnv(source: string): Record<string, string> {
-  const values: Record<string, string> = {};
+export interface DotEnvValues {
+  [name: string]: string;
+}
+
+export function parseDotEnv(source: string): DotEnvValues {
+  const values: DotEnvValues = {};
 
   for (const line of source.split(/\r?\n/)) {
     const trimmed = line.trim();

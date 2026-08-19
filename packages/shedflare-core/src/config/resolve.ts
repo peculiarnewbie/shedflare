@@ -2,6 +2,18 @@ import { CoreError } from "../errors.ts";
 import type { ManifestCatalog } from "../manifests/model.ts";
 import type { ResolvedAppConfig, ShedflareConfig } from "./model.ts";
 
+export function isAppSelected(config: ShedflareConfig, appId: string): boolean {
+  if (config.configVersion === 1) {
+    const selection = config.apps[appId];
+    return selection !== undefined && selection.enabled !== false;
+  }
+  return config.apps[appId] !== undefined;
+}
+
+export function selectedAppIds(config: ShedflareConfig): string[] {
+  return Object.keys(config.apps).filter((appId) => isAppSelected(config, appId));
+}
+
 function safeStageSuffix(stage: string): string {
   return stage
     .toLowerCase()
@@ -28,7 +40,7 @@ export function resolveAppConfig(
 
   const legacySelection = config.configVersion === 1 ? config.apps[appId] : undefined;
   const selection = config.configVersion === 2 ? config.apps[appId] : undefined;
-  if ((legacySelection && legacySelection.enabled === false) || (!legacySelection && !selection)) {
+  if (!isAppSelected(config, appId)) {
     throw new CoreError("CONFIG_UNKNOWN_APP", `App "${appId}" is not selected in config.`);
   }
 

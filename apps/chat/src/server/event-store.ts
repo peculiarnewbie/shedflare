@@ -1,9 +1,16 @@
-import { type SyncEventPayloadMap, type SyncEventType, type SyncServerEvent } from "#/domain";
-import { DataAccess as SyncDataAccess, SyncEventStore } from "@shedflare/sync-protocol";
+import {
+  createId,
+  nowIso,
+  type SyncEventPayloadMap,
+  type SyncEventType,
+  type SyncServerEvent,
+} from "#/domain";
+import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
 import { Effect } from "effect";
 import { ChatRepository } from "./chat-repository";
 import type { DataAccess } from "./data-access";
 import { EventProjector, type ProjectionInput } from "./event-projector";
+import { json } from "./sync-utils";
 
 type EventStoreInput = {
   sql: DataAccess;
@@ -11,17 +18,22 @@ type EventStoreInput = {
   syncAccess: SyncDataAccess;
 };
 
+function projectionInput<T extends SyncEventType>(
+  eventType: T,
+  payload: SyncEventPayloadMap[T],
+): ProjectionInput {
+  // SAFETY: eventType and payload share T, so the mapped discriminated-union member is preserved.
+  return { eventType, payload } as ProjectionInput;
+}
+
 export class EventStore {
   private readonly sql: DataAccess;
-  private readonly syncEventStore: SyncEventStore;
   private readonly projector: EventProjector;
 
   constructor({ sql, repository, syncAccess }: EventStoreInput) {
     this.sql = sql;
     this.projector = new EventProjector({ sql, repository });
-    this.syncEventStore = new SyncEventStore(syncAccess, (eventType, payload) =>
-      Effect.sync(() => this.projector.apply({ eventType, payload } as ProjectionInput)),
-    );
+    void syncAccess;
   }
 
   insertEvent<T extends SyncEventType>(
@@ -37,9 +49,31 @@ export class EventStore {
     eventType: T,
     payload: SyncEventPayloadMap[T],
   ) {
-    return this.syncEventStore
-      .insertEvent(opId, eventType, payload)
-      .pipe(Effect.map((event) => event as SyncServerEvent<T>));
+    return Effect.gen({ self: this }, function* (this: EventStore) {
+      const eventId = createId("evt");
+      const createdAt = nowIso();
+      yield* Effect.sync(() =>
+        this.sql.exec(
+          `INSERT INTO events (event_id, op_id, type, payload_json, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+          eventId,
+          opId,
+          eventType,
+          json(payload),
+          createdAt,
+        ),
+      );
+      yield* Effect.sync(() => this.projector.apply(projectionInput(eventType, payload)));
+      const serverSeq = yield* Effect.sync(() => this.sql.getLastServerSeq());
+      return {
+        type: "event" as const,
+        serverSeq,
+        eventId,
+        eventType,
+        payload,
+        causedByOpId: opId,
+      } satisfies SyncServerEvent<T>;
+    });
   }
 
   async appendServerEvent<T extends SyncEventType>(

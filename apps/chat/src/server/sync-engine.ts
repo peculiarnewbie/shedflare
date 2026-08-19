@@ -2,10 +2,12 @@ import {
   SYNC_PROTOCOL_VERSION,
   createId,
   decodeCommand,
-  isTurnCommand,
+  decodeCommandInvocation,
+  isSyncCommandType,
   nowIso,
   type Message,
   type SyncCommandPayloadMap,
+  type SyncCommandInvocation,
   type SyncCommandType,
   type SyncServerAck,
   type SyncServerEnvelope,
@@ -19,11 +21,13 @@ import {
   SyncEngineDO,
   SyncCommandExecutionError,
   SyncStorageError,
+  decodeSyncClientEnvelope,
   type HandlerContext,
   type HandlerRegistry,
   type SyncClientHello,
 } from "@shedflare/sync-protocol";
 import { Effect } from "effect";
+import * as Schema from "effect/Schema";
 import * as SqlError from "effect/unstable/sql/SqlError";
 import { json, parseJsonRequest, parseInternalCommandBody, syncLog } from "./sync-utils";
 import { initializeChatDatabase } from "./database-initializer";
@@ -52,7 +56,6 @@ import {
   handleSetSearchMode,
   handleResetStorage,
   handleCreateComparison,
-  type DeferredFollowUp,
   type CommandHandlerContext,
   type AssistantTurnPayload,
   type TitleGenerationPayload,
@@ -61,39 +64,24 @@ import { runAssistantTurn } from "./assistant-turn";
 import { generateThreadTitle } from "./title-generator";
 import { EffectDatabase, type ChatDrizzleDatabase } from "./effect-database";
 
-type ChatHandlerFn = (
-  opId: string,
-  payload: SyncCommandPayloadMap[SyncCommandType],
-  ctx: CommandHandlerContext,
-) => Effect.Effect<
-  { events: SyncServerEvent[]; followUp?: DeferredFollowUp },
-  SyncCommandExecutionError,
-  never
->;
-
-type SyncChatHandlerFn = (
-  opId: string,
-  payload: SyncCommandPayloadMap[SyncCommandType],
-  ctx: CommandHandlerContext,
-) => { events: SyncServerEvent[]; followUp?: DeferredFollowUp };
-
 type SyncCommandResult = {
   ack?: SyncServerAck;
   events: SyncServerEvent[];
   followUp?: Promise<void>;
 };
 
-type SavedTurnParams = {
-  messageId: string;
-  threadId: string;
-  userMessageId: string;
-  modelId: string;
-  modelInterleavedField: string | null;
-  reasoningLevel: "off" | "low" | "medium" | "high";
-  search: boolean;
-  searchLimit: number;
-  preferFreeSearch: boolean;
-};
+const SavedTurnParamsSchema = Schema.Struct({
+  messageId: Schema.String,
+  threadId: Schema.String,
+  userMessageId: Schema.String,
+  modelId: Schema.String,
+  modelInterleavedField: Schema.NullOr(Schema.String),
+  reasoningLevel: Schema.Literals(["off", "low", "medium", "high"]),
+  search: Schema.Boolean,
+  searchLimit: Schema.Number,
+  preferFreeSearch: Schema.Boolean,
+});
+type SavedTurnParams = Schema.Schema.Type<typeof SavedTurnParamsSchema>;
 
 const ALARM_INTERVAL_MS = 30_000;
 
@@ -115,7 +103,6 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   private readonly eventStore: EventStore;
   private readonly assistantTurnControllers = new Map<string, AbortController>();
   private readonly activeTurnMessageIds = new Set<string>();
-  private readonly chatHandlers = new Map<SyncCommandType, ChatHandlerFn>();
   private readonly initialized: Promise<void>;
 
   constructor(ctx: DurableObjectState, env: AppEnv) {
@@ -131,7 +118,6 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       repository: this.chatAccess,
       syncAccess: this.access,
     });
-    this.registerChatHandlers();
 
     this.initialized = ctx.blockConcurrencyWhile(async () => {
       await initializeChatDatabase(this.database);
@@ -146,45 +132,65 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     // Handlers registered via chatHandlers typed Map — no as any needed
   }
 
-  private registerChatHandlers(): void {
-    const handlers: [SyncCommandType, SyncChatHandlerFn][] = [
-      ["bootstrap_session", handleBootstrapSession as SyncChatHandlerFn],
-      ["update_account_settings", handleUpdateAccountSettings as SyncChatHandlerFn],
-      ["create_workspace", handleCreateWorkspace as SyncChatHandlerFn],
-      ["update_workspace", handleUpdateWorkspace as SyncChatHandlerFn],
-      ["archive_workspace", handleArchiveWorkspace as SyncChatHandlerFn],
-      ["create_thread", handleUpsertThread as SyncChatHandlerFn],
-      ["update_thread", handleUpsertThread as SyncChatHandlerFn],
-      ["archive_thread", handleArchiveThread as SyncChatHandlerFn],
-      ["create_user_message", handleCreateUserMessage as SyncChatHandlerFn],
-      ["retry_message", handleRetryMessage as SyncChatHandlerFn],
-      ["edit_user_message", handleEditUserMessage as SyncChatHandlerFn],
-      ["start_assistant_turn", handleStartAssistantTurn as SyncChatHandlerFn],
-      ["cancel_assistant_turn", handleCancelAssistantTurn as SyncChatHandlerFn],
-      ["register_attachment", handleUpsertAttachment as SyncChatHandlerFn],
-      ["complete_attachment", handleUpsertAttachment as SyncChatHandlerFn],
-      ["update_attachment", handleUpsertAttachment as SyncChatHandlerFn],
-      ["delete_attachment", handleDeleteAttachment as SyncChatHandlerFn],
-      ["delete_thread", handleDeleteThread as SyncChatHandlerFn],
-      ["fork_thread", handleForkThread as SyncChatHandlerFn],
-      ["create_comparison", handleCreateComparison as SyncChatHandlerFn],
-      ["set_search_mode", handleSetSearchMode as SyncChatHandlerFn],
-      ["reset_storage", handleResetStorage as SyncChatHandlerFn],
-    ];
-    for (const [type, handler] of handlers) {
-      this.chatHandlers.set(type, (opId, payload, ctx) =>
-        Effect.try({
-          try: () => handler(opId, payload, ctx),
-          catch: (cause) =>
-            new SyncCommandExecutionError({
-              opId,
-              commandType: type,
-              phase: "handler",
-              cause,
-            }),
+  private executeChatHandler(
+    opId: string,
+    command: SyncCommandInvocation,
+    ctx: CommandHandlerContext,
+  ) {
+    return Effect.try({
+      try: () => {
+        switch (command.commandType) {
+          case "bootstrap_session":
+            return handleBootstrapSession(opId, command.payload, ctx);
+          case "update_account_settings":
+            return handleUpdateAccountSettings(opId, command.payload, ctx);
+          case "create_workspace":
+            return handleCreateWorkspace(opId, command.payload, ctx);
+          case "update_workspace":
+            return handleUpdateWorkspace(opId, command.payload, ctx);
+          case "archive_workspace":
+            return handleArchiveWorkspace(opId, command.payload, ctx);
+          case "create_thread":
+          case "update_thread":
+            return handleUpsertThread(opId, command.payload, ctx);
+          case "archive_thread":
+            return handleArchiveThread(opId, command.payload, ctx);
+          case "create_user_message":
+            return handleCreateUserMessage(opId, command.payload, ctx);
+          case "retry_message":
+            return handleRetryMessage(opId, command.payload, ctx);
+          case "edit_user_message":
+            return handleEditUserMessage(opId, command.payload, ctx);
+          case "start_assistant_turn":
+            return handleStartAssistantTurn(opId, command.payload, ctx);
+          case "cancel_assistant_turn":
+            return handleCancelAssistantTurn(opId, command.payload, ctx);
+          case "register_attachment":
+          case "complete_attachment":
+          case "update_attachment":
+            return handleUpsertAttachment(opId, command.payload, ctx);
+          case "delete_attachment":
+            return handleDeleteAttachment(opId, command.payload, ctx);
+          case "delete_thread":
+            return handleDeleteThread(opId, command.payload, ctx);
+          case "fork_thread":
+            return handleForkThread(opId, command.payload, ctx);
+          case "create_comparison":
+            return handleCreateComparison(opId, command.payload, ctx);
+          case "set_search_mode":
+            return handleSetSearchMode(opId, command.payload, ctx);
+          case "reset_storage":
+            return handleResetStorage(opId, command.payload, ctx);
+        }
+      },
+      catch: (cause) =>
+        new SyncCommandExecutionError({
+          opId,
+          commandType: command.commandType,
+          phase: "handler",
+          cause,
         }),
-      );
-    }
+    });
   }
 
   getSnapshot(): SyncSnapshot {
@@ -235,12 +241,12 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     if (url.pathname === "/backup/export" && request.method === "POST") {
       const body = await parseJsonRequest(request);
       if (body instanceof Response) return body;
-      const bodyRecord =
-        body && typeof body === "object" && !Array.isArray(body)
-          ? (body as Record<string, unknown>)
-          : null;
-      const createdAt =
-        bodyRecord && typeof bodyRecord.createdAt === "string" ? bodyRecord.createdAt : nowIso();
+      const bodyRecord = Schema.is(Schema.Struct({ createdAt: Schema.optional(Schema.String) }))(
+        body,
+      )
+        ? body
+        : null;
+      const createdAt = bodyRecord?.createdAt ?? nowIso();
       return Response.json(
         this.backups.getBackup({ createdAt, protocolVersion: SYNC_PROTOCOL_VERSION }),
       );
@@ -285,10 +291,10 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     await this.initialized;
-    const text = typeof message === "string" ? message : new TextDecoder().decode(message);
-    let envelope: any;
+    const text = message instanceof ArrayBuffer ? new TextDecoder().decode(message) : message;
+    let envelope;
     try {
-      envelope = JSON.parse(text);
+      envelope = await Effect.runPromise(decodeSyncClientEnvelope(text));
     } catch {
       syncLog("ws_message_parse_error", { text: text.slice(0, 200) });
       return;
@@ -305,15 +311,17 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
           await this.database.runPromise(this.replayAfter(ws, envelope.lastServerSeq));
           break;
         case "command":
+          if (!isSyncCommandType(envelope.commandType)) {
+            syncLog("ws_message_unknown_command", { commandType: envelope.commandType });
+            return;
+          }
           await this.processChatCommand(
             envelope.opId,
             envelope.commandType,
-            envelope.payload,
+            decodeCommand(envelope.commandType, envelope.payload),
             true,
           );
           break;
-        default:
-          syncLog("ws_message_unknown_type", { type: envelope.type });
       }
     } catch (error) {
       syncLog("ws_message_error", {
@@ -426,17 +434,8 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
           return { duplicate: true as const, result: { ack: existing, events: [] } };
         }
 
-        const handler = this.chatHandlers.get(commandType);
-        if (!handler) {
-          return yield* new SyncCommandExecutionError({
-            opId,
-            commandType,
-            phase: "handler",
-            cause: new Error(`Unknown command type: ${commandType}`),
-          });
-        }
-        const validatedPayload = yield* Effect.try({
-          try: () => decodeCommand(commandType, payload) as SyncCommandPayloadMap[T],
+        const validatedCommand = yield* Effect.try({
+          try: () => decodeCommandInvocation(commandType, payload),
           catch: (cause) =>
             new SyncCommandExecutionError({ opId, commandType, phase: "decode", cause }),
         });
@@ -444,7 +443,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         const handlerContext = this.buildHandlerContext();
         const transactionResult = yield* this.executeTransaction(
           Effect.gen({ self: this }, function* (this: SyncEngineDurableObject) {
-            const result = yield* handler(opId, validatedPayload, handlerContext);
+            const result = yield* this.executeChatHandler(opId, validatedCommand, handlerContext);
             const ackedSeq =
               result.events.at(-1)?.serverSeq ?? (yield* this.access.getLastServerSeq());
             const ack: SyncServerAck = {
@@ -465,7 +464,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
             return { ack, events: result.events, followUp: result.followUp };
           }),
         );
-        return { duplicate: false as const, transactionResult, validatedPayload };
+        return { duplicate: false as const, transactionResult, validatedCommand };
       }),
     );
 
@@ -476,7 +475,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         events: [],
       };
     }
-    const { transactionResult, validatedPayload } = command;
+    const { transactionResult, validatedCommand } = command;
 
     syncLog("process_command_committed", {
       opId,
@@ -487,97 +486,93 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     });
 
     if (doBroadcast) {
-      this.broadcast(transactionResult.ack as SyncServerEnvelope);
-      for (const event of transactionResult.events) this.broadcast(event as SyncServerEnvelope);
+      this.broadcast(transactionResult.ack);
+      for (const event of transactionResult.events) this.broadcast(event);
     }
 
     const followUpPromise = transactionResult.followUp?.();
 
-    if (followUpPromise && isTurnCommand(commandType)) {
-      if (commandType === "create_comparison") {
-        const comparisonPayload = validatedPayload as SyncCommandPayloadMap["create_comparison"];
-        for (let i = 0; i < comparisonPayload.assistantMessages.length; i++) {
-          const assistantMsg = comparisonPayload.assistantMessages[i];
-          const userMsg = comparisonPayload.userMessages[i];
-          const thread = comparisonPayload.threads[i];
-          this.saveTurnParams(assistantMsg.id, {
-            messageId: assistantMsg.id,
-            threadId: thread.id,
-            userMessageId: userMsg.id,
-            modelId: comparisonPayload.modelIds[i],
-            modelInterleavedField: comparisonPayload.modelInterleavedFields[i] ?? null,
-            reasoningLevel: comparisonPayload.reasoningLevel,
-            search: comparisonPayload.search,
-            searchLimit: comparisonPayload.searchLimit ?? 5,
-            preferFreeSearch: comparisonPayload.preferFreeSearch ?? false,
-          });
-          this.activeTurnMessageIds.add(assistantMsg.id);
-        }
-        void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
-        syncLog("comparison_turn_params_saved", {
-          count: comparisonPayload.assistantMessages.length,
-          threadIds: comparisonPayload.threads.map((t) => t.id),
+    if (followUpPromise && validatedCommand.commandType === "create_comparison") {
+      const comparisonPayload = validatedCommand.payload;
+      for (let i = 0; i < comparisonPayload.assistantMessages.length; i++) {
+        const assistantMsg = comparisonPayload.assistantMessages[i];
+        const userMsg = comparisonPayload.userMessages[i];
+        const thread = comparisonPayload.threads[i];
+        this.saveTurnParams(assistantMsg.id, {
+          messageId: assistantMsg.id,
+          threadId: thread.id,
+          userMessageId: userMsg.id,
+          modelId: comparisonPayload.modelIds[i],
+          modelInterleavedField: comparisonPayload.modelInterleavedFields[i] ?? null,
+          reasoningLevel: comparisonPayload.reasoningLevel,
+          search: comparisonPayload.search,
+          searchLimit: comparisonPayload.searchLimit ?? 5,
+          preferFreeSearch: comparisonPayload.preferFreeSearch ?? false,
         });
-
-        followUpPromise
-          .then(() => {
-            this.settleTrackedTurns(
-              comparisonPayload.assistantMessages.map((message) => message.id),
-            );
-            return undefined;
-          })
-          .catch((error: any) => {
-            this.settleTrackedTurns(
-              comparisonPayload.assistantMessages.map((message) => message.id),
-            );
-            syncLog("follow_up_error", {
-              opId,
-              commandType,
-              error: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined,
-            });
-          });
-      } else {
-        const turnPayload = validatedPayload as SyncCommandPayloadMap[
-          | "create_user_message"
-          | "retry_message"
-          | "edit_user_message"];
-        const turnMessageId = turnPayload.assistantMessage.id;
-        const userMessageId = "userMessage" in turnPayload ? turnPayload.userMessage.id : "";
-
-        this.saveTurnParams(turnMessageId, {
-          messageId: turnMessageId,
-          threadId: turnPayload.threadId,
-          userMessageId,
-          modelId: turnPayload.modelId,
-          modelInterleavedField: turnPayload.modelInterleavedField ?? null,
-          reasoningLevel: turnPayload.reasoningLevel,
-          search: turnPayload.search,
-          searchLimit: turnPayload.searchLimit ?? 5,
-          preferFreeSearch: turnPayload.preferFreeSearch ?? false,
-        });
-        this.activeTurnMessageIds.add(turnMessageId);
-        void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
-        syncLog("turn_params_saved", { messageId: turnMessageId, threadId: turnPayload.threadId });
-        followUpPromise
-          .then(() => {
-            this.settleTrackedTurns([turnMessageId]);
-            return undefined;
-          })
-          .catch((error: any) => {
-            this.settleTrackedTurns([turnMessageId]);
-            syncLog("follow_up_error", {
-              opId,
-              commandType,
-              error: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined,
-            });
-          });
+        this.activeTurnMessageIds.add(assistantMsg.id);
       }
+      void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+      syncLog("comparison_turn_params_saved", {
+        count: comparisonPayload.assistantMessages.length,
+        threadIds: comparisonPayload.threads.map((t) => t.id),
+      });
+
+      followUpPromise
+        .then(() => {
+          this.settleTrackedTurns(comparisonPayload.assistantMessages.map((message) => message.id));
+          return undefined;
+        })
+        .catch((error) => {
+          this.settleTrackedTurns(comparisonPayload.assistantMessages.map((message) => message.id));
+          syncLog("follow_up_error", {
+            opId,
+            commandType,
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
+        });
+    } else if (
+      followUpPromise &&
+      (validatedCommand.commandType === "create_user_message" ||
+        validatedCommand.commandType === "retry_message" ||
+        validatedCommand.commandType === "edit_user_message")
+    ) {
+      const turnPayload = validatedCommand.payload;
+      const turnMessageId = turnPayload.assistantMessage.id;
+      const userMessageId = "userMessage" in turnPayload ? turnPayload.userMessage.id : "";
+
+      this.saveTurnParams(turnMessageId, {
+        messageId: turnMessageId,
+        threadId: turnPayload.threadId,
+        userMessageId,
+        modelId: turnPayload.modelId,
+        modelInterleavedField: turnPayload.modelInterleavedField ?? null,
+        reasoningLevel: turnPayload.reasoningLevel,
+        search: turnPayload.search,
+        searchLimit: turnPayload.searchLimit ?? 5,
+        preferFreeSearch: turnPayload.preferFreeSearch ?? false,
+      });
+      this.activeTurnMessageIds.add(turnMessageId);
+      void this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+      syncLog("turn_params_saved", { messageId: turnMessageId, threadId: turnPayload.threadId });
+      followUpPromise
+        .then(() => {
+          this.settleTrackedTurns([turnMessageId]);
+          return undefined;
+        })
+        .catch((error) => {
+          this.settleTrackedTurns([turnMessageId]);
+          syncLog("follow_up_error", {
+            opId,
+            commandType,
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
+        });
 
       this.ctx.waitUntil(followUpPromise);
     } else if (followUpPromise) {
-      followUpPromise.catch((error: any) => {
+      followUpPromise.catch((error) => {
         syncLog("follow_up_error", {
           opId,
           commandType,
@@ -681,7 +676,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     const result = new Map<string, SavedTurnParams>();
     for (const row of rows) {
       try {
-        const params = JSON.parse(row.payloadJson) as SavedTurnParams;
+        const params = Schema.decodeUnknownSync(SavedTurnParamsSchema)(JSON.parse(row.payloadJson));
         result.set(row.messageId, params);
       } catch {
         syncLog("invalid_pending_turn", { messageId: row.messageId });
@@ -731,7 +726,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       errorMessage: "Response interrupted (DO restarted) — recovering...",
       updatedAt: recoveredAt,
     });
-    this.broadcast(failEvent as SyncServerEnvelope);
+    this.broadcast(failEvent);
 
     const threadEvent = this.eventStore.insertEvent(createId("srvop"), "thread_upserted", {
       row: {
@@ -741,12 +736,12 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
         lastMessageAt: recoveredAt,
       },
     });
-    this.broadcast(threadEvent as SyncServerEnvelope);
+    this.broadcast(threadEvent);
 
     const msgEvent = this.eventStore.insertEvent(createId("srvop"), "message_upserted", {
       row: normalized,
     });
-    this.broadcast(msgEvent as SyncServerEnvelope);
+    this.broadcast(msgEvent);
 
     syncLog("recover_turn_starting", { staleMessageId, newMessageId, threadId: params.threadId });
 
@@ -819,7 +814,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       const event = await this.eventStore.appendServerEvent(null, "account_settings_upserted", {
         row: normalizeAccountSettings(settings, createId("srvop")),
       });
-      this.broadcast(event as SyncServerEnvelope);
+      this.broadcast(event);
     }
   }
 }

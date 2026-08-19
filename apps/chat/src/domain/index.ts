@@ -40,8 +40,8 @@ export const SEARCHES_PER_TURN_OPTIONS = [1, 2, 3, 4, 5] as const;
 export const MAX_BROWSER_RENDERS_PER_TURN = 5;
 export const MAX_TOOL_ITERATIONS_PER_TURN = 10;
 
-export function clampSearchesPerTurn(value: unknown) {
-  const numeric = typeof value === "number" ? value : Number(value);
+export function clampSearchesPerTurn(value: ExternalValue) {
+  const numeric = Schema.is(Schema.Number)(value) ? value : Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_SEARCHES_PER_TURN;
   return Math.min(MAX_SEARCHES_PER_TURN, Math.max(1, Math.trunc(numeric)));
 }
@@ -278,8 +278,12 @@ export function toWire<T extends object>(
   return { ...entity, optimistic: true as const, opId };
 }
 
+type DecoderInput = Parameters<ReturnType<typeof Schema.decodeUnknownSync>>[0];
+
 function typedDecode<T>(schema: Parameters<typeof Schema.decodeUnknownSync>[0]) {
-  return Schema.decodeUnknownSync(schema) as unknown as (value: unknown) => T;
+  const decoder = Schema.decodeUnknownSync(schema);
+  // SAFETY: each call below pairs a database row owner type with its complete row schema.
+  return decoder as (value: DecoderInput) => T;
 }
 
 export const decodeWorkspaceRow = typedDecode<Workspace>(WorkspaceRow);
@@ -331,6 +335,7 @@ export type IsoTimestamp = Brand<string, "IsoTimestamp">;
 function brandString<Name extends string>(value: string, brandName: Name): Brand<string, Name> {
   const trimmed = value.trim();
   if (!trimmed) throw new Error(`Invalid ${brandName}`);
+  // SAFETY: the non-empty invariant required by every string brand is checked above.
   return trimmed as Brand<string, Name>;
 }
 
@@ -345,11 +350,13 @@ export const toObjectKey = (value: string) => brandString(value, "ObjectKey");
 export function toEmail(value: string): Email {
   const normalized = value.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new Error(`Invalid Email`);
+  // SAFETY: the normalized string has passed the email-format validation above.
   return normalized as Email;
 }
 
 export function toIsoTimestamp(value: string): IsoTimestamp {
   if (Number.isNaN(Date.parse(value))) throw new Error(`Invalid IsoTimestamp`);
+  // SAFETY: Date.parse established that this value represents a valid timestamp.
   return value as IsoTimestamp;
 }
 
@@ -363,8 +370,22 @@ export function mergeAttachmentLink(
   });
 }
 
+export type SyncRow =
+  | AccountSettings
+  | Attachment
+  | ComparisonGroup
+  | ExtractRun
+  | Message
+  | MessagePart
+  | SearchResult
+  | SearchRun
+  | Thread
+  | TraceRun
+  | TraceSpan
+  | Workspace;
+
 export type SyncTables = Partial<
-  Record<(typeof TABLES)[keyof typeof TABLES], Record<string, unknown>>
+  Record<(typeof TABLES)[keyof typeof TABLES], Record<string, SyncRow>>
 >;
 
 export type SyncSnapshot = {
@@ -375,77 +396,90 @@ export type SyncSnapshot = {
 export const SyncSnapshotSchema = Schema.Struct({
   serverSeq: Schema.optional(Schema.Number),
   tables: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Any)),
-}) as Schema.Schema<SyncSnapshot>;
+});
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export type JsonValue = string | number | boolean | null | readonly JsonValue[] | JsonObject;
+export type JsonObject = { readonly [key: string]: JsonValue | undefined };
+export type ExternalValue = Parameters<ReturnType<typeof Schema.decodeUnknownSync>>[0];
+
+function isRecord(value: ExternalValue): value is { readonly [key: string]: ExternalValue } {
+  return Schema.is(Schema.Record(Schema.String, Schema.Any))(value);
 }
 
-function decodeSyncTables(value: unknown): SyncTables | null {
+function decodeSyncTables(value: ExternalValue): SyncTables | null {
   if (!isRecord(value)) return null;
   const tableNames = new Set<string>(Object.values(TABLES));
   const tables: SyncTables = {};
   for (const [tableName, rows] of Object.entries(value)) {
     if (!tableNames.has(tableName)) continue;
     if (!isRecord(rows)) return null;
-    tables[tableName as (typeof TABLES)[keyof typeof TABLES]] = rows;
+    // SAFETY: tableName was checked against the complete TABLES value set above.
+    tables[tableName as (typeof TABLES)[keyof typeof TABLES]] = rows as Record<string, SyncRow>;
   }
   return tables;
 }
 
-export function decodeSyncSnapshot(value: unknown): SyncSnapshot | null {
+export function decodeSyncSnapshot(value: ExternalValue): SyncSnapshot | null {
   if (!isRecord(value)) return null;
   const tables = decodeSyncTables(value.tables);
   if (!tables) return null;
-  if (value.serverSeq !== undefined && typeof value.serverSeq !== "number") return null;
+  if (value.serverSeq !== undefined && !Schema.is(Schema.Number)(value.serverSeq)) return null;
   return { tables, serverSeq: value.serverSeq };
 }
 
-export function decodeSyncServerEnvelope(value: unknown): SyncServerEnvelope | null {
-  if (!isRecord(value) || typeof value.type !== "string") return null;
+export function decodeSyncServerEnvelope(value: ExternalValue): SyncServerEnvelope | null {
+  if (!isRecord(value) || !Schema.is(Schema.String)(value.type)) return null;
   switch (value.type) {
     case "hello_ack":
       if (
-        typeof value.protocolVersion !== "string" ||
-        typeof value.serverTime !== "string" ||
-        typeof value.lastServerSeq !== "number"
+        !Schema.is(Schema.String)(value.protocolVersion) ||
+        !Schema.is(Schema.String)(value.serverTime) ||
+        !Schema.is(Schema.Number)(value.lastServerSeq)
       ) {
         return null;
       }
+      // SAFETY: every SyncServerHelloAck field was validated above.
       return value as SyncServerHelloAck;
     case "ack":
       if (
-        typeof value.opId !== "string" ||
-        typeof value.serverSeq !== "number" ||
-        typeof value.acceptedAt !== "string" ||
-        typeof value.commandType !== "string"
+        !Schema.is(Schema.String)(value.opId) ||
+        !Schema.is(Schema.Number)(value.serverSeq) ||
+        !Schema.is(Schema.String)(value.acceptedAt) ||
+        !Schema.is(Schema.String)(value.commandType)
       ) {
         return null;
       }
+      if (!isSyncCommandType(value.commandType)) return null;
+      // SAFETY: every SyncServerAck field, including commandType, was validated above.
       return value as SyncServerAck;
     case "reject":
       if (
-        typeof value.opId !== "string" ||
-        typeof value.reason !== "string" ||
-        typeof value.code !== "string" ||
-        typeof value.retriable !== "boolean"
+        !Schema.is(Schema.String)(value.opId) ||
+        !Schema.is(Schema.String)(value.reason) ||
+        !Schema.is(Schema.String)(value.code) ||
+        !Schema.is(Schema.Boolean)(value.retriable)
       ) {
         return null;
       }
+      // SAFETY: every SyncServerReject field was validated above.
       return value as SyncServerReject;
     case "event":
       if (
-        typeof value.serverSeq !== "number" ||
-        typeof value.eventId !== "string" ||
-        typeof value.eventType !== "string" ||
+        !Schema.is(Schema.Number)(value.serverSeq) ||
+        !Schema.is(Schema.String)(value.eventId) ||
+        !Schema.is(Schema.String)(value.eventType) ||
         !isRecord(value.payload)
       ) {
         return null;
       }
+      if (!Schema.is(Schema.Literals(Object.keys(EventPayloadSchemas)))(value.eventType))
+        return null;
+      // SAFETY: the envelope discriminator and common event fields were validated above;
+      // event payloads are decoded when the event is applied.
       return value as SyncServerEvent;
     case "sync_reset": {
-      if (typeof value.reason !== "string") return null;
-      if (value.protocolVersion !== undefined && typeof value.protocolVersion !== "string")
+      if (!Schema.is(Schema.String)(value.reason)) return null;
+      if (value.protocolVersion !== undefined && !Schema.is(Schema.String)(value.protocolVersion))
         return null;
       const snapshot = decodeSyncSnapshot(value.snapshot);
       if (!snapshot) return null;
@@ -665,14 +699,27 @@ export type SyncCommandPayloadMap = {
 
 export type SyncCommandType = keyof SyncCommandPayloadMap;
 
+export type SyncCommandInvocation = {
+  [K in SyncCommandType]: { commandType: K; payload: SyncCommandPayloadMap[K] };
+}[SyncCommandType];
+
 export function decodeCommand<K extends SyncCommandType>(
   commandType: K,
-  input: unknown,
+  input: ExternalValue,
 ): SyncCommandPayloadMap[K] {
   const schema = CommandPayloadSchemas[commandType];
-  return (
-    Schema.decodeUnknownSync as (s: typeof schema) => (input: unknown) => SyncCommandPayloadMap[K]
-  )(schema)(input);
+  const decoded = Schema.decodeUnknownSync(schema)(input);
+  // SAFETY: commandType selects the matching schema and the decoder validates input before return.
+  return decoded as SyncCommandPayloadMap[K];
+}
+
+export function decodeCommandInvocation(
+  commandType: SyncCommandType,
+  input: ExternalValue,
+): SyncCommandInvocation {
+  const payload = decodeCommand(commandType, input);
+  // SAFETY: decodeCommand selects and runs the schema identified by the same commandType.
+  return { commandType, payload } as SyncCommandInvocation;
 }
 
 export function isTurnCommand(
@@ -715,8 +762,9 @@ export const SYNC_COMMAND_TYPES = [
   "reset_storage",
 ] as const satisfies readonly SyncCommandType[];
 
-export function isSyncCommandType(value: unknown): value is SyncCommandType {
-  return typeof value === "string" && SYNC_COMMAND_TYPES.includes(value as SyncCommandType);
+export function isSyncCommandType(value: ExternalValue): value is SyncCommandType {
+  if (!Schema.is(Schema.String)(value)) return false;
+  return Schema.is(Schema.Literals(SYNC_COMMAND_TYPES))(value);
 }
 
 export type SyncClientHello = {
@@ -854,13 +902,15 @@ export type SyncServerReject = {
 };
 
 export type SyncServerEvent<T extends SyncEventType = SyncEventType> = {
-  type: "event";
-  serverSeq: number;
-  eventId: string;
-  eventType: T;
-  payload: SyncEventPayloadMap[T];
-  causedByOpId?: string | null;
-};
+  [K in T]: {
+    type: "event";
+    serverSeq: number;
+    eventId: string;
+    eventType: K;
+    payload: SyncEventPayloadMap[K];
+    causedByOpId?: string | null;
+  };
+}[T];
 
 export type SyncServerReset = {
   type: "sync_reset";
@@ -1107,7 +1157,7 @@ export function createTraceRun(input: {
   durationMs?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
-  attrs?: Record<string, unknown>;
+  attrs?: JsonObject;
 }) {
   return decodeTraceRunRow({
     id: input.id ?? createId("trun"),
@@ -1141,8 +1191,8 @@ export function createTraceSpan(input: {
   durationMs?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
-  attrs?: Record<string, unknown>;
-  events?: Record<string, unknown>[];
+  attrs?: JsonObject;
+  events?: JsonObject[];
 }) {
   return decodeTraceSpanRow({
     id: input.id ?? createId("span"),
@@ -1249,7 +1299,7 @@ export function createSearchRun(input: {
   errorMessage?: string | null;
   mode?: "api" | "mcp";
 }) {
-  return decodeSearchRunRow({
+  const row = {
     id: createId("srn"),
     messageId: input.messageId,
     query: input.query.trim(),
@@ -1259,9 +1309,10 @@ export function createSearchRun(input: {
     resultCount: input.resultCount ?? 0,
     previewText: input.previewText ?? "",
     errorMessage: input.errorMessage ?? null,
-    ...(input.mode ? { mode: input.mode } : {}),
     createdAt: nowIso(),
-  });
+  };
+  if (input.mode) return decodeSearchRunRow({ ...row, mode: input.mode });
+  return decodeSearchRunRow(row);
 }
 
 /**

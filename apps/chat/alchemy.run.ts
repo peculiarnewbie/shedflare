@@ -48,12 +48,20 @@ export const ChatStack = Alchemy.Stack(
     const opencodeKey = yield* Shedflare.optionalSecretConfig("OPENCODE_GO_API_KEY");
     const exaKey = yield* Shedflare.optionalSecretConfig("EXA_API_KEY");
 
-    yield* Shedflare.WorkerSecret("OpencodeKey", {
-      workerName: worker.workerName,
-      binding: "OPENCODE_GO_API_KEY",
-      ...(Option.isSome(opencodeKey) ? { value: opencodeKey.value } : {}),
-      required: true,
-    });
+    if (Option.isSome(opencodeKey)) {
+      yield* Shedflare.WorkerSecret("OpencodeKey", {
+        workerName: worker.workerName,
+        binding: "OPENCODE_GO_API_KEY",
+        value: opencodeKey.value,
+        required: true,
+      });
+    } else {
+      yield* Shedflare.WorkerSecret("OpencodeKey", {
+        workerName: worker.workerName,
+        binding: "OPENCODE_GO_API_KEY",
+        required: true,
+      });
+    }
 
     yield* Shedflare.WorkerSecret("UploadToken", {
       workerName: worker.workerName,
@@ -61,12 +69,20 @@ export const ChatStack = Alchemy.Stack(
       value: uploadToken.text,
     });
 
-    yield* Shedflare.WorkerSecret("ExaKey", {
-      workerName: worker.workerName,
-      binding: "EXA_API_KEY",
-      ...(Option.isSome(exaKey) ? { value: exaKey.value } : {}),
-      required: false,
-    });
+    if (Option.isSome(exaKey)) {
+      yield* Shedflare.WorkerSecret("ExaKey", {
+        workerName: worker.workerName,
+        binding: "EXA_API_KEY",
+        value: exaKey.value,
+        required: false,
+      });
+    } else {
+      yield* Shedflare.WorkerSecret("ExaKey", {
+        workerName: worker.workerName,
+        binding: "EXA_API_KEY",
+        required: false,
+      });
+    }
 
     return {
       app: "chat" as const,

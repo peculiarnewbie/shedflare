@@ -42,9 +42,10 @@ export class DriveUploadError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const ErrorResponse = Schema.Struct({
+  error: Schema.String,
+  retryable: Schema.optional(Schema.Boolean),
+});
 
 function errorMessageForStatus(status: number) {
   if (status === 401) return "Session expired — please sign in again.";
@@ -58,21 +59,25 @@ function errorMessageForStatus(status: number) {
 
 async function responseError(response: Response) {
   const text = await response.text().catch(() => "");
-  let body: unknown = null;
+  let body = null;
   try {
     body = text ? JSON.parse(text) : null;
   } catch {
     body = null;
   }
 
-  const serverMessage =
-    isRecord(body) && typeof body.error === "string"
-      ? body.error
-      : text && !text.trimStart().startsWith("<")
-        ? text.slice(0, 500)
-        : "";
-  const retryableFromBody =
-    isRecord(body) && typeof body.retryable === "boolean" ? body.retryable : false;
+  let decodedError: Schema.Schema.Type<typeof ErrorResponse> | null = null;
+  try {
+    decodedError = Schema.decodeUnknownSync(ErrorResponse)(body);
+  } catch {
+    // Fall through to the HTTP status and plain-text response.
+  }
+  const serverMessage = decodedError
+    ? decodedError.error
+    : text && !text.trimStart().startsWith("<")
+      ? text.slice(0, 500)
+      : "";
+  const retryableFromBody = decodedError?.retryable ?? false;
   const retryable =
     retryableFromBody ||
     response.status === 408 ||
@@ -87,13 +92,13 @@ async function responseError(response: Response) {
   );
 }
 
-async function decodeResponse<T>(
+async function decodeResponse<SchemaType extends Parameters<typeof Schema.decodeUnknownSync>[0]>(
   response: Response,
-  schema: Parameters<typeof Schema.decodeUnknownSync>[0],
-): Promise<T> {
+  schema: SchemaType,
+): Promise<SchemaType["Type"]> {
   if (!response.ok) throw await responseError(response);
   try {
-    return Schema.decodeUnknownSync(schema)(await response.json()) as T;
+    return Schema.decodeUnknownSync(schema)(await response.json());
   } catch {
     throw new DriveUploadError(
       "Drive returned an invalid upload response. Reload the app before retrying.",
@@ -121,7 +126,7 @@ function waitForRetry(delayMs: number, signal: AbortSignal) {
   });
 }
 
-function normalizeUploadError(error: unknown) {
+function normalizeUploadError<ErrorValue>(error: ErrorValue) {
   if (error instanceof DriveUploadError || error instanceof DOMException) return error;
   if (error instanceof TypeError) {
     return new DriveUploadError(
@@ -160,7 +165,7 @@ async function uploadPartWithRetry(options: {
           signal,
         },
       );
-      return await decodeResponse<MultipartPartResponseType>(response, MultipartPartResponse);
+      return await decodeResponse(response, MultipartPartResponse);
     } catch (error) {
       const normalized = normalizeUploadError(error);
       if (
@@ -213,10 +218,7 @@ async function uploadChunked(options: UploadDriveFileOptions): Promise<FileRespo
       body: JSON.stringify(metadata),
       signal,
     });
-    session = await decodeResponse<MultipartUploadResponseType>(
-      createResponse,
-      MultipartUploadResponse,
-    );
+    session = await decodeResponse(createResponse, MultipartUploadResponse);
 
     const activeSession = session;
     const totalParts = Math.max(1, Math.ceil(file.size / activeSession.partSize));
@@ -286,7 +288,7 @@ async function uploadChunked(options: UploadDriveFileOptions): Promise<FileRespo
         signal,
       },
     );
-    const result = await decodeResponse<FileResponseType>(completeResponse, FileResponse);
+    const result = await decodeResponse(completeResponse, FileResponse);
     onProgress({
       uploadedBytes: file.size,
       totalBytes: file.size,
@@ -314,7 +316,7 @@ async function uploadSingle(options: UploadDriveFileOptions): Promise<FileRespon
       body: data,
       signal,
     });
-    const result = await decodeResponse<FileResponseType>(response, FileResponse);
+    const result = await decodeResponse(response, FileResponse);
     onProgress({
       uploadedBytes: file.size,
       totalBytes: file.size,

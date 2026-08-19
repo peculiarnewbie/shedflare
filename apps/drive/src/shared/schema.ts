@@ -25,6 +25,9 @@ export const FilesResponse = Schema.Struct({
 });
 export type FilesResponse = Schema.Schema.Type<typeof FilesResponse>;
 
+export const PublicFilesResponse = Schema.Struct({ files: Schema.Array(DriveFile) });
+export type PublicFilesResponse = Schema.Schema.Type<typeof PublicFilesResponse>;
+
 export const FileResponse = Schema.Struct({
   file: DriveFile,
 });
@@ -57,3 +60,10 @@ export const SessionResponse = Schema.Struct({
   user: Schema.Struct({ email: Schema.String }),
 });
 export type SessionResponse = Schema.Schema.Type<typeof SessionResponse>;
+
+export const SecureUploadCommandResponse = Schema.Struct({
+  command: Schema.String,
+  expiresAt: Schema.String,
+  maxBytes: Schema.Number,
+});
+export type SecureUploadCommandResponse = Schema.Schema.Type<typeof SecureUploadCommandResponse>;

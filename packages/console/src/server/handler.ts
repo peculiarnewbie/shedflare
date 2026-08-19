@@ -5,21 +5,35 @@ import { fetchInventory, fetchSuiteOverview } from "./inventory-service.ts";
 import { discoverStagesFromInventory, resolveCurrentStage } from "./stage-service.ts";
 import { fetchBillableUsage, fetchScriptUsage, fetchUsage } from "./usage-service.ts";
 
-function json(res: ServerResponse, status: number, body: unknown): void {
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+interface RouteMatch {
+  name: string;
+  params: Record<string, string>;
+}
+
+function json<Body>(res: ServerResponse, status: number, body: Body): void {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+async function readBody(req: IncomingMessage): Promise<JsonValue> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return null;
-  return JSON.parse(raw) as unknown;
+  // SAFETY: JSON.parse returns only JSON-compatible values after successful parsing.
+  return JSON.parse(raw) as JsonValue;
 }
 
-function route(pathname: string): { name: string; params: Record<string, string> } | null {
+function route(pathname: string): RouteMatch | null {
   const routes: Array<{ pattern: RegExp; name: string; params?: string[] }> = [
     { pattern: /^\/api\/health$/, name: "health" },
     { pattern: /^\/api\/overview$/, name: "overview" },

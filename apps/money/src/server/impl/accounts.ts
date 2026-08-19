@@ -1,4 +1,4 @@
-import { eq, sql, and, type SQL } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { moneyApi } from "../definitions";
 import { createDb } from "../d1-access";
@@ -105,7 +105,7 @@ export function createAccountsGroup(env: Env) {
 
           let whereClause = eq(s.transactions.accountId, accountId);
           const { filterSql } = await resolveTransactionFilter(db, url);
-          if (filterSql) whereClause = and(whereClause, filterSql) as SQL<unknown>;
+          if (filterSql) whereClause = and(whereClause, filterSql) ?? whereClause;
 
           const rows = await db
             .select({

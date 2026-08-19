@@ -3,15 +3,14 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createTransaction } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 export async function handleImportCommands(
-  c: string,
-  p: CommandPayloadMap["import_transactions"],
+  command: Extract<CommandInvocation, { commandType: "import_transactions" }>,
   db: Db,
 ): Promise<CommandResult> {
-  if (c !== "import_transactions") return { ok: true, data: { added: 0, updated: 0, errors: [] } };
+  const p = command.payload;
 
   const txs = p.transactions ?? [];
   if (!p.accountId || txs.length === 0)

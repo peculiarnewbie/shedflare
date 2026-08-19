@@ -10,7 +10,7 @@
   },
   "scripts": {
     "check": "vp check src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "vp check --no-fmt --no-lint"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260415.1",

@@ -1,15 +1,15 @@
 import { For, createResource, createSignal } from "solid-js";
 import { apiGet } from "../lib/api";
-import type { BillableUsageRecord, UsageResponse } from "../api/types";
+import { BillableUsageResponseSchema, UsageResponseSchema } from "../api/types";
 import UsageCard from "../components/UsageCard";
 
 export default function Usage() {
   const [refreshing, setRefreshing] = createSignal(false);
   const [usage, { refetch: refetchUsage }] = createResource(() =>
-    apiGet<UsageResponse>("/api/usage"),
+    apiGet("/api/usage", UsageResponseSchema),
   );
   const [billable, { refetch: refetchBillable }] = createResource(() =>
-    apiGet<{ records: BillableUsageRecord[]; error?: string }>("/api/billable-usage"),
+    apiGet("/api/billable-usage", BillableUsageResponseSchema),
   );
 
   const refresh = async () => {

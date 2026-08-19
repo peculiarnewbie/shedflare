@@ -51,6 +51,7 @@ export const WorkerSecretProvider = () =>
       list: () => Effect.succeed([]),
 
       reconcile: Effect.fn(function* ({ news }) {
+        // SAFETY: Alchemy resolves every Input before invoking a provider reconcile operation.
         const resolved = news as ResolvedNews;
         const credentials = yield* yield* CloudflareEnvironment;
         const { accountId } = credentials;
@@ -91,10 +92,12 @@ export const WorkerSecretProvider = () =>
 
       read: Effect.fn(function* ({ olds, output }) {
         if (!output?.present) return undefined;
+        // SAFETY: persisted provider inputs were resolved before the resource was recorded.
+        const resolvedOlds = olds as ResolvedNews;
         const credentials = yield* yield* CloudflareEnvironment;
         const { accountId } = credentials;
         const existing = yield* Effect.tryPromise({
-          try: () => listWorkerSecretNames(credentials, accountId, olds.workerName as string),
+          try: () => listWorkerSecretNames(credentials, accountId, resolvedOlds.workerName),
           catch: (cause) => {
             console.error(
               "[WorkerSecret] read failed",
@@ -107,7 +110,7 @@ export const WorkerSecretProvider = () =>
         }).pipe(
           Effect.match({
             onSuccess: (names) => names,
-            onFailure: () => [] as string[],
+            onFailure: () => Array<string>(),
           }),
         );
         if (!existing.includes(olds.binding)) return undefined;

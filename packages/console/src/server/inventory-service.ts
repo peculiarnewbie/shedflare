@@ -16,6 +16,7 @@ import {
   loadManifest,
   type ManifestSummary,
 } from "./config-service.ts";
+import { array, object, optional, string, type GenericSchema, type InferOutput } from "valibot";
 
 export interface WorkerScript {
   id: string;
@@ -51,7 +52,20 @@ export interface CfInventoryResult {
   errors: string[];
 }
 
-function errorMessage(label: string, error: unknown): string {
+const WorkerScriptSchema = object({
+  id: string(),
+  created_on: optional(string()),
+  modified_on: optional(string()),
+});
+const D1DatabaseSchema = object({
+  uuid: string(),
+  name: string(),
+  created_at: optional(string()),
+});
+const R2BucketSchema = object({ name: string(), creation_date: optional(string()) });
+const KvNamespaceSchema = object({ id: string(), title: string() });
+
+function errorMessage<ErrorValue>(label: string, error: ErrorValue): string {
   return `${label}: ${error instanceof Error ? error.message : String(error)}`;
 }
 
@@ -60,9 +74,14 @@ export async function fetchInventory(env: CfEnv): Promise<CfInventoryResult> {
   const token = env.apiToken;
   const errors: string[] = [];
 
-  async function list<T>(label: string, path: string, fallback: T): Promise<T> {
+  async function list<ResultSchema extends GenericSchema>(
+    label: string,
+    path: string,
+    schema: ResultSchema,
+    fallback: InferOutput<ResultSchema>,
+  ): Promise<InferOutput<ResultSchema>> {
     try {
-      return await cfGet<T>(token, path);
+      return await cfGet(token, path, schema);
     } catch (error) {
       errors.push(errorMessage(label, error));
       return fallback;
@@ -70,12 +89,15 @@ export async function fetchInventory(env: CfEnv): Promise<CfInventoryResult> {
   }
 
   const [workers, d1, r2, kv] = await Promise.all([
-    list<WorkerScript[]>("workers", `/accounts/${accountId}/workers/scripts`, []),
-    list<D1Database[]>("d1", `/accounts/${accountId}/d1/database`, []),
-    list<{ buckets?: R2Bucket[] }>("r2", `/accounts/${accountId}/r2/buckets`, {}).then(
-      (r) => r.buckets ?? [],
-    ),
-    list<KvNamespace[]>("kv", `/accounts/${accountId}/storage/kv/namespaces`, []),
+    list("workers", `/accounts/${accountId}/workers/scripts`, array(WorkerScriptSchema), []),
+    list("d1", `/accounts/${accountId}/d1/database`, array(D1DatabaseSchema), []),
+    list(
+      "r2",
+      `/accounts/${accountId}/r2/buckets`,
+      object({ buckets: optional(array(R2BucketSchema)) }),
+      {},
+    ).then((result) => result.buckets ?? []),
+    list("kv", `/accounts/${accountId}/storage/kv/namespaces`, array(KvNamespaceSchema), []),
   ]);
 
   return { inventory: { workers, d1, r2, kv }, errors };

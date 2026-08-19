@@ -7,7 +7,15 @@ import {
   type JSX,
 } from "solid-js";
 import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
-import type { Routine, RoutineCompletion } from "./types";
+import { parse } from "valibot";
+import {
+  CompletionsResponseSchema,
+  CreatedResponseSchema,
+  DayResponseSchema,
+  SessionResponseSchema,
+  type Routine,
+  type RoutineCompletion,
+} from "./types";
 
 function shouldAttemptAutoLogin() {
   return new URL(window.location.href).searchParams.get("error") !== "no_session";
@@ -117,15 +125,12 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
     }
     if (!dayResp.ok) return;
 
-    const data = (await dayResp.json()) as {
-      routines: Routine[];
-      sleepTime: string;
-    };
+    const data = parse(DayResponseSchema, await dayResp.json());
     setRoutines(data.routines);
     setSleepTime(data.sleepTime);
 
     if (compsResp.ok) {
-      const comps = (await compsResp.json()) as { completions: RoutineCompletion[] };
+      const comps = parse(CompletionsResponseSchema, await compsResp.json());
       setMonthCompletions(comps.completions);
     }
   }
@@ -133,7 +138,7 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
   async function fetchCompletions(from: string, to: string): Promise<RoutineCompletion[]> {
     const resp = await fetch(`/api/routines/completions?from=${from}&to=${to}`);
     if (!resp.ok) return [];
-    const data = (await resp.json()) as { completions: RoutineCompletion[] };
+    const data = parse(CompletionsResponseSchema, await resp.json());
     return data.completions;
   }
 
@@ -145,7 +150,7 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
         redirectToLogin();
         return;
       }
-      const user = (await session.json()) as { user: { email: string } };
+      const user = parse(SessionResponseSchema, await session.json());
       setUserEmail(user.user.email);
       await loadDay(selectedDate());
     } catch (err) {
@@ -196,7 +201,7 @@ export function RoutinesProvider(props: { children: JSX.Element }) {
       body: JSON.stringify(input),
     });
     if (resp.ok) {
-      const data = (await resp.json()) as { id: string };
+      const data = parse(CreatedResponseSchema, await resp.json());
       setRoutines((prev) => prev.map((r) => (r.id === tempId ? { ...r, id: data.id } : r)));
     } else {
       rollback();

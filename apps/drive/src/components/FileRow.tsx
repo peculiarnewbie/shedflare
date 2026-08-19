@@ -32,7 +32,7 @@ export default function FileRow(props: { file: DriveFile }) {
       classList={{ selected: ctx.selection().has(file.id) }}
       onClick={(e) => {
         e.stopPropagation();
-        if ((e.target as HTMLElement).closest(".row-checkbox")) return;
+        if (e.target instanceof Element && e.target.closest(".row-checkbox")) return;
         if (ctx.selection().size > 0) {
           ctx.toggleFileSelection(file.id);
         } else {

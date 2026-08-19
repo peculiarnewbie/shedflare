@@ -1,11 +1,24 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
+import { parse, type GenericSchema, type InferOutput } from "valibot";
 import "./app.css";
-import type { Card, Deck, Overview, ReviewGrade } from "./types";
+import {
+  CreatedSchema,
+  MutationSchema,
+  OverviewSchema,
+  type Card,
+  type Deck,
+  type Overview,
+  type ReviewGrade,
+} from "./types";
 
 const deckColors = ["#d87c4a", "#7f9d6a", "#496f9f", "#a55d6a", "#b69a55"];
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+async function api<Schema extends GenericSchema>(
+  schema: Schema,
+  path: string,
+  init?: RequestInit,
+): Promise<InferOutput<Schema>> {
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
   const response = await fetch(path, {
@@ -13,7 +26,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers,
   });
   if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as T;
+  return parse(schema, await response.json());
 }
 
 function formatDue(value: string): string {
@@ -40,7 +53,7 @@ export default function App() {
   const load = async () => {
     setError("");
     try {
-      const next = await api<Overview>("/api/overview");
+      const next = await api(OverviewSchema, "/api/overview");
       setOverview(next);
       if (!selectedDeckId() && next.decks[0]) setSelectedDeckId(next.decks[0].id);
     } catch (err) {
@@ -65,7 +78,7 @@ export default function App() {
     setBusy(true);
     try {
       const color = deckColors[decks().length % deckColors.length];
-      const result = await api<{ id: string }>("/api/decks", {
+      const result = await api(CreatedSchema, "/api/decks", {
         method: "POST",
         body: JSON.stringify({ name, color }),
       });
@@ -82,7 +95,7 @@ export default function App() {
     if (!deck || !front().trim() || !back().trim()) return;
     setBusy(true);
     try {
-      await api("/api/cards", {
+      await api(MutationSchema, "/api/cards", {
         method: "POST",
         body: JSON.stringify({
           deckId: deck.id,
@@ -107,7 +120,7 @@ export default function App() {
     if (!card) return;
     setBusy(true);
     try {
-      await api("/api/reviews", {
+      await api(MutationSchema, "/api/reviews", {
         method: "POST",
         body: JSON.stringify({ cardId: card.id, grade }),
       });

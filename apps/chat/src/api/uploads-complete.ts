@@ -1,20 +1,16 @@
 import { getRuntimeEnv, requireSession, sendInternalSyncCommand } from "#/runtime";
-import { decodeAttachmentRow } from "#/domain";
+import { AttachmentRow, decodeAttachmentRow } from "#/domain";
 import { runApiTrace } from "../server/api-tracing";
+import * as Schema from "effect/Schema";
 
 async function parseUploadCompleteBody(request: Request) {
-  let value: unknown;
   try {
-    value = await request.json();
+    return Schema.decodeUnknownSync(Schema.Struct({ attachment: AttachmentRow }))(
+      await request.json(),
+    );
   } catch {
     throw new Response("Invalid JSON", { status: 400 });
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Response("Expected JSON object", { status: 400 });
-  }
-  const attachment = (value as Record<string, unknown>).attachment;
-  if (!attachment) throw new Response("Missing attachment", { status: 400 });
-  return { attachment };
 }
 
 export async function handleUploadComplete(request: Request): Promise<Response> {

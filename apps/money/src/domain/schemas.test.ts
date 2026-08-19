@@ -42,15 +42,16 @@ import {
   TransactionsResponseSchema,
   type AccountApi,
   type Crossover,
-  type CustomReportResult,
-  type DashboardExport,
   type ExchangeRateApi,
   type PayeeApi,
-  type SchedulesDiscoverResponse,
 } from "./schemas";
+import { AccountIdSchema, PayeeIdSchema } from "./types";
 
-function decode<T = any>(schema: any, value: unknown): T {
-  return S.decodeUnknownSync(schema)(value) as T;
+function decode<SchemaType extends Parameters<typeof S.decodeUnknownSync>[0], Value>(
+  schema: SchemaType,
+  value: Value,
+): SchemaType["Type"] {
+  return S.decodeUnknownSync(schema)(value);
 }
 
 describe("id brand schemas", () => {
@@ -62,7 +63,7 @@ describe("id brand schemas", () => {
 
 describe("AccountApiSchema", () => {
   const valid: AccountApi = {
-    id: "acct_1" as AccountApi["id"],
+    id: decode(AccountIdSchema, "acct_1"),
     name: "Checking",
     offbudget: false,
     closed: false,
@@ -111,7 +112,7 @@ describe("CategoryApiSchema", () => {
 
 describe("PayeeApiSchema", () => {
   const valid: PayeeApi = {
-    id: "pay_1" as PayeeApi["id"],
+    id: decode(PayeeIdSchema, "pay_1"),
     name: "Store",
     transferAccountId: null,
     favorite: false,
@@ -253,7 +254,7 @@ describe("Schedules", () => {
   test("SchedulesDiscoverResponseSchema accepts an empty array", () => {
     const out = decode(SchedulesDiscoverResponseSchema, {
       discovered: [],
-    }) as SchedulesDiscoverResponse;
+    });
     expect(out.discovered).toEqual([]);
   });
 });
@@ -346,7 +347,7 @@ describe("Custom reports", () => {
   });
 
   test("CustomReportResultSchema accepts empty rows", () => {
-    const out = decode(CustomReportResultSchema, { rows: [], groupBy: null }) as CustomReportResult;
+    const out = decode(CustomReportResultSchema, { rows: [], groupBy: null });
     expect(out.rows).toEqual([]);
     expect(out.groupBy).toBeNull();
   });
@@ -366,7 +367,7 @@ describe("Dashboard", () => {
       version: 1,
       exportedAt: "2026-04-15T00:00:00Z",
       widgets: [],
-    }) as DashboardExport;
+    });
     expect(out.version).toBe(1);
   });
 });

@@ -13,6 +13,17 @@ import {
 } from "../../api/queries";
 import type { ProductUsage, UsagePeriod } from "../../api/types";
 import { PLAN_LIMITS } from "../../plan-limits";
+import {
+  array,
+  nullable,
+  number,
+  object,
+  optional,
+  parse,
+  string,
+  type GenericSchema,
+  type InferOutput,
+} from "valibot";
 
 const GRAPHQL_URL = "https://api.cloudflare.com/client/v4/graphql";
 
@@ -28,10 +39,16 @@ function elapsedDays(period: UsagePeriod): number {
   return Math.max(1, Math.ceil((end - start) / 86_400_000));
 }
 
+interface ComparableLimits {
+  free: number;
+  paid: number;
+  label?: string;
+}
+
 function comparableLimits(
   limits: { free: number; paid: number; unit: string },
   period: UsagePeriod,
-): { free: number; paid: number; label?: string } {
+): ComparableLimits {
   if (limits.unit === "/day") {
     const days = elapsedDays(period);
     return {
@@ -45,39 +62,77 @@ function comparableLimits(
   return { free: limits.free, paid: limits.paid, label: limits.unit };
 }
 
-type AnalyticsSum = Record<string, number | null | undefined>;
-type SumGroup = { sum?: AnalyticsSum };
-type ActionCountGroup = { count?: number | null; dimensions?: { actionType?: string } };
-type R2OperationGroup = {
-  sum?: { requests?: number | null };
-  dimensions?: { actionType?: string };
-};
-type StorageGroup = { max?: { byteCount?: number | null; payloadSize?: number | null } };
-type AccountAnalytics = {
-  workersInvocationsAdaptive?: SumGroup[];
-  d1AnalyticsAdaptiveGroups?: SumGroup[];
-  kvOperationsAdaptiveGroups?: ActionCountGroup[];
-  kvStorageAdaptiveGroups?: StorageGroup[];
-  durableObjectsInvocationsAdaptiveGroups?: SumGroup[];
-  r2OperationsAdaptiveGroups?: R2OperationGroup[];
-  r2StorageAdaptiveGroups?: StorageGroup[];
-};
-type ZoneAnalytics = { httpRequests1mGroups?: SumGroup[] };
-type AccountAnalyticsResponse = { viewer?: { accounts?: AccountAnalytics[] } };
-type ZoneAnalyticsResponse = { viewer?: { zones?: ZoneAnalytics[] } };
-
-function accountAnalytics(data: unknown): AccountAnalytics | undefined {
-  return (data as AccountAnalyticsResponse | null)?.viewer?.accounts?.[0];
-}
-
-function zoneAnalytics(data: unknown): ZoneAnalytics | undefined {
-  return (data as ZoneAnalyticsResponse | null)?.viewer?.zones?.[0];
-}
+const OptionalNumber = optional(nullable(number()));
+const SumGroupSchema = object({
+  sum: optional(
+    object({
+      requests: OptionalNumber,
+      bytes: OptionalNumber,
+      rowsRead: OptionalNumber,
+      rowsWritten: OptionalNumber,
+    }),
+  ),
+});
+type SumGroup = InferOutput<typeof SumGroupSchema>;
+const AccountAnalyticsSchema = object({
+  viewer: optional(
+    object({
+      accounts: optional(
+        array(
+          object({
+            workersInvocationsAdaptive: optional(array(SumGroupSchema)),
+            d1AnalyticsAdaptiveGroups: optional(array(SumGroupSchema)),
+            kvOperationsAdaptiveGroups: optional(
+              array(
+                object({
+                  count: OptionalNumber,
+                  dimensions: optional(object({ actionType: optional(string()) })),
+                }),
+              ),
+            ),
+            kvStorageAdaptiveGroups: optional(
+              array(object({ max: optional(object({ byteCount: OptionalNumber })) })),
+            ),
+            durableObjectsInvocationsAdaptiveGroups: optional(array(SumGroupSchema)),
+            r2OperationsAdaptiveGroups: optional(
+              array(
+                object({
+                  sum: optional(object({ requests: OptionalNumber })),
+                  dimensions: optional(object({ actionType: optional(string()) })),
+                }),
+              ),
+            ),
+            r2StorageAdaptiveGroups: optional(
+              array(object({ max: optional(object({ payloadSize: OptionalNumber })) })),
+            ),
+          }),
+        ),
+      ),
+    }),
+  ),
+});
+const ZoneAnalyticsSchema = object({
+  viewer: optional(
+    object({
+      zones: optional(array(object({ httpRequests1mGroups: optional(array(SumGroupSchema)) }))),
+    }),
+  ),
+});
 
 function safeSum(items: readonly SumGroup[], key: string): number {
   let total = 0;
-  for (const item of items) total += item.sum?.[key] ?? 0;
+  for (const item of items) {
+    if (key === "requests") total += item.sum?.requests ?? 0;
+    else if (key === "rowsRead") total += item.sum?.rowsRead ?? 0;
+    else if (key === "rowsWritten") total += item.sum?.rowsWritten ?? 0;
+  }
   return total;
+}
+
+function productMetrics(id: string) {
+  const product = PLAN_LIMITS.find((candidate) => candidate.id === id);
+  if (!product) throw new Error(`Missing plan limits for ${id}`);
+  return product.metrics;
 }
 
 function formatBytes(bytes: number): string {
@@ -93,7 +148,11 @@ function formatCount(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-async function graphqlQuery(env: { CF_API_TOKEN: string }, query: string): Promise<unknown> {
+async function graphqlQuery<ResultSchema extends GenericSchema>(
+  env: { CF_API_TOKEN: string },
+  query: string,
+  resultSchema: ResultSchema,
+): Promise<InferOutput<ResultSchema>> {
   const res = await fetch(GRAPHQL_URL, {
     method: "POST",
     headers: {
@@ -103,7 +162,13 @@ async function graphqlQuery(env: { CF_API_TOKEN: string }, query: string): Promi
     body: query,
   });
   if (!res.ok) throw new Error(`GraphQL API error: ${res.status}`);
-  const body = (await res.json()) as { data: unknown; errors?: unknown };
+  const body = parse(
+    object({
+      data: resultSchema,
+      errors: optional(array(object({ message: optional(string()) }))),
+    }),
+    await res.json(),
+  );
   if (body.errors) throw new Error(`GraphQL errors: ${JSON.stringify(body.errors)}`);
   return body.data;
 }
@@ -124,9 +189,13 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
         const zoneId = env.CLOUDFLARE_ZONE_ID;
 
         const queryErrors: string[] = [];
-        async function query(label: string, fn: string) {
+        async function query<ResultSchema extends GenericSchema>(
+          label: string,
+          fn: string,
+          schema: ResultSchema,
+        ) {
           try {
-            return await graphqlQuery(env, fn);
+            return await graphqlQuery(env, fn, schema);
           } catch (e) {
             queryErrors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
             return null;
@@ -143,15 +212,31 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           r2StorageResult,
           httpResult,
         ] = await Promise.all([
-          query("workers", workersQuery(accountId, period.start, period.end)),
-          query("d1", d1Query(accountId, period.start, period.end)),
-          query("kvOps", kvOpsQuery(accountId, period.start, period.end)),
-          query("kvStorage", kvStorageQuery(accountId, period.start, period.end)),
-          query("durableObjects", doQuery(accountId, period.start, period.end)),
-          query("r2", r2Query(accountId, period.start, period.end)),
-          query("r2Storage", r2StorageQuery(accountId, period.start, period.end)),
+          query(
+            "workers",
+            workersQuery(accountId, period.start, period.end),
+            AccountAnalyticsSchema,
+          ),
+          query("d1", d1Query(accountId, period.start, period.end), AccountAnalyticsSchema),
+          query("kvOps", kvOpsQuery(accountId, period.start, period.end), AccountAnalyticsSchema),
+          query(
+            "kvStorage",
+            kvStorageQuery(accountId, period.start, period.end),
+            AccountAnalyticsSchema,
+          ),
+          query(
+            "durableObjects",
+            doQuery(accountId, period.start, period.end),
+            AccountAnalyticsSchema,
+          ),
+          query("r2", r2Query(accountId, period.start, period.end), AccountAnalyticsSchema),
+          query(
+            "r2Storage",
+            r2StorageQuery(accountId, period.start, period.end),
+            AccountAnalyticsSchema,
+          ),
           zoneId
-            ? query("http", httpQuery(zoneId, period.start, period.end))
+            ? query("http", httpQuery(zoneId, period.start, period.end), ZoneAnalyticsSchema)
             : Promise.resolve(null),
         ]);
 
@@ -174,10 +259,11 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
 
         const products: ProductUsage[] = [];
 
-        const workersInvocations = accountAnalytics(workersResult)?.workersInvocationsAdaptive?.[0];
+        const workersInvocations =
+          workersResult?.viewer?.accounts?.[0]?.workersInvocationsAdaptive?.[0];
         if (workersInvocations) {
           const sum = workersInvocations.sum ?? {};
-          const limits = PLAN_LIMITS.find((p) => p.id === "workers")!.metrics;
+          const limits = productMetrics("workers");
           const requests = sum.requests ?? 0;
           products.push({
             id: "workers",
@@ -194,9 +280,9 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const d1Groups = accountAnalytics(d1Result)?.d1AnalyticsAdaptiveGroups ?? [];
+        const d1Groups = d1Result?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups ?? [];
         if (d1Groups.length > 0) {
-          const limits = PLAN_LIMITS.find((p) => p.id === "d1")!.metrics;
+          const limits = productMetrics("d1");
           products.push({
             id: "d1",
             name: "D1",
@@ -219,16 +305,16 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const kvOps = accountAnalytics(kvOpsResult)?.kvOperationsAdaptiveGroups ?? [];
+        const kvOps = kvOpsResult?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups ?? [];
         if (kvOps.length > 0) {
-          const limits = PLAN_LIMITS.find((p) => p.id === "kv")!.metrics;
+          const limits = productMetrics("kv");
           const reads = kvOps
             .filter((o) => o.dimensions?.actionType === "read")
             .reduce((s, o) => s + (o.count ?? 0), 0);
           const writes = kvOps
             .filter((o) => o.dimensions?.actionType === "write")
             .reduce((s, o) => s + (o.count ?? 0), 0);
-          const storage = accountAnalytics(kvStorageResult)?.kvStorageAdaptiveGroups?.[0]?.max;
+          const storage = kvStorageResult?.viewer?.accounts?.[0]?.kvStorageAdaptiveGroups?.[0]?.max;
           const metrics: ProductUsage["metrics"] = [
             {
               label: "Reads",
@@ -256,9 +342,10 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           products.push({ id: "kv", name: "Workers KV", metrics });
         }
 
-        const doGroups = accountAnalytics(doResult)?.durableObjectsInvocationsAdaptiveGroups ?? [];
+        const doGroups =
+          doResult?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
         if (doGroups.length > 0) {
-          const limits = PLAN_LIMITS.find((p) => p.id === "durableObjects")!.metrics;
+          const limits = productMetrics("durableObjects");
           products.push({
             id: "durableObjects",
             name: "Durable Objects",
@@ -274,12 +361,12 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const r2Ops = accountAnalytics(r2Result)?.r2OperationsAdaptiveGroups ?? [];
-        const r2Storage = accountAnalytics(r2StorageResult)?.r2StorageAdaptiveGroups?.[0]?.max;
+        const r2Ops = r2Result?.viewer?.accounts?.[0]?.r2OperationsAdaptiveGroups ?? [];
+        const r2Storage = r2StorageResult?.viewer?.accounts?.[0]?.r2StorageAdaptiveGroups?.[0]?.max;
         const storageBytes = r2Storage?.payloadSize ?? 0;
 
         if (r2Ops.length > 0 || storageBytes > 0) {
-          const limits = PLAN_LIMITS.find((p) => p.id === "r2")!.metrics;
+          const limits = productMetrics("r2");
           const classA = r2Ops
             .filter((o) =>
               [
@@ -346,9 +433,9 @@ export function createUsageGroup(env: UsageEnv, auth: HttpApiAuth) {
           });
         }
 
-        const httpGroup = zoneAnalytics(httpResult)?.httpRequests1mGroups?.[0];
+        const httpGroup = httpResult?.viewer?.zones?.[0]?.httpRequests1mGroups?.[0];
         if (httpGroup) {
-          const limits = PLAN_LIMITS.find((p) => p.id === "http")!.metrics;
+          const limits = productMetrics("http");
           products.push({
             id: "http",
             name: "HTTP / Bandwidth",

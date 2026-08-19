@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { getDotPath, safeParse } from "valibot";
 import { CatalogValidationError, CoreError } from "../errors.ts";
 import { MANIFEST_FILENAME, manifestPath } from "../paths.ts";
-import type { AppManifest, ManifestCatalog, ResourceDescriptor } from "./model.ts";
+import type { AppManifest, ManifestCatalog } from "./model.ts";
 import { AppManifestSchema } from "./schema.ts";
 import { parseJsonc } from "../jsonc.ts";
 
@@ -12,7 +12,7 @@ export interface ManifestCatalogEntry {
   readonly source?: string;
 }
 
-export function parseManifest(input: unknown, source = "<manifest>"): AppManifest {
+export function parseManifest<Input>(input: Input, source = "<manifest>"): AppManifest {
   const result = safeParse(AppManifestSchema, input);
   if (!result.success) {
     const issue = result.issues[0];
@@ -25,8 +25,7 @@ export function parseManifest(input: unknown, source = "<manifest>"): AppManifes
   }
 
   const manifest = result.output;
-  return {
-    ...(manifest.$schema === undefined ? {} : { $schema: manifest.$schema }),
+  const parsed = {
     id: manifest.id,
     name: manifest.name,
     description: manifest.description,
@@ -37,8 +36,9 @@ export function parseManifest(input: unknown, source = "<manifest>"): AppManifes
     defaultSubdomain: manifest.defaultSubdomain,
     vars: { ...manifest.vars },
     secrets: { ...manifest.secrets },
-    resources: [...(manifest.resources ?? [])] as readonly ResourceDescriptor[],
-  };
+    resources: [...(manifest.resources ?? [])],
+  } satisfies AppManifest;
+  return manifest.$schema === undefined ? parsed : { ...parsed, $schema: manifest.$schema };
 }
 
 export function loadManifestFile(filePath: string): AppManifest {

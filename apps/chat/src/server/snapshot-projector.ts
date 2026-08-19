@@ -21,6 +21,7 @@ type SnapshotTableName = (typeof TABLES)[keyof typeof TABLES];
 
 function snapshotRows<Row>(snapshot: SyncSnapshot, tableName: SnapshotTableName): Row[] {
   const table = snapshot.tables[tableName] ?? {};
+  // SAFETY: SyncSnapshot maps every allowlisted table name to its corresponding row owner type.
   return Object.values(table) as Row[];
 }
 

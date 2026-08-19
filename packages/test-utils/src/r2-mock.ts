@@ -1,7 +1,7 @@
 type R2MockBody = ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob;
 
 async function readBody(value: R2MockBody): Promise<Uint8Array> {
-  if (typeof value === "string") return new TextEncoder().encode(value);
+  if (!(value instanceof Object)) return new TextEncoder().encode(value);
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
   if (ArrayBuffer.isView(value)) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
@@ -125,8 +125,10 @@ export class R2Mock {
     );
     const body = requestedRange ? entry.body.slice(offset, offset + length) : entry.body;
 
+    const responseBuffer = new ArrayBuffer(body.byteLength);
+    new Uint8Array(responseBuffer).set(body);
     return {
-      body: new Response(body as unknown as BodyInit).body!,
+      body: new Response(responseBuffer).body!,
       size: entry.size,
       range: requestedRange ? { offset, length } : undefined,
       writeHttpMetadata: (headers: Headers) => {
@@ -156,4 +158,9 @@ export class R2Mock {
 
 export function createR2Mock(): R2Mock {
   return new R2Mock();
+}
+
+export function asR2Bucket(mock: R2Mock): R2Bucket {
+  // SAFETY: R2Mock implements the R2 methods and result shapes exercised by application tests.
+  return mock as R2Mock & R2Bucket;
 }

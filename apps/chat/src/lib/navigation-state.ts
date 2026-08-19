@@ -9,7 +9,7 @@ const THREAD_PARAM = "threadId";
 const VIEW_PARAM = "view";
 
 export function readChatNavigationState(url?: URL): ChatNavigationState {
-  const currentUrl = url ?? (typeof window !== "undefined" ? new URL(window.location.href) : null);
+  const currentUrl = url ?? (globalThis.window ? new URL(window.location.href) : null);
   if (!currentUrl) {
     return { workspaceId: null, threadId: null, view: null };
   }
@@ -34,7 +34,7 @@ export function withChatNavigationState(url: URL, state: ChatNavigationState) {
 }
 
 export function writeChatNavigationState(state: ChatNavigationState) {
-  if (typeof window === "undefined") return;
+  if (!globalThis.window) return;
 
   const current = new URL(window.location.href);
   const next = withChatNavigationState(current, state);

@@ -3,9 +3,21 @@ import { GoogleOidcProvider } from "@openauthjs/openauth/provider/google";
 import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { importPKCS8, SignJWT } from "jose";
-import { object, string } from "valibot";
+import {
+  array,
+  boolean,
+  literal,
+  number,
+  object,
+  optional,
+  record,
+  safeParse,
+  string,
+  union,
+  type InferOutput,
+} from "valibot";
 
-type Env = {
+export type Env = {
   APP_PUBLIC_URL: string;
   GOOGLE_CLIENT_ID: string;
   OWNER_EMAIL: string;
@@ -13,10 +25,29 @@ type Env = {
   OPENAUTH_STORAGE: KVNamespace;
 };
 
-type GoogleOidcClaims = {
-  email?: string;
-  email_verified?: boolean;
-};
+const GoogleOidcClaimsSchema = object({
+  email: optional(string()),
+  email_verified: optional(boolean()),
+});
+const AllowedClientsSchema = record(string(), array(string()));
+const SessionSchema = object({ email: string() });
+const TokenTtlSchema = object({ access: number(), refresh: number() });
+const SilentTokenEntrySchema = object({
+  source: literal("shedflare:silent-auth"),
+  subject: string(),
+  properties: object({ email: string() }),
+  redirectURI: optional(string()),
+  clientID: optional(string()),
+  pkce: optional(object({ challenge: string(), method: string() })),
+  ttl: optional(TokenTtlSchema),
+});
+const SigningKeySchema = object({
+  id: string(),
+  privateKey: string(),
+  alg: string(),
+  created: optional(union([number(), string()])),
+});
+type SigningKey = InferOutput<typeof SigningKeySchema>;
 
 const subjects = createSubjects({
   user: object({
@@ -141,8 +172,8 @@ function renderAuthHome(opts: { email: string | null; appOrigins: string[] }): s
 </html>`;
 }
 
-function validateReturnTo(input: unknown): string | null {
-  if (typeof input !== "string") return null;
+function validateReturnTo(input: string | null): string | null {
+  if (input === null) return null;
   // Decode first, then validate: validating the still-encoded form lets
   // `/%2Fevil` slip through (it isn't "//…" until decoded), which becomes a
   // protocol-relative open redirect when used directly as a Location below.
@@ -170,13 +201,13 @@ function getCookieValue(cookieHeader: string | null, name: string): string | nul
 
 let parsedAllowedClients: { source: string; clients: Map<string, string[]> } | null = null;
 
-function getAllowedClients(env: Env): Map<string, string[]> {
+function getAllowedClients(env: Pick<Env, "ALLOWED_CLIENTS">): Map<string, string[]> {
   if (parsedAllowedClients?.source === env.ALLOWED_CLIENTS) return parsedAllowedClients.clients;
   const clients = new Map<string, string[]>();
   try {
-    const raw = JSON.parse(env.ALLOWED_CLIENTS) as Record<string, string[]>;
-    for (const [clientId, origins] of Object.entries(raw)) {
-      if (Array.isArray(origins)) {
+    const parsed = safeParse(AllowedClientsSchema, JSON.parse(env.ALLOWED_CLIENTS));
+    if (parsed.success) {
+      for (const [clientId, origins] of Object.entries(parsed.output)) {
         clients.set(clientId, origins);
       }
     }
@@ -187,7 +218,11 @@ function getAllowedClients(env: Env): Map<string, string[]> {
   return clients;
 }
 
-function validateClientAndRedirectURI(env: Env, clientId: string, redirectURI: string): boolean {
+function validateClientAndRedirectURI(
+  env: Pick<Env, "ALLOWED_CLIENTS">,
+  clientId: string,
+  redirectURI: string,
+): boolean {
   const allowed = getAllowedClients(env);
   const origins = allowed.get(clientId);
   if (!origins) return false;
@@ -205,6 +240,53 @@ function isValidRedirectPath(redirectURI: string): boolean {
   } catch {
     return false;
   }
+}
+
+type SilentAuthValidation =
+  | { readonly kind: "skip" }
+  | { readonly kind: "reject"; readonly response: Response }
+  | {
+      readonly kind: "valid";
+      readonly redirectURI: string;
+      readonly clientId: string;
+      readonly state: string | null;
+      readonly codeChallenge: string | null;
+      readonly codeChallengeMethod: string | null;
+    };
+
+export function validateSilentAuthRequest(
+  request: Request,
+  env: Pick<Env, "ALLOWED_CLIENTS">,
+): SilentAuthValidation {
+  const url = new URL(request.url);
+  if (url.searchParams.get("auto") !== "1") return { kind: "skip" };
+
+  const redirectURI = url.searchParams.get("redirect_uri");
+  const responseType = url.searchParams.get("response_type");
+  const clientId = url.searchParams.get("client_id");
+  if (!redirectURI || responseType !== "code" || !clientId) return { kind: "skip" };
+
+  if (
+    !validateClientAndRedirectURI(env, clientId, redirectURI) ||
+    !isValidRedirectPath(redirectURI)
+  ) {
+    return {
+      kind: "reject",
+      response: new Response("Invalid OAuth client or redirect URI.", {
+        status: 400,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      }),
+    };
+  }
+
+  return {
+    kind: "valid",
+    redirectURI,
+    clientId,
+    state: url.searchParams.get("state"),
+    codeChallenge: url.searchParams.get("code_challenge"),
+    codeChallengeMethod: url.searchParams.get("code_challenge_method"),
+  };
 }
 
 async function verifyPKCE(
@@ -231,6 +313,8 @@ function createIssuer(env: Env) {
       }),
     },
     subjects,
+    // SAFETY: OpenAuth bundles an older Workers KV declaration; the runtime binding implements
+    // the same get/put/delete/list contract but is nominally incompatible with current CF types.
     storage: CloudflareStorage({ namespace: env.OPENAUTH_STORAGE as any }),
     ttl: {
       access: 60 * 60 * 24 * 365,
@@ -240,14 +324,14 @@ function createIssuer(env: Env) {
     },
     success: async (ctx, value) => {
       if (value.provider !== "google") return new Response("Invalid provider", { status: 400 });
-      const claims = value.id as GoogleOidcClaims;
-      if (!claims.email || claims.email_verified === false) {
+      const claims = safeParse(GoogleOidcClaimsSchema, value.id);
+      if (!claims.success || !claims.output.email || claims.output.email_verified === false) {
         return new Response("No verified email from Google", { status: 400 });
       }
-      if (normalizeEmail(claims.email) !== normalizeEmail(env.OWNER_EMAIL)) {
+      if (normalizeEmail(claims.output.email) !== normalizeEmail(env.OWNER_EMAIL)) {
         return Response.redirect(`${env.APP_PUBLIC_URL}/forbidden`, 302);
       }
-      return ctx.subject("user", { email: claims.email });
+      return ctx.subject("user", { email: claims.output.email });
     },
   });
 }
@@ -263,29 +347,14 @@ function isHttps(url: string) {
   return url.startsWith("https://");
 }
 
-type SigningKey = {
-  id: string;
-  privateKey: string;
-  alg: string;
-  created?: number | string;
-};
-
 let cachedSigningKey: SigningKey | null = null;
 
-function isSigningKey(value: unknown): value is SigningKey {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.privateKey === "string" &&
-    typeof record.alg === "string"
-  );
-}
-
 function createdMs(key: SigningKey) {
-  if (typeof key.created === "number") return key.created;
-  if (typeof key.created === "string") {
-    const parsed = Date.parse(key.created);
+  const numeric = safeParse(number(), key.created);
+  if (numeric.success) return numeric.output;
+  const textual = safeParse(string(), key.created);
+  if (textual.success) {
+    const parsed = Date.parse(textual.output);
     return Number.isNaN(parsed) ? 0 : parsed;
   }
   return 0;
@@ -297,7 +366,10 @@ async function getSigningKey(env: Env): Promise<SigningKey> {
   if (keys.length === 0) throw new Error("No signing keys found in storage");
   const signingKeys = (
     await Promise.all(keys.map((key) => env.OPENAUTH_STORAGE.get(key.name, "json")))
-  ).filter(isSigningKey);
+  ).flatMap((value) => {
+    const parsed = safeParse(SigningKeySchema, value);
+    return parsed.success ? [parsed.output] : [];
+  });
   if (signingKeys.length === 0) throw new Error("No valid signing keys found in storage");
   signingKeys.sort((a, b) => createdMs(b) - createdMs(a));
   cachedSigningKey = signingKeys[0];
@@ -317,26 +389,12 @@ async function handleTokenExchange(request: Request, env: Env): Promise<Response
 
     if (!code || !redirectURI || !clientId) return null;
 
-    const codeEntry = await env.OPENAUTH_STORAGE.get(`oauth:code\x1f${code}`, "json");
-    if (
-      !codeEntry ||
-      typeof codeEntry !== "object" ||
-      !("source" in codeEntry) ||
-      codeEntry.source !== "shedflare:silent-auth" ||
-      !("subject" in codeEntry) ||
-      !("properties" in codeEntry)
-    ) {
-      return null;
-    }
-
-    const entry = codeEntry as {
-      subject: string;
-      properties: { email: string };
-      redirectURI?: string;
-      clientID?: string;
-      pkce?: { challenge: string; method: string };
-      ttl?: { access: number; refresh: number };
-    };
+    const codeEntry = safeParse(
+      SilentTokenEntrySchema,
+      await env.OPENAUTH_STORAGE.get(`oauth:code\x1f${code}`, "json"),
+    );
+    if (!codeEntry.success) return null;
+    const entry = codeEntry.output;
 
     if (entry.redirectURI !== redirectURI || entry.clientID !== clientId) {
       return new Response("redirect_uri or client_id mismatch", { status: 400 });
@@ -400,15 +458,12 @@ async function handleTokenExchange(request: Request, env: Env): Promise<Response
 
     const { keys } = await env.OPENAUTH_STORAGE.list({ prefix: "oauth:refresh" });
     for (const key of keys) {
-      const data = await env.OPENAUTH_STORAGE.get(key.name, "json");
-      if (!data || typeof data !== "object") continue;
-      if (!("source" in data) || data.source !== "shedflare:silent-auth") continue;
-      const entry = data as {
-        source: "shedflare:silent-auth";
-        subject: string;
-        properties: { email: string };
-        ttl?: { access: number; refresh: number };
-      };
+      const data = safeParse(
+        SilentTokenEntrySchema,
+        await env.OPENAUTH_STORAGE.get(key.name, "json"),
+      );
+      if (!data.success) continue;
+      const entry = data.output;
       if (!key.name.endsWith(`\x1f${refreshToken}`)) continue;
 
       const ttl = entry.ttl?.access ?? 60 * 60 * 24 * 365;
@@ -456,31 +511,10 @@ async function handleTokenExchange(request: Request, env: Env): Promise<Response
 }
 
 async function handleSilentAuth(request: Request, env: Env): Promise<Response | null> {
-  const url = new URL(request.url);
-  const auto = url.searchParams.get("auto") === "1";
-  const redirectURI = url.searchParams.get("redirect_uri");
-
-  if (!auto) return null;
-
-  const responseType = url.searchParams.get("response_type");
-  const clientId = url.searchParams.get("client_id");
-  const state = url.searchParams.get("state");
-  const codeChallenge = url.searchParams.get("code_challenge");
-  const codeChallengeMethod = url.searchParams.get("code_challenge_method");
-
-  if (!redirectURI || responseType !== "code" || !clientId) return null;
-
-  if (
-    !validateClientAndRedirectURI(env, clientId, redirectURI) ||
-    !isValidRedirectPath(redirectURI)
-  ) {
-    if (redirectURI) {
-      const location = new URL(redirectURI);
-      location.searchParams.set("error", "invalid_client");
-      return Response.redirect(location.toString(), 302);
-    }
-    return null;
-  }
+  const validation = validateSilentAuthRequest(request, env);
+  if (validation.kind === "skip") return null;
+  if (validation.kind === "reject") return validation.response;
+  const { redirectURI, clientId, state, codeChallenge, codeChallengeMethod } = validation;
 
   const sessionId = getCookieValue(request.headers.get("cookie"), SESSION_COOKIE);
   if (!sessionId) {
@@ -492,8 +526,11 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
     return null;
   }
 
-  const session = await env.OPENAUTH_STORAGE.get(`session:${sessionId}`, "json");
-  if (!session || typeof session !== "object" || !("email" in session)) {
+  const session = safeParse(
+    SessionSchema,
+    await env.OPENAUTH_STORAGE.get(`session:${sessionId}`, "json"),
+  );
+  if (!session.success) {
     if (redirectURI) {
       const location = new URL(redirectURI);
       location.searchParams.set("error", "no_session");
@@ -505,7 +542,7 @@ async function handleSilentAuth(request: Request, env: Env): Promise<Response | 
   }
 
   const code = crypto.randomUUID();
-  const email = (session as { email: string }).email;
+  const email = session.output.email;
   const subject = `user:${email}`;
 
   await env.OPENAUTH_STORAGE.put(
@@ -541,19 +578,13 @@ async function handleCallbackSession(response: Response, env: Env): Promise<Resp
   if (!codeMatch) return response;
 
   const sessionId = crypto.randomUUID();
-  const codeEntry = await env.OPENAUTH_STORAGE.get(`oauth:code\x1f${codeMatch}`, "json");
-  if (
-    !codeEntry ||
-    typeof codeEntry !== "object" ||
-    !("properties" in codeEntry) ||
-    typeof codeEntry.properties !== "object" ||
-    codeEntry.properties === null ||
-    !("email" in codeEntry.properties)
-  ) {
-    return response;
-  }
+  const codeEntry = safeParse(
+    SilentTokenEntrySchema,
+    await env.OPENAUTH_STORAGE.get(`oauth:code\x1f${codeMatch}`, "json"),
+  );
+  if (!codeEntry.success) return response;
 
-  const email = (codeEntry.properties as { email: string }).email;
+  const email = codeEntry.output.properties.email;
   await env.OPENAUTH_STORAGE.put(`session:${sessionId}`, JSON.stringify({ email }), {
     expirationTtl: SESSION_TTL,
   });
@@ -579,15 +610,11 @@ export default {
       const sessionId = getCookieValue(request.headers.get("cookie"), SESSION_COOKIE);
       let email: string | null = null;
       if (sessionId) {
-        const session = await env.OPENAUTH_STORAGE.get(`session:${sessionId}`, "json");
-        if (
-          session &&
-          typeof session === "object" &&
-          "email" in session &&
-          typeof session.email === "string"
-        ) {
-          email = session.email;
-        }
+        const session = safeParse(
+          SessionSchema,
+          await env.OPENAUTH_STORAGE.get(`session:${sessionId}`, "json"),
+        );
+        if (session.success) email = session.output.email;
       }
       const appOrigins = [...getAllowedClients(env).values()].flat();
       return new Response(renderAuthHome({ email, appOrigins }), {

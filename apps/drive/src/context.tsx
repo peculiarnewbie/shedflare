@@ -24,20 +24,12 @@ export { formatSize, fileGlyph };
 
 /* ── requestJson helper ───────────────────────────── */
 
-type AnySchema = Parameters<typeof Schema.decodeUnknownSync>[0];
+const ErrorResponse = Schema.Struct({ error: Schema.String });
 
 async function responseErrorMessage(response: Response) {
   const text = await response.text().catch(() => "");
   try {
-    const body: unknown = JSON.parse(text);
-    if (
-      typeof body === "object" &&
-      body !== null &&
-      !Array.isArray(body) &&
-      typeof (body as Record<string, unknown>).error === "string"
-    ) {
-      return (body as Record<string, unknown>).error as string;
-    }
+    return Schema.decodeUnknownSync(ErrorResponse)(JSON.parse(text)).error;
   } catch {
     // Fall back to a short non-HTML response or a status-specific message.
   }
@@ -50,20 +42,18 @@ async function responseErrorMessage(response: Response) {
   return `Drive request failed (HTTP ${response.status})`;
 }
 
-export async function requestJson<T>(
-  input: RequestInfo | URL,
-  schema: AnySchema,
-  init?: RequestInit,
-): Promise<T> {
+export async function requestJson<
+  SchemaType extends Parameters<typeof Schema.decodeUnknownSync>[0],
+>(input: RequestInfo | URL, schema: SchemaType, init?: RequestInit): Promise<SchemaType["Type"]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(input, { ...init, signal: controller.signal });
     if (!response.ok) throw new Error(await responseErrorMessage(response));
-    return Schema.decodeUnknownSync(schema)(await response.json()) as T;
+    return Schema.decodeUnknownSync(schema)(await response.json());
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Drive did not respond within 10 seconds. Retry.");
+      throw new Error("Drive did not respond within 10 seconds. Retry.", { cause: error });
     }
     throw error;
   } finally {
@@ -196,15 +186,13 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = createSignal("");
   const [leftSidebarOpen, setLeftSidebarOpen] = createSignal(
-    typeof window === "undefined" ||
-      typeof window.matchMedia !== "function" ||
-      window.matchMedia("(min-width: 901px)").matches,
+    globalThis.window?.matchMedia?.("(min-width: 901px)").matches ?? true,
   );
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = createSignal(false);
   const [selection, setSelection] = createSignal(new Set<string>());
 
   onMount(() => {
-    if (typeof window.matchMedia !== "function") return;
+    if (!globalThis.window?.matchMedia) return;
     const wideViewport = window.matchMedia("(min-width: 901px)");
     const updateSidebarForViewport = (event: MediaQueryListEvent) => {
       setLeftSidebarOpen(event.matches);
@@ -237,7 +225,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     setFilesLoading(true);
     try {
       const base = query() ? `?${query()}&` : "?";
-      const data = await requestJson<FilesResponse>(
+      const data = await requestJson(
         `/api/files${base}limit=30&offset=${pageOffset}`,
         FilesResponse,
       );
@@ -249,13 +237,13 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   }
 
   async function loadTags() {
-    const data = await requestJson<TagsResponse>("/api/tags", TagsResponse);
+    const data = await requestJson("/api/tags", TagsResponse);
     setTags([...data.tags]);
   }
 
   async function bootstrap() {
     try {
-      const session = await requestJson<SessionResponse>("/api/session", SessionResponse);
+      const session = await requestJson("/api/session", SessionResponse);
       setUserEmail(session.user.email);
       setUnauthorized(false);
       await loadTags();
@@ -345,7 +333,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
   async function setFilePublic(file: DriveFile, isPublic: boolean) {
     setError("");
     try {
-      const data = await requestJson<FileResponse>(`/api/files/${file.id}`, FileResponse, {
+      const data = await requestJson(`/api/files/${file.id}`, FileResponse, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ isPublic }),
@@ -412,7 +400,7 @@ export function DriveProvider(props: { children: import("solid-js").JSX.Element 
     if (!name || name === file.name) return;
     setError("");
     try {
-      await requestJson<FileResponse>(`/api/files/${file.id}`, FileResponse, {
+      await requestJson(`/api/files/${file.id}`, FileResponse, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name }),

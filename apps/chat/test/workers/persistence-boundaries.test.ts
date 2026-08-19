@@ -13,18 +13,38 @@ import {
   createTraceRun,
   createTraceSpan,
   createWorkspace,
+  decodeSyncSnapshot,
+  SyncSnapshotSchema,
+  ThreadRow,
   type SyncSnapshot,
   type Workspace,
 } from "../../src/domain";
 import * as dbSchema from "../../src/db/schema";
-import type { ChatBackup } from "../../src/server/backup-reader";
 import { ChatRepository } from "../../src/server/chat-repository";
 import { DataAccess } from "../../src/server/data-access";
 import { EffectDatabase } from "../../src/server/effect-database";
 import { EventStore } from "../../src/server/event-store";
-import type { ThreadSummaryPage } from "../../src/server/snapshot-reader";
+import * as Schema from "effect/Schema";
 
 const NOW = "2026-01-01T00:00:00.000Z";
+
+const ThreadSummaryPageResponseSchema = Schema.Struct({
+  threads: Schema.Array(ThreadRow),
+  nextCursor: Schema.NullOr(Schema.String),
+});
+const ChatBackupResponseSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  app: Schema.Literal("chat"),
+  createdAt: Schema.String,
+  serverSeq: Schema.Number,
+  snapshot: SyncSnapshotSchema,
+  commands: Schema.Array(
+    Schema.Struct({
+      opId: Schema.String,
+      ackedSeq: Schema.NullOr(Schema.Number),
+    }),
+  ),
+});
 
 async function initialize(name: string) {
   const stub = env.SYNC_ENGINE.getByName(name);
@@ -301,7 +321,9 @@ describe("Chat persistence boundaries", () => {
       "https://sync-engine.test/history/threads?workspaceId=workspace&limit=1",
     );
     expect(firstPageResponse.status).toBe(200);
-    const firstPage = (await firstPageResponse.json()) as ThreadSummaryPage;
+    const firstPage = Schema.decodeUnknownSync(ThreadSummaryPageResponseSchema)(
+      await firstPageResponse.json(),
+    );
     expect(firstPage.threads.map((thread) => thread.id)).toEqual(["newer"]);
     expect(firstPage.nextCursor).not.toBeNull();
 
@@ -309,7 +331,9 @@ describe("Chat persistence boundaries", () => {
       `https://sync-engine.test/history/threads?workspaceId=workspace&limit=1&before=${encodeURIComponent(firstPage.nextCursor ?? "")}`,
     );
     expect(secondPageResponse.status).toBe(200);
-    const secondPage = (await secondPageResponse.json()) as ThreadSummaryPage;
+    const secondPage = Schema.decodeUnknownSync(ThreadSummaryPageResponseSchema)(
+      await secondPageResponse.json(),
+    );
     expect(secondPage.threads.map((thread) => thread.id)).toEqual(["older"]);
     expect(secondPage.nextCursor).toBeNull();
 
@@ -317,7 +341,9 @@ describe("Chat persistence boundaries", () => {
       "https://sync-engine.test/history/threads/newer?includeSearch=false&includeTrace=true",
     );
     expect(detailResponse.status).toBe(200);
-    const detail = (await detailResponse.json()) as SyncSnapshot;
+    const detail = decodeSyncSnapshot(await detailResponse.json());
+    expect(detail).not.toBeNull();
+    if (!detail) throw new Error("Expected a valid detail snapshot");
     expect(Object.keys(detail.tables.threads ?? {})).toEqual(["newer"]);
     expect(Object.keys(detail.tables.messages ?? {})).toEqual(["newer-message"]);
     expect(detail.tables.search_runs).toEqual({});
@@ -327,7 +353,9 @@ describe("Chat persistence boundaries", () => {
       "https://sync-engine.test/history/messages/newer-message/trace",
     );
     expect(traceResponse.status).toBe(200);
-    const trace = (await traceResponse.json()) as SyncSnapshot;
+    const trace = decodeSyncSnapshot(await traceResponse.json());
+    expect(trace).not.toBeNull();
+    if (!trace) throw new Error("Expected a valid trace snapshot");
     expect(Object.keys(trace.tables.trace_runs ?? {})).toEqual(["newer-trace-run"]);
     expect(Object.keys(trace.tables.trace_spans ?? {})).toEqual(["newer-trace-span"]);
 
@@ -337,7 +365,7 @@ describe("Chat persistence boundaries", () => {
       body: JSON.stringify({ createdAt: NOW }),
     });
     expect(backupResponse.status).toBe(200);
-    const backup = (await backupResponse.json()) as ChatBackup;
+    const backup = Schema.decodeUnknownSync(ChatBackupResponseSchema)(await backupResponse.json());
     expect(backup).toMatchObject({
       version: 1,
       app: "chat",

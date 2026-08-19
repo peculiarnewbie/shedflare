@@ -68,6 +68,6 @@ export function appUrl(config: ShedflareConfig, appId: string, stage = "prod"): 
   }
 }
 
-export function patchConfig(value: unknown): ShedflareConfig {
+export function patchConfig<Patch>(value: Patch): ShedflareConfig {
   return patchCoreConfig(REPO_ROOT, value, catalog());
 }

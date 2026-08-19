@@ -6,7 +6,8 @@
  */
 
 import type { StreamChunk, TextOptions, ModelMessage, ContentPart, Tool } from "@tanstack/ai";
-import type { TraceSpanKind } from "#/domain";
+import type { ExternalValue, JsonObject, TraceSpanKind } from "#/domain";
+import * as Schema from "effect/Schema";
 
 export type ChatCompletionsAdapterConfig = {
   baseUrl: string;
@@ -19,7 +20,7 @@ export type ChatCompletionsAdapterConfig = {
   trace?: <A>(
     name: string,
     kind: TraceSpanKind,
-    attrs: Record<string, unknown>,
+    attrs: JsonObject,
     run: () => Promise<A>,
   ) => Promise<A>;
 };
@@ -30,12 +31,33 @@ export type ChatCompletionsUsage = {
   reasoningTokens: number | null;
 };
 
+type AdapterMessageMetadata = {
+  text: unknown;
+  image: unknown;
+  audio: unknown;
+  video: unknown;
+  document: unknown;
+};
+
 // Extended StreamChunk with custom metadata for reasoning tokens.
 // Reasoning content deltas ride on the AG-UI CUSTOM event with
 // `name === REASONING_CONTENT_EVENT` — see emission/consumption sites.
 export type ExtendedStreamChunk = StreamChunk & {
   _reasoningTokens?: number;
 };
+
+function streamChunk(chunk: ExtendedStreamChunk): ExtendedStreamChunk {
+  return chunk;
+}
+
+async function runWithoutTrace<A>(
+  _name: string,
+  _kind: TraceSpanKind,
+  _attrs: JsonObject,
+  run: () => Promise<A>,
+) {
+  return run();
+}
 
 /**
  * Name used on AG-UI `CUSTOM` events that carry a chunk of the model's
@@ -74,7 +96,7 @@ function createRequestLifecycle(input: {
   let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let abortListener: (() => void) | null = null;
 
-  const abort = (reason?: unknown) => {
+  const abort = (reason?: AbortSignal["reason"]) => {
     if (!controller.signal.aborted) {
       controller.abort(reason);
     }
@@ -151,11 +173,13 @@ function createRequestLifecycle(input: {
  * Extracts reasoning tokens from a usage object by performing a deep search.
  * Handles multiple naming conventions (snake_case, camelCase) and nested structures.
  */
-function extractReasoningTokens(usage: unknown): number | null {
-  if (!usage || typeof usage !== "object") return null;
+const ExternalRecordSchema = Schema.Record(Schema.String, Schema.Any);
 
-  const queue: Record<string, unknown>[] = [usage as Record<string, unknown>];
-  const seen = new Set<Record<string, unknown>>();
+function extractReasoningTokens(usage: ExternalValue): number | null {
+  if (!Schema.is(ExternalRecordSchema)(usage)) return null;
+
+  const queue = [usage];
+  const seen = new Set<Schema.Schema.Type<typeof ExternalRecordSchema>>();
 
   while (queue.length > 0) {
     const current = queue.shift()!;
@@ -164,12 +188,14 @@ function extractReasoningTokens(usage: unknown): number | null {
 
     const value = current.reasoning_tokens ?? current.reasoningTokens;
     if (value !== undefined) {
-      const tokens =
-        typeof value === "number"
-          ? value
-          : typeof value === "string" && value.trim()
-            ? Number(value)
-            : NaN;
+      let tokens = NaN;
+      try {
+        tokens = Number(
+          Schema.decodeUnknownSync(Schema.Union([Schema.Number, Schema.String]))(value),
+        );
+      } catch {
+        continue;
+      }
       if (Number.isFinite(tokens)) {
         return Math.max(0, Math.round(tokens));
       }
@@ -184,9 +210,7 @@ function extractReasoningTokens(usage: unknown): number | null {
       "usage",
     ]) {
       const nested = current[key];
-      if (nested && typeof nested === "object") {
-        queue.push(nested as Record<string, unknown>);
-      }
+      if (Schema.is(ExternalRecordSchema)(nested)) queue.push(nested);
     }
   }
 
@@ -197,13 +221,29 @@ function extractReasoningTokens(usage: unknown): number | null {
  * Converts TanStack AI ModelMessage format to OpenAI chat/completions message format.
  * Optionally includes reasoning_content for models that require it (e.g., Kimi K2.5).
  */
+type OpenAIContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+type OpenAIToolCall = {
+  id: string;
+  type: string;
+  function: { name: string; arguments: string };
+};
+type OpenAIMessage = {
+  role: ModelMessage["role"] | "system";
+  content?: string | OpenAIContentPart[] | null;
+  tool_call_id?: string;
+  tool_calls?: OpenAIToolCall[];
+  reasoning_content?: string;
+};
+
 function convertToOpenAIMessages(
   messages: ModelMessage[],
   systemPrompts: string[] = [],
   pendingReasoningContent?: string | null,
-  assistantToolCallMessages: Array<Record<string, unknown>> = [],
-): Array<Record<string, unknown>> {
-  const result: Array<Record<string, unknown>> = [];
+  assistantToolCallMessages: OpenAIMessage[] = [],
+): OpenAIMessage[] {
+  const result: OpenAIMessage[] = [];
 
   // Add system prompts first
   for (const systemPrompt of systemPrompts) {
@@ -235,7 +275,7 @@ function convertToOpenAIMessages(
       const content = convertMessageContent(message.content);
       result.push({
         role: "tool",
-        content: typeof content === "string" ? content : JSON.stringify(content ?? ""),
+        content: Schema.is(Schema.String)(content) ? content : JSON.stringify(content ?? ""),
         tool_call_id: message.toolCallId,
       });
       continue;
@@ -244,7 +284,7 @@ function convertToOpenAIMessages(
     const content = convertMessageContent(message.content);
     if (content === null && !(message.role === "assistant" && message.toolCalls?.length)) continue;
 
-    const convertedMessage: Record<string, unknown> = {
+    const convertedMessage: OpenAIMessage = {
       role: message.role,
     };
     if (message.role === "assistant" && message.toolCalls?.length) {
@@ -279,9 +319,16 @@ function convertToOpenAIMessages(
   return result;
 }
 
-function convertToOpenAITools(
-  tools: Tool[] | undefined,
-): Array<Record<string, unknown>> | undefined {
+type OpenAITool = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: NonNullable<Tool["inputSchema"]>;
+  };
+};
+
+function convertToOpenAITools(tools: Tool[] | undefined): OpenAITool[] | undefined {
   if (!tools?.length) return undefined;
 
   return tools.map((tool) => ({
@@ -298,12 +345,9 @@ function convertToOpenAITools(
   }));
 }
 
-function parseJsonObject(value: string): Record<string, unknown> | null {
+function parseJsonObject(value: string): Schema.Schema.Type<typeof ExternalRecordSchema> | null {
   try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return Schema.decodeUnknownSync(ExternalRecordSchema)(JSON.parse(value));
   } catch {
     console.warn("[completions] parseJsonObject failed for", value.slice(0, 200));
     return null;
@@ -311,16 +355,14 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
 }
 
 function contentDisablesFurtherToolCalls(content: ModelMessage["content"]): boolean {
-  if (typeof content === "string") {
+  if (Schema.is(Schema.String)(content)) {
     return parseJsonObject(content)?.disableFurtherToolCalls === true;
   }
   if (!Array.isArray(content)) return false;
   return content.some((part) => {
     const text = (() => {
-      if (typeof part === "string") return part;
-      if (!part || typeof part !== "object" || !("content" in part)) return "";
-      const value = (part as { content?: unknown }).content;
-      return typeof value === "string" ? value : "";
+      if (Schema.is(Schema.String)(part)) return part;
+      return part.type === "text" ? part.content : "";
     })();
     return text ? parseJsonObject(text)?.disableFurtherToolCalls === true : false;
   });
@@ -345,39 +387,35 @@ function shouldDisableFurtherToolCalls(messages: ModelMessage[] | undefined): bo
  */
 function convertMessageContent(
   content: ModelMessage["content"],
-): string | Array<Record<string, unknown>> | null {
+): string | OpenAIContentPart[] | null {
   // Null content
   if (content === null) return null;
 
   // String content passes through
-  if (typeof content === "string") {
+  if (Schema.is(Schema.String)(content)) {
     return content;
   }
 
   // Array content needs conversion
   if (Array.isArray(content)) {
-    const parts: Array<Record<string, unknown>> = [];
+    const parts: OpenAIContentPart[] = [];
 
     for (const part of content) {
-      if (typeof part === "string") {
+      if (Schema.is(Schema.String)(part)) {
         parts.push({ type: "text", text: part });
         continue;
       }
 
-      const typedPart = part as ContentPart;
+      const typedPart: ContentPart = part;
       if (typedPart.type === "text") {
         // TextPart uses 'content' property
-        parts.push({ type: "text", text: (typedPart as any).content });
+        parts.push({ type: "text", text: typedPart.content });
         continue;
       }
 
       if (typedPart.type === "image") {
         // ImagePart has source with type 'url' or 'data'
-        const source = (typedPart as any).source as {
-          type: string;
-          value: string;
-          mimeType?: string;
-        };
+        const source = typedPart.source;
         if (source.type === "url") {
           parts.push({
             type: "image_url",
@@ -397,7 +435,8 @@ function convertMessageContent(
 
     // If only one text part, return as string for compatibility
     if (parts.length === 1 && parts[0].type === "text") {
-      return parts[0].text as string;
+      const onlyPart = parts[0];
+      return onlyPart?.type === "text" ? onlyPart.text : null;
     }
 
     return parts.length > 0 ? parts : null;
@@ -410,24 +449,24 @@ function convertMessageContent(
  * Extracts text content from a chat completion response.
  */
 function extractChatCompletionText(
-  content: string | Array<{ type?: string; text?: string }> | undefined,
+  content: string | ReadonlyArray<{ type?: string; text?: string }> | undefined,
 ): string {
-  if (typeof content === "string") return content.trim();
+  if (Schema.is(Schema.String)(content)) return content.trim();
   if (!Array.isArray(content)) return "";
   return content
-    .filter((part) => part?.type === "text" && typeof part.text === "string")
-    .map((part) => part.text!.trim())
+    .filter((part) => part?.type === "text" && Schema.is(Schema.String)(part.text))
+    .map((part) => part.text?.trim() ?? "")
     .filter(Boolean)
     .join("\n")
     .trim();
 }
 
-function extractReasoningChunk(choice: Record<string, any> | undefined): string {
-  if (!choice || typeof choice !== "object") return "";
+function extractReasoningChunk(choice: ExternalValue): string {
+  if (!Schema.is(ExternalRecordSchema)(choice)) return "";
 
   const candidateContainers = [choice.delta, choice.message];
   for (const container of candidateContainers) {
-    if (!container || typeof container !== "object") continue;
+    if (!Schema.is(ExternalRecordSchema)(container)) continue;
     for (const key of [
       "reasoning_content",
       "reasoningContent",
@@ -436,7 +475,7 @@ function extractReasoningChunk(choice: Record<string, any> | undefined): string 
       "reasoning",
     ]) {
       const value = container[key];
-      if (typeof value === "string" && value) {
+      if (Schema.is(Schema.String)(value) && value) {
         return value;
       }
     }
@@ -452,6 +491,48 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(7)}`;
 }
 
+const ProviderUsageSchema = Schema.Struct({
+  prompt_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+  completion_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+  reasoning_tokens: Schema.optional(Schema.Union([Schema.Number, Schema.String])),
+  reasoningTokens: Schema.optional(Schema.Union([Schema.Number, Schema.String])),
+  completion_tokens_details: Schema.optional(Schema.Any),
+  completionTokensDetails: Schema.optional(Schema.Any),
+  output_tokens_details: Schema.optional(Schema.Any),
+  outputTokensDetails: Schema.optional(Schema.Any),
+  details: Schema.optional(Schema.Any),
+  usage: Schema.optional(Schema.Any),
+});
+const ProviderToolCallDeltaSchema = Schema.Struct({
+  index: Schema.optional(Schema.Number),
+  id: Schema.optional(Schema.String),
+  function: Schema.optional(
+    Schema.Struct({
+      name: Schema.optional(Schema.String),
+      arguments: Schema.optional(Schema.String),
+    }),
+  ),
+});
+const ProviderChoiceContainerSchema = Schema.Struct({
+  content: Schema.optional(Schema.NullOr(Schema.String)),
+  reasoning_content: Schema.optional(Schema.String),
+  reasoningContent: Schema.optional(Schema.String),
+  reasoning_delta: Schema.optional(Schema.String),
+  reasoningDelta: Schema.optional(Schema.String),
+  reasoning: Schema.optional(Schema.String),
+  tool_calls: Schema.optional(Schema.Array(ProviderToolCallDeltaSchema)),
+});
+const ProviderChoiceSchema = Schema.Struct({
+  finish_reason: Schema.optional(Schema.NullOr(Schema.String)),
+  delta: Schema.optional(ProviderChoiceContainerSchema),
+  message: Schema.optional(ProviderChoiceContainerSchema),
+});
+const ChatCompletionChunkSchema = Schema.Struct({
+  usage: Schema.optional(ProviderUsageSchema),
+  choices: Schema.optional(Schema.Array(ProviderChoiceSchema)),
+});
+const FinishReasonSchema = Schema.Literals(["stop", "length", "content_filter", "tool_calls"]);
+
 /**
  * Custom adapter for OpenAI-compatible /chat/completions endpoints.
  *
@@ -464,9 +545,9 @@ export class ChatCompletionsAdapter {
 
   // Type marker for TanStack AI (never assigned at runtime)
   "~types"!: {
-    providerOptions: Record<string, unknown>;
+    providerOptions: JsonObject;
     inputModalities: readonly ["text", "image"];
-    messageMetadataByModality: Record<string, unknown>;
+    messageMetadataByModality: AdapterMessageMetadata;
   };
 
   private readonly config: ChatCompletionsAdapterConfig;
@@ -474,14 +555,14 @@ export class ChatCompletionsAdapter {
   /** Last reasoning_content we observed (or had to carry forward) for tool continuations. */
   private lastReasoningContent: string | null = null;
   /** Provider-shaped assistant tool-call messages preserved in turn order. */
-  private assistantToolCallMessageHistory: Array<Record<string, unknown>> = [];
+  private assistantToolCallMessageHistory: OpenAIMessage[] = [];
 
   /**
    * Stores modelOptions from the first request to ensure they're applied
    * to all subsequent requests in a tool call loop. TanStack AI may not
    * preserve these across iterations.
    */
-  private persistedModelOptions: Record<string, unknown> | null = null;
+  private persistedModelOptions: TextOptions["modelOptions"] | null = null;
 
   constructor(config: ChatCompletionsAdapterConfig, modelId: string) {
     this.config = config;
@@ -514,10 +595,7 @@ export class ChatCompletionsAdapter {
       this.assistantToolCallMessageHistory,
     );
     const tools = disableFurtherToolCalls ? undefined : convertToOpenAITools(options.tools);
-    const trace =
-      this.config.trace ??
-      ((_: string, __: TraceSpanKind, ___: Record<string, unknown>, run: () => Promise<any>) =>
-        run());
+    const trace = this.config.trace ?? runWithoutTrace;
 
     const runId = generateId();
     const messageId = generateId();
@@ -529,12 +607,12 @@ export class ChatCompletionsAdapter {
     });
 
     // Emit RUN_STARTED
-    yield {
+    yield streamChunk({
       type: "RUN_STARTED",
       runId,
       timestamp: Date.now(),
       model: this.model,
-    } as ExtendedStreamChunk;
+    });
 
     try {
       const url = `${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`;
@@ -565,13 +643,9 @@ export class ChatCompletionsAdapter {
               stream: true,
               stream_options: { include_usage: true },
               messages,
-              ...(tools ? { tools } : {}),
-              ...(options.temperature !== undefined && {
-                temperature: options.temperature,
-              }),
-              ...(options.maxTokens !== undefined && {
-                max_tokens: options.maxTokens,
-              }),
+              tools,
+              temperature: options.temperature,
+              max_tokens: options.maxTokens,
               ...effectiveModelOptions,
             }),
             signal: request.signal,
@@ -580,14 +654,16 @@ export class ChatCompletionsAdapter {
 
       if (!response.ok || !response.body) {
         const errorText = await response.text().catch(() => "Unknown error");
-        yield {
+        yield streamChunk({
           type: "RUN_ERROR",
           runId,
           error: {
             message: `HTTP ${response.status}: ${errorText.slice(0, 500)}`,
             code: String(response.status),
           },
-        } as ExtendedStreamChunk;
+          timestamp: Date.now(),
+          model: this.model,
+        });
         return;
       }
 
@@ -653,14 +729,11 @@ export class ChatCompletionsAdapter {
             continue;
           }
 
-          let parsed: any;
+          let parsed: Schema.Schema.Type<typeof ChatCompletionChunkSchema>;
           try {
-            parsed = JSON.parse(payloadJson);
+            parsed = Schema.decodeUnknownSync(ChatCompletionChunkSchema)(JSON.parse(payloadJson));
           } catch {
-            console.warn(
-              "[completions] SSE parse failed for payload",
-              (payloadJson as string).slice(0, 200),
-            );
+            console.warn("[completions] SSE parse failed for payload", payloadJson.slice(0, 200));
             continue;
           }
 
@@ -676,7 +749,7 @@ export class ChatCompletionsAdapter {
           }
 
           const choice = parsed.choices?.[0];
-          if (choice?.finish_reason) {
+          if (choice?.finish_reason && Schema.is(FinishReasonSchema)(choice.finish_reason)) {
             finishReason = choice.finish_reason;
           }
 
@@ -690,7 +763,7 @@ export class ChatCompletionsAdapter {
             // Reasoning chip alongside the main answer. The adapter also
             // continues accumulating `reasoningContent` locally for
             // tool-call continuations (Kimi K2.5, see below).
-            yield {
+            yield streamChunk({
               type: "CUSTOM",
               name: REASONING_CONTENT_EVENT,
               value: {
@@ -700,14 +773,12 @@ export class ChatCompletionsAdapter {
               timestamp: Date.now(),
               model: this.model,
               rawEvent: parsed,
-            } as ExtendedStreamChunk;
+            });
           }
 
-          const toolCallDeltas = Array.isArray(choice?.delta?.tool_calls)
-            ? choice.delta.tool_calls
-            : [];
+          const toolCallDeltas = choice?.delta?.tool_calls ?? [];
           for (const toolCallDelta of toolCallDeltas) {
-            const index = typeof toolCallDelta?.index === "number" ? toolCallDelta.index : 0;
+            const index = toolCallDelta.index ?? 0;
             const current = toolCalls.get(index) ?? {
               toolCallId: toolCallDelta?.id || generateId(),
               toolName: toolCallDelta?.function?.name || `tool_${index}`,
@@ -715,16 +786,16 @@ export class ChatCompletionsAdapter {
               started: false,
             };
 
-            if (typeof toolCallDelta?.id === "string" && toolCallDelta.id) {
+            if (toolCallDelta.id) {
               current.toolCallId = toolCallDelta.id;
             }
-            if (typeof toolCallDelta?.function?.name === "string" && toolCallDelta.function.name) {
+            if (toolCallDelta.function?.name) {
               current.toolName = toolCallDelta.function.name;
             }
 
             if (!current.started) {
               current.started = true;
-              yield {
+              yield streamChunk({
                 type: "TOOL_CALL_START",
                 toolCallId: current.toolCallId,
                 toolName: current.toolName,
@@ -733,15 +804,12 @@ export class ChatCompletionsAdapter {
                 timestamp: Date.now(),
                 model: this.model,
                 rawEvent: parsed,
-              } as ExtendedStreamChunk;
+              });
             }
 
-            if (
-              typeof toolCallDelta?.function?.arguments === "string" &&
-              toolCallDelta.function.arguments
-            ) {
+            if (toolCallDelta.function?.arguments) {
               current.args += toolCallDelta.function.arguments;
-              yield {
+              yield streamChunk({
                 type: "TOOL_CALL_ARGS",
                 toolCallId: current.toolCallId,
                 delta: toolCallDelta.function.arguments,
@@ -749,7 +817,7 @@ export class ChatCompletionsAdapter {
                 timestamp: Date.now(),
                 model: this.model,
                 rawEvent: parsed,
-              } as ExtendedStreamChunk;
+              });
             }
 
             toolCalls.set(index, current);
@@ -764,41 +832,41 @@ export class ChatCompletionsAdapter {
           // Emit TEXT_MESSAGE_START on first content
           if (!messageStarted) {
             messageStarted = true;
-            yield {
+            yield streamChunk({
               type: "TEXT_MESSAGE_START",
               messageId,
               role: "assistant",
               timestamp: Date.now(),
               model: this.model,
               rawEvent: parsed,
-            } as ExtendedStreamChunk;
+            });
           }
 
           // Emit TEXT_MESSAGE_CONTENT for each delta
-          yield {
+          yield streamChunk({
             type: "TEXT_MESSAGE_CONTENT",
             messageId,
             delta,
             timestamp: Date.now(),
             model: this.model,
             rawEvent: parsed,
-          } as ExtendedStreamChunk;
+          });
         }
         if (done) break;
       }
 
       // Emit TEXT_MESSAGE_END if message was started
       if (messageStarted) {
-        yield {
+        yield streamChunk({
           type: "TEXT_MESSAGE_END",
           messageId,
           timestamp: Date.now(),
           model: this.model,
-        } as ExtendedStreamChunk;
+        });
       }
 
       for (const [, toolCall] of toolCalls) {
-        let parsedInput: unknown;
+        let parsedInput: ExternalValue;
         if (toolCall.args.trim()) {
           try {
             parsedInput = JSON.parse(toolCall.args);
@@ -806,20 +874,21 @@ export class ChatCompletionsAdapter {
             console.warn(
               "[completions] tool call args parse failed for",
               toolCall.toolName,
-              (toolCall.args as string).slice(0, 200),
+              toolCall.args.slice(0, 200),
             );
             parsedInput = undefined;
           }
         }
 
-        yield {
+        const toolCallEnd = {
           type: "TOOL_CALL_END",
           toolCallId: toolCall.toolCallId,
           toolName: toolCall.toolName,
-          ...(parsedInput !== undefined ? { input: parsedInput } : {}),
+          input: parsedInput,
           timestamp: Date.now(),
           model: this.model,
-        } as ExtendedStreamChunk;
+        } as const;
+        yield streamChunk(toolCallEnd);
       }
 
       // Store reasoning_content for tool call continuations (needed for Kimi K2.5 and similar).
@@ -835,7 +904,7 @@ export class ChatCompletionsAdapter {
       if (toolCalls.size > 0) {
         const continuationReasoningContent = reasoningContent || this.lastReasoningContent || null;
         this.lastReasoningContent = continuationReasoningContent;
-        const providerToolCallMessage = {
+        const providerToolCallMessage: OpenAIMessage = {
           role: "assistant",
           content: assistantContent,
           tool_calls: [...toolCalls.values()].map((toolCall) => ({
@@ -846,10 +915,10 @@ export class ChatCompletionsAdapter {
               arguments: toolCall.args,
             },
           })),
-          ...(continuationReasoningContent
-            ? { reasoning_content: continuationReasoningContent }
-            : {}),
         };
+        if (continuationReasoningContent) {
+          providerToolCallMessage.reasoning_content = continuationReasoningContent;
+        }
         const historicalToolCallCount = (options.messages ?? []).filter(
           (message) => message.role === "assistant" && message.toolCalls?.length,
         ).length;
@@ -860,7 +929,7 @@ export class ChatCompletionsAdapter {
         if (sawDoneMarker || sawUsageChunk) {
           finishReason = "stop";
         } else {
-          yield {
+          yield streamChunk({
             type: "RUN_ERROR",
             runId,
             error: {
@@ -869,13 +938,13 @@ export class ChatCompletionsAdapter {
             },
             timestamp: Date.now(),
             model: this.model,
-          } as ExtendedStreamChunk;
+          });
           return;
         }
       }
 
       // Emit RUN_FINISHED with usage (including custom _reasoningTokens field)
-      const finishedEvent: ExtendedStreamChunk = {
+      const finishedEvent = streamChunk({
         type: "RUN_FINISHED",
         runId,
         finishReason,
@@ -889,7 +958,7 @@ export class ChatCompletionsAdapter {
             : undefined,
         timestamp: Date.now(),
         model: this.model,
-      } as ExtendedStreamChunk;
+      });
 
       // Add reasoning tokens as custom field
       if (usage.reasoningTokens !== null) {
@@ -898,7 +967,7 @@ export class ChatCompletionsAdapter {
 
       yield finishedEvent;
     } catch (error) {
-      yield {
+      yield streamChunk({
         type: "RUN_ERROR",
         runId,
         error: {
@@ -907,7 +976,7 @@ export class ChatCompletionsAdapter {
         },
         timestamp: Date.now(),
         model: this.model,
-      } as ExtendedStreamChunk;
+      });
     } finally {
       request.cleanup();
     }
@@ -918,16 +987,13 @@ export class ChatCompletionsAdapter {
    */
   async structuredOutput(options: {
     chatOptions: TextOptions;
-    outputSchema: Record<string, unknown>;
-  }): Promise<{ data: unknown; rawText: string }> {
+    outputSchema: JsonObject;
+  }): Promise<{ data: ExternalValue; rawText: string }> {
     const messages = convertToOpenAIMessages(
       options.chatOptions.messages ?? [],
       options.chatOptions.systemPrompts,
     );
-    const trace =
-      this.config.trace ??
-      ((_: string, __: TraceSpanKind, ___: Record<string, unknown>, run: () => Promise<any>) =>
-        run());
+    const trace = this.config.trace ?? runWithoutTrace;
     const request = createRequestLifecycle({
       externalSignal: options.chatOptions.abortController?.signal,
       overallTimeoutMs: this.config.overallTimeout ?? this.config.timeout,
@@ -956,12 +1022,8 @@ export class ChatCompletionsAdapter {
               model: this.model,
               stream: false,
               messages,
-              ...(options.chatOptions.temperature !== undefined && {
-                temperature: options.chatOptions.temperature,
-              }),
-              ...(options.chatOptions.maxTokens !== undefined && {
-                max_tokens: options.chatOptions.maxTokens,
-              }),
+              temperature: options.chatOptions.temperature,
+              max_tokens: options.chatOptions.maxTokens,
               response_format: {
                 type: "json_schema",
                 json_schema: {
@@ -981,13 +1043,31 @@ export class ChatCompletionsAdapter {
         throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 500)}`);
       }
 
-      const json = (await response.json()) as {
-        choices?: Array<{
-          message?: {
-            content?: string | Array<{ type?: string; text?: string }>;
-          };
-        }>;
-      };
+      const json = Schema.decodeUnknownSync(
+        Schema.Struct({
+          choices: Schema.optional(
+            Schema.Array(
+              Schema.Struct({
+                message: Schema.optional(
+                  Schema.Struct({
+                    content: Schema.optional(
+                      Schema.Union([
+                        Schema.String,
+                        Schema.Array(
+                          Schema.Struct({
+                            type: Schema.optional(Schema.String),
+                            text: Schema.optional(Schema.String),
+                          }),
+                        ),
+                      ]),
+                    ),
+                  }),
+                ),
+              }),
+            ),
+          ),
+        }),
+      )(await response.json());
 
       const rawText = extractChatCompletionText(json.choices?.[0]?.message?.content);
       const data = JSON.parse(rawText);
@@ -1013,20 +1093,18 @@ export function createChatCompletionsAdapter(
   return new ChatCompletionsAdapter(config, modelId);
 }
 
-type ResponsesRecord = Record<string, unknown>;
+type ResponsesRecord = Schema.Schema.Type<typeof ExternalRecordSchema>;
 
-function asResponsesRecord(value: unknown): ResponsesRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as ResponsesRecord)
-    : null;
+function asResponsesRecord(value: ExternalValue): ResponsesRecord | null {
+  return Schema.is(ExternalRecordSchema)(value) ? value : null;
 }
 
-function responseString(value: unknown) {
-  return typeof value === "string" ? value : null;
+function responseString(value: ExternalValue) {
+  return Schema.is(Schema.String)(value) ? value : null;
 }
 
-function responseNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+function responseNumber(value: ExternalValue) {
+  return Schema.is(Schema.Number)(value) && Number.isFinite(value) ? value : null;
 }
 
 function convertToResponsesContent(
@@ -1034,12 +1112,12 @@ function convertToResponsesContent(
   role: "user" | "assistant",
 ): string | Array<ResponsesRecord> | null {
   if (content === null) return null;
-  if (typeof content === "string") return content;
+  if (Schema.is(Schema.String)(content)) return content;
 
   const parts: ResponsesRecord[] = [];
   const textType = role === "assistant" ? "output_text" : "input_text";
   for (const part of content) {
-    if (typeof part === "string") {
+    if (Schema.is(Schema.String)(part)) {
       parts.push({ type: textType, text: part });
       continue;
     }
@@ -1063,7 +1141,7 @@ function convertToResponsesContent(
 
 function responseOutputForTool(content: ModelMessage["content"]) {
   const converted = convertToResponsesContent(content, "user");
-  return typeof converted === "string" ? converted : JSON.stringify(converted ?? "");
+  return Schema.is(Schema.String)(converted) ? converted : JSON.stringify(converted ?? "");
 }
 
 function convertToResponsesInput(
@@ -1133,7 +1211,7 @@ function convertToResponsesTools(tools: Tool[] | undefined): Array<ResponsesReco
   }));
 }
 
-function extractResponsesText(value: unknown): string {
+function extractResponsesText(value: ExternalValue): string {
   const response = asResponsesRecord(value);
   if (!response) return "";
 
@@ -1176,9 +1254,9 @@ export class ResponsesAdapter {
   readonly model: string;
 
   "~types"!: {
-    providerOptions: Record<string, unknown>;
+    providerOptions: JsonObject;
     inputModalities: readonly ["text", "image"];
-    messageMetadataByModality: Record<string, unknown>;
+    messageMetadataByModality: AdapterMessageMetadata;
   };
 
   private readonly config: ChatCompletionsAdapterConfig;
@@ -1196,10 +1274,7 @@ export class ResponsesAdapter {
     const tools = shouldDisableFurtherToolCalls(options.messages)
       ? undefined
       : convertToResponsesTools(options.tools);
-    const trace =
-      this.config.trace ??
-      (<A>(_: string, __: TraceSpanKind, ___: Record<string, unknown>, run: () => Promise<A>) =>
-        run());
+    const trace = this.config.trace ?? runWithoutTrace;
 
     const runId = generateId();
     const messageId = generateId();
@@ -1210,12 +1285,12 @@ export class ResponsesAdapter {
       idleTimeoutMs: this.config.idleTimeout,
     });
 
-    yield {
+    yield streamChunk({
       type: "RUN_STARTED",
       runId,
       timestamp: Date.now(),
       model: this.model,
-    } as ExtendedStreamChunk;
+    });
 
     try {
       const url = `${this.config.baseUrl.replace(/\/$/, "")}/responses`;
@@ -1245,9 +1320,9 @@ export class ResponsesAdapter {
               model: this.model,
               stream: true,
               input,
-              ...(tools ? { tools } : {}),
-              ...(options.temperature !== undefined && { temperature: options.temperature }),
-              ...(options.maxTokens !== undefined && { max_output_tokens: options.maxTokens }),
+              tools,
+              temperature: options.temperature,
+              max_output_tokens: options.maxTokens,
               ...options.modelOptions,
             }),
             signal: request.signal,
@@ -1256,14 +1331,16 @@ export class ResponsesAdapter {
 
       if (!response.ok || !response.body) {
         const errorText = await response.text().catch(() => "Unknown error");
-        yield {
+        yield streamChunk({
           type: "RUN_ERROR",
           runId,
           error: {
             message: `HTTP ${response.status}: ${errorText.slice(0, 500)}`,
             code: String(response.status),
           },
-        } as ExtendedStreamChunk;
+          timestamp: Date.now(),
+          model: this.model,
+        });
         return;
       }
 
@@ -1281,11 +1358,11 @@ export class ResponsesAdapter {
       };
       const toolCalls = new Map<string, ResponseToolCall>();
 
-      const emitToolStart = (toolCall: ResponseToolCall, rawEvent: unknown) => {
+      const emitToolStart = (toolCall: ResponseToolCall, rawEvent: ResponsesRecord) => {
         if (toolCall.started) return null;
         toolCall.started = true;
-        return {
-          type: "TOOL_CALL_START" as const,
+        return streamChunk({
+          type: "TOOL_CALL_START",
           toolCallId: toolCall.callId,
           toolName: toolCall.toolName,
           parentMessageId: messageId,
@@ -1293,7 +1370,7 @@ export class ResponsesAdapter {
           timestamp: Date.now(),
           model: this.model,
           rawEvent,
-        } as ExtendedStreamChunk;
+        });
       };
 
       const ensureToolCall = (inputRecord: {
@@ -1359,7 +1436,7 @@ export class ResponsesAdapter {
 
           let parsed: ResponsesRecord;
           try {
-            const value = JSON.parse(payloadText) as unknown;
+            const value = JSON.parse(payloadText);
             const record = asResponsesRecord(value);
             if (!record) continue;
             parsed = record;
@@ -1375,23 +1452,23 @@ export class ResponsesAdapter {
             assistantContent += delta;
             if (!messageStarted) {
               messageStarted = true;
-              yield {
+              yield streamChunk({
                 type: "TEXT_MESSAGE_START",
                 messageId,
                 role: "assistant",
                 timestamp: Date.now(),
                 model: this.model,
                 rawEvent: parsed,
-              } as ExtendedStreamChunk;
+              });
             }
-            yield {
+            yield streamChunk({
               type: "TEXT_MESSAGE_CONTENT",
               messageId,
               delta,
               timestamp: Date.now(),
               model: this.model,
               rawEvent: parsed,
-            } as ExtendedStreamChunk;
+            });
             continue;
           }
 
@@ -1413,7 +1490,7 @@ export class ResponsesAdapter {
                   : args;
                 toolCall.args = args;
                 if (delta) {
-                  yield {
+                  yield streamChunk({
                     type: "TOOL_CALL_ARGS",
                     toolCallId: toolCall.callId,
                     delta,
@@ -1421,7 +1498,7 @@ export class ResponsesAdapter {
                     timestamp: Date.now(),
                     model: this.model,
                     rawEvent: parsed,
-                  } as ExtendedStreamChunk;
+                  });
                 }
               }
             }
@@ -1455,7 +1532,7 @@ export class ResponsesAdapter {
                 ? argumentDelta
                 : toolCall.args + delta;
             if (delta) {
-              yield {
+              yield streamChunk({
                 type: "TOOL_CALL_ARGS",
                 toolCallId: toolCall.callId,
                 delta,
@@ -1463,7 +1540,7 @@ export class ResponsesAdapter {
                 timestamp: Date.now(),
                 model: this.model,
                 rawEvent: parsed,
-              } as ExtendedStreamChunk;
+              });
             }
             continue;
           }
@@ -1495,7 +1572,7 @@ export class ResponsesAdapter {
               asResponsesRecord(parsed.error) ?? asResponsesRecord(responseRecord?.error);
             const errorMessage =
               responseString(errorRecord?.message) ?? "Responses API request failed";
-            yield {
+            yield streamChunk({
               type: "RUN_ERROR",
               runId,
               error: {
@@ -1504,7 +1581,7 @@ export class ResponsesAdapter {
               },
               timestamp: Date.now(),
               model: this.model,
-            } as ExtendedStreamChunk;
+            });
             return;
           }
         }
@@ -1513,38 +1590,38 @@ export class ResponsesAdapter {
       }
 
       if (messageStarted) {
-        yield {
+        yield streamChunk({
           type: "TEXT_MESSAGE_END",
           messageId,
           timestamp: Date.now(),
           model: this.model,
-        } as ExtendedStreamChunk;
+        });
       }
 
       for (const toolCall of toolCalls.values()) {
-        let inputValue: unknown;
+        let inputValue: ExternalValue;
         if (toolCall.args.trim()) {
           try {
-            inputValue = JSON.parse(toolCall.args) as unknown;
+            inputValue = JSON.parse(toolCall.args);
           } catch {
             console.warn("[responses] tool call args parse failed for", toolCall.toolName);
           }
         }
-        yield {
+        yield streamChunk({
           type: "TOOL_CALL_END",
           toolCallId: toolCall.callId,
           toolName: toolCall.toolName,
-          ...(inputValue !== undefined ? { input: inputValue } : {}),
+          input: inputValue,
           timestamp: Date.now(),
           model: this.model,
-        } as ExtendedStreamChunk;
+        });
       }
 
       if (finishReason === null) {
         if (sawTerminalEvent) {
           finishReason = toolCalls.size > 0 ? "tool_calls" : "stop";
         } else {
-          yield {
+          yield streamChunk({
             type: "RUN_ERROR",
             runId,
             error: {
@@ -1553,12 +1630,12 @@ export class ResponsesAdapter {
             },
             timestamp: Date.now(),
             model: this.model,
-          } as ExtendedStreamChunk;
+          });
           return;
         }
       }
 
-      yield {
+      yield streamChunk({
         type: "RUN_FINISHED",
         runId,
         finishReason,
@@ -1572,9 +1649,9 @@ export class ResponsesAdapter {
             : undefined,
         timestamp: Date.now(),
         model: this.model,
-      } as ExtendedStreamChunk;
+      });
     } catch (error) {
-      yield {
+      yield streamChunk({
         type: "RUN_ERROR",
         runId,
         error: {
@@ -1583,7 +1660,7 @@ export class ResponsesAdapter {
         },
         timestamp: Date.now(),
         model: this.model,
-      } as ExtendedStreamChunk;
+      });
     } finally {
       request.cleanup();
     }
@@ -1591,8 +1668,8 @@ export class ResponsesAdapter {
 
   async structuredOutput(options: {
     chatOptions: TextOptions;
-    outputSchema: Record<string, unknown>;
-  }): Promise<{ data: unknown; rawText: string }> {
+    outputSchema: JsonObject;
+  }): Promise<{ data: ExternalValue; rawText: string }> {
     const input = convertToResponsesInput(
       options.chatOptions.messages ?? [],
       options.chatOptions.systemPrompts,
@@ -1623,9 +1700,7 @@ export class ResponsesAdapter {
               strict: true,
             },
           },
-          ...(options.chatOptions.maxTokens !== undefined && {
-            max_output_tokens: options.chatOptions.maxTokens,
-          }),
+          max_output_tokens: options.chatOptions.maxTokens,
           ...options.chatOptions.modelOptions,
         }),
         signal: request.signal,
@@ -1634,9 +1709,9 @@ export class ResponsesAdapter {
         const errorText = await response.text().catch(() => "Unknown error");
         throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 500)}`);
       }
-      const json = (await response.json()) as unknown;
+      const json = await response.json();
       const rawText = extractResponsesText(json);
-      return { data: JSON.parse(rawText) as unknown, rawText };
+      return { data: JSON.parse(rawText), rawText };
     } finally {
       request.cleanup();
     }

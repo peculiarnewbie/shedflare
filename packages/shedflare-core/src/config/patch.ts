@@ -10,7 +10,7 @@ import { loadConfig, validateConfig } from "./load.ts";
 import type { ConfigPatch, ShedflareConfigV2 } from "./model.ts";
 import { ConfigPatchSchema } from "./schema.ts";
 
-function validateConfigPatch(input: unknown, catalog: ManifestCatalog): ConfigPatch {
+function validateConfigPatch<Input>(input: Input, catalog: ManifestCatalog): ConfigPatch {
   const result = safeParse(ConfigPatchSchema, input);
   if (!result.success) {
     const issue = result.issues[0];
@@ -29,7 +29,11 @@ function validateConfigPatch(input: unknown, catalog: ManifestCatalog): ConfigPa
   return result.output;
 }
 
-function applyEdit(text: string, path: (string | number)[], value: unknown): string {
+function applyEdit(
+  text: string,
+  path: (string | number)[],
+  value: Parameters<typeof modify>[2],
+): string {
   return applyEdits(
     text,
     modify(text, path, value, {
@@ -38,9 +42,9 @@ function applyEdit(text: string, path: (string | number)[], value: unknown): str
   );
 }
 
-export function patchConfig(
+export function patchConfig<Patch>(
   root: string,
-  patch: unknown,
+  patch: Patch,
   catalog: ManifestCatalog,
 ): ShedflareConfigV2 {
   const normalizedPatch = validateConfigPatch(patch, catalog);

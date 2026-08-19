@@ -1,12 +1,14 @@
 import { createSignal } from "solid-js";
-import { execute } from "./api";
+import * as Schema from "effect/Schema";
+import { execute, type CommandPayload, type CommandType } from "./api";
 import { emitOperationFeedback } from "./operation-feedback";
 import { emitMoneyDataChanged } from "./data-events";
+import type { CommandData } from "../domain/types";
 
 export interface UndoEntry {
   label: string;
-  forward: { commandType: string; payload: unknown };
-  inverse: { commandType: string; payload: unknown };
+  forward: { commandType: CommandType; payload: CommandPayload };
+  inverse: { commandType: CommandType; payload: CommandPayload };
 }
 
 const [undoStack, setUndoStack] = createSignal<UndoEntry[]>([]);
@@ -14,17 +16,17 @@ const [redoStack, setRedoStack] = createSignal<UndoEntry[]>([]);
 
 export { undoStack, redoStack };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function retargetRecreatedEntry(entry: UndoEntry, resultData: Record<string, unknown>): UndoEntry {
-  const restoredId = resultData.id;
+function retargetRecreatedEntry(entry: UndoEntry, resultData: CommandData): UndoEntry {
+  let restoredId: string;
+  try {
+    restoredId = Schema.decodeUnknownSync(Schema.String)(resultData.id);
+  } catch {
+    return entry;
+  }
   if (
-    typeof restoredId !== "string" ||
     !entry.forward.commandType.startsWith("delete_") ||
     !entry.inverse.commandType.startsWith("create_") ||
-    !isRecord(entry.forward.payload)
+    !(entry.forward.payload instanceof Object)
   ) {
     return entry;
   }

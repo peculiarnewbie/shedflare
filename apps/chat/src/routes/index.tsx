@@ -23,12 +23,14 @@ import {
   compareWorkspaceRecency,
   createId,
   nowIso,
+  ReasoningLevel as ReasoningLevelSchema,
   resolveThreadMessagePath,
+  type ExternalValue,
+  type JsonObject,
 } from "#/domain";
 import type {
   AccountSettings,
   Attachment,
-  ComparisonGroup,
   ExtractRun,
   Message,
   MessagePart,
@@ -107,6 +109,7 @@ import {
   writeChatNavigationState,
   type ChatNavigationState,
 } from "../lib/navigation-state";
+import * as Schema from "effect/Schema";
 
 type SessionPayload = {
   user?: {
@@ -135,6 +138,40 @@ type ModelsPayload = {
   }>;
 };
 
+const SessionPayloadSchema = Schema.Struct({
+  user: Schema.optional(Schema.Struct({ email: Schema.optional(Schema.String) })),
+});
+const BootstrapPayloadSchema = Schema.Struct({
+  session: Schema.NullOr(SessionPayloadSchema),
+  exaApiKeyConfigured: Schema.Boolean,
+});
+const ModelPayloadSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  attachment: Schema.Boolean,
+  reasoning: Schema.Boolean,
+  toolCall: Schema.Boolean,
+  interleaved: Schema.NullOr(Schema.Struct({ field: Schema.NullOr(Schema.String) })),
+  family: Schema.String,
+  context: Schema.NullOr(Schema.Number),
+  output: Schema.NullOr(Schema.Number),
+});
+const ModelsPayloadSchema = Schema.Struct({ models: Schema.Array(ModelPayloadSchema) });
+
+function decodeBootstrapPayload(value: ExternalValue): BootstrapPayload {
+  return Schema.decodeUnknownSync(BootstrapPayloadSchema)(value);
+}
+
+function decodeModelsPayload(value: ExternalValue): ModelsPayload {
+  const payload = Schema.decodeUnknownSync(ModelsPayloadSchema)(value);
+  return {
+    models: payload.models.map((model) => ({
+      ...model,
+      interleaved: model.interleaved ? { ...model.interleaved } : null,
+    })),
+  };
+}
+
 type Theme = "night";
 type AssistantActivity = {
   /**
@@ -152,15 +189,15 @@ type AssistantActivity = {
 };
 
 type ParsedTraceSpan = TraceSpan & {
-  attrs: Record<string, unknown>;
-  events: Record<string, unknown>[];
+  attrs: JsonObject;
+  events: JsonObject[];
   children: ParsedTraceSpan[];
 };
 
 type TraceTreeView = {
   run: TraceRun;
   spans: ParsedTraceSpan[];
-  attrs: Record<string, unknown>;
+  attrs: JsonObject;
   copyText: string;
 };
 
@@ -202,9 +239,9 @@ function getDateGroup(iso: string): string {
   return "Older";
 }
 
-function groupThreadsByDate(threads: any[]): { label: string; threads: any[] }[] {
+function groupThreadsByDate(threads: Thread[]) {
   const order = ["Today", "Yesterday", "Last 7 Days", "Older"];
-  const groups: Record<string, any[]> = {};
+  const groups: Record<string, Thread[]> = {};
   for (const thread of threads) {
     const label = getDateGroup(thread.lastMessageAt);
     (groups[label] ??= []).push(thread);
@@ -235,9 +272,8 @@ function getTotalTokens(message: {
   promptTokens?: number | null;
   completionTokens?: number | null;
 }) {
-  const promptTokens = typeof message.promptTokens === "number" ? message.promptTokens : null;
-  const completionTokens =
-    typeof message.completionTokens === "number" ? message.completionTokens : null;
+  const promptTokens = message.promptTokens ?? null;
+  const completionTokens = message.completionTokens ?? null;
   if (promptTokens == null && completionTokens == null) return null;
   return (promptTokens ?? 0) + (completionTokens ?? 0);
 }
@@ -245,19 +281,19 @@ function getTotalTokens(message: {
 function parseThinkingTokens(part: { kind?: string; text?: string; json?: string | null }) {
   if (part.kind !== "thinking_tokens") return null;
 
-  const fromText =
-    typeof part.text === "string" && part.text.trim() ? Number(part.text.trim()) : NaN;
+  const fromText = part.text?.trim() ? Number(part.text.trim()) : NaN;
   if (Number.isFinite(fromText) && fromText > 0) return Math.round(fromText);
 
-  if (typeof part.json !== "string" || !part.json.trim()) return null;
+  if (!part.json?.trim()) return null;
   try {
-    const parsed = JSON.parse(part.json) as { tokens?: unknown };
-    const tokens =
-      typeof parsed.tokens === "number"
-        ? parsed.tokens
-        : typeof parsed.tokens === "string" && parsed.tokens.trim()
-          ? Number(parsed.tokens)
-          : NaN;
+    const parsed = Schema.decodeUnknownSync(
+      Schema.Struct({ tokens: Schema.optional(Schema.Union([Schema.Number, Schema.String])) }),
+    )(JSON.parse(part.json));
+    const tokens = Schema.is(Schema.Number)(parsed.tokens)
+      ? parsed.tokens
+      : parsed.tokens?.trim()
+        ? Number(parsed.tokens)
+        : NaN;
     if (Number.isFinite(tokens) && tokens > 0) return Math.round(tokens);
   } catch {
     return null;
@@ -269,8 +305,8 @@ function parseThinkingTokens(part: { kind?: string; text?: string; json?: string
 function parseAssistantActivity(part: { kind?: string; text?: string; json?: string | null }) {
   if (part.kind !== "activity") return null;
 
-  const fallbackLabel = typeof part.text === "string" ? part.text.trim() : "";
-  if (typeof part.json !== "string" || !part.json.trim()) {
+  const fallbackLabel = part.text?.trim() ?? "";
+  if (!part.json?.trim()) {
     return fallbackLabel
       ? {
           tool: null,
@@ -284,9 +320,17 @@ function parseAssistantActivity(part: { kind?: string; text?: string; json?: str
   }
 
   try {
-    const parsed = JSON.parse(part.json) as Record<string, unknown>;
-    const label =
-      typeof parsed.label === "string" && parsed.label.trim() ? parsed.label.trim() : fallbackLabel;
+    const parsed = Schema.decodeUnknownSync(
+      Schema.Struct({
+        tool: Schema.optional(Schema.String),
+        label: Schema.optional(Schema.String),
+        state: Schema.optional(Schema.String),
+        step: Schema.optional(Schema.Number),
+        query: Schema.optional(Schema.String),
+        detail: Schema.optional(Schema.String),
+      }),
+    )(JSON.parse(part.json));
+    const label = parsed.label?.trim() || fallbackLabel;
     if (!label) return null;
 
     // Back-compat for activities emitted before the tool discriminator
@@ -294,7 +338,7 @@ function parseAssistantActivity(part: { kind?: string; text?: string; json?: str
     // (extract wasn't wired then). An unstepped activity with no tool field
     // is a top-level marker ("Response failed", budget reached).
     const rawTool = parsed.tool;
-    const step = typeof parsed.step === "number" ? parsed.step : null;
+    const step = parsed.step ?? null;
     const tool: AssistantActivity["tool"] =
       rawTool === "search" || rawTool === "extract" ? rawTool : step != null ? "search" : null;
 
@@ -303,9 +347,8 @@ function parseAssistantActivity(part: { kind?: string; text?: string; json?: str
       label,
       state: parsed.state === "completed" || parsed.state === "failed" ? parsed.state : "active",
       step,
-      query: typeof parsed.query === "string" && parsed.query.trim() ? parsed.query.trim() : null,
-      detail:
-        typeof parsed.detail === "string" && parsed.detail.trim() ? parsed.detail.trim() : null,
+      query: parsed.query?.trim() || null,
+      detail: parsed.detail?.trim() || null,
     } satisfies AssistantActivity;
   } catch {
     return fallbackLabel
@@ -322,24 +365,26 @@ function parseAssistantActivity(part: { kind?: string; text?: string; json?: str
 }
 
 function parseTraceJson(value: string | null | undefined) {
-  if (typeof value !== "string" || !value.trim()) return {};
+  if (!value?.trim()) return {};
   try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    const parsed = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Any))(
+      JSON.parse(value),
+    );
+    // SAFETY: JSON.parse produces JSON values and the schema verifies the object container.
+    return parsed as JsonObject;
   } catch {
     return {};
   }
 }
 
 function parseTraceEvents(value: string | null | undefined) {
-  if (typeof value !== "string" || !value.trim()) return [];
+  if (!value?.trim()) return [];
   try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is Record<string, unknown> =>
-          Boolean(item && typeof item === "object"),
-        )
-      : [];
+    const parsed = Schema.decodeUnknownSync(Schema.Array(Schema.Record(Schema.String, Schema.Any)))(
+      JSON.parse(value),
+    );
+    // SAFETY: JSON.parse produces JSON values and the schema verifies every object container.
+    return [...parsed] as JsonObject[];
   } catch {
     return [];
   }
@@ -380,7 +425,21 @@ function buildTraceTree(spans: TraceSpan[], parentSpanId: string | null = null):
     }));
 }
 
-function spanToCopyShape(span: ParsedTraceSpan): Record<string, unknown> {
+type SerializedTraceSpan = {
+  name: string;
+  kind: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  attrs: JsonObject;
+  events: JsonObject[];
+  children: SerializedTraceSpan[];
+};
+
+function serializeTraceSpan(span: ParsedTraceSpan): SerializedTraceSpan {
   return {
     name: span.name,
     kind: span.kind,
@@ -392,14 +451,14 @@ function spanToCopyShape(span: ParsedTraceSpan): Record<string, unknown> {
     errorMessage: span.errorMessage,
     attrs: span.attrs,
     events: span.events,
-    children: span.children.map(spanToCopyShape),
+    children: span.children.map(serializeTraceSpan),
   };
 }
 
 function buildTraceCopyText(trace: {
   run: TraceRun;
   spans: ParsedTraceSpan[];
-  attrs: Record<string, unknown>;
+  attrs: JsonObject;
 }): string {
   return JSON.stringify(
     {
@@ -414,7 +473,7 @@ function buildTraceCopyText(trace: {
         errorMessage: trace.run.errorMessage,
         attrs: trace.attrs,
       },
-      spans: trace.spans.map(spanToCopyShape),
+      spans: trace.spans.map(serializeTraceSpan),
     },
     null,
     2,
@@ -422,15 +481,15 @@ function buildTraceCopyText(trace: {
 }
 
 function getInitialTheme(): Theme {
-  if (typeof localStorage !== "undefined") {
-    const saved = localStorage.getItem("shedflare-theme") as Theme | null;
+  if (globalThis.localStorage) {
+    const saved = localStorage.getItem("shedflare-theme");
     if (saved === "night") return saved;
   }
   return "night";
 }
 
 function getInitialExpandReasoning(): boolean {
-  if (typeof localStorage !== "undefined") {
+  if (globalThis.localStorage) {
     return localStorage.getItem("shedflare-expand-reasoning") === "1";
   }
   return false;
@@ -442,7 +501,7 @@ const fetchBootstrap = async () => {
     const message = await response.text().catch(() => response.statusText);
     throw new Error(message || "Failed to load app bootstrap");
   }
-  const payload = (await response.json()) as BootstrapPayload;
+  const payload = decodeBootstrapPayload(await response.json());
   const url = new URL(window.location.href);
   if (!payload.session) {
     // Probe contradicts the hint: drop it so it can't paint a stale shell.
@@ -461,7 +520,7 @@ const fetchModels = async (hasSession: boolean) => {
     const message = await response.text().catch(() => response.statusText);
     throw new Error(message || "Failed to load models");
   }
-  return (await response.json()) as ModelsPayload;
+  return decodeModelsPayload(await response.json());
 };
 
 function MarkdownFallback(props: { text: string }) {
@@ -488,7 +547,7 @@ export default function Home() {
   const hintEmail = readAuthHint();
   const session = createMemo(() =>
     bootstrap.loading && hintEmail
-      ? ({ user: { email: hintEmail } } as SessionPayload)
+      ? { user: { email: hintEmail } }
       : (bootstrap()?.session ?? null),
   );
   const exaApiKeyConfigured = createMemo(() => bootstrap()?.exaApiKeyConfigured ?? false);
@@ -545,14 +604,14 @@ export default function Home() {
    * search results.
    */
   const [collapsedChipByKey, setCollapsedChipByKey] = createStore<Record<string, boolean>>({});
-  const [composer, setComposer] = createStore({
-    text: "",
-    modelId: "",
-    reasoningLevel: "off" as ReasoningLevel,
-    search: false,
-    searchLimit: DEFAULT_SEARCHES_PER_TURN,
-    sending: false,
-    attachments: [] as Array<{
+  const [composer, setComposer] = createStore<{
+    text: string;
+    modelId: string;
+    reasoningLevel: ReasoningLevel;
+    search: boolean;
+    searchLimit: number;
+    sending: boolean;
+    attachments: Array<{
       localId: string;
       attachmentId: string | null;
       fileName: string;
@@ -560,7 +619,15 @@ export default function Home() {
       sizeBytes: number;
       status: "uploading" | "ready" | "failed";
       previewUrl?: string;
-    }>,
+    }>;
+  }>({
+    text: "",
+    modelId: "",
+    reasoningLevel: "off",
+    search: false,
+    searchLimit: DEFAULT_SEARCHES_PER_TURN,
+    sending: false,
+    attachments: [],
   });
 
   // Comparison mode state
@@ -610,12 +677,12 @@ export default function Home() {
   const pendingUploads = new Map<string, Promise<unknown>>();
 
   const workspaces = createMemo(() =>
-    (allWorkspaces() as Workspace[])
+    allWorkspaces()
       .filter((workspace) => !workspace.archivedAt)
       .sort(compareWorkspaceRecency),
   );
   const allWorkspacesNoFilter = createMemo(() =>
-    (allWorkspaces() as Workspace[]).sort(compareWorkspaceRecency),
+    [...allWorkspaces()].sort(compareWorkspaceRecency),
   );
   const workspaceNameById = createMemo(() => {
     const map: Record<string, string> = {};
@@ -625,13 +692,13 @@ export default function Home() {
     return map;
   });
   const archivedThreads = createMemo(() =>
-    (allThreads() as Thread[])
-      .filter((thread) => thread.archivedAt)
+    allThreads()
+      .filter((thread): thread is Thread & { archivedAt: string } => Boolean(thread.archivedAt))
       .map((thread) => ({
         id: thread.id,
         title: thread.title,
         workspaceName: workspaceNameById()[thread.workspaceId] ?? "Unknown",
-        archivedAt: thread.archivedAt!,
+        archivedAt: thread.archivedAt,
       }))
       .sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)),
   );
@@ -640,7 +707,7 @@ export default function Home() {
     () => workspaces().find((workspace) => workspace.id === activeWorkspaceId()) ?? workspaces()[0],
   );
   const accountSettings = createMemo(
-    () => (allAccountSettings() as AccountSettings[]).find((row) => row.id === "default") ?? null,
+    () => allAccountSettings().find((row) => row.id === "default") ?? null,
   );
   const effectiveExpandReasoningByDefault = createMemo(
     () => accountSettings()?.expandReasoningByDefault ?? expandReasoningByDefault(),
@@ -648,7 +715,7 @@ export default function Home() {
   const effectiveShowTraces = createMemo(() => accountSettings()?.showTraces ?? showTraces());
   const effectivePreferFreeSearch = createMemo(() => activeWorkspace()?.preferFreeSearch ?? false);
   const threads = createMemo(() =>
-    (allThreads() as Thread[])
+    allThreads()
       .filter((thread) => thread.workspaceId === activeWorkspace()?.id && !thread.archivedAt)
       .sort(compareThreadRecency),
   );
@@ -689,7 +756,7 @@ export default function Home() {
     if (!thread) return null;
     return (
       resolveThreadMessagePath(
-        (allMessages() as Message[]).filter((message) => message.threadId === thread.id),
+        allMessages().filter((message) => message.threadId === thread.id),
         thread.headMessageId ?? null,
       ).at(-1) ?? null
     );
@@ -706,7 +773,7 @@ export default function Home() {
       ? workspaces().find((candidate) => candidate.id === state.workspaceId)
       : undefined;
     let thread = state.threadId
-      ? (allThreads() as Thread[]).find((candidate) => candidate.id === state.threadId)
+      ? allThreads().find((candidate) => candidate.id === state.threadId)
       : undefined;
 
     // The initial snapshot contains recent thread summaries. A URL is allowed
@@ -720,12 +787,12 @@ export default function Home() {
         // selection below and is corrected by the URL sync effect.
       }
       if (attempt !== navigationAttempt) return;
-      thread = (allThreads() as Thread[]).find((candidate) => candidate.id === state.threadId);
+      thread = allThreads().find((candidate) => candidate.id === state.threadId);
     }
 
     if (thread) {
       workspace =
-        workspaces().find((candidate) => candidate.id === thread!.workspaceId) ?? workspace;
+        workspaces().find((candidate) => candidate.id === thread.workspaceId) ?? workspace;
     }
 
     if (workspace) {
@@ -741,7 +808,7 @@ export default function Home() {
       }
     }
 
-    ensureActiveSelection([...(allWorkspaces() as Workspace[])], [...(allThreads() as Thread[])]);
+    ensureActiveSelection([...allWorkspaces()], [...allThreads()]);
   };
 
   // The URL is the shareable selection when present. Local storage remains the
@@ -789,11 +856,7 @@ export default function Home() {
   const currentComparisonGroup = createMemo(() => {
     const thread = selectedConversationThread();
     if (!thread?.comparisonGroupId) return null;
-    return (
-      (allComparisonGroups() as ComparisonGroup[]).find(
-        (group) => group.id === thread.comparisonGroupId,
-      ) ?? null
-    );
+    return allComparisonGroups().find((group) => group.id === thread.comparisonGroupId) ?? null;
   });
 
   // Get sibling threads in the same comparison group
@@ -802,13 +865,15 @@ export default function Home() {
     if (!group) return [];
     const threadIds: string[] = (() => {
       try {
-        return JSON.parse(group.threadIds) as string[];
+        return [
+          ...Schema.decodeUnknownSync(Schema.Array(Schema.String))(JSON.parse(group.threadIds)),
+        ];
       } catch {
         return [];
       }
     })();
     return threadIds
-      .map((id) => (allThreads() as Thread[]).find((thread) => thread.id === id))
+      .map((id) => allThreads().find((thread) => thread.id === id))
       .filter((thread): thread is Thread => !!thread && !thread.archivedAt);
   });
   const composerText = () => (isDraftViewActive() ? (activeDraft()?.text ?? "") : composer.text);
@@ -1038,7 +1103,8 @@ export default function Home() {
   let lastScrollTop = 0;
 
   const handleReasoningScroll = (e: Event) => {
-    const el = e.currentTarget as HTMLElement;
+    if (!(e.currentTarget instanceof HTMLElement)) return;
+    const el = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = el;
     setReasoningNearBottom(scrollHeight - scrollTop - clientHeight <= 40);
   };
@@ -1248,9 +1314,7 @@ export default function Home() {
   const messageIds = createMemo(
     () =>
       resolveThreadMessagePath(
-        (allMessages() as Message[]).filter(
-          (message) => message.threadId === selectedConversationThread()?.id,
-        ),
+        allMessages().filter((message) => message.threadId === selectedConversationThread()?.id),
         selectedConversationThread()?.headMessageId ?? null,
       ).map((message) => message.id),
     undefined,
@@ -1259,7 +1323,7 @@ export default function Home() {
   const selectedMessageIdSet = createMemo(() => new Set(messageIds()));
   const messagesById = createMemo(() => {
     const byId = new Map<string, Message>();
-    for (const message of allMessages() as Message[]) {
+    for (const message of allMessages()) {
       byId.set(message.id, message);
     }
     return byId;
@@ -1269,7 +1333,7 @@ export default function Home() {
     const thread = selectedConversationThread();
     if (!thread) return true;
     if (!thread.headMessageId) return true;
-    return (allMessages() as Message[]).some((message) => message.threadId === thread.id);
+    return allMessages().some((message) => message.threadId === thread.id);
   });
 
   createEffect(() => {
@@ -1306,7 +1370,7 @@ export default function Home() {
   const terminalTraceStatusByMessage = createMemo(() => {
     const byMessage = new Map<string, "completed" | "failed" | "cancelled">();
     const startedAtByMessage = new Map<string, string>();
-    for (const run of allTraceRuns() as TraceRun[]) {
+    for (const run of allTraceRuns()) {
       if (!run.messageId || !isTerminalTraceStatus(run.status)) continue;
       const previousStartedAt = startedAtByMessage.get(run.messageId);
       if (previousStartedAt && previousStartedAt > run.startedAt) continue;
@@ -1324,7 +1388,7 @@ export default function Home() {
   const busyThreadIds = createMemo(
     () => {
       const messagesByThread = new Map<string, Message[]>();
-      for (const msg of allMessages() as Message[]) {
+      for (const msg of allMessages()) {
         const list = messagesByThread.get(msg.threadId) ?? [];
         list.push(msg);
         messagesByThread.set(msg.threadId, list);
@@ -1357,12 +1421,12 @@ export default function Home() {
     const resultsByRun = new Map<string, SearchResult[]>();
     const selectedRunIds = new Set<string>();
 
-    for (const row of allSearchRuns() as SearchRun[]) {
+    for (const row of allSearchRuns()) {
       if (!selectedMessageIds.has(row.messageId)) continue;
       selectedRunIds.add(row.id);
     }
 
-    for (const row of allSearchResults() as SearchResult[]) {
+    for (const row of allSearchResults()) {
       if (!selectedRunIds.has(row.searchRunId)) continue;
       const list = resultsByRun.get(row.searchRunId) ?? [];
       list.push(row);
@@ -1370,7 +1434,7 @@ export default function Home() {
     }
 
     const byMessage = new Map<string, Array<SearchRun & { results: SearchResult[] }>>();
-    for (const row of allSearchRuns() as SearchRun[]) {
+    for (const row of allSearchRuns()) {
       if (!selectedMessageIds.has(row.messageId)) continue;
       const list = byMessage.get(row.messageId) ?? [];
       list.push({
@@ -1393,7 +1457,7 @@ export default function Home() {
   const extractRunsMemo = createMemo(() => {
     const selectedMessageIds = selectedMessageIdSet();
     const byMessage = new Map<string, ExtractRun[]>();
-    for (const row of allExtractRuns() as ExtractRun[]) {
+    for (const row of allExtractRuns()) {
       if (!selectedMessageIds.has(row.messageId)) continue;
       const list = byMessage.get(row.messageId) ?? [];
       list.push(row);
@@ -1420,7 +1484,7 @@ export default function Home() {
   const thinkingTokensByMessage = createMemo(() => {
     const selectedMessageIds = selectedMessageIdSet();
     const byMessage = new Map<string, { seq: number; tokens: number }>();
-    for (const row of allMessageParts() as MessagePart[]) {
+    for (const row of allMessageParts()) {
       if (!selectedMessageIds.has(row.messageId)) continue;
       const tokens = parseThinkingTokens(row);
       if (tokens == null) continue;
@@ -1436,7 +1500,7 @@ export default function Home() {
   const assistantActivities = createMemo(() => {
     const selectedMessageIds = selectedMessageIdSet();
     const byMessage = new Map<string, Array<AssistantActivity & { seq: number }>>();
-    for (const row of allMessageParts() as MessagePart[]) {
+    for (const row of allMessageParts()) {
       if (!selectedMessageIds.has(row.messageId)) continue;
       const activity = parseAssistantActivity(row);
       if (!activity) continue;
@@ -1457,7 +1521,7 @@ export default function Home() {
   const messagePartsByMessage = createMemo(() => {
     const selectedMessageIds = selectedMessageIdSet();
     const byMessage = new Map<string, MessagePart[]>();
-    for (const row of allMessageParts() as MessagePart[]) {
+    for (const row of allMessageParts()) {
       if (!selectedMessageIds.has(row.messageId)) continue;
       const list = byMessage.get(row.messageId) ?? [];
       list.push(row);
@@ -1526,6 +1590,12 @@ export default function Home() {
         key: string;
       }
     | { kind: "failure"; key: string };
+
+  const markdownTimelineItem = (item: TimelineItem) => (item.kind === "markdown" ? item : null);
+  const searchTimelineItem = (item: TimelineItem) => (item.kind === "search" ? item : null);
+  const extractTimelineItem = (item: TimelineItem) => (item.kind === "extract" ? item : null);
+  const reasoningTimelineItem = (item: TimelineItem) => (item.kind === "reasoning" ? item : null);
+  const thinkingTimelineItem = (item: TimelineItem) => (item.kind === "thinking" ? item : null);
 
   const assistantTimelineByMessage = createMemo(() => {
     const byMessage = new Map<string, TimelineItem[]>();
@@ -1829,7 +1899,7 @@ export default function Home() {
   const traceRunsByMessage = createMemo(() => {
     const selectedMessageIds = selectedMessageIdSet();
     const byMessage = new Map<string, TraceRun[]>();
-    for (const row of allTraceRuns() as TraceRun[]) {
+    for (const row of allTraceRuns()) {
       if (!row.messageId || !selectedMessageIds.has(row.messageId)) continue;
       const list = byMessage.get(row.messageId) ?? [];
       list.push(row);
@@ -1957,7 +2027,7 @@ export default function Home() {
     }
 
     const byRun = new Map<string, TraceSpan[]>();
-    for (const row of allTraceSpans() as TraceSpan[]) {
+    for (const row of allTraceSpans()) {
       if (!row.traceRunId || !openRunIds.has(row.traceRunId)) continue;
       const list = byRun.get(row.traceRunId) ?? [];
       list.push(row);
@@ -2049,7 +2119,7 @@ export default function Home() {
   const attachmentsByMessage = createMemo(() => {
     const selectedMessageIds = selectedMessageIdSet();
     const byMessage = new Map<string, Attachment[]>();
-    for (const att of allAttachments() as Attachment[]) {
+    for (const att of allAttachments()) {
       if (att.status === "failed" || !att.messageId || !selectedMessageIds.has(att.messageId)) {
         continue;
       }
@@ -2352,13 +2422,7 @@ export default function Home() {
                           <Show when={row()}>
                             {(item) => (
                               <Switch>
-                                <Match
-                                  when={
-                                    item().kind === "markdown"
-                                      ? (item() as Extract<TimelineItem, { kind: "markdown" }>)
-                                      : null
-                                  }
-                                >
+                                <Match when={markdownTimelineItem(item())}>
                                   {(data) => {
                                     const cites = () => citationsForMessage(message().id);
                                     return (
@@ -2380,13 +2444,7 @@ export default function Home() {
                                     );
                                   }}
                                 </Match>
-                                <Match
-                                  when={
-                                    item().kind === "search"
-                                      ? (item() as Extract<TimelineItem, { kind: "search" }>)
-                                      : null
-                                  }
-                                >
+                                <Match when={searchTimelineItem(item())}>
                                   {(data) => {
                                     const collapsed = () =>
                                       isChipCollapsed(message().id, data().key);
@@ -2538,13 +2596,7 @@ export default function Home() {
                                     );
                                   }}
                                 </Match>
-                                <Match
-                                  when={
-                                    item().kind === "extract"
-                                      ? (item() as Extract<TimelineItem, { kind: "extract" }>)
-                                      : null
-                                  }
-                                >
+                                <Match when={extractTimelineItem(item())}>
                                   {(data) => {
                                     const collapsed = () =>
                                       isChipCollapsed(message().id, data().key);
@@ -2654,13 +2706,7 @@ export default function Home() {
                                     );
                                   }}
                                 </Match>
-                                <Match
-                                  when={
-                                    item().kind === "reasoning"
-                                      ? (item() as Extract<TimelineItem, { kind: "reasoning" }>)
-                                      : null
-                                  }
-                                >
+                                <Match when={reasoningTimelineItem(item())}>
                                   {(data) => {
                                     const collapsed = () =>
                                       isReasoningCollapsed(
@@ -2748,13 +2794,7 @@ export default function Home() {
                                     );
                                   }}
                                 </Match>
-                                <Match
-                                  when={
-                                    item().kind === "thinking"
-                                      ? (item() as Extract<TimelineItem, { kind: "thinking" }>)
-                                      : null
-                                  }
-                                >
+                                <Match when={thinkingTimelineItem(item())}>
                                   {(data) => (
                                     <div class="assistant-chip assistant-chip-thinking">
                                       <span class="assistant-chip-icon" aria-hidden="true">
@@ -3269,7 +3309,7 @@ export default function Home() {
     const newTitle = editValue().trim();
     setEditingThreadId(null);
     if (!newTitle || newTitle === "") return;
-    const row = threadsCollection.get(threadId) as Thread | undefined;
+    const row = threadsCollection.get(threadId);
     if (!row || row.title === newTitle) return;
     updateThreadAction({ ...row, title: newTitle, updatedAt: nowIso() });
   };
@@ -3283,7 +3323,7 @@ export default function Home() {
     const newName = editValue().trim();
     setEditingWorkspaceId(null);
     if (!newName || newName === "") return;
-    const row = workspacesCollection.get(workspaceId) as Workspace | undefined;
+    const row = workspacesCollection.get(workspaceId);
     if (!row || row.name === newName) return;
     updateWorkspaceAction({ ...row, name: newName, updatedAt: nowIso() });
   };
@@ -3291,7 +3331,7 @@ export default function Home() {
   const saveSystemPrompt = () => {
     const workspace = activeWorkspace();
     if (!workspace) return;
-    const row = workspacesCollection.get(workspace.id) as Workspace | undefined;
+    const row = workspacesCollection.get(workspace.id);
     if (!row) return;
     updateWorkspaceAction({
       ...row,
@@ -3315,7 +3355,7 @@ export default function Home() {
   ) => {
     const workspace = activeWorkspace();
     if (!workspace) return;
-    const current = workspacesCollection.get(workspace.id) as Workspace | undefined;
+    const current = workspacesCollection.get(workspace.id);
     updateWorkspaceAction({
       ...(current ?? workspace),
       ...changes,
@@ -3335,7 +3375,7 @@ export default function Home() {
 
   const currentActiveThread = () => {
     const thread = activeThread();
-    return thread ? ((threadsCollection.get(thread.id) as Thread | undefined) ?? thread) : null;
+    return thread ? (threadsCollection.get(thread.id) ?? thread) : null;
   };
 
   const handleExpandReasoningSettingChange = (checked: boolean) => {
@@ -3498,7 +3538,7 @@ export default function Home() {
       text,
       modelId,
       modelInterleavedField: modelInterleavedFieldFor(modelId),
-      reasoningLevel: (msg.reasoningLevel ?? "off") as ReasoningLevel,
+      reasoningLevel: msg.reasoningLevel ?? "off",
       search: Boolean(msg.searchEnabled),
       searchLimit: composerSearchLimit(),
       preferFreeSearch: effectivePreferFreeSearch(),
@@ -3676,7 +3716,11 @@ export default function Home() {
           <select
             value={composerReasoningLevel()}
             aria-label="Reasoning level"
-            onChange={(event) => handleReasoningChange(event.currentTarget.value as ReasoningLevel)}
+            onChange={(event) =>
+              handleReasoningChange(
+                Schema.decodeUnknownSync(ReasoningLevelSchema)(event.currentTarget.value),
+              )
+            }
           >
             <For each={REASONING_OPTIONS}>
               {(option) => <option value={option.value}>{option.label}</option>}
@@ -3826,7 +3870,7 @@ export default function Home() {
                                   <Show when={busyThreadIds().has(thread.id)}>
                                     <span class="thread-spinner" />
                                   </Show>
-                                  <Show when={(thread as any).forkedFromThreadId}>
+                                  <Show when={thread.forkedFromThreadId}>
                                     <span
                                       class="fork-badge"
                                       title="Forked from another thread"
@@ -3835,7 +3879,7 @@ export default function Home() {
                                       ⑂
                                     </span>
                                   </Show>
-                                  <Show when={(thread as any).threadType === "comparison"}>
+                                  <Show when={thread.threadType === "comparison"}>
                                     <span
                                       class="comparison-badge"
                                       title="Comparison thread"
@@ -4074,7 +4118,7 @@ export default function Home() {
                       {(sibling, index) => {
                         const siblingMessageIds = createMemo(() =>
                           resolveThreadMessagePath(
-                            (allMessages() as Message[]).filter((m) => m.threadId === sibling.id),
+                            allMessages().filter((m) => m.threadId === sibling.id),
                             sibling.headMessageId ?? null,
                           ).map((m) => m.id),
                         );

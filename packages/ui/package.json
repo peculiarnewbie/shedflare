@@ -21,7 +21,7 @@
     "test": "vp test",
     "pretest": "pnpm run build",
     "check": "vp fmt src dev .tokenami vite.config.ts && tokenami check --config .tokenami/tokenami.config.ts",
-    "typecheck": "tokenami check --config .tokenami/tokenami.config.ts",
+    "typecheck": "vp check --no-fmt --no-lint && tokenami check --config .tokenami/tokenami.config.ts",
     "prepare": "vp config"
   },
   "dependencies": {

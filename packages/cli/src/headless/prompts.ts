@@ -29,7 +29,7 @@ export async function selectApps(): Promise<AppId[]> {
     process.exit(0);
   }
 
-  return result as AppId[];
+  return APP_IDS.filter((appId) => result.includes(appId));
 }
 
 export async function askEmail(): Promise<string> {

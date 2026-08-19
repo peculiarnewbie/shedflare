@@ -18,30 +18,15 @@
       "minLength": 1
     },
     "lifecycle": {
-      "enum": [
-        "beta",
-        "experimental"
-      ],
+      "enum": ["beta", "experimental"],
       "type": "string"
     },
     "category": {
-      "enum": [
-        "platform",
-        "productivity",
-        "files",
-        "finance",
-        "knowledge",
-        "media",
-        "developer"
-      ],
+      "enum": ["platform", "productivity", "files", "finance", "knowledge", "media", "developer"],
       "type": "string"
     },
     "dataSensitivity": {
-      "enum": [
-        "low",
-        "personal",
-        "high"
-      ],
+      "enum": ["low", "personal", "high"],
       "type": "string"
     },
     "dependsOn": {
@@ -67,14 +52,7 @@
         "type": "object",
         "properties": {
           "from": {
-            "enum": [
-              "url",
-              "appUrl",
-              "ownerEmail",
-              "user",
-              "appId",
-              "computed"
-            ],
+            "enum": ["url", "appUrl", "ownerEmail", "user", "appId", "computed"],
             "type": "string"
           },
           "description": {
@@ -90,10 +68,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "from",
-          "description"
-        ],
+        "required": ["from", "description"],
         "additionalProperties": false
       }
     },
@@ -112,12 +87,14 @@
           },
           "required": {
             "type": "boolean"
+          },
+          "source": {
+            "enum": ["operator", "generated"],
+            "type": "string",
+            "default": "operator"
           }
         },
-        "required": [
-          "description",
-          "required"
-        ],
+        "required": ["description", "required"],
         "additionalProperties": false
       }
     },
@@ -144,10 +121,7 @@
                 "pattern": "^[A-Z][A-Z0-9_]*$"
               }
             },
-            "required": [
-              "type",
-              "binding"
-            ],
+            "required": ["type", "binding"],
             "additionalProperties": false
           },
           {
@@ -169,10 +143,7 @@
                 "pattern": "^[A-Z][A-Z0-9_]*$"
               }
             },
-            "required": [
-              "type",
-              "binding"
-            ],
+            "required": ["type", "binding"],
             "additionalProperties": false
           },
           {
@@ -194,10 +165,7 @@
                 "pattern": "^[A-Z][A-Z0-9_]*$"
               }
             },
-            "required": [
-              "type",
-              "binding"
-            ],
+            "required": ["type", "binding"],
             "additionalProperties": false
           },
           {
@@ -219,10 +187,7 @@
                 "pattern": "^[A-Z][A-Z0-9_]*$"
               }
             },
-            "required": [
-              "type",
-              "binding"
-            ],
+            "required": ["type", "binding"],
             "additionalProperties": false
           },
           {
@@ -239,10 +204,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "type",
-              "binding"
-            ],
+            "required": ["type", "binding"],
             "additionalProperties": false
           }
         ]

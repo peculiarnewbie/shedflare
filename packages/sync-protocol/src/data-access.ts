@@ -1,8 +1,11 @@
 import { Effect } from "effect";
-import type { SyncServerAck, SyncServerEvent } from "./sync-types";
+import * as Schema from "effect/Schema";
+import { SyncServerAckSchema, type SyncServerAck, type SyncServerEvent } from "./sync-types";
 import { SyncDecodeError, SyncStorageError } from "./errors";
 
-export type SqlResult = { toArray(): Record<string, unknown>[] };
+export type SqlValue = string | number | bigint | boolean | null | ArrayBuffer | Uint8Array;
+export type SqlRow = Record<string, SqlValue>;
+export type SqlResult = { toArray(): SqlRow[] };
 export type SqlExecFn = (query: string, ...params: unknown[]) => SqlResult;
 
 export class DataAccess {
@@ -15,15 +18,17 @@ export class DataAccess {
     });
   }
 
-  queryOne<T extends Record<string, unknown>>(query: string, ...params: unknown[]) {
+  queryOne<T extends SqlRow>(query: string, ...params: unknown[]) {
     return Effect.try({
+      // SAFETY: callers supply T for the columns selected by this SQL statement.
       try: () => (this.execute(query, ...params).toArray() as T[])[0] ?? null,
       catch: (cause) => new SyncStorageError({ operation: "queryOne", query, cause }),
     });
   }
 
-  queryAll<T extends Record<string, unknown>>(query: string, ...params: unknown[]) {
+  queryAll<T extends SqlRow>(query: string, ...params: unknown[]) {
     return Effect.try({
+      // SAFETY: callers supply T for the columns selected by this SQL statement.
       try: () => this.execute(query, ...params).toArray() as T[],
       catch: (cause) => new SyncStorageError({ operation: "queryAll", query, cause }),
     });
@@ -78,8 +83,9 @@ export class DataAccess {
     }>("SELECT * FROM commands WHERE op_id = ?", opId).pipe(
       Effect.flatMap((row) => {
         if (!row?.response_json) return Effect.succeed<SyncServerAck | null>(null);
+        const responseJson = row.response_json;
         return Effect.try({
-          try: () => JSON.parse(row.response_json!) as SyncServerAck,
+          try: () => Schema.decodeUnknownSync(SyncServerAckSchema)(JSON.parse(responseJson)),
           catch: (cause) => new SyncDecodeError({ target: "commandAck", cause }),
         });
       }),

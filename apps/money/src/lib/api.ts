@@ -40,24 +40,26 @@ import {
 
 const BASE = ""; // same-origin
 
-// Workaround for Effect 4 beta strict decoder types
 type AnyDecoder = Parameters<typeof S.decodeUnknownSync>[0];
-function typedDecode<T>(schema: AnyDecoder): (input: unknown) => T {
-  return S.decodeUnknownSync(schema) as unknown as (input: unknown) => T;
-}
+const ErrorResponseSchema = S.Struct({ error: S.String });
 
 /**
  * Fetch and decode an API response against an Effect Schema.
  * Throws if the response status is not OK or if schema decoding fails.
  */
-export async function fetchApi<T>(schema: AnyDecoder, path: string): Promise<T> {
+export async function fetchApi<SchemaType extends AnyDecoder>(
+  schema: SchemaType,
+  path: string,
+): Promise<SchemaType["Type"]> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   const data = await res.json();
-  return typedDecode<T>(schema)(data);
+  return S.decodeUnknownSync(schema)(data);
 }
 
 export type CommandResponse = S.Schema.Type<typeof CommandResponseSchema>;
+export type CommandType = string;
+export type CommandPayload = object;
 
 /**
  * Execute a command via POST /api/command.
@@ -67,8 +69,8 @@ export type TransactionListQuery = {
   conditions?: Array<{
     field: string;
     op: string;
-    value: unknown;
-    value2?: unknown;
+    value: string | number | boolean | null | string[];
+    value2?: string | number | boolean | null | string[];
   }>;
   conditionsOp?: "and" | "or";
 };
@@ -85,7 +87,10 @@ function transactionQueryParams(query?: TransactionListQuery): string {
   return qs ? `?${qs}` : "";
 }
 
-export async function execute(commandType: string, payload: unknown): Promise<CommandResponse> {
+export async function execute<Payload>(
+  commandType: CommandType,
+  payload: Payload,
+): Promise<CommandResponse> {
   const res = await fetch(`${BASE}/api/command`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -93,184 +98,83 @@ export async function execute(commandType: string, payload: unknown): Promise<Co
   });
   const data = await res.json();
   if (!res.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data && typeof data.error === "string"
-        ? data.error
-        : `API error: ${res.status}`;
+    let message = `API error: ${res.status}`;
+    try {
+      message = S.decodeUnknownSync(ErrorResponseSchema)(data).error;
+    } catch {
+      // The fallback already carries the HTTP status when the server body is not an error payload.
+    }
     return { ok: false, error: message };
   }
-  return typedDecode<CommandResponse>(CommandResponseSchema)(data);
+  return S.decodeUnknownSync(CommandResponseSchema)(data);
 }
 
 // ── Typed API functions ────────────────────────────────────────────────
 
 export const api = {
-  accounts: () =>
-    fetchApi<import("../domain/schemas-client").AccountsResponse>(
-      AccountsResponseSchema,
-      "/api/accounts",
-    ),
-  account: (id: string) =>
-    fetchApi<import("../domain/schemas-client").AccountApi>(
-      AccountApiSchema,
-      `/api/accounts/${id}`,
-    ),
+  accounts: () => fetchApi(AccountsResponseSchema, "/api/accounts"),
+  account: (id: string) => fetchApi(AccountApiSchema, `/api/accounts/${id}`),
   accountTransactions: (id: string, query?: string | TransactionListQuery) => {
     const params =
-      typeof query === "string"
-        ? query
+      query instanceof Object
+        ? transactionQueryParams(query)
+        : query
           ? `?filter=${encodeURIComponent(query)}`
-          : ""
-        : transactionQueryParams(query);
-    return fetchApi<import("../domain/schemas-client").AccountTransactionsResponse>(
-      AccountTransactionsResponseSchema,
-      `/api/accounts/${id}/transactions${params}`,
-    );
+          : "";
+    return fetchApi(AccountTransactionsResponseSchema, `/api/accounts/${id}/transactions${params}`);
   },
-  accountTags: (id: string) =>
-    fetchApi<import("../domain/schemas-client").AccountTagsResponse>(
-      AccountTagsResponseSchema,
-      `/api/accounts/${id}/tags`,
-    ),
+  accountTags: (id: string) => fetchApi(AccountTagsResponseSchema, `/api/accounts/${id}/tags`),
 
   transactions: (query?: string | TransactionListQuery) => {
     const params =
-      typeof query === "string"
-        ? query
+      query instanceof Object
+        ? transactionQueryParams(query)
+        : query
           ? `?filter=${encodeURIComponent(query)}`
-          : ""
-        : transactionQueryParams(query);
-    return fetchApi<import("../domain/schemas-client").TransactionsResponse>(
-      TransactionsResponseSchema,
-      `/api/transactions${params}`,
-    );
+          : "";
+    return fetchApi(TransactionsResponseSchema, `/api/transactions${params}`);
   },
 
-  categories: () =>
-    fetchApi<import("../domain/schemas-client").CategoriesResponse>(
-      CategoriesResponseSchema,
-      "/api/categories",
-    ),
-  categoryGroups: () =>
-    fetchApi<import("../domain/schemas-client").CategoryGroupsResponse>(
-      CategoryGroupsResponseSchema,
-      "/api/category-groups",
-    ),
-  goalProgress: () =>
-    fetchApi<import("../domain/schemas-client").GoalProgressResponse>(
-      GoalProgressResponseSchema,
-      "/api/categories/goal-progress",
-    ),
+  categories: () => fetchApi(CategoriesResponseSchema, "/api/categories"),
+  categoryGroups: () => fetchApi(CategoryGroupsResponseSchema, "/api/category-groups"),
+  goalProgress: () => fetchApi(GoalProgressResponseSchema, "/api/categories/goal-progress"),
 
-  budgetOverview: () =>
-    fetchApi<import("../domain/schemas-client").BudgetOverview>(
-      BudgetOverviewResponseSchema,
-      "/api/budget/overview",
-    ),
-  budgetMonth: (monthInt: number) =>
-    fetchApi<import("../domain/schemas-client").MonthBudget>(
-      MonthBudgetResponseSchema,
-      `/api/budget/${monthInt}`,
-    ),
+  budgetOverview: () => fetchApi(BudgetOverviewResponseSchema, "/api/budget/overview"),
+  budgetMonth: (monthInt: number) => fetchApi(MonthBudgetResponseSchema, `/api/budget/${monthInt}`),
 
-  payees: () =>
-    fetchApi<import("../domain/schemas-client").PayeesResponse>(
-      PayeesResponseSchema,
-      "/api/payees",
-    ),
+  payees: () => fetchApi(PayeesResponseSchema, "/api/payees"),
   payeeSuggestions: (payee: string) =>
-    fetchApi<import("../domain/schemas-client").PayeeSuggestionsResponse>(
+    fetchApi(
       PayeeSuggestionsResponseSchema,
       `/api/payees/category-suggestions?payee=${encodeURIComponent(payee)}`,
     ),
 
-  schedules: () =>
-    fetchApi<import("../domain/schemas-client").SchedulesResponse>(
-      SchedulesResponseSchema,
-      "/api/schedules",
-    ),
-  schedule: (id: string) =>
-    fetchApi<import("../domain/schemas-client").ScheduleResponse>(
-      ScheduleResponseSchema,
-      `/api/schedules/${id}`,
-    ),
-  schedulesDiscover: () =>
-    fetchApi<import("../domain/schemas-client").SchedulesDiscoverResponse>(
-      SchedulesDiscoverResponseSchema,
-      "/api/schedules/discover",
-    ),
+  schedules: () => fetchApi(SchedulesResponseSchema, "/api/schedules"),
+  schedule: (id: string) => fetchApi(ScheduleResponseSchema, `/api/schedules/${id}`),
+  schedulesDiscover: () => fetchApi(SchedulesDiscoverResponseSchema, "/api/schedules/discover"),
 
-  rules: () =>
-    fetchApi<import("../domain/schemas-client").RulesResponse>(RulesResponseSchema, "/api/rules"),
-  tags: () =>
-    fetchApi<import("../domain/schemas-client").TagsResponse>(TagsResponseSchema, "/api/tags"),
-  filters: () =>
-    fetchApi<import("../domain/schemas-client").FiltersResponse>(
-      FiltersResponseSchema,
-      "/api/filters",
-    ),
+  rules: () => fetchApi(RulesResponseSchema, "/api/rules"),
+  tags: () => fetchApi(TagsResponseSchema, "/api/tags"),
+  filters: () => fetchApi(FiltersResponseSchema, "/api/filters"),
 
   reports: {
-    netWorth: () =>
-      fetchApi<import("../domain/schemas-client").ReportsNetWorthResponse>(
-        ReportsNetWorthResponseSchema,
-        "/api/reports/net-worth",
-      ),
-    cashFlow: () =>
-      fetchApi<import("../domain/schemas-client").ReportsCashFlowResponse>(
-        ReportsCashFlowResponseSchema,
-        "/api/reports/cash-flow",
-      ),
-    spending: () =>
-      fetchApi<import("../domain/schemas-client").ReportsSpendingResponse>(
-        ReportsSpendingResponseSchema,
-        "/api/reports/spending",
-      ),
+    netWorth: () => fetchApi(ReportsNetWorthResponseSchema, "/api/reports/net-worth"),
+    cashFlow: () => fetchApi(ReportsCashFlowResponseSchema, "/api/reports/cash-flow"),
+    spending: () => fetchApi(ReportsSpendingResponseSchema, "/api/reports/spending"),
     budgetAnalysis: () =>
-      fetchApi<import("../domain/schemas-client").ReportsBudgetAnalysisResponse>(
-        ReportsBudgetAnalysisResponseSchema,
-        "/api/reports/budget-analysis",
-      ),
-    ageOfMoney: () =>
-      fetchApi<import("../domain/schemas-client").ReportsAgeOfMoneyResponse>(
-        ReportsAgeOfMoneyResponseSchema,
-        "/api/reports/age-of-money",
-      ),
-    crossover: () =>
-      fetchApi<import("../domain/schemas-client").Crossover>(
-        ReportsCrossoverResponseSchema,
-        "/api/reports/crossover",
-      ),
-    calendarHeatmap: () =>
-      fetchApi<import("../domain/schemas-client").ReportsHeatmapResponse>(
-        ReportsHeatmapResponseSchema,
-        "/api/reports/calendar-heatmap",
-      ),
-    custom: () =>
-      fetchApi<import("../domain/schemas-client").CustomReportsResponse>(
-        CustomReportsResponseSchema,
-        "/api/reports/custom",
-      ),
+      fetchApi(ReportsBudgetAnalysisResponseSchema, "/api/reports/budget-analysis"),
+    ageOfMoney: () => fetchApi(ReportsAgeOfMoneyResponseSchema, "/api/reports/age-of-money"),
+    crossover: () => fetchApi(ReportsCrossoverResponseSchema, "/api/reports/crossover"),
+    calendarHeatmap: () => fetchApi(ReportsHeatmapResponseSchema, "/api/reports/calendar-heatmap"),
+    custom: () => fetchApi(CustomReportsResponseSchema, "/api/reports/custom"),
     customExecute: (id: string) =>
-      fetchApi<import("../domain/schemas-client").CustomReportResult>(
-        CustomReportResultSchema,
-        `/api/reports/custom/${id}/execute`,
-      ),
+      fetchApi(CustomReportResultSchema, `/api/reports/custom/${id}/execute`),
   },
 
   dashboard: {
-    widgets: () =>
-      fetchApi<import("../domain/schemas-client").DashboardWidgetsResponse>(
-        DashboardWidgetsResponseSchema,
-        "/api/dashboard/widgets",
-      ),
-    export: () =>
-      fetchApi<import("../domain/schemas-client").DashboardExport>(
-        DashboardExportSchema,
-        "/api/dashboard/export",
-      ),
+    widgets: () => fetchApi(DashboardWidgetsResponseSchema, "/api/dashboard/widgets"),
+    export: () => fetchApi(DashboardExportSchema, "/api/dashboard/export"),
   },
 
-  rates: () =>
-    fetchApi<import("../domain/schemas-client").ExchangeRateApi>(RatesResponseSchema, "/api/rates"),
+  rates: () => fetchApi(RatesResponseSchema, "/api/rates"),
 };

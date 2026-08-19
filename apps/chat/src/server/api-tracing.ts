@@ -1,4 +1,4 @@
-import { createId, type TraceSpanKind } from "#/domain";
+import { createId, type JsonObject, type TraceSpanKind } from "#/domain";
 import {
   createStructuredLogger,
   makeRootTraceContext,
@@ -14,7 +14,7 @@ export async function runApiTrace<A>(input: {
   name: string;
   kind: TraceSpanKind;
   env: AppEnv;
-  attrs?: Record<string, unknown>;
+  attrs?: JsonObject;
   run: () => Promise<A>;
 }) {
   const traceContext = makeRootTraceContext({});

@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from "vite-plus/test";
+import { describe, expect, test, beforeEach, vi } from "vite-plus/test";
 import { getSetting, loadSettings, setSetting, settingsCollection } from "./settings-store";
 
 describe("settings-store", () => {
@@ -52,16 +52,18 @@ describe("settings-store", () => {
   });
 
   test("loadSettings decodes settings and notifies subscribers", async () => {
-    const originalFetch = globalThis.fetch;
     let calls = 0;
-    globalThis.fetch = (() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            settings: [{ id: "s1", key: "privacy_mode", value: "true", updatedAt: "now" }],
-          }),
-        ),
-      )) as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              settings: [{ id: "s1", key: "privacy_mode", value: "true", updatedAt: "now" }],
+            }),
+          ),
+      ),
+    );
     const sub = settingsCollection.subscribeChanges(() => {
       calls += 1;
     });
@@ -72,19 +74,21 @@ describe("settings-store", () => {
       expect(calls).toBe(1);
     } finally {
       sub.unsubscribe();
-      globalThis.fetch = originalFetch;
+      vi.unstubAllGlobals();
     }
   });
 
   test("loadSettings swallows a failing fetch without throwing", () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (() => Promise.reject(new Error("network down"))) as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Promise.reject(new Error("network down"))),
+    );
     try {
       // Fire-and-forget; the .catch inside loadSettings handles the rejection.
       loadSettings();
       expect(true).toBe(true);
     } finally {
-      globalThis.fetch = originalFetch;
+      vi.unstubAllGlobals();
     }
   });
 });

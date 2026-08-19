@@ -17,9 +17,11 @@ export function consoleApiPlugin(): DevServerPlugin {
     name: "shedflare-console-api",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        void handleApiRequest(req, res).then((handled) => {
+        const handle = async () => {
+          const handled = await handleApiRequest(req, res);
           if (!handled) next();
-        });
+        };
+        void handle();
       });
     },
   };

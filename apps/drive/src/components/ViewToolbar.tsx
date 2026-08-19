@@ -1,6 +1,5 @@
 import { For, Show } from "solid-js";
 import { useDrive } from "../context";
-import type { SortBy } from "../types";
 
 export default function ViewToolbar() {
   const ctx = useDrive();
@@ -44,7 +43,10 @@ export default function ViewToolbar() {
         <div class="sort-control">
           <select
             value={ctx.sortBy()}
-            onChange={(e) => ctx.setSortBy(e.currentTarget.value as SortBy)}
+            onChange={(e) => {
+              const selected = sortOptions.find((option) => option.value === e.currentTarget.value);
+              if (selected) ctx.setSortBy(selected.value);
+            }}
           >
             <For each={sortOptions}>{(opt) => <option value={opt.value}>{opt.label}</option>}</For>
           </select>

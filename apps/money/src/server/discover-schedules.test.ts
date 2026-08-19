@@ -17,7 +17,8 @@ function createTestDb(): Db {
     `INSERT OR IGNORE INTO exchange_rates (id, usd_to_idr, updated_at) VALUES ('latest', 16000, '${new Date().toISOString()}')`,
   );
   sqlite.exec("PRAGMA foreign_keys = OFF");
-  return db as unknown as Db;
+  // SAFETY: both Drizzle SQLite drivers expose the query-builder surface used by discovery.
+  return db as typeof db & Db;
 }
 
 function insertAccount(db: Db, id: string, name: string): void {

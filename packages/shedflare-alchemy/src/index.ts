@@ -8,7 +8,7 @@ export {
   requireVar,
   stageSubdomain,
 } from "./config.ts";
-export { discoverManifests, findRepoRoot, isAppId } from "@shedflare/core";
+export { discoverManifests, findRepoRoot, isAppId, selectedAppIds } from "@shedflare/core";
 export {
   CfApiError,
   type CfCredentials,
@@ -18,6 +18,7 @@ export {
   putWorkerSecret,
 } from "./cf-secrets-api.ts";
 export { loadDotEnvFile, loadRepoDotEnv, parseDotEnv } from "./dotenv.ts";
+export { resolveE2eAuthBindings, type E2eAuthBindings } from "./e2e-auth.ts";
 export { optionalSecretConfig } from "./optional-secret-config.ts";
 export { physicalName } from "./physical-name.ts";
 export { providers, ShedflareProviders } from "./providers.ts";

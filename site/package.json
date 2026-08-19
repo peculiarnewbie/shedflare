@@ -6,7 +6,7 @@
     "dev": "vp dev",
     "build": "vp build",
     "check": "vp check",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp check --no-fmt --no-lint",
     "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
     "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "prepare": "vp config"

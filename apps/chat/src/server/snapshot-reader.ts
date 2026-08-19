@@ -1,6 +1,14 @@
-import { TABLES, type ComparisonGroup, type SyncSnapshot, type Thread } from "#/domain";
+import {
+  TABLES,
+  type ComparisonGroup,
+  type SyncRow,
+  type SyncSnapshot,
+  type Thread,
+} from "#/domain";
+import type { SqlRow } from "@shedflare/sync-protocol";
 import type { DataAccess } from "./data-access";
 import { inflateRow, type PersistedTableName } from "./persistence-codecs";
+import * as Schema from "effect/Schema";
 
 type ThreadHistoryCursor = {
   lastMessageAt: string;
@@ -40,11 +48,9 @@ function clampThreadHistoryLimit(value: number | undefined) {
 function parseThreadHistoryCursor(value: string | null | undefined): ThreadHistoryCursor | null {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (typeof parsed.lastMessageAt !== "string" || typeof parsed.threadId !== "string") {
-      return null;
-    }
-    return { lastMessageAt: parsed.lastMessageAt, threadId: parsed.threadId };
+    return Schema.decodeUnknownSync(
+      Schema.Struct({ lastMessageAt: Schema.String, threadId: Schema.String }),
+    )(JSON.parse(value));
   } catch {
     return null;
   }
@@ -54,10 +60,8 @@ function formatThreadHistoryCursor(thread: Thread): string {
   return JSON.stringify({ lastMessageAt: thread.lastMessageAt, threadId: thread.id });
 }
 
-function toRecordById<T extends { id: string }>(rows: T[]): Record<string, T> {
-  const result: Record<string, T> = {};
-  for (const row of rows) result[row.id] = row;
-  return result;
+function toRecordById<T extends { id: string }>(rows: T[]) {
+  return Object.fromEntries(rows.map((row) => [row.id, row]));
 }
 
 function placeholders(values: readonly unknown[]) {
@@ -69,8 +73,8 @@ export class SnapshotReader {
 
   /** Snapshot tables are selected from the closed codec-name union at runtime. */
   private readTable(tableName: PersistedTableName) {
-    const rows = this.access.queryAll<Record<string, unknown>>(`SELECT * FROM ${tableName}`);
-    const result: Record<string, unknown> = {};
+    const rows = this.access.queryAll<SqlRow>(`SELECT * FROM ${tableName}`);
+    const result: Record<string, SyncRow> = {};
     for (const row of rows) {
       const parsed = inflateRow(tableName, row);
       result[parsed.id] = parsed;
@@ -85,7 +89,7 @@ export class SnapshotReader {
   ): Array<ReturnType<typeof inflateRow<TableName>>> {
     // The table name is allowlisted by PersistedTableName; dynamic SQL keeps
     // one reader for all snapshot tables without duplicating query code.
-    const rows = this.access.queryAll<Record<string, unknown>>(
+    const rows = this.access.queryAll<SqlRow>(
       `SELECT * FROM ${tableName}${whereClause ? ` WHERE ${whereClause}` : ""}`,
       ...params,
     );
@@ -111,7 +115,7 @@ export class SnapshotReader {
     }
 
     const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
-    const rows = this.access.queryAll<Record<string, unknown>>(
+    const rows = this.access.queryAll<SqlRow>(
       `SELECT * FROM threads ${whereSql} ORDER BY last_message_at DESC, id DESC LIMIT ?`,
       ...params,
       limit + 1,

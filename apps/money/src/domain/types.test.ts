@@ -144,7 +144,7 @@ describe("nowIso", () => {
 
 describe("SYNC_PROTOCOL_VERSION", () => {
   test("is a non-empty string", () => {
-    expect(typeof SYNC_PROTOCOL_VERSION).toBe("string");
+    expect(SYNC_PROTOCOL_VERSION).toBe("money-v1");
     expect(SYNC_PROTOCOL_VERSION.length).toBeGreaterThan(0);
   });
 });

@@ -7,6 +7,7 @@ import { AnkiStack } from "./apps/anki/alchemy.run.ts";
 import { AuthStack } from "./apps/auth/alchemy.run.ts";
 import { CfBillStack } from "./apps/cf-bill/alchemy.run.ts";
 import { ChatStack } from "./apps/chat/alchemy.run.ts";
+import { DriveStack } from "./apps/drive/alchemy.run.ts";
 import { MoneyStack } from "./apps/money/alchemy.run.ts";
 import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { RoutinesStack } from "./apps/routines/alchemy.run.ts";
@@ -15,25 +16,35 @@ import { HomepageStack } from "./apps/homepage/alchemy.run.ts";
 import { SiteStack } from "./site/alchemy.run.ts";
 import * as Shedflare from "./packages/shedflare-alchemy/src/index.ts";
 
+function whenSelected<A, E, R>(
+  selected: ReadonlySet<Shedflare.AppId>,
+  appId: Shedflare.AppId,
+  stack: Effect.Effect<A, E, R>,
+): Effect.Effect<Option.Option<A>, E, R> {
+  return selected.has(appId) ? Effect.map(stack, Option.some) : Effect.succeed(Option.none());
+}
+
 function patchTailConsumers(
   credentials: Shedflare.CfCredentials,
   accountId: string,
   scriptName: string,
   service: string,
 ) {
-  return Effect.tryPromise(() =>
-    fetch(
+  return Effect.tryPromise(() => {
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(Shedflare.cfAuthHeaders(credentials))) {
+      if (value) headers.set(name, value);
+    }
+    headers.set("Content-Type", "application/json");
+    return fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/script-settings`,
       {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...Shedflare.cfAuthHeaders(credentials),
-        },
+        headers,
         body: JSON.stringify({ tail_consumers: [{ service }] }),
       },
-    ).then((r) => r.json()),
-  );
+    ).then((r) => r.json());
+  });
 }
 
 export default Alchemy.Stack(
@@ -46,31 +57,26 @@ export default Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const credentials = yield* yield* CloudflareEnvironment;
     const { accountId } = credentials;
+    const selectedApps = Shedflare.selectedAppIds(Shedflare.loadShedflareConfig()).filter(
+      Shedflare.isAppId,
+    );
+    const selected = new Set(selectedApps);
 
-    const auth = yield* AuthStack;
-    const anki = yield* AnkiStack;
-    const cfBill = yield* CfBillStack;
-    const chat = yield* ChatStack;
-    const money = yield* MoneyStack;
-    const short = yield* ShortStack;
-    const routines = yield* RoutinesStack;
-    const homepage = yield* HomepageStack;
-    const observability = yield* Effect.option(ObservabilityStack);
+    const auth = yield* whenSelected(selected, "auth", AuthStack);
+    const anki = yield* whenSelected(selected, "anki", AnkiStack);
+    const cfBill = yield* whenSelected(selected, "cf-bill", CfBillStack);
+    const chat = yield* whenSelected(selected, "chat", ChatStack);
+    const drive = yield* whenSelected(selected, "drive", DriveStack);
+    const money = yield* whenSelected(selected, "money", MoneyStack);
+    const short = yield* whenSelected(selected, "s", ShortStack);
+    const routines = yield* whenSelected(selected, "routines", RoutinesStack);
+    const homepage = yield* whenSelected(selected, "homepage", HomepageStack);
+    const observability = yield* whenSelected(selected, "observability", ObservabilityStack);
     const site = yield* SiteStack;
 
     if (Option.isSome(observability)) {
       const obsWorker = Shedflare.physicalName(stage, "observability");
-      const apps = [
-        "auth",
-        "anki",
-        "cf-bill",
-        "chat",
-        "homepage",
-        "money",
-        "routines",
-        "s",
-        "site",
-      ] as const;
+      const apps = [...selectedApps.filter((appId) => appId !== "observability"), "site"] as const;
       for (const app of apps) {
         yield* patchTailConsumers(
           credentials,
@@ -93,14 +99,15 @@ export default Alchemy.Stack(
 
     return {
       stage,
-      authUrl: auth.output.url,
-      ankiUrl: anki.output.url,
-      homepageUrl: homepage.output.url,
-      cfBillUrl: cfBill.output.url,
-      chatUrl: chat.output.url,
-      moneyUrl: money.output.url,
-      shortUrl: short.output.url,
-      routinesUrl: routines.output.url,
+      authUrl: Option.isSome(auth) ? auth.value.output.url : undefined,
+      ankiUrl: Option.isSome(anki) ? anki.value.output.url : undefined,
+      homepageUrl: Option.isSome(homepage) ? homepage.value.output.url : undefined,
+      cfBillUrl: Option.isSome(cfBill) ? cfBill.value.output.url : undefined,
+      chatUrl: Option.isSome(chat) ? chat.value.output.url : undefined,
+      driveUrl: Option.isSome(drive) ? drive.value.output.url : undefined,
+      moneyUrl: Option.isSome(money) ? money.value.output.url : undefined,
+      shortUrl: Option.isSome(short) ? short.value.output.url : undefined,
+      routinesUrl: Option.isSome(routines) ? routines.value.output.url : undefined,
       siteUrl: site.output.url,
       observabilityUrl: Option.isSome(observability) ? observability.value.output.url : undefined,
     };

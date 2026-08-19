@@ -18,11 +18,12 @@ function ensurePreconnect(head: HTMLHeadElement, href: string, crossOrigin = fal
 }
 
 export function ensureThemeFont(theme: string) {
-  if (typeof document === "undefined") return;
+  if (!globalThis.document) return;
 
   const head = document.head;
   const href = getThemeFontHref(theme);
-  const existing = document.getElementById(THEME_FONT_LINK_ID) as HTMLLinkElement | null;
+  const candidate = document.getElementById(THEME_FONT_LINK_ID);
+  const existing = candidate instanceof HTMLLinkElement ? candidate : null;
 
   if (!href) {
     existing?.remove();

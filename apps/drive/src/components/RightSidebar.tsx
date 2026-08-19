@@ -11,7 +11,7 @@ export default function RightSidebar() {
   function handleClick(e: MouseEvent) {
     if (!isVisible()) return;
     const sidebar = document.querySelector(".right-sidebar");
-    if (sidebar && !sidebar.contains(e.target as Node)) {
+    if (sidebar && e.target instanceof Node && !sidebar.contains(e.target)) {
       ctx.setSelectedFileId("");
     }
   }

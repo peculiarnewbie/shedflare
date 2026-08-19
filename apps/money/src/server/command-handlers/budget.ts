@@ -3,7 +3,7 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { computeMonthBudget } from "../budget-engine";
 import { toMonthInt, nowIso, budgetId } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 type BudgetCommand =
@@ -19,14 +19,15 @@ type BudgetCommand =
   | "transfer_budget"
   | "hold_for_next_month";
 
+type BudgetInvocation = Extract<CommandInvocation, { commandType: BudgetCommand }>;
+
 export async function handleBudgetCommands(
-  commandType: BudgetCommand,
-  payload: CommandPayloadMap[BudgetCommand],
+  command: BudgetInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (commandType) {
+  switch (command.commandType) {
     case "set_budget_amount": {
-      const p = payload as CommandPayloadMap["set_budget_amount"];
+      const p = command.payload;
       const { month, categoryId, amount } = p;
       const id = budgetId(month, categoryId);
       const now = nowIso();
@@ -43,7 +44,7 @@ export async function handleBudgetCommands(
     }
 
     case "set_budget_carryover": {
-      const p = payload as CommandPayloadMap["set_budget_carryover"];
+      const p = command.payload;
       const { month, categoryId, carryover } = p;
       await db
         .update(s.budgets)
@@ -55,7 +56,7 @@ export async function handleBudgetCommands(
     }
 
     case "set_buffer": {
-      const p = payload as CommandPayloadMap["set_buffer"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       const now = nowIso();
       await db
@@ -71,7 +72,7 @@ export async function handleBudgetCommands(
     }
 
     case "copy_previous_month": {
-      const p = payload as CommandPayloadMap["copy_previous_month"];
+      const p = command.payload;
       const monthKey = p.month;
       const month = toMonthInt(monthKey);
       const [y, m] = monthKey.split("-").map(Number);
@@ -112,7 +113,7 @@ export async function handleBudgetCommands(
     }
 
     case "set_3month_avg": {
-      const p = payload as CommandPayloadMap["set_3month_avg"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       const cats = await db
         .select({ id: s.categories.id })
@@ -159,7 +160,7 @@ export async function handleBudgetCommands(
     }
 
     case "set_nmonth_avg": {
-      const p = payload as CommandPayloadMap["set_nmonth_avg"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       const n = p.months;
       const cats = await db
@@ -207,7 +208,7 @@ export async function handleBudgetCommands(
     }
 
     case "set_zero": {
-      const p = payload as CommandPayloadMap["set_zero"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       await db.delete(s.budgets).where(eq(s.budgets.month, month)).run();
       const now = nowIso();
@@ -236,7 +237,7 @@ export async function handleBudgetCommands(
     }
 
     case "apply_goal_templates": {
-      const p = payload as CommandPayloadMap["apply_goal_templates"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       const cats = await db
         .select({ id: s.categories.id, goalDef: s.categories.goalDef })
@@ -278,7 +279,7 @@ export async function handleBudgetCommands(
 
     case "cover_overspending":
     case "transfer_budget": {
-      const p = payload as CommandPayloadMap["cover_overspending"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       const now = nowIso();
 
@@ -340,7 +341,7 @@ export async function handleBudgetCommands(
     }
 
     case "hold_for_next_month": {
-      const p = payload as CommandPayloadMap["hold_for_next_month"];
+      const p = command.payload;
       const month = toMonthInt(p.month);
       const now = nowIso();
       await db
@@ -356,6 +357,6 @@ export async function handleBudgetCommands(
     }
 
     default:
-      return { ok: false, error: "Unknown budget command: " + String(commandType) };
+      return { ok: false, error: "Unknown budget command" };
   }
 }

@@ -5,16 +5,20 @@ import {
   isImageAttachment,
   isInlineTextAttachment,
   type AppEnv,
+  type ContentPart,
   type ModelMessage,
 } from "#/runtime";
 import type { ChatRepository } from "./chat-repository";
+
+type SupportedContentPart = Extract<ContentPart, { type: "text" | "image" }>;
+type SupportedModelMessage = ModelMessage<string | null | SupportedContentPart[]>;
 
 export async function buildModelMessages(
   workspaceId: string,
   threadMessages: Message[],
   repository: ChatRepository,
   env: AppEnv,
-): Promise<{ messages: ModelMessage[]; systemPrompts: string[] }> {
+): Promise<{ messages: SupportedModelMessage[]; systemPrompts: string[] }> {
   const workspace = repository.getWorkspace(workspaceId) ?? undefined;
   const threadId = threadMessages[0]?.threadId;
   const attachments = threadId ? repository.getReadyAttachments(threadId) : [];
@@ -24,17 +28,19 @@ export async function buildModelMessages(
     systemPrompts.push(workspace.systemPrompt);
   }
 
-  const messages: ModelMessage[] = [];
+  const messages: SupportedModelMessage[] = [];
 
   for (const message of threadMessages) {
     if (message.status === "failed" || message.status === "cancelled") continue;
+    if (message.role === "system") {
+      if (message.text.trim()) systemPrompts.push(message.text);
+      continue;
+    }
 
-    const contentParts: Array<
-      string | { type: "image"; source: { type: "data"; value: string; mimeType: string } }
-    > = [];
+    const contentParts: SupportedContentPart[] = [];
 
     if (message.text?.trim()) {
-      contentParts.push(message.text);
+      contentParts.push({ type: "text", content: message.text });
     }
 
     if (message.role === "user") {
@@ -60,7 +66,10 @@ export async function buildModelMessages(
           if (isInlineTextAttachment(attachment.mimeType, attachment.sizeBytes)) {
             const text = await completeTextAttachment(env, attachment.objectKey);
             if (text) {
-              return `Attachment ${attachment.fileName}:\n${text.slice(0, 10_000)}`;
+              return {
+                type: "text" as const,
+                content: `Attachment ${attachment.fileName}:\n${text.slice(0, 10_000)}`,
+              };
             }
           }
           return null;
@@ -70,20 +79,19 @@ export async function buildModelMessages(
       for (const result of settled) {
         if (result.status === "rejected") continue;
         if (result.value !== null) {
-          contentParts.push(result.value as (typeof contentParts)[number]);
+          contentParts.push(result.value);
         }
       }
     }
 
     if (message.role === "assistant" && contentParts.length === 0) continue;
 
-    const content: ModelMessage["content"] =
-      contentParts.length === 1 && typeof contentParts[0] === "string"
-        ? contentParts[0]
-        : (contentParts as ModelMessage["content"]);
+    const onlyPart = contentParts.length === 1 ? contentParts[0] : undefined;
+    const content: SupportedModelMessage["content"] =
+      onlyPart?.type === "text" ? onlyPart.content : contentParts;
 
     messages.push({
-      role: message.role as "user" | "assistant",
+      role: message.role,
       content,
     });
   }

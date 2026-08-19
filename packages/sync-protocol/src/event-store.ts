@@ -5,7 +5,7 @@ import { createId, json, nowIso } from "./sync-utils";
 
 export type ProjectionFn = (
   eventType: string,
-  payload: unknown,
+  payload: SyncServerEvent["payload"],
 ) => Effect.Effect<void, unknown, never>;
 
 export class SyncEventStore {
@@ -14,7 +14,7 @@ export class SyncEventStore {
     private readonly projection: ProjectionFn,
   ) {}
 
-  insertEvent(opId: string | null, eventType: string, payload: unknown) {
+  insertEvent(opId: string | null, eventType: string, payload: SyncServerEvent["payload"]) {
     return Effect.gen({ self: this }, function* (this: SyncEventStore) {
       const eventId = createId("evt");
       const createdAt = nowIso();

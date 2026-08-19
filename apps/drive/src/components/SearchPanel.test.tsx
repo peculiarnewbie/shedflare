@@ -15,7 +15,7 @@ describe("SearchPanel", () => {
     ));
 
     try {
-      const input = view.getByPlaceholderText("Search files...") as HTMLInputElement;
+      const input = view.getByPlaceholderText<HTMLInputElement>("Search files...");
       fireEvent.input(input, { target: { value: "v" } });
       fireEvent.input(input, { target: { value: "video" } });
 

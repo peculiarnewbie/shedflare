@@ -1,7 +1,7 @@
 import { issuer } from "@openauthjs/openauth";
 import { GoogleOidcProvider } from "@openauthjs/openauth/provider/google";
 import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
-import { object, string } from "valibot";
+import { boolean, object, optional, safeParse, string } from "valibot";
 import { createSubjects } from "@openauthjs/openauth/subject";
 
 export const subjects = createSubjects({
@@ -12,7 +12,7 @@ export const subjects = createSubjects({
 
 export type IssuerEnv = {
   GOOGLE_CLIENT_ID: string;
-  OPENAUTH_STORAGE: unknown;
+  OPENAUTH_STORAGE: KVNamespace;
   OWNER_EMAIL: string;
   APP_PUBLIC_URL: string;
 };
@@ -21,10 +21,10 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-type GoogleOidcClaims = {
-  email?: string;
-  email_verified?: boolean;
-};
+const GoogleOidcClaimsSchema = object({
+  email: optional(string()),
+  email_verified: optional(boolean()),
+});
 
 export function createAuthIssuer(env: IssuerEnv) {
   return issuer({
@@ -35,7 +35,7 @@ export function createAuthIssuer(env: IssuerEnv) {
       }),
     },
     subjects,
-    storage: CloudflareStorage({ namespace: env.OPENAUTH_STORAGE as any }),
+    storage: CloudflareStorage({ namespace: env.OPENAUTH_STORAGE }),
     ttl: {
       access: 60 * 60 * 24 * 365,
       refresh: 60 * 60 * 24 * 365,
@@ -44,14 +44,14 @@ export function createAuthIssuer(env: IssuerEnv) {
     },
     success: async (ctx, value) => {
       if (value.provider === "google") {
-        const claims = value.id as GoogleOidcClaims;
-        if (!claims.email || claims.email_verified === false) {
+        const claims = safeParse(GoogleOidcClaimsSchema, value.id);
+        if (!claims.success || !claims.output.email || claims.output.email_verified === false) {
           return new Response("No email from Google", { status: 400 });
         }
-        if (normalizeEmail(claims.email) !== normalizeEmail(env.OWNER_EMAIL)) {
+        if (normalizeEmail(claims.output.email) !== normalizeEmail(env.OWNER_EMAIL)) {
           return Response.redirect(`${env.APP_PUBLIC_URL}/forbidden`, 302);
         }
-        return ctx.subject("user", { email: claims.email });
+        return ctx.subject("user", { email: claims.output.email });
       }
       return new Response("Invalid provider", { status: 400 });
     },

@@ -1,6 +1,6 @@
 import { createSignal, createMemo, createEffect, For, onCleanup, onMount, Show } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { execute, api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
@@ -322,7 +322,7 @@ export default function AccountPage() {
                     label: "Create schedule from transaction",
                     inverse: (data) => ({
                       commandType: "delete_schedule",
-                      payload: { id: data.id as string },
+                      payload: { id: requireCommandId(data) },
                     }),
                   },
                 },

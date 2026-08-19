@@ -4,7 +4,7 @@ import TransactionFilters from "../components/TransactionFilters";
 import TransactionTable from "../components/TransactionTable";
 import { PageState } from "../components/PageState";
 import { useMoneyShell } from "../components/MoneyShellContext";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { listenForMoneyDataChanged } from "../lib/data-events";
 import type { TransactionPatch, TransactionRow } from "../components/TransactionTable";
@@ -191,7 +191,7 @@ export default function AllTransactionsPage() {
     setTransactions((prev) => (prev.some((item) => item.id === tx.id) ? prev : [tx, ...prev]));
   }
 
-  function accountNames(): Record<string, string> {
+  function accountNames() {
     const map: Record<string, string> = {};
     for (const account of accounts()) {
       map[account.id] = account.name;
@@ -326,7 +326,7 @@ export default function AllTransactionsPage() {
                     label: "Create schedule from transaction",
                     inverse: (data) => ({
                       commandType: "delete_schedule",
-                      payload: { id: data.id as string },
+                      payload: { id: requireCommandId(data) },
                     }),
                   },
                 },

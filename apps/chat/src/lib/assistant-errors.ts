@@ -1,3 +1,6 @@
+import type { ExternalValue } from "#/domain";
+import * as Schema from "effect/Schema";
+
 export type AssistantErrorCategory =
   | "cancelled"
   | "timeout"
@@ -47,7 +50,7 @@ function stripCommonWrappers(value: string) {
     .trim();
 }
 
-function tryParseJsonCandidate(value: string) {
+function tryParseJsonCandidate(value: string): ExternalValue {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
@@ -59,7 +62,7 @@ function tryParseJsonCandidate(value: string) {
 
   for (const candidate of candidates) {
     try {
-      return JSON.parse(candidate) as unknown;
+      return JSON.parse(candidate);
     } catch {
       // Error strings often contain several non-JSON wrappers before the
       // useful payload. Failed candidates are expected and not actionable.
@@ -69,23 +72,21 @@ function tryParseJsonCandidate(value: string) {
   return null;
 }
 
-function extractDeepMessage(value: unknown, seen = new Set<object>()): string | null {
-  if (typeof value === "string") {
+function extractDeepMessage(value: ExternalValue, seen = new Set<object>()): string | null {
+  if (Schema.is(Schema.String)(value)) {
     const trimmed = stripCommonWrappers(cleanText(value));
     if (!trimmed) return null;
     const parsed = tryParseJsonCandidate(trimmed);
-    if (parsed && typeof parsed === "object") {
+    if (parsed !== null) {
       const nested = extractDeepMessage(parsed, seen);
       if (nested) return nested;
     }
     return trimmed;
   }
 
-  if (!value || typeof value !== "object") return null;
-  if (seen.has(value as object)) return null;
-  seen.add(value as object);
-
-  if (Array.isArray(value)) {
+  if (Schema.is(Schema.Array(Schema.Any))(value)) {
+    if (seen.has(value)) return null;
+    seen.add(value);
     for (const item of value) {
       const nested = extractDeepMessage(item, seen);
       if (nested) return nested;
@@ -93,7 +94,10 @@ function extractDeepMessage(value: unknown, seen = new Set<object>()): string | 
     return null;
   }
 
-  const record = value as Record<string, unknown>;
+  if (!Schema.is(Schema.Record(Schema.String, Schema.Any))(value)) return null;
+  const record = value;
+  if (seen.has(record)) return null;
+  seen.add(record);
   const preferredKeys = [
     "error",
     "message",

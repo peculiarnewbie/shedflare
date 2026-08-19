@@ -18,7 +18,19 @@ const FALLBACK: AppConfig = {
   siteTitle: "Homepage",
 };
 
+const AppConfigOverridesSchema = object({
+  name: optional(string()),
+  nickname: optional(string()),
+  title: optional(string()),
+  tagline: optional(string()),
+  bio: optional(array(string())),
+  socials: optional(array(object({ platform: string(), url: string() }))),
+  siteTitle: optional(string()),
+});
+const overrides = safeParse(AppConfigOverridesSchema, import.meta.env.VITE_APP_CONFIG);
+
 export const PROFILE: AppConfig = {
   ...FALLBACK,
-  ...(import.meta.env.VITE_APP_CONFIG as Partial<AppConfig>),
+  ...(overrides.success ? overrides.output : FALLBACK),
 };
+import { array, object, optional, safeParse, string } from "valibot";

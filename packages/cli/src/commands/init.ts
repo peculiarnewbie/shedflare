@@ -60,6 +60,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
       // Prompt for secrets
       const appSecrets: Record<string, string> = {};
       for (const [key, def] of Object.entries(manifes.secrets)) {
+        if (def.source === "generated") continue;
         const value = await askSecret(key, def.description);
         appSecrets[key] = value;
       }
@@ -68,9 +69,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
       }
     }
   } else {
-    selectedApps = options.apps
-      ? (options.apps.split(",").map((s) => s.trim()) as AppId[])
-      : [...APP_IDS];
+    selectedApps = createDraft(options).apps;
     ownerEmail = options.ownerEmail ?? "";
     domain = options.domain ?? "";
   }
@@ -115,10 +114,12 @@ export async function initCommand(options: InitOptions): Promise<void> {
   for (const app of plan.apps) {
     const subdomain = draft.subdomains[app.id] ?? app.defaultSubdomain;
     const appVars = draft.vars[app.id];
-    apps[app.id] = {
-      ...(subdomain === app.defaultSubdomain ? {} : { subdomain }),
-      ...(appVars && Object.keys(appVars).length > 0 ? { vars: appVars } : {}),
-    };
+    const usesCustomSubdomain = subdomain !== app.defaultSubdomain;
+    const hasVars = appVars && Object.keys(appVars).length > 0;
+    if (usesCustomSubdomain && hasVars) apps[app.id] = { subdomain, vars: appVars };
+    else if (usesCustomSubdomain) apps[app.id] = { subdomain };
+    else if (hasVars) apps[app.id] = { vars: appVars };
+    else apps[app.id] = {};
   }
 
   const config: ShedflareConfigV2 = {

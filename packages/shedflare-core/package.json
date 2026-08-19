@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "vp check src test vite.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp check --no-fmt --no-lint",
     "test": "vp test",
     "registry:generate": "vp exec jiti scripts/generate-registry.ts",
     "registry:check": "vp exec jiti scripts/generate-registry.ts --check",

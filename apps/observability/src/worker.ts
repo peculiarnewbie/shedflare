@@ -10,13 +10,16 @@ function isErrorOutcome(outcome: string): boolean {
   return outcome !== "ok" && outcome !== "canceled";
 }
 
-function getFetchInfo(event: TraceItem["event"]): {
+interface FetchInfo {
   method: string | null;
   url: string | null;
   status: number | null;
-} {
+}
+
+function getFetchInfo(event: TraceItem["event"]): FetchInfo {
   if (!event) return { method: null, url: null, status: null };
   if ("request" in event) {
+    // SAFETY: the Workers trace event contract identifies fetch events by the request property.
     const fetchEvent = event as TraceItemFetchEventInfo;
     return {
       method: fetchEvent.request?.method ?? null,

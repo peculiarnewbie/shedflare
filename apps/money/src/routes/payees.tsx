@@ -2,7 +2,7 @@
  * Payees page — manage and merge payees.
  */
 import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { PageState } from "../components/PageState";
 import type { PayeesResponse } from "../domain/schemas-client";
@@ -47,7 +47,10 @@ export default function PayeesPage() {
       {
         undoInfo: {
           label: "Create payee",
-          inverse: (data) => ({ commandType: "delete_payee", payload: { id: data.id as string } }),
+          inverse: (data) => ({
+            commandType: "delete_payee",
+            payload: { id: requireCommandId(data) },
+          }),
         },
       },
     );

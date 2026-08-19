@@ -6,9 +6,9 @@ import {
   clampSearchesPerTurn,
   MAX_TOOL_ITERATIONS_PER_TURN,
   nowIso,
+  type JsonObject,
   type CreateUserMessagePayload,
   type Message,
-  type SyncEventType,
   type SyncServerEnvelope,
   type Thread,
   type TraceRun,
@@ -49,7 +49,8 @@ import {
 import {
   syncLog,
   json,
-  parseJson,
+  parseJsonRecord,
+  parseJsonRecords,
   previewText,
   looksLikeMissingRealtimeAccess,
 } from "./sync-utils";
@@ -145,7 +146,7 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
             durationMs: row.durationMs,
             errorCode: row.errorCode,
             errorMessage: row.errorMessage,
-            attrs: typeof row.attrsJson === "string" ? parseJson(row.attrsJson) : {},
+            attrs: parseJsonRecord(row.attrsJson ?? "{}"),
           }),
         );
       },
@@ -176,8 +177,8 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
             durationMs: row.durationMs,
             errorCode: row.errorCode,
             errorMessage: row.errorMessage,
-            attrs: typeof row.attrsJson === "string" ? parseJson(row.attrsJson) : {},
-            events: typeof row.eventsJson === "string" ? parseJson(row.eventsJson) : [],
+            attrs: parseJsonRecord(row.attrsJson ?? "{}"),
+            events: parseJsonRecords(row.eventsJson ?? "[]"),
           }),
         );
       },
@@ -203,16 +204,12 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
     const traceAsync = <A>(
       name: string,
       kind: TraceSpan["kind"],
-      attrs: Record<string, unknown>,
+      attrs: JsonObject,
       run: () => Promise<A>,
     ) => runAppEffect(traceEffect(name, kind, attrs, Effect.tryPromise(run)), traceRuntime);
 
-    const traceSync = <A>(
-      name: string,
-      kind: TraceSpan["kind"],
-      attrs: Record<string, unknown>,
-      run: () => A,
-    ) => runAppEffect(traceEffect(name, kind, attrs, Effect.sync(run)), traceRuntime);
+    const traceSync = <A>(name: string, kind: TraceSpan["kind"], attrs: JsonObject, run: () => A) =>
+      runAppEffect(traceEffect(name, kind, attrs, Effect.sync(run)), traceRuntime);
 
     syncLog("assistant_turn_start", {
       threadId: payload.threadId,
@@ -445,7 +442,7 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         trace: <A>(
           name: string,
           kind: TraceSpan["kind"],
-          attrs: Record<string, unknown>,
+          attrs: JsonObject,
           run: () => Promise<A>,
         ) => traceAsync(name, kind, attrs, run),
       };
@@ -487,7 +484,7 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         messageCount: modelMessages.length,
         systemPromptCount: systemPrompts.length,
         toolCount,
-        toolNames: activeTools.map((tool) => (tool as { name?: string }).name ?? "unknown"),
+        toolNames: activeTools.map((tool) => tool.name),
         modelInterleavedField: payload.modelInterleavedField ?? null,
         requestedReasoningLevel: payload.reasoningLevel,
         effectiveReasoningLevel: providerOptions.effectiveReasoningLevel,
@@ -497,7 +494,7 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
 
       const consumerDeps: StreamConsumerDeps = {
         appendServerEvent: (opId, eventType, eventPayload) =>
-          ctx.eventStore.appendServerEvent(opId, eventType as SyncEventType, eventPayload as any),
+          ctx.eventStore.appendServerEvent(opId, eventType, eventPayload),
         broadcast: (envelope) => ctx.broadcast(envelope),
         appendMessagePart,
         rawAppendMessagePart,
@@ -520,12 +517,12 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
 
       const stream = chat({
         adapter,
-        messages: modelMessages as any,
+        messages: modelMessages,
         systemPrompts,
         agentLoopStrategy,
         abortController,
-        ...(modelOptions ? { modelOptions } : {}),
-        ...(activeTools.length ? { tools: activeTools } : {}),
+        modelOptions: modelOptions ?? undefined,
+        tools: activeTools.length > 0 ? activeTools : undefined,
       });
 
       const streamOutcome = await runAppEffect(

@@ -44,12 +44,14 @@ export const COLLECTION_IDS = [
 
 export type CollectionId = (typeof COLLECTION_IDS)[number];
 
-const channels = new Map<string, SyncWriter<any, any>>();
+const channels = new Map<CollectionId, SyncWriter<object, string>>();
 
 export function getSyncWriter<T extends object>(
-  collectionId: string,
+  collectionId: CollectionId,
 ): SyncWriter<T, string> | undefined {
-  return channels.get(collectionId);
+  const writer = channels.get(collectionId);
+  // SAFETY: every writer is registered under the collection id that owns its row type.
+  return writer as SyncWriter<T, string> | undefined;
 }
 
 function requireSyncWriter<T extends object>(collectionId: CollectionId): SyncWriter<T, string> {
@@ -70,7 +72,7 @@ function commitImmediateWrite<T extends object>(
   writer.commit();
 }
 
-function createSyncedCollection<T extends object>(id: string, getKey: (item: T) => string) {
+function createSyncedCollection<T extends object>(id: CollectionId, getKey: (item: T) => string) {
   return createCollection<T, string>({
     id,
     getKey,
@@ -78,7 +80,9 @@ function createSyncedCollection<T extends object>(id: string, getKey: (item: T) 
     utils: {},
     sync: {
       sync: ({ begin, write, commit, markReady, truncate }) => {
-        channels.set(id, { begin, write, commit, markReady, truncate } as SyncWriter<any, any>);
+        const writer = { begin, write, commit, markReady, truncate };
+        // SAFETY: the registry erases only the row type; id retains ownership of the typed writer.
+        channels.set(id, writer as SyncWriter<object, string>);
         return () => channels.delete(id);
       },
     },
@@ -136,7 +140,7 @@ export function resetCollections(collectionIds: readonly CollectionId[] = COLLEC
 }
 
 // Map from server table names (used in SyncSnapshot) to collection ids
-export const TABLE_TO_COLLECTION: Record<string, string> = {
+export const TABLE_TO_COLLECTION = {
   workspaces: "workspaces",
   account_settings: "accountSettings",
   threads: "threads",
@@ -149,4 +153,4 @@ export const TABLE_TO_COLLECTION: Record<string, string> = {
   trace_runs: "traceRuns",
   trace_spans: "traceSpans",
   comparison_groups: "comparisonGroups",
-};
+} as const;

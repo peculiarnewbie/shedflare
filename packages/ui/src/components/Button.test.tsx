@@ -7,36 +7,36 @@ import { renderWithTheme } from "../test/render-with-theme";
 
 describe("Button", () => {
   test("renders label text", () => {
-    const { getByRole } = renderWithTheme(() => <Button>Save</Button>);
-    expect(getByRole("button", { name: "Save" })).toBeTruthy();
+    const view = renderWithTheme(() => <Button>Save</Button>);
+    expect(view.getByRole("button", { name: "Save" })).toBeTruthy();
   });
 
   test("defaults to type button", () => {
-    const { getByRole } = renderWithTheme(() => <Button>Go</Button>);
-    expect(getByRole("button").getAttribute("type")).toBe("button");
+    const view = renderWithTheme(() => <Button>Go</Button>);
+    expect(view.getByRole("button").getAttribute("type")).toBe("button");
   });
 
   test("forwards type and disabled", () => {
-    const { getByRole } = renderWithTheme(() => (
+    const view = renderWithTheme(() => (
       <Button type="submit" disabled>
         Submit
       </Button>
     ));
-    const el = getByRole("button", { name: "Submit" });
+    const el = view.getByRole("button", { name: "Submit" });
     expect(el.getAttribute("type")).toBe("submit");
     expect(el).toHaveProperty("disabled", true);
   });
 
   test("calls onClick", () => {
     const onClick = vi.fn();
-    const { getByRole } = renderWithTheme(() => <Button onClick={onClick}>Go</Button>);
-    fireEvent.click(getByRole("button"));
+    const view = renderWithTheme(() => <Button onClick={onClick}>Go</Button>);
+    fireEvent.click(view.getByRole("button"));
     expect(onClick).toHaveBeenCalledOnce();
   });
 
   test("merges class prop", () => {
-    const { getByRole } = renderWithTheme(() => <Button class="extra">Go</Button>);
-    expect(getByRole("button").className).toContain("extra");
+    const view = renderWithTheme(() => <Button class="extra">Go</Button>);
+    expect(view.getByRole("button").className).toContain("extra");
   });
 
   test.each([
@@ -45,8 +45,8 @@ describe("Button", () => {
     ["danger", "Danger"],
     ["ghost", "Ghost"],
   ] as const)("renders %s variant", (variant, label) => {
-    const { getByRole } = renderWithTheme(() => <Button variant={variant}>{label}</Button>);
-    expect(getByRole("button", { name: label })).toBeTruthy();
+    const view = renderWithTheme(() => <Button variant={variant}>{label}</Button>);
+    expect(view.getByRole("button", { name: label })).toBeTruthy();
   });
 
   test.each([
@@ -54,8 +54,8 @@ describe("Button", () => {
     ["md", "Medium"],
     ["lg", "Large"],
   ] as const)("renders %s size", (size, label) => {
-    const { getByRole } = renderWithTheme(() => <Button size={size}>{label}</Button>);
-    expect(getByRole("button", { name: label })).toBeTruthy();
+    const view = renderWithTheme(() => <Button size={size}>{label}</Button>);
+    expect(view.getByRole("button", { name: label })).toBeTruthy();
   });
 });
 

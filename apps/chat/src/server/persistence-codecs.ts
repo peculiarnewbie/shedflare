@@ -27,6 +27,7 @@ import {
   type Workspace,
 } from "#/domain";
 import { sqlToBool } from "./sync-utils";
+import type { SqlRow } from "@shedflare/sync-protocol";
 
 export type PersistedTableMap = {
   account_settings: AccountSettings;
@@ -109,9 +110,7 @@ export function normalizeAttachment(row: Attachment, opId: string) {
   });
 }
 
-const INFLATE_DISPATCH: {
-  [TableName in PersistedTableName]: (row: Record<string, unknown>) => PersistedTableMap[TableName];
-} = {
+const INFLATE_DISPATCH = {
   account_settings: (row) =>
     decodeAccountSettingsRow({
       id: row.id,
@@ -297,11 +296,15 @@ const INFLATE_DISPATCH: {
       optimistic: row.optimistic == null ? undefined : sqlToBool(row.optimistic),
       opId: row.op_id ?? undefined,
     }),
+} satisfies {
+  [TableName in PersistedTableName]: (row: SqlRow) => PersistedTableMap[TableName];
 };
 
 export function inflateRow<TableName extends PersistedTableName>(
   tableName: TableName,
-  row: Record<string, unknown>,
+  row: SqlRow,
 ): PersistedTableMap[TableName] {
-  return INFLATE_DISPATCH[tableName](row) as PersistedTableMap[TableName];
+  // SAFETY: The mapped registry correlates every table key with its owner row type above.
+  const inflate = INFLATE_DISPATCH[tableName] as (input: SqlRow) => PersistedTableMap[TableName];
+  return inflate(row);
 }

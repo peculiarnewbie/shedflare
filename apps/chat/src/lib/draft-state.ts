@@ -3,11 +3,16 @@ import {
   DEFAULT_SEARCHES_PER_TURN,
   clampSearchesPerTurn,
   createThread,
+  decodeThreadRow,
   nowIso,
+  ReasoningLevel as ReasoningLevelSchema,
+  ThreadRow,
+  type ExternalValue,
   type ReasoningLevel,
   type Thread,
   type Workspace,
 } from "#/domain";
+import * as Schema from "effect/Schema";
 
 export type DraftAttachmentChip = {
   localId: string;
@@ -34,43 +39,65 @@ export type DraftChatState = {
 
 export type WorkspaceConversationView = "thread" | "draft";
 
-type PersistedDraftAttachmentChip = Omit<DraftAttachmentChip, "previewUrl">;
-type PersistedDraftChatState = Omit<DraftChatState, "attachments"> & {
-  attachments: PersistedDraftAttachmentChip[];
-};
 type DraftAttachmentCleanup = Pick<DraftAttachmentChip, "localId" | "attachmentId" | "previewUrl">;
 
 const DRAFTS_KEY = "shedflare.workspaceDrafts";
 const VIEWS_KEY = "shedflare.workspaceDraftViews";
 
-function readJson<T>(key: string, fallback: T): T {
-  if (typeof localStorage === "undefined") return fallback;
+const PersistedDraftAttachmentSchema = Schema.Struct({
+  localId: Schema.String,
+  attachmentId: Schema.NullOr(Schema.String),
+  threadId: Schema.String,
+  fileName: Schema.String,
+  mimeType: Schema.String,
+  sizeBytes: Schema.Number,
+  status: Schema.Literals(["uploading", "ready", "failed"]),
+});
+const PersistedDraftSchema = Schema.Struct({
+  workspaceId: Schema.String,
+  thread: ThreadRow,
+  text: Schema.String,
+  modelId: Schema.String,
+  reasoningLevel: ReasoningLevelSchema,
+  search: Schema.Boolean,
+  searchLimit: Schema.Number,
+  attachments: Schema.Array(PersistedDraftAttachmentSchema),
+  updatedAt: Schema.String,
+});
+const PersistedDraftsSchema = Schema.Record(Schema.String, PersistedDraftSchema);
+const DraftViewsSchema = Schema.Record(Schema.String, Schema.Literals(["thread", "draft"]));
+
+function readStoredValue(key: string): ExternalValue {
+  if (!globalThis.localStorage) return null;
   const raw = localStorage.getItem(key);
-  if (!raw) return fallback;
+  if (!raw) return null;
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw);
   } catch {
     console.warn("[draft-state] failed to parse localStorage value for", key);
-    return fallback;
+    return null;
   }
 }
 
-function persistJson(key: string, value: unknown) {
-  if (typeof localStorage === "undefined") return;
+function persistJson(key: string, value: ExternalValue) {
+  if (!globalThis.localStorage) return;
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-function omit<T extends object>(value: T, key: string) {
-  const next = { ...value } as Record<string, unknown>;
-  delete next[key];
-  return next as T;
+function omitKey<T>(value: Record<string, T>, key: string) {
+  return Object.fromEntries(Object.entries(value).filter(([entryKey]) => entryKey !== key));
 }
 
 let restoredCleanup: DraftAttachmentCleanup[] = [];
 let strippedPersistedAttachments = false;
 
 function readDrafts() {
-  const parsed = readJson<Record<string, PersistedDraftChatState>>(DRAFTS_KEY, {});
+  let parsed: Schema.Schema.Type<typeof PersistedDraftsSchema> = {};
+  try {
+    parsed = Schema.decodeUnknownSync(PersistedDraftsSchema)(readStoredValue(DRAFTS_KEY));
+  } catch {
+    // Invalid or obsolete persisted drafts are discarded at this storage boundary.
+  }
   const drafts: Record<string, DraftChatState> = {};
 
   for (const [workspaceId, draft] of Object.entries(parsed)) {
@@ -86,6 +113,7 @@ function readDrafts() {
     }
     drafts[workspaceId] = {
       ...draft,
+      thread: decodeThreadRow(draft.thread),
       searchLimit: clampSearchesPerTurn(draft.searchLimit),
       attachments: [],
     };
@@ -95,7 +123,11 @@ function readDrafts() {
 }
 
 function readViews() {
-  return readJson<Record<string, WorkspaceConversationView>>(VIEWS_KEY, {});
+  try {
+    return { ...Schema.decodeUnknownSync(DraftViewsSchema)(readStoredValue(VIEWS_KEY)) };
+  } catch {
+    return {};
+  }
 }
 
 function serializeDrafts(drafts: Record<string, DraftChatState>) {
@@ -263,7 +295,7 @@ export function activateWorkspaceThreadView(workspaceId: string) {
 export function clearWorkspaceDraft(workspaceId: string) {
   const draft = getWorkspaceDraft(workspaceId);
   queueAttachmentCleanup(collectAttachmentCleanup(draft ?? undefined));
-  writeDrafts(omit(draftsSignal(), workspaceId));
+  writeDrafts(omitKey(draftsSignal(), workspaceId));
   writeViews({
     ...viewsSignal(),
     [workspaceId]: "thread",
@@ -271,7 +303,7 @@ export function clearWorkspaceDraft(workspaceId: string) {
 }
 
 export function finalizeWorkspaceDraft(workspaceId: string) {
-  writeDrafts(omit(draftsSignal(), workspaceId));
+  writeDrafts(omitKey(draftsSignal(), workspaceId));
   writeViews({
     ...viewsSignal(),
     [workspaceId]: "thread",
@@ -283,7 +315,7 @@ export function clearAllDraftState() {
   setPendingCleanupVersion(0);
   setDraftsSignal({});
   setViewsSignal({});
-  if (typeof localStorage !== "undefined") {
+  if (globalThis.localStorage) {
     localStorage.removeItem(DRAFTS_KEY);
     localStorage.removeItem(VIEWS_KEY);
   }
@@ -300,12 +332,12 @@ export function reconcileDraftState(workspaces: Workspace[], _threads: Thread[])
   for (const workspaceId of Object.keys(nextDrafts)) {
     if (validWorkspaceIds.has(workspaceId)) continue;
     queueAttachmentCleanup(collectAttachmentCleanup(nextDrafts[workspaceId]));
-    nextDrafts = omit(nextDrafts, workspaceId);
+    nextDrafts = omitKey(nextDrafts, workspaceId);
   }
 
   for (const workspaceId of Object.keys(nextViews)) {
     if (validWorkspaceIds.has(workspaceId)) continue;
-    nextViews = omit(nextViews, workspaceId);
+    nextViews = omitKey(nextViews, workspaceId);
   }
 
   if (nextDrafts !== draftsSignal()) {

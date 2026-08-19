@@ -136,22 +136,24 @@ function parseDate(value: string): string | null {
   // Mon DD, YYYY or DD Mon YYYY
   const textMatch = trimmed.match(/^(\w+)\s+(\d{1,2}),?\s*(\d{4})$/);
   if (textMatch) {
-    const months: Record<string, string> = {
-      jan: "01",
-      feb: "02",
-      mar: "03",
-      apr: "04",
-      may: "05",
-      jun: "06",
-      jul: "07",
-      aug: "08",
-      sep: "09",
-      oct: "10",
-      nov: "11",
-      dec: "12",
-    };
+    const months = new Map<string, string>(
+      Object.entries({
+        jan: "01",
+        feb: "02",
+        mar: "03",
+        apr: "04",
+        may: "05",
+        jun: "06",
+        jul: "07",
+        aug: "08",
+        sep: "09",
+        oct: "10",
+        nov: "11",
+        dec: "12",
+      }),
+    );
     const monthStr = textMatch[1]!.toLowerCase().slice(0, 3);
-    const month = months[monthStr];
+    const month = months.get(monthStr);
     if (month) {
       return `${textMatch[3]}-${month}-${textMatch[2]!.padStart(2, "0")}`;
     }

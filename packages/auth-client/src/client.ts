@@ -14,6 +14,7 @@ export const AUTH_HINT_COOKIE = "auth_hint";
 type DocumentLike = { cookie: string };
 
 function getDocument(): DocumentLike | undefined {
+  // SAFETY: this optional structural view only reads the cross-runtime document cookie API.
   return (globalThis as { document?: DocumentLike }).document;
 }
 

@@ -125,7 +125,7 @@ export function createPayee(input: { name: string }) {
 
 export function createSchedule(input: {
   recurrenceRules: string;
-  name?: string;
+  name?: string | null;
   accountId?: string | null;
   payeeId?: string | null;
   categoryId?: string | null;
@@ -224,11 +224,11 @@ export function createBudgetMonth(input: { monthKey: string; buffered?: number }
 }
 
 export function createCustomReport(input: {
-  name?: string;
+  name?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   metadata?: string | null;
-  conditions?: string;
+  conditions?: string | null;
   graphType?: string | null;
   mode?: string | null;
   groupBy?: string | null;

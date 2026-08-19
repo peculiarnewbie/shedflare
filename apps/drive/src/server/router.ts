@@ -2,13 +2,15 @@ import { createHttpApiWebHandler } from "@shedflare/alchemy";
 import { createHttpApiAuth } from "@shedflare/auth-client/http-api";
 import { driveApi } from "./definitions";
 import { createFileHandlersGroup, listPublicFiles, servePublicFile } from "./impl/files";
+import { createSecureUploadHandlersGroup, handleSecureUploadRequest } from "./impl/secure-uploads";
 import { createTagsGroup } from "./impl/tags";
 import type { AuthEnv } from "@shedflare/auth-client/consumer";
 
-type Env = AuthEnv & {
+export type Env = AuthEnv & {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
   FILES: R2Bucket;
+  SECURE_UPLOAD_TOKEN_SECRET: string;
 };
 
 export function createRouter(env: Env) {
@@ -17,6 +19,7 @@ export function createRouter(env: Env) {
   const wh = createHttpApiWebHandler(driveApi, [
     createFileHandlersGroup(env, auth),
     createTagsGroup(env, auth),
+    createSecureUploadHandlersGroup(env, auth),
   ]);
 
   return {
@@ -45,6 +48,9 @@ export function createRouter(env: Env) {
         if (pathname === "/api/auth/logout" && method === "POST") return auth.logout();
         if (pathname === "/api/session" && method === "GET")
           return await auth.sessionEndpoint(request);
+
+        const secureUploadResponse = await handleSecureUploadRequest(env, request);
+        if (secureUploadResponse) return secureUploadResponse;
 
         if (pathname === "/api/public/files" && method === "GET") {
           return await listPublicFiles(env, request);

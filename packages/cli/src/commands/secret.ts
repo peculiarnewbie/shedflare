@@ -1,6 +1,6 @@
 import { stdout as output } from "node:process";
 import { openSync, readSync, closeSync } from "node:fs";
-import { APP_IDS, loadManifest, type AppId } from "../core/manifests.js";
+import { isAppId, loadManifest } from "../core/manifests.js";
 import { assertEnabledApp, physicalWorkerName } from "../core/worker-names.js";
 import * as wrangler from "../core/wrangler.js";
 
@@ -12,6 +12,10 @@ export interface SecretSetOptions {
 
 export interface SecretListOptions {
   app: string;
+}
+
+export interface SecretValues {
+  [name: string]: string;
 }
 
 async function readSecret(prompt: string): Promise<string> {
@@ -44,7 +48,7 @@ async function readSecret(prompt: string): Promise<string> {
 }
 
 export async function secretSetCommand(options: SecretSetOptions): Promise<void> {
-  if (!(APP_IDS as readonly string[]).includes(options.app)) {
+  if (!isAppId(options.app)) {
     console.error(`Unknown app: ${options.app}`);
     process.exit(1);
   }
@@ -56,7 +60,7 @@ export async function secretSetCommand(options: SecretSetOptions): Promise<void>
     process.exit(1);
   }
 
-  const manifest = loadManifest(options.app as AppId);
+  const manifest = loadManifest(options.app);
   if (!manifest.secrets[options.name]) {
     console.error(
       `Secret "${options.name}" is not declared in apps/${options.app}/shedflare.app.jsonc`,
@@ -80,7 +84,7 @@ export async function secretSetCommand(options: SecretSetOptions): Promise<void>
 }
 
 export async function secretListCommand(options: SecretListOptions): Promise<void> {
-  if (!(APP_IDS as readonly string[]).includes(options.app)) {
+  if (!isAppId(options.app)) {
     console.error(`Unknown app: ${options.app}`);
     process.exit(1);
   }
@@ -92,12 +96,16 @@ export async function secretListCommand(options: SecretListOptions): Promise<voi
     process.exit(1);
   }
 
-  const manifest = loadManifest(options.app as AppId);
+  const manifest = loadManifest(options.app);
   const workerName = physicalWorkerName(options.app);
   const setOnWorker = await wrangler.listSecrets({ workerName });
 
   console.log(`Worker: ${workerName}\n`);
   for (const [name, def] of Object.entries(manifest.secrets)) {
+    if (def.source === "generated") {
+      console.log(`  ${name}: managed by Alchemy`);
+      continue;
+    }
     const present = setOnWorker.includes(name);
     const status = present ? "set" : def.required ? "missing (required)" : "missing (optional)";
     console.log(`  ${name}: ${status}`);
@@ -105,8 +113,8 @@ export async function secretListCommand(options: SecretListOptions): Promise<voi
 }
 
 /** Parse --secret NAME=VALUE flags for deploy. */
-export function parseSecretFlags(argv: string[]): Record<string, string> {
-  const secrets: Record<string, string> = {};
+export function parseSecretFlags(argv: string[]): SecretValues {
+  const secrets: SecretValues = {};
   for (const arg of argv) {
     if (!arg.startsWith("--secret=")) continue;
     console.warn(

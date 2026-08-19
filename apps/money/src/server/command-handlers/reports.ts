@@ -3,26 +3,26 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createCustomReport } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 type ReportCommand = "create_report" | "update_report" | "delete_report";
 
+type ReportInvocation = Extract<CommandInvocation, { commandType: ReportCommand }>;
 export async function handleReportCommands(
-  c: ReportCommand,
-  p: CommandPayloadMap[ReportCommand],
+  command: ReportInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (c) {
+  switch (command.commandType) {
     case "create_report": {
-      const pp = p as CommandPayloadMap["create_report"];
+      const pp = command.payload;
       const r = createCustomReport(pp.report);
       await db.insert(s.customReports).values(r).run();
       return { ok: true, data: { id: r.id } };
     }
     case "update_report": {
-      const pp = p as CommandPayloadMap["update_report"];
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const pp = command.payload;
+      const set: Partial<typeof s.customReports.$inferInsert> = { updatedAt: nowIso() };
       const f = pp.fields;
       if (f.name !== undefined) set.name = f.name;
       if (f.startDate !== undefined) set.startDate = f.startDate;
@@ -33,11 +33,11 @@ export async function handleReportCommands(
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_report": {
-      const pp = p as CommandPayloadMap["delete_report"];
+      const pp = command.payload;
       await db.delete(s.customReports).where(eq(s.customReports.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     default:
-      return { ok: false, error: "Unknown report command: " + String(c) };
+      return { ok: false, error: "Unknown report command" };
   }
 }

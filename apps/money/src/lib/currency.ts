@@ -5,7 +5,7 @@ type CurrencyCode = "USD" | "IDR";
 export type NumberFormat = "comma-dot" | "dot-comma" | "space-dot";
 
 function getSettingValue(key: string): string | undefined {
-  const setting = settingsCollection.state.get(key) as { key: string; value: string } | undefined;
+  const setting = settingsCollection.state.get(key);
   return setting?.value;
 }
 
@@ -21,11 +21,11 @@ function formatWithSeparators(
   return fracPart ? `${withThousands}${decimalSep}${fracPart}` : withThousands;
 }
 
-const NUMBER_FORMAT_SEPS: Record<NumberFormat, { thousands: string; decimal: string }> = {
+const NUMBER_FORMAT_SEPS = {
   "comma-dot": { thousands: ",", decimal: "." },
   "dot-comma": { thousands: ".", decimal: "," },
   "space-dot": { thousands: " ", decimal: "." },
-};
+} satisfies Record<NumberFormat, { thousands: string; decimal: string }>;
 
 export function formatCentsValue(
   cents: number,

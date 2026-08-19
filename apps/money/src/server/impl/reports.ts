@@ -25,8 +25,7 @@ import {
   computeMonthBudget,
 } from "../budget-engine";
 import { monthBoundaries } from "../../domain/types";
-import { buildFilterWhereSql } from "../conditions-to-sql";
-import type { FilterCondition } from "../conditions-to-sql";
+import { buildFilterWhereSql, parseFilterConditions } from "../conditions-to-sql";
 
 type Env = { MONEY_DB: D1Database };
 
@@ -150,13 +149,11 @@ export function createReportsGroup(env: Env) {
               headers: { "content-type": "application/json" },
             });
 
-          const conditions = JSON.parse(
-            (reportRow.conditions as string) ?? "[]",
-          ) as FilterCondition[];
-          const conditionsOp = ((reportRow.conditionsOp as string) ?? "and") as "and" | "or";
-          const groupBy = (reportRow.groupBy as string) ?? null;
-          const startDate = (reportRow.startDate as string) ?? null;
-          const endDate = (reportRow.endDate as string) ?? null;
+          const conditions = parseFilterConditions(reportRow.conditions ?? "[]");
+          const conditionsOp = reportRow.conditionsOp === "or" ? "or" : "and";
+          const groupBy = reportRow.groupBy;
+          const startDate = reportRow.startDate;
+          const endDate = reportRow.endDate;
 
           let whereExtra = sql``;
           if (startDate) whereExtra = sql`${whereExtra} AND t.date >= ${startDate}`;

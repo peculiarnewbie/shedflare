@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { object, record, safeParse, string, unknown } from "valibot";
 import {
   APP_IDS,
   CatalogValidationError,
@@ -167,9 +168,17 @@ describe("manifest validation", () => {
 
   test("emits the committed editor-facing schema", () => {
     const root = join(import.meta.dirname, "../../..");
-    const schema = JSON.parse(
-      readFileSync(join(root, "packages/shedflare-core/schemas/app-manifest.schema.json"), "utf8"),
-    ) as { $id: string; properties: Record<string, unknown> };
+    const schemaResult = safeParse(
+      object({ $id: string(), properties: record(string(), unknown()) }),
+      JSON.parse(
+        readFileSync(
+          join(root, "packages/shedflare-core/schemas/app-manifest.schema.json"),
+          "utf8",
+        ),
+      ),
+    );
+    if (!schemaResult.success) throw new Error("Generated app manifest schema is invalid");
+    const schema = schemaResult.output;
 
     expect(schema.$id).toBe("https://shedflare.dev/schemas/app-manifest.schema.json");
     expect(schema.properties).toHaveProperty("lifecycle");

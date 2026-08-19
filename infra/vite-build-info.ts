@@ -3,11 +3,21 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAppConfig } from "./app-config.ts";
+import * as Schema from "effect/Schema";
 
 type PackageJson = {
   version?: string;
   name?: string;
 };
+
+function parsePackageJson(value: string): PackageJson {
+  return Schema.decodeUnknownSync(
+    Schema.Struct({
+      version: Schema.optional(Schema.String),
+      name: Schema.optional(Schema.String),
+    }),
+  )(JSON.parse(value));
+}
 
 function gitCommit(cwd: string) {
   try {
@@ -39,7 +49,7 @@ function gitDirty(cwd: string) {
 
 export function buildInfoDefines(metaUrl: string) {
   const appDir = path.dirname(fileURLToPath(metaUrl));
-  const pkg = JSON.parse(readFileSync(path.join(appDir, "package.json"), "utf8")) as PackageJson;
+  const pkg = parsePackageJson(readFileSync(path.join(appDir, "package.json"), "utf8"));
   const commit = `${gitCommit(appDir)}${gitDirty(appDir) ? "-dirty" : ""}`;
   const builtAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const buildStamp = builtAt.replace(/[:]/g, "");
@@ -47,7 +57,7 @@ export function buildInfoDefines(metaUrl: string) {
     process.env.VITE_APP_VERSION || `${pkg.version ?? "0.0.0"}+deploy.${buildStamp}.${commit}`;
 
   const appId = pkg.name?.replace(/^@[^/]+\//, "") ?? path.basename(appDir);
-  const appConfig = loadAppConfig<Record<string, unknown>>(metaUrl, appId);
+  const appConfig = loadAppConfig(metaUrl, appId);
 
   return {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(version),

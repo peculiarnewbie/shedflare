@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
+import * as Schema from "effect/Schema";
 import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createSchedule, createTransaction } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 import type { Schedule } from "../../db/schema";
 
@@ -23,15 +24,23 @@ type RecurrenceConfig = {
   endDate?: string;
 };
 
+const RecurrenceConfigSchema = Schema.Struct({
+  type: Schema.optional(Schema.String),
+  skipWeekend: Schema.optional(Schema.Boolean),
+  weekendSolveMode: Schema.optional(Schema.Literals(["before", "after"])),
+  endMode: Schema.optional(Schema.Literals(["never", "after_n", "after_n_occurrences", "on_date"])),
+  endOccurrences: Schema.optional(Schema.Number),
+  endDate: Schema.optional(Schema.String),
+});
+const RecurrenceInputSchema = Schema.Union([RecurrenceConfigSchema, Schema.String]);
+
 function parseRecurrenceConfig(rules: string): RecurrenceConfig {
   try {
-    const parsed: unknown = JSON.parse(rules);
-    if (parsed && typeof parsed === "object") return parsed as RecurrenceConfig;
-    if (typeof parsed === "string") return { type: parsed };
+    const parsed = Schema.decodeUnknownSync(RecurrenceInputSchema)(JSON.parse(rules));
+    return parsed instanceof Object ? parsed : { type: parsed };
   } catch {
     return { type: rules || "monthly" };
   }
-  return { type: "monthly" };
 }
 
 function toDateOnly(date: Date): string {
@@ -96,21 +105,22 @@ function nextScheduleState(
   };
 }
 
+type ScheduleInvocation = Extract<CommandInvocation, { commandType: ScheduleCommand }>;
+
 export async function handleScheduleCommands(
-  c: ScheduleCommand,
-  p: CommandPayloadMap[ScheduleCommand],
+  command: ScheduleInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (c) {
+  switch (command.commandType) {
     case "create_schedule": {
-      const pp = p as CommandPayloadMap["create_schedule"];
+      const pp = command.payload;
       const row = createSchedule(pp.schedule);
       await db.insert(s.schedules).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
     case "update_schedule": {
-      const pp = p as CommandPayloadMap["update_schedule"];
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const pp = command.payload;
+      const set: Partial<typeof s.schedules.$inferInsert> = { updatedAt: nowIso() };
       const f = pp.fields;
       if (f.name !== undefined) set.name = f.name;
       if (f.accountId !== undefined) set.accountId = f.accountId;
@@ -122,12 +132,12 @@ export async function handleScheduleCommands(
       return { ok: true, data: { id: pp.id } };
     }
     case "delete_schedule": {
-      const pp = p as CommandPayloadMap["delete_schedule"];
+      const pp = command.payload;
       await db.delete(s.schedules).where(eq(s.schedules.id, pp.id)).run();
       return { ok: true, data: { id: pp.id } };
     }
     case "skip_schedule_date": {
-      const pp = p as CommandPayloadMap["skip_schedule_date"];
+      const pp = command.payload;
       const [schedule] = await db.select().from(s.schedules).where(eq(s.schedules.id, pp.id)).all();
       if (!schedule) return { ok: false, error: "Schedule not found" };
       const next = nextScheduleState(schedule);
@@ -139,7 +149,7 @@ export async function handleScheduleCommands(
       return { ok: true, data: { id: pp.id, ...next } };
     }
     case "post_schedule_transaction": {
-      const pp = p as CommandPayloadMap["post_schedule_transaction"];
+      const pp = command.payload;
       const [schedule] = await db
         .select()
         .from(s.schedules)
@@ -175,6 +185,6 @@ export async function handleScheduleCommands(
       return { ok: true, data: { id: pp.scheduleId, transactionId: transaction.id, ...next } };
     }
     default:
-      return { ok: false, error: "Unknown schedule command: " + String(c) };
+      return { ok: false, error: "Unknown schedule command" };
   }
 }

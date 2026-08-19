@@ -1,11 +1,12 @@
 import { createSignal, For, Show, createEffect, createMemo, onCleanup, onMount } from "solid-js";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { usePrivacyMode } from "../lib/privacy";
 import { useCurrency } from "../lib/currency";
 import { PageState } from "../components/PageState";
 import { useCategoryForm, useCategoryGroupForm } from "../lib/forms/categories";
 import { listenForMoneyDataChanged } from "../lib/data-events";
+import * as Schema from "effect/Schema";
 
 interface CategoryGroup {
   id: string;
@@ -27,6 +28,7 @@ interface Category {
 }
 
 type GoalType = "monthly" | "byDate" | "refill" | "periodic" | "percentage";
+const GoalTypeSchema = Schema.Literals(["monthly", "byDate", "refill", "periodic", "percentage"]);
 
 interface GoalConfig {
   type: GoalType;
@@ -36,12 +38,30 @@ interface GoalConfig {
   percentage?: number;
 }
 
+const GoalConfigSchema = Schema.Struct({
+  type: GoalTypeSchema,
+  amount: Schema.optional(Schema.Number),
+  targetDate: Schema.optional(Schema.String),
+  frequency: Schema.optional(Schema.String),
+  percentage: Schema.optional(Schema.Number),
+});
+
 interface GoalProgress {
   categoryId: string;
   goalType: GoalType;
   goalAmount: number;
   currentAmount: number;
   targetDate: string | null;
+}
+
+interface DeleteGroupPayload {
+  id: string;
+  transferToGroupId?: string;
+}
+
+interface DeleteCategoryPayload {
+  id: string;
+  transferToId?: string;
 }
 
 export default function CategoriesPage() {
@@ -147,7 +167,7 @@ export default function CategoriesPage() {
       setGoalProgress(
         goalProgressData.progress.map((p) => ({
           categoryId: p.categoryId,
-          goalType: p.goalType as GoalType,
+          goalType: Schema.decodeUnknownSync(GoalTypeSchema)(p.goalType),
           goalAmount: p.goalAmount,
           currentAmount: p.currentAmount,
           targetDate: p.targetDate,
@@ -173,7 +193,7 @@ export default function CategoriesPage() {
           label: "Create group",
           inverse: (data) => ({
             commandType: "delete_category_group",
-            payload: { id: data.id as string },
+            payload: { id: requireCommandId(data) },
           }),
         },
       },
@@ -194,7 +214,7 @@ export default function CategoriesPage() {
           label: "Create category",
           inverse: (data) => ({
             commandType: "delete_category",
-            payload: { id: data.id as string },
+            payload: { id: requireCommandId(data) },
           }),
         },
       },
@@ -282,7 +302,7 @@ export default function CategoriesPage() {
     const groupId = deletingGroupId();
     if (!groupId) return;
     const group = groups().find((g) => g.id === groupId);
-    const payload: Record<string, string | null> = { id: groupId };
+    const payload: DeleteGroupPayload = { id: groupId };
     if (deleteTransferGroupId()) {
       payload.transferToGroupId = deleteTransferGroupId();
     }
@@ -322,7 +342,7 @@ export default function CategoriesPage() {
     const catId = deletingCatId();
     if (!catId) return;
     const cat = categories().find((c) => c.id === catId);
-    const payload: Record<string, string | null | undefined> = { id: catId };
+    const payload: DeleteCategoryPayload = { id: catId };
     if (catTransferTargetId()) {
       payload.transferToId = catTransferTargetId();
     }
@@ -421,13 +441,7 @@ export default function CategoriesPage() {
           },
         );
       } else {
-        const goal: Record<string, unknown> = { type: goalType(), amount };
-        if ((goalType() === "byDate" || goalType() === "refill") && goalTargetDate()) {
-          goal.targetDate = goalTargetDate();
-        }
-        if (goalType() === "periodic") {
-          goal.frequency = goalFrequency();
-        }
+        const goal = buildGoalJson();
         dispatch(
           "update_category",
           { id: catId, goalDef: JSON.stringify(goal) },
@@ -456,10 +470,10 @@ export default function CategoriesPage() {
     cancelEditGoal();
   }
 
-  function buildGoalJson(): Record<string, unknown> {
+  function buildGoalJson(): GoalConfig {
     const t = goalType();
     const amt = Math.round(parseFloat(goalAmount() || "0") * 100);
-    const goal: Record<string, unknown> = { type: t, amount: amt };
+    const goal: GoalConfig = { type: t, amount: amt };
     if ((t === "byDate" || t === "refill") && goalTargetDate()) {
       goal.targetDate = goalTargetDate();
     }
@@ -472,7 +486,7 @@ export default function CategoriesPage() {
   function parseGoal(goalDef: string | null): GoalConfig | null {
     if (!goalDef) return null;
     try {
-      return JSON.parse(goalDef) as GoalConfig;
+      return Schema.decodeUnknownSync(GoalConfigSchema)(JSON.parse(goalDef));
     } catch {
       console.warn("[categories] failed to parse goal definition");
       return null;
@@ -666,9 +680,7 @@ export default function CategoriesPage() {
                         <button
                           class="btn btn-ghost btn-xs"
                           onClick={() =>
-                            setActiveGroupId(
-                              activeGroupId() === groupId ? null : (groupId as string),
-                            )
+                            setActiveGroupId(activeGroupId() === groupId ? null : groupId)
                           }
                         >
                           {activeGroupId() === groupId ? "Cancel" : "+ Category"}
@@ -713,7 +725,9 @@ export default function CategoriesPage() {
 
                   <Show when={activeGroupId() === groupId}>
                     <form
-                      onSubmit={(e) => handleAddCategory(e, groupId as string)}
+                      onSubmit={(event) => {
+                        if (groupId) handleAddCategory(event, groupId);
+                      }}
                       class="settings-section"
                       style={{ padding: "12px 16px", "margin-bottom": "8px" }}
                     >
@@ -957,7 +971,13 @@ export default function CategoriesPage() {
                                 <div class="form-row">
                                   <select
                                     value={goalType()}
-                                    onChange={(e) => setGoalType(e.currentTarget.value as GoalType)}
+                                    onChange={(e) =>
+                                      setGoalType(
+                                        Schema.decodeUnknownSync(GoalTypeSchema)(
+                                          e.currentTarget.value,
+                                        ),
+                                      )
+                                    }
                                   >
                                     <option value="monthly">Monthly amount</option>
                                     <option value="byDate">Save up by date</option>

@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { emitMoneyDataChanged } from "../lib/data-events";
@@ -20,8 +20,7 @@ interface AddTransactionModalProps {
 
 export default function AddTransactionModal(props: AddTransactionModalProps) {
   const fmt = useCurrency();
-  const rememberedAccountId =
-    typeof localStorage === "undefined" ? "" : (localStorage.getItem("money.lastAccountId") ?? "");
+  const rememberedAccountId = globalThis.localStorage?.getItem("money.lastAccountId") ?? "";
   const [accountId, setAccountId] = createSignal(
     props.initialAccountId ??
       (props.accounts.some((account) => account.id === rememberedAccountId && !account.closed)
@@ -119,7 +118,7 @@ export default function AddTransactionModal(props: AddTransactionModalProps) {
           label: `Add ${kind()}`,
           inverse: (data) => ({
             commandType: "delete_transaction",
-            payload: { id: data.id as string },
+            payload: { id: requireCommandId(data) },
           }),
         },
       },
@@ -127,9 +126,7 @@ export default function AddTransactionModal(props: AddTransactionModalProps) {
 
     try {
       await promise;
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("money.lastAccountId", selectedAccountId);
-      }
+      globalThis.localStorage?.setItem("money.lastAccountId", selectedAccountId);
       emitMoneyDataChanged();
       await props.onCreated?.();
       if (shouldAddAnother) {

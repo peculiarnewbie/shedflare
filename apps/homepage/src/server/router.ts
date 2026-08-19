@@ -4,6 +4,9 @@ import { createAuthHandlers, type AuthEnv } from "@shedflare/auth-client/consume
 import { homepageApi } from "./definitions";
 import { createExperiencesGroup, createAdminExperiencesGroup } from "./impl/experiences";
 import { createProjectsGroup, createAdminProjectsGroup } from "./impl/projects";
+import { object, parse, string } from "valibot";
+
+const DeleteUploadSchema = object({ key: string() });
 
 type Env = AuthEnv & {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -66,7 +69,7 @@ export function createRouter(env: Env) {
 
         if (pathname === "/api/admin/uploads" && method === "DELETE") {
           await rawAuth.requireSession(request);
-          const { key } = (await request.json()) as { key?: string };
+          const { key } = parse(DeleteUploadSchema, await request.json());
           if (!key) return new Response("Missing key", { status: 400 });
           await env.IMAGES.delete(key);
           return Response.json({ ok: true });

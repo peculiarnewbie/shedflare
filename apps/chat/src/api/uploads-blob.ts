@@ -6,10 +6,6 @@ function readObjectKey(url: URL) {
   return decodeURIComponent(url.pathname.slice(index + "/api/uploads/blob/".length));
 }
 
-function asString(value: unknown, fallback = "") {
-  return typeof value === "string" ? value : fallback;
-}
-
 export async function handleUploadBlobPut(request: Request): Promise<Response> {
   const env = getRuntimeEnv();
   return runApiTrace({
@@ -35,17 +31,15 @@ export async function handleUploadBlobPut(request: Request): Promise<Response> {
       const objectKey = readObjectKey(url);
       if (objectKey !== payload.objectKey) return new Response("Key mismatch", { status: 401 });
 
-      const contentType =
-        request.headers.get("content-type") ??
-        asString(payload.mimeType, "application/octet-stream");
+      const contentType = request.headers.get("content-type") ?? payload.mimeType;
       await env.UPLOADS.put(objectKey, request.body, {
         httpMetadata: {
           contentType,
         },
         customMetadata: {
-          fileName: asString(payload.fileName),
-          threadId: asString(payload.threadId),
-          attachmentId: asString(payload.attachmentId),
+          fileName: payload.fileName,
+          threadId: payload.threadId,
+          attachmentId: payload.attachmentId,
         },
       });
 

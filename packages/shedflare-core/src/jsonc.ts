@@ -1,7 +1,20 @@
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { CoreError, type CoreErrorCode } from "./errors.ts";
 
-function locationAt(text: string, offset: number): { line: number; column: number } {
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+interface SourceLocation {
+  line: number;
+  column: number;
+}
+
+function locationAt(text: string, offset: number): SourceLocation {
   const before = text.slice(0, offset);
   const line = before.split("\n").length;
   const lastNewline = before.lastIndexOf("\n");
@@ -12,7 +25,7 @@ export function parseJsonc(
   text: string,
   filePath: string,
   code: Extract<CoreErrorCode, "CONFIG_PARSE_ERROR" | "MANIFEST_INVALID"> = "MANIFEST_INVALID",
-): unknown {
+): JsonValue {
   const errors: ParseError[] = [];
   const result = parse(text, errors, { allowTrailingComma: true, disallowComments: false });
   if (errors.length > 0) {
@@ -29,5 +42,6 @@ export function parseJsonc(
       },
     );
   }
-  return result;
+  // SAFETY: jsonc-parser returns only JSON-compatible values after successfully parsing JSONC.
+  return result as JsonValue;
 }

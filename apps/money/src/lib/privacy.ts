@@ -6,9 +6,7 @@ export function usePrivacyMode() {
 
   createEffect(() => {
     function sync() {
-      const raw = settingsCollection.state.get("privacy_mode") as
-        | { key: string; value: string }
-        | undefined;
+      const raw = settingsCollection.state.get("privacy_mode");
       setEnabled(raw?.value === "true");
     }
 

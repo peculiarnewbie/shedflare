@@ -2,22 +2,19 @@ import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder, type HttpApi } from "effect/unstable/httpapi";
 
-type WebHandler = {
-  handler(request: Request): Promise<Response>;
-};
-
 export function createHttpApiWebHandler(
-  api: HttpApi.Any,
+  api: HttpApi.AnyWithProps,
   groups: ReadonlyArray<Layer.Any>,
-): WebHandler {
-  const merged = Layer.mergeAll(
-    ...(groups as unknown as [Layer.Layer<unknown>, ...Layer.Layer<unknown>[]]),
-  );
-  const combinedLayer = HttpApiBuilder.layer(api as unknown as HttpApi.HttpApi<string>).pipe(
-    Layer.provide(merged),
-  );
+) {
+  const [firstGroup, ...remainingGroups] = groups;
+  const apiLayer = HttpApiBuilder.layer(api);
+  const combinedLayer = firstGroup
+    ? apiLayer.pipe(Layer.provide([firstGroup, ...remainingGroups]))
+    : apiLayer;
 
-  return HttpRouter.toWebHandler(combinedLayer) as unknown as WebHandler;
+  // SAFETY: the supplied group layers implement the API services; the Web handler supplies its
+  // platform services when materializing the router.
+  return HttpRouter.toWebHandler(combinedLayer as Layer.Layer<never, never, HttpRouter.HttpRouter>);
 }
 
 /**
@@ -35,8 +32,8 @@ export function wrapHttpHandler(fn: (req: Request) => Promise<Response>) {
       const response = yield* Effect.tryPromise(() => fn(webReq));
       return HttpServerResponse.fromWeb(response);
     }).pipe(
-      Effect.catch((error: unknown) => {
-        const actual = error instanceof Error && "cause" in error ? (error as Error).cause : error;
+      Effect.catch((error) => {
+        const actual = error instanceof Error && "cause" in error ? error.cause : error;
         if (actual instanceof Response) {
           return Effect.succeed(HttpServerResponse.fromWeb(actual));
         }

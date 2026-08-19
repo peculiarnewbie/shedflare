@@ -21,7 +21,7 @@ describe("decodeCommand", () => {
     // create_account schema doesn't have `.strict`; extra fields pass.
     // We just assert that known extra fields are *allowed*, not required.
     const out = decodeCommand("create_account", { name: "x", extra: "ignored" });
-    expect((out as { name: string }).name).toBe("x");
+    expect(out.name).toBe("x");
   });
 
   test("reorder_accounts requires an array of strings", () => {

@@ -2,6 +2,13 @@ import { describe, expect, test } from "vite-plus/test";
 import * as s from "../../db/schema";
 import { createMoneyTestEnv, dbFor } from "../../test/helpers";
 import { handleCommand } from "./handle-command";
+import type { CommandResult } from "../../domain/types";
+
+function commandId(result: CommandResult): string {
+  if (!result.ok) throw new Error(result.error);
+  if (!result.data.id) throw new Error("Command result did not include an id");
+  return result.data.id;
+}
 
 describe("money command persistence", () => {
   test("account and transaction mutations survive a fresh read", async () => {
@@ -14,9 +21,7 @@ describe("money command persistence", () => {
     expect(createdAccount.ok).toBe(true);
     if (!createdAccount.ok) throw new Error(createdAccount.error);
 
-    const accountId = createdAccount.data.id;
-    expect(typeof accountId).toBe("string");
-    if (typeof accountId !== "string") throw new Error("Missing account id");
+    const accountId = commandId(createdAccount);
 
     const [account] = await db.select().from(s.accounts).all();
     expect(account).toMatchObject({ id: accountId, name: "Daily spending" });
@@ -42,8 +47,7 @@ describe("money command persistence", () => {
     });
     expect(createdTransaction.ok).toBe(true);
     if (!createdTransaction.ok) throw new Error(createdTransaction.error);
-    const transactionId = createdTransaction.data.id;
-    if (typeof transactionId !== "string") throw new Error("Missing transaction id");
+    const transactionId = commandId(createdTransaction);
 
     const [transaction] = await db.select().from(s.transactions).all();
     expect(transaction).toMatchObject({ id: transactionId, accountId, amount: -1_250 });
@@ -89,11 +93,11 @@ describe("money command persistence", () => {
       payload: { name: "Temporary payee" },
     });
     expect(created.ok).toBe(true);
-    if (!created.ok || typeof created.data.id !== "string") throw new Error("Missing payee id");
+    const payeeId = commandId(created);
 
     const deleted = await handleCommand(db, {
       commandType: "delete_payee",
-      payload: { id: created.data.id },
+      payload: { id: payeeId },
     });
 
     expect(deleted.ok).toBe(true);
@@ -114,15 +118,15 @@ describe("money command persistence", () => {
       commandType: "create_payee",
       payload: { name: "Old Store" },
     });
-    if (!account.ok || typeof account.data.id !== "string") throw new Error("Missing account id");
-    if (!target.ok || typeof target.data.id !== "string") throw new Error("Missing target id");
-    if (!source.ok || typeof source.data.id !== "string") throw new Error("Missing source id");
+    const accountId = commandId(account);
+    const targetId = commandId(target);
+    const sourceId = commandId(source);
 
     await handleCommand(db, {
       commandType: "create_transaction",
       payload: {
         row: {
-          accountId: account.data.id,
+          accountId,
           date: "2026-08-11",
           amount: -500,
           payee: "Old Store",
@@ -133,8 +137,8 @@ describe("money command persistence", () => {
       commandType: "create_schedule",
       payload: {
         schedule: {
-          accountId: account.data.id,
-          payeeId: source.data.id,
+          accountId,
+          payeeId: sourceId,
           recurrenceRules: JSON.stringify({ type: "monthly" }),
         },
       },
@@ -142,14 +146,14 @@ describe("money command persistence", () => {
 
     const merged = await handleCommand(db, {
       commandType: "merge_payees",
-      payload: { targetId: target.data.id, sourceIds: [source.data.id] },
+      payload: { targetId, sourceIds: [sourceId] },
     });
 
     expect(merged.ok).toBe(true);
     const [transaction] = await db.select().from(s.transactions).all();
     const [schedule] = await db.select().from(s.schedules).all();
     expect(transaction?.payee).toBe("New Store");
-    expect(schedule?.payeeId).toBe(target.data.id);
+    expect(schedule?.payeeId).toBe(targetId);
     expect(await db.select().from(s.payees).all()).toHaveLength(1);
   });
 });

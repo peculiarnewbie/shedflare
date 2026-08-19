@@ -3,7 +3,7 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createAccount } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 type AccountCommand =
@@ -15,14 +15,15 @@ type AccountCommand =
   | "reorder_accounts"
   | "update_exchange_rate";
 
+type AccountInvocation = Extract<CommandInvocation, { commandType: AccountCommand }>;
+
 export async function handleAccountCommands(
-  commandType: AccountCommand,
-  payload: CommandPayloadMap[AccountCommand],
+  command: AccountInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (commandType) {
+  switch (command.commandType) {
     case "create_account": {
-      const p = payload as CommandPayloadMap["create_account"];
+      const p = command.payload;
       const row = createAccount({
         name: p.name,
         offBudget: p.offBudget,
@@ -33,11 +34,11 @@ export async function handleAccountCommands(
     }
 
     case "update_account": {
-      const p = payload as CommandPayloadMap["update_account"];
+      const p = command.payload;
       const [existing] = await db.select().from(s.accounts).where(eq(s.accounts.id, p.id)).all();
       if (!existing) return { ok: false, error: "Account not found" };
 
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const set: Partial<typeof s.accounts.$inferInsert> = { updatedAt: nowIso() };
       if (p.name !== undefined) set.name = p.name;
       if (p.offBudget !== undefined) set.offbudget = p.offBudget;
 
@@ -46,13 +47,13 @@ export async function handleAccountCommands(
     }
 
     case "delete_account": {
-      const p = payload as CommandPayloadMap["delete_account"];
+      const p = command.payload;
       await db.delete(s.accounts).where(eq(s.accounts.id, p.id)).run();
       return { ok: true, data: { id: p.id } };
     }
 
     case "close_account": {
-      const p = payload as CommandPayloadMap["close_account"];
+      const p = command.payload;
       await db
         .update(s.accounts)
         .set({ closed: true, updatedAt: nowIso() })
@@ -62,7 +63,7 @@ export async function handleAccountCommands(
     }
 
     case "reopen_account": {
-      const p = payload as CommandPayloadMap["reopen_account"];
+      const p = command.payload;
       await db
         .update(s.accounts)
         .set({ closed: false, updatedAt: nowIso() })
@@ -72,7 +73,7 @@ export async function handleAccountCommands(
     }
 
     case "reorder_accounts": {
-      const p = payload as CommandPayloadMap["reorder_accounts"];
+      const p = command.payload;
       const now = nowIso();
       for (let i = 0; i < p.ids.length; i++) {
         await db
@@ -85,7 +86,7 @@ export async function handleAccountCommands(
     }
 
     case "update_exchange_rate": {
-      const p = payload as CommandPayloadMap["update_exchange_rate"];
+      const p = command.payload;
       await db
         .insert(s.exchangeRates)
         .values({
@@ -102,6 +103,6 @@ export async function handleAccountCommands(
     }
 
     default:
-      return { ok: false, error: "Unknown account command: " + String(commandType) };
+      return { ok: false, error: "Unknown account command" };
   }
 }

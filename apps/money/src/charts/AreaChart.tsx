@@ -54,7 +54,7 @@ export default function AreaChart(props: AreaChartProps) {
     if (s.length === 0) return null;
     return d3
       .scaleTime()
-      .domain(d3.extent(s, (d) => d.parsed) as [Date, Date])
+      .domain([s[0].parsed, s[s.length - 1].parsed])
       .range([bounds().x, bounds().x + bounds().width]);
   });
 

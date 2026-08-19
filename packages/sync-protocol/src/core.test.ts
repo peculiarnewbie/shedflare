@@ -1,13 +1,13 @@
 import { Data, Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { DataAccess } from "./data-access";
+import { DataAccess, type SqlRow } from "./data-access";
 import { SyncDecodeError, SyncStorageError } from "./errors";
 import { SyncEventStore } from "./event-store";
 import { HandlerRegistry } from "./handler-registry";
 import { SyncEngineDO, type HandlerContext } from "./durable-object";
 import type { SyncSnapshot } from "./sync-types";
 
-function rows(value: Record<string, unknown>[]) {
+function rows(value: SqlRow[]) {
   return { toArray: () => value };
 }
 
@@ -112,12 +112,14 @@ describe("Effect sync protocol core", () => {
         throw new Error(`Unexpected query: ${query}`);
       },
     };
-    const ctx = {
+    const testContext = {
       storage: { sql },
       getWebSockets: () => [],
       waitUntil: () => undefined,
       acceptWebSocket: () => undefined,
-    } as unknown as DurableObjectState;
+    };
+    // SAFETY: the engine test exercises only the four Durable Object methods supplied above.
+    const ctx = testContext as typeof testContext & DurableObjectState;
 
     class TestEngine extends SyncEngineDO<object> {
       get protocolVersion() {

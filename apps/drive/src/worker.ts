@@ -5,6 +5,7 @@ type Env = AuthEnv & {
   ASSETS: { fetch(request: Request): Promise<Response> };
   DB: D1Database;
   FILES: R2Bucket;
+  SECURE_UPLOAD_TOKEN_SECRET: string;
 };
 
 export default {

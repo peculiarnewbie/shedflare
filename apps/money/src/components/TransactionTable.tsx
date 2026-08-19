@@ -6,6 +6,7 @@ import { useCurrency } from "../lib/currency";
 import { usePrivacyMode } from "../lib/privacy";
 import { useDateFormat } from "../lib/date-format";
 import type { CommandPayloadMap } from "../domain/commands";
+import type { CommandPayload, CommandType } from "../lib/api";
 import { emitOperationFeedback } from "../lib/operation-feedback";
 
 export interface TransactionRow {
@@ -55,6 +56,10 @@ export type TransactionPatch = Partial<
   >
 >;
 type TransactionUpdateFields = CommandPayloadMap["update_transaction"]["fields"];
+interface UndoCommand {
+  commandType: CommandType;
+  payload: CommandPayload;
+}
 
 interface TransactionTableProps {
   transactions: TransactionRow[];
@@ -104,7 +109,8 @@ export default function TransactionTable(props: TransactionTableProps) {
   });
 
   const transactionsWithBalance = createMemo(() => {
-    if (!props.showBalance) return props.transactions;
+    if (!props.showBalance)
+      return props.transactions.map((transaction) => ({ ...transaction, balance: 0 }));
     const txs = [...props.transactions].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
@@ -120,9 +126,14 @@ export default function TransactionTable(props: TransactionTableProps) {
 
   function rollbackPatch(tx: TransactionRow, patch: TransactionPatch): TransactionPatch {
     const previous: TransactionPatch = {};
-    for (const key of Object.keys(patch) as Array<keyof TransactionPatch>) {
-      previous[key] = tx[key] as never;
-    }
+    if ("date" in patch) previous.date = tx.date;
+    if ("payee" in patch) previous.payee = tx.payee;
+    if ("amount" in patch) previous.amount = tx.amount;
+    if ("categoryId" in patch) previous.categoryId = tx.categoryId;
+    if ("categoryName" in patch) previous.categoryName = tx.categoryName;
+    if ("notes" in patch) previous.notes = tx.notes;
+    if ("cleared" in patch) previous.cleared = tx.cleared;
+    if ("reconciled" in patch) previous.reconciled = tx.reconciled;
     return previous;
   }
 
@@ -160,11 +171,10 @@ export default function TransactionTable(props: TransactionTableProps) {
     setEditingField(null);
   }
 
-  function undoUpdateTx(
-    tx: TransactionRow,
-    fields: TransactionUpdateFields,
-  ): { commandType: string; payload: unknown } {
-    const oldFields: TransactionUpdateFields = {};
+  function undoUpdateTx(tx: TransactionRow, fields: TransactionUpdateFields): UndoCommand {
+    const oldFields: {
+      -readonly [K in keyof TransactionUpdateFields]?: TransactionUpdateFields[K];
+    } = {};
     if ("amount" in fields) oldFields.amount = tx.amount;
     if ("date" in fields) oldFields.date = tx.date;
     if ("payee" in fields) oldFields.payee = tx.payee ?? undefined;
@@ -451,8 +461,7 @@ export default function TransactionTable(props: TransactionTableProps) {
                         value={tx.date}
                         onBlur={(e) => saveEdit(tx, "date", e.currentTarget.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
-                            saveEdit(tx, "date", (e.target as HTMLInputElement).value);
+                          if (e.key === "Enter") saveEdit(tx, "date", e.currentTarget.value);
                           if (e.key === "Escape") cancelEdit();
                         }}
                         autofocus
@@ -504,8 +513,7 @@ export default function TransactionTable(props: TransactionTableProps) {
                         value={tx.payee ?? ""}
                         onBlur={(e) => saveEdit(tx, "payee", e.currentTarget.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
-                            saveEdit(tx, "payee", (e.target as HTMLInputElement).value);
+                          if (e.key === "Enter") saveEdit(tx, "payee", e.currentTarget.value);
                           if (e.key === "Escape") cancelEdit();
                         }}
                         autofocus
@@ -531,8 +539,7 @@ export default function TransactionTable(props: TransactionTableProps) {
                         value={tx.categoryId ?? ""}
                         onBlur={(e) => saveEdit(tx, "category", e.currentTarget.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
-                            saveEdit(tx, "category", (e.currentTarget as HTMLSelectElement).value);
+                          if (e.key === "Enter") saveEdit(tx, "category", e.currentTarget.value);
                           if (e.key === "Escape") cancelEdit();
                         }}
                         autofocus
@@ -654,8 +661,7 @@ export default function TransactionTable(props: TransactionTableProps) {
                         value={fmt().formatCentsInput(tx.amount ?? 0)}
                         onBlur={(e) => saveEdit(tx, "amount", e.currentTarget.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter")
-                            saveEdit(tx, "amount", (e.target as HTMLInputElement).value);
+                          if (e.key === "Enter") saveEdit(tx, "amount", e.currentTarget.value);
                           if (e.key === "Escape") cancelEdit();
                         }}
                         autofocus
@@ -674,7 +680,7 @@ export default function TransactionTable(props: TransactionTableProps) {
 
                   <Show when={props.showBalance}>
                     <span class={`tx-col-balance ${privacyBlur().blurClass()}`}>
-                      {formatCents((tx as TransactionRow & { balance: number }).balance)}
+                      {formatCents(tx.balance)}
                     </span>
                   </Show>
 

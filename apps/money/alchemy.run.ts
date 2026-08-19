@@ -15,6 +15,12 @@ export const MoneyStack = Alchemy.Stack(
     const e2eAuthEmail = process.env.SHEDFLARE_MONEY_E2E_AUTH_EMAIL;
     const e2eAuthToken = process.env.SHEDFLARE_MONEY_E2E_AUTH_TOKEN;
     const isE2eStage = stage.startsWith("e2e-");
+    const e2eAuth = Shedflare.resolveE2eAuthBindings({
+      stage,
+      appId: "money",
+      email: e2eAuthEmail,
+      token: e2eAuthToken,
+    });
 
     const uploads = yield* Cloudflare.R2.Bucket("UPLOADS", {
       name: Shedflare.physicalName(stage, "money", "uploads"),
@@ -40,12 +46,7 @@ export const MoneyStack = Alchemy.Stack(
         AUTH_ISSUER_URL: yield* Shedflare.authIssuerUrl(),
         AUTH_CLIENT_ID: `shedflare-money`,
         OWNER_EMAIL: config.ownerEmail,
-        ...(e2eAuthEmail && e2eAuthToken
-          ? {
-              E2E_AUTH_EMAIL: e2eAuthEmail,
-              E2E_AUTH_TOKEN: e2eAuthToken,
-            }
-          : {}),
+        ...e2eAuth,
       },
       domain:
         !isE2eStage && config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,

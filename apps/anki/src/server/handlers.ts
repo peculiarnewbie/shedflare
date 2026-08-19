@@ -2,10 +2,11 @@ import { and, asc, count, desc, eq, lte, sql } from "drizzle-orm";
 import * as schema from "../db/schema";
 import type { CardRow, ReviewGrade } from "../db/schema";
 import type { Database } from "./db";
+import { fallback, looseObject, optional, parse, picklist, string } from "valibot";
 
 const DEFAULT_DECK_COLOR = "#d87c4a";
 
-function json(data: unknown, status = 200) {
+function json<Data>(data: Data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "content-type": "application/json" },
@@ -22,21 +23,31 @@ function addDaysIso(baseIso: string, days: number): string {
   return base.toISOString();
 }
 
-function normalizeText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeTags(value: unknown): string {
-  return normalizeText(value)
+function normalizeTags(value: string): string {
+  return value
     .split(/[#,\s]+/)
     .map((tag) => tag.trim().toLowerCase())
     .filter(Boolean)
     .join(",");
 }
 
-function isReviewGrade(value: unknown): value is ReviewGrade {
-  return value === "again" || value === "hard" || value === "good" || value === "easy";
-}
+const TextFieldSchema = fallback(string(), "");
+const CreateDeckSchema = looseObject({
+  name: TextFieldSchema,
+  description: TextFieldSchema,
+  color: TextFieldSchema,
+});
+const CreateCardSchema = looseObject({
+  deckId: TextFieldSchema,
+  front: TextFieldSchema,
+  back: TextFieldSchema,
+  note: TextFieldSchema,
+  tags: TextFieldSchema,
+});
+const ReviewCardSchema = looseObject({
+  cardId: TextFieldSchema,
+  grade: optional(picklist(["again", "hard", "good", "easy"])),
+});
 
 function schedule(card: CardRow, grade: ReviewGrade, reviewedAt: string) {
   if (grade === "again") {
@@ -45,7 +56,7 @@ function schedule(card: CardRow, grade: ReviewGrade, reviewedAt: string) {
       easeFactor: Math.max(130, card.easeFactor - 20),
       repetitions: 0,
       lapses: card.lapses + 1,
-      nextDueAt: addDaysIso(reviewedAt, 0),
+      dueAt: addDaysIso(reviewedAt, 0),
     };
   }
 
@@ -64,7 +75,7 @@ function schedule(card: CardRow, grade: ReviewGrade, reviewedAt: string) {
     easeFactor,
     repetitions,
     lapses: card.lapses,
-    nextDueAt: addDaysIso(reviewedAt, intervalDays),
+    dueAt: addDaysIso(reviewedAt, intervalDays),
   };
 }
 
@@ -88,9 +99,9 @@ export async function overview(database: Database) {
   return json({ decks, cardCounts, dueCards, recentReviews, serverTime: now });
 }
 
-export async function createDeck(database: Database, body: unknown) {
-  const input = (body ?? {}) as { name?: unknown; description?: unknown; color?: unknown };
-  const name = normalizeText(input.name);
+export async function createDeck<Body>(database: Database, body: Body) {
+  const input = parse(CreateDeckSchema, body ?? {});
+  const name = input.name.trim();
   if (!name) return json({ error: "Deck name is required" }, 400);
 
   const now = nowIso();
@@ -98,8 +109,8 @@ export async function createDeck(database: Database, body: unknown) {
   await database.insert(schema.decks).values({
     id,
     name,
-    description: normalizeText(input.description),
-    color: normalizeText(input.color) || DEFAULT_DECK_COLOR,
+    description: input.description.trim(),
+    color: input.color.trim() || DEFAULT_DECK_COLOR,
     createdAt: now,
     updatedAt: now,
   });
@@ -107,17 +118,11 @@ export async function createDeck(database: Database, body: unknown) {
   return json({ success: true, id });
 }
 
-export async function createCard(database: Database, body: unknown) {
-  const input = (body ?? {}) as {
-    deckId?: unknown;
-    front?: unknown;
-    back?: unknown;
-    note?: unknown;
-    tags?: unknown;
-  };
-  const deckId = normalizeText(input.deckId);
-  const front = normalizeText(input.front);
-  const back = normalizeText(input.back);
+export async function createCard<Body>(database: Database, body: Body) {
+  const input = parse(CreateCardSchema, body ?? {});
+  const deckId = input.deckId.trim();
+  const front = input.front.trim();
+  const back = input.back.trim();
   if (!deckId || !front || !back) {
     return json({ error: "Deck, front, and back are required" }, 400);
   }
@@ -136,7 +141,7 @@ export async function createCard(database: Database, body: unknown) {
     deckId,
     front,
     back,
-    note: normalizeText(input.note),
+    note: input.note.trim(),
     tags: normalizeTags(input.tags),
     dueAt: now,
     createdAt: now,
@@ -158,10 +163,10 @@ export async function listCards(database: Database, deckId: string | null) {
   return json({ cards: rows });
 }
 
-export async function reviewCard(database: Database, body: unknown) {
-  const input = (body ?? {}) as { cardId?: unknown; grade?: unknown };
-  const cardId = normalizeText(input.cardId);
-  if (!cardId || !isReviewGrade(input.grade)) {
+export async function reviewCard<Body>(database: Database, body: Body) {
+  const input = parse(ReviewCardSchema, body ?? {});
+  const cardId = input.cardId.trim();
+  if (!cardId || !input.grade) {
     return json({ error: "cardId and grade are required" }, 400);
   }
 
@@ -183,7 +188,7 @@ export async function reviewCard(database: Database, body: unknown) {
     cardId,
     grade: input.grade,
     reviewedAt,
-    nextDueAt: next.nextDueAt,
+    nextDueAt: next.dueAt,
     intervalDays: next.intervalDays,
     easeFactor: next.easeFactor,
   });

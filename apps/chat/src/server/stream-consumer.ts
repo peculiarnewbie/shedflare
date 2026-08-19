@@ -7,22 +7,32 @@
  */
 
 import { REASONING_CONTENT_EVENT, type ExtendedStreamChunk } from "#/runtime";
-import { nowIso, type MessagePart, type SyncServerEnvelope } from "#/domain";
+import {
+  nowIso,
+  type JsonObject,
+  type MessagePart,
+  type SyncEventPayloadMap,
+  type SyncEventType,
+  type SyncServerEnvelope,
+  type SyncServerEvent,
+} from "#/domain";
 import { AssistantTurnError } from "#/effect";
 import { Effect } from "effect";
+import * as Schema from "effect/Schema";
 import type { SearchProgressEvent } from "./search";
 import { normalizeAssistantError, type NormalizedAssistantError } from "./error-normalization";
 
 /** Threshold for flushing accumulated deltas to the client */
 const DELTA_FLUSH_THRESHOLD = 96;
+const ReasoningContentSchema = Schema.Struct({ delta: Schema.String });
 
 export type StreamConsumerDeps = {
   /** Appends a server event to the event log and returns the event */
-  appendServerEvent: (
+  appendServerEvent: <T extends SyncEventType>(
     opId: string | null,
-    eventType: string,
-    payload: Record<string, unknown>,
-  ) => Promise<SyncServerEnvelope>;
+    eventType: T,
+    payload: SyncEventPayloadMap[T],
+  ) => Promise<SyncServerEvent<T>>;
   /** Broadcasts an event to all connected clients */
   broadcast: (envelope: SyncServerEnvelope) => void;
   /**
@@ -64,7 +74,7 @@ export type StreamConsumerDeps = {
    */
   suppressReasoningTokens?: boolean;
   /** Logging function */
-  log?: (message: string, details?: Record<string, unknown>) => void;
+  log?: (message: string, details?: JsonObject) => void;
 };
 
 type StreamConsumerResultBase = {
@@ -370,7 +380,7 @@ export async function consumeAssistantStream(
         }
 
         case "TEXT_MESSAGE_CONTENT": {
-          const delta = (chunk as { delta?: string }).delta;
+          const delta = chunk.delta;
           if (!delta) continue;
 
           // Track time to first token
@@ -413,10 +423,13 @@ export async function consumeAssistantStream(
           // to carry reasoning-content deltas from the adapter so the
           // UI can render a live Reasoning chip. Any other custom
           // events fall through and are ignored.
-          const customChunk = chunk as { name?: string; value?: unknown };
-          if (customChunk.name !== REASONING_CONTENT_EVENT) break;
-          const value = customChunk.value as { delta?: string } | undefined;
-          const delta = value?.delta;
+          if (chunk.name !== REASONING_CONTENT_EVENT) break;
+          let delta: string;
+          try {
+            delta = Schema.decodeUnknownSync(ReasoningContentSchema)(chunk.value).delta;
+          } catch {
+            break;
+          }
           if (!delta) continue;
           if (suppressReasoningTokens) {
             // Reasoning is disabled for this turn; drop the chunk
@@ -448,8 +461,8 @@ export async function consumeAssistantStream(
 
         case "TOOL_CALL_START": {
           toolCallsStarted += 1;
-          const toolName = (chunk as { toolName?: string }).toolName;
-          if (toolName) toolNamesSeen.add(toolName);
+          const { toolName } = chunk;
+          toolNamesSeen.add(toolName);
           // A tool call marks the end of the current reasoning segment:
           // flush so the "Reasoning" chip closes before the tool chip.
           await flushPendingReasoning();
@@ -463,10 +476,9 @@ export async function consumeAssistantStream(
         }
 
         case "TOOL_CALL_END": {
-          const endChunk = chunk as { toolName?: string; result?: unknown };
           // Distinguish adapter-emitted (args done) vs engine-emitted (result available).
           // The engine's TOOL_CALL_END includes a `result` field, the adapter's does not.
-          const hasResult = "result" in endChunk && endChunk.result !== undefined;
+          const hasResult = chunk.result !== undefined;
           const phase: "emission" | "result" = hasResult ? "result" : "emission";
           if (phase === "emission") {
             toolCallEmissionsEnded += 1;
@@ -475,7 +487,7 @@ export async function consumeAssistantStream(
           }
           log?.("assistant_turn_tool_call_end", {
             assistantMessageId: messageId,
-            toolName: endChunk.toolName ?? null,
+            toolName: chunk.toolName,
             iteration: toolCallIterations + 1,
             phase,
             emissionsEnded: toolCallEmissionsEnded,
@@ -485,26 +497,19 @@ export async function consumeAssistantStream(
         }
 
         case "RUN_FINISHED": {
-          // Extract usage from the event
-          const finishedChunk = chunk as {
-            finishReason?: string | null;
-            usage?: { promptTokens: number; completionTokens: number };
-            _reasoningTokens?: number;
-          };
-
-          if (finishedChunk.usage) {
+          if (chunk.usage) {
             sawUsage = true;
-            promptTokens += finishedChunk.usage.promptTokens ?? 0;
-            completionTokens += finishedChunk.usage.completionTokens ?? 0;
+            promptTokens += chunk.usage.promptTokens;
+            completionTokens += chunk.usage.completionTokens;
           }
 
           // Check for custom reasoning tokens field
-          if (finishedChunk._reasoningTokens != null) {
+          if (chunk._reasoningTokens != null) {
             sawReasoningTokens = true;
-            reasoningTokens += finishedChunk._reasoningTokens;
+            reasoningTokens += chunk._reasoningTokens;
           }
 
-          if (finishedChunk.finishReason === "tool_calls") {
+          if (chunk.finishReason === "tool_calls") {
             toolCallIterations += 1;
             log?.("assistant_turn_tool_iteration_finished", {
               assistantMessageId: messageId,
@@ -535,7 +540,7 @@ export async function consumeAssistantStream(
 
           log?.("assistant_turn_run_finished", {
             assistantMessageId: messageId,
-            finishReason: finishedChunk.finishReason ?? null,
+            finishReason: chunk.finishReason,
             toolCallIterations,
             toolNames: [...toolNamesSeen],
             elapsedMs: Date.now() - streamStartedAt,
@@ -549,10 +554,9 @@ export async function consumeAssistantStream(
         }
 
         case "RUN_ERROR": {
-          const errorChunk = chunk as { error?: { message?: string; code?: string } };
           const normalizedError = normalizeAssistantError({
-            errorCode: errorChunk.error?.code,
-            errorMessage: errorChunk.error?.message ?? "Unknown error",
+            errorCode: chunk.error.code,
+            errorMessage: chunk.error.message,
           });
 
           return failMessage(normalizedError);

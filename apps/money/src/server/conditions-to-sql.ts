@@ -1,5 +1,6 @@
 import { and, or, sql, type SQL } from "drizzle-orm";
 import { SQLiteDialect } from "drizzle-orm/sqlite-core";
+import * as Schema from "effect/Schema";
 
 // ── Discriminated union: only valid operator/value combos are representable ──
 
@@ -36,7 +37,7 @@ export interface NumericCondition {
 export interface OneOfCondition {
   field: string;
   op: "oneOf";
-  value: Array<string | number>;
+  value: ReadonlyArray<string | number>;
 }
 
 export interface IsBetweenCondition {
@@ -54,6 +55,45 @@ export type FilterCondition =
   | NumericCondition
   | OneOfCondition
   | IsBetweenCondition;
+
+const FilterConditionSchema = Schema.Union([
+  Schema.Struct({
+    field: Schema.String,
+    op: Schema.Literal("is"),
+    value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+  }),
+  Schema.Struct({
+    field: Schema.String,
+    op: Schema.Literal("isNot"),
+    value: Schema.Union([Schema.String, Schema.Number]),
+  }),
+  Schema.Struct({ field: Schema.String, op: Schema.Literal("contains"), value: Schema.String }),
+  Schema.Struct({
+    field: Schema.String,
+    op: Schema.Literal("doesNotContain"),
+    value: Schema.String,
+  }),
+  Schema.Struct({
+    field: Schema.String,
+    op: Schema.Literals(["gt", "gte", "lt", "lte"]),
+    value: Schema.Number,
+  }),
+  Schema.Struct({
+    field: Schema.String,
+    op: Schema.Literal("oneOf"),
+    value: Schema.Array(Schema.Union([Schema.String, Schema.Number])),
+  }),
+  Schema.Struct({
+    field: Schema.String,
+    op: Schema.Literal("isbetween"),
+    value: Schema.Number,
+    value2: Schema.Number,
+  }),
+]);
+
+export function parseFilterConditions(json: string): ReadonlyArray<FilterCondition> {
+  return Schema.decodeUnknownSync(Schema.Array(FilterConditionSchema))(JSON.parse(json));
+}
 
 function colRef(field: string): SQL {
   switch (field) {
@@ -116,20 +156,25 @@ function conditionToSql(cond: FilterCondition): SQL {
 
 /** Build a Drizzle SQL object for use within typed query builders. */
 export function buildFilterSql(
-  conditions: FilterCondition[],
+  conditions: ReadonlyArray<FilterCondition>,
   conditionsOp: "and" | "or",
 ): SQL | null {
   if (conditions.length === 0) return null;
   const fragments = conditions.map(conditionToSql);
   if (fragments.length === 0) return null;
-  return (conditionsOp === "or" ? or(...fragments) : and(...fragments)) as SQL<unknown>;
+  return conditionsOp === "or" ? (or(...fragments) ?? null) : (and(...fragments) ?? null);
+}
+
+export interface FilterWhereSql {
+  whereClause: string;
+  params: unknown[];
 }
 
 /** Build raw SQL string + params for use with db.all/get/run. */
 export function buildFilterWhereSql(
-  conditions: FilterCondition[],
+  conditions: ReadonlyArray<FilterCondition>,
   conditionsOp: "and" | "or",
-): { whereClause: string; params: unknown[] } {
+): FilterWhereSql {
   const sqlObj = buildFilterSql(conditions, conditionsOp);
   if (!sqlObj) return { whereClause: "", params: [] };
   const built = new SQLiteDialect().sqlToQuery(sqlObj);

@@ -3,24 +3,56 @@
  */
 import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { useCurrency } from "../lib/currency";
 import { useDateFormat } from "../lib/date-format";
 import { usePrivacyMode } from "../lib/privacy";
 import { PageState } from "../components/PageState";
 import { listenForMoneyDataChanged } from "../lib/data-events";
+import * as Schema from "effect/Schema";
+import type { SchedulesResponse } from "../domain/schemas-client";
+
+type Schedule = SchedulesResponse["schedules"][number];
+const RecurrenceConfigSchema = Schema.Struct({
+  type: Schema.String,
+  skipWeekend: Schema.optional(Schema.Boolean),
+  weekendSolveMode: Schema.optional(Schema.Literals(["before", "after"])),
+  endMode: Schema.optional(Schema.String),
+  endOccurrences: Schema.optional(Schema.Number),
+  endDate: Schema.optional(Schema.String),
+});
+type RecurrenceConfig = Schema.Schema.Type<typeof RecurrenceConfigSchema>;
+interface WritableRecurrenceConfig {
+  type: string;
+  skipWeekend?: boolean;
+  weekendSolveMode?: "before" | "after";
+  endMode?: string;
+  endOccurrences?: number;
+  endDate?: string;
+}
+
+function parseRecurrenceConfig(rules: string): RecurrenceConfig {
+  try {
+    const parsed = Schema.decodeUnknownSync(Schema.Union([RecurrenceConfigSchema, Schema.String]))(
+      JSON.parse(rules),
+    );
+    return parsed instanceof Object ? parsed : { type: parsed };
+  } catch {
+    return { type: rules || "monthly" };
+  }
+}
 
 export default function SchedulesPage() {
   const [searchParams, setSearchParams] = useSearchParams<{ focus?: string }>();
   const df = useDateFormat();
   const fmt = useCurrency();
   const privacyBlur = usePrivacyMode();
-  const [schedules, setSchedules] = createSignal<any[]>([]);
+  const [schedules, setSchedules] = createSignal<Schedule[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [showForm, setShowForm] = createSignal(false);
-  const [editingSchedule, setEditingSchedule] = createSignal<any>(null);
+  const [editingSchedule, setEditingSchedule] = createSignal<Schedule | null>(null);
   const [showDiscover, setShowDiscover] = createSignal(false);
   const [lastFocusedId, setLastFocusedId] = createSignal<string | null>(null);
 
@@ -103,7 +135,7 @@ export default function SchedulesPage() {
       });
   }
 
-  function handleEdit(schedule: any) {
+  function handleEdit(schedule: Schedule) {
     setEditingSchedule(schedule);
     setShowForm(true);
   }
@@ -119,27 +151,19 @@ export default function SchedulesPage() {
     void loadSchedules();
   }
 
-  function parseRecurrenceConfig(rules: string): any {
-    try {
-      const parsed = JSON.parse(rules);
-      return typeof parsed === "object" ? parsed : { type: parsed };
-    } catch {
-      console.warn("[schedules] failed to parse recurrence config");
-      return { type: rules || "monthly" };
-    }
-  }
-
   function formatRecurrenceLabel(rules: string): string {
     const cfg = parseRecurrenceConfig(rules);
-    const labels: Record<string, string> = {
-      daily: "Daily",
-      weekly: "Weekly",
-      biweekly: "Bi-weekly",
-      monthly: "Monthly",
-      quarterly: "Quarterly",
-      yearly: "Yearly",
-    };
-    let label = labels[cfg.type] ?? cfg.type;
+    const labels = new Map<string, string>(
+      Object.entries({
+        daily: "Daily",
+        weekly: "Weekly",
+        biweekly: "Bi-weekly",
+        monthly: "Monthly",
+        quarterly: "Quarterly",
+        yearly: "Yearly",
+      }),
+    );
+    let label = labels.get(cfg.type) ?? cfg.type;
     if (cfg.skipWeekend) {
       label += ` (${cfg.weekendSolveMode === "before" ? "before" : "after"} weekend)`;
     }
@@ -176,7 +200,7 @@ export default function SchedulesPage() {
 
       <Show when={showForm()}>
         <ScheduleForm
-          schedule={editingSchedule()}
+          schedule={editingSchedule() ?? undefined}
           onClose={handleFormClose}
           onSaved={handleSaved}
         />
@@ -205,7 +229,7 @@ export default function SchedulesPage() {
                   label: "Create schedule from discovery",
                   inverse: (data) => ({
                     commandType: "delete_schedule",
-                    payload: { id: data.id as string },
+                    payload: { id: requireCommandId(data) },
                   }),
                 },
               },
@@ -281,31 +305,22 @@ export default function SchedulesPage() {
   );
 }
 
-function ScheduleForm(props: {
-  onClose: () => void;
-  schedule?: any;
-  onSaved?: (saved: any) => void;
-}) {
+function ScheduleForm(props: { onClose: () => void; schedule?: Schedule; onSaved?: () => void }) {
   const fmt = useCurrency();
   const isEdit = () => !!props.schedule;
   const existing = () => props.schedule;
 
-  function parseRecurrenceConfig(rules: string): any {
-    try {
-      const parsed = JSON.parse(rules);
-      return typeof parsed === "object" ? parsed : { type: parsed };
-    } catch {
-      console.warn("[schedules] failed to parse recurrence config");
-      return { type: rules || "monthly" };
-    }
-  }
-
-  const config = () =>
-    existing()?.recurrenceRules ? parseRecurrenceConfig(existing().recurrenceRules) : {};
+  const config = (): RecurrenceConfig => {
+    const schedule = existing();
+    return schedule?.recurrenceRules
+      ? parseRecurrenceConfig(schedule.recurrenceRules)
+      : { type: "weekly" };
+  };
 
   const [name, setName] = createSignal(existing()?.name ?? "");
+  const initialAmount = existing()?.amount;
   const [amount, setAmount] = createSignal(
-    existing()?.amount ? fmt().formatCentsInput(existing().amount) : "",
+    initialAmount ? fmt().formatCentsInput(initialAmount) : "",
   );
   const [recurrence, setRecurrence] = createSignal(config().type ?? "weekly");
   const [skipWeekend, setSkipWeekend] = createSignal(config().skipWeekend ?? false);
@@ -333,7 +348,7 @@ function ScheduleForm(props: {
 
     setSaving(true);
     const parsedAmount = Math.round(parseFloat(amount() || "0") * 100);
-    const rules: any = { type: recurrence() };
+    const rules: WritableRecurrenceConfig = { type: recurrence() };
 
     if (skipWeekend()) {
       rules.skipWeekend = true;
@@ -353,8 +368,8 @@ function ScheduleForm(props: {
     const startDate = existing()?.startDate ?? new Date().toISOString().slice(0, 10);
 
     let operation: Promise<void>;
-    if (isEdit()) {
-      const old = existing();
+    const old = existing();
+    if (old) {
       operation = dispatch(
         "update_schedule",
         {
@@ -400,7 +415,7 @@ function ScheduleForm(props: {
             label: "Create schedule",
             inverse: (data) => ({
               commandType: "delete_schedule",
-              payload: { id: data.id as string },
+              payload: { id: requireCommandId(data) },
             }),
           },
         },
@@ -409,13 +424,7 @@ function ScheduleForm(props: {
 
     try {
       await operation;
-      props.onSaved?.({
-        ...existing(),
-        name: name().trim(),
-        amount: parsedAmount || null,
-        recurrenceRules: rulesJson,
-        startDate,
-      });
+      props.onSaved?.();
     } finally {
       setSaving(false);
     }
@@ -492,7 +501,13 @@ function ScheduleForm(props: {
             <div class="form-group">
               <select
                 value={weekendSolveMode()}
-                onChange={(e) => setWeekendSolveMode(e.currentTarget.value)}
+                onChange={(e) =>
+                  setWeekendSolveMode(
+                    Schema.decodeUnknownSync(Schema.Literals(["before", "after"]))(
+                      e.currentTarget.value,
+                    ),
+                  )
+                }
               >
                 <option value="after">Move to Monday (after)</option>
                 <option value="before">Move to Friday (before)</option>
@@ -599,14 +614,16 @@ function DiscoverModal(props: {
   }
 
   function recurrenceLabel(type: string): string {
-    const labels: Record<string, string> = {
-      weekly: "Weekly",
-      biweekly: "Bi-weekly",
-      monthly: "Monthly",
-      quarterly: "Quarterly",
-      yearly: "Yearly",
-    };
-    return labels[type] ?? type;
+    const labels = new Map<string, string>(
+      Object.entries({
+        weekly: "Weekly",
+        biweekly: "Bi-weekly",
+        monthly: "Monthly",
+        quarterly: "Quarterly",
+        yearly: "Yearly",
+      }),
+    );
+    return labels.get(type) ?? type;
   }
 
   function confidenceClass(conf: number): string {

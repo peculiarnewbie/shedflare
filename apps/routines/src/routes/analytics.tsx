@@ -6,6 +6,11 @@ import TopBar from "../components/TopBar";
 
 type Period = "week" | "month" | "year";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const PERIODS = ["week", "month", "year"] as const satisfies readonly Period[];
+
+interface ChartRow {
+  [series: string]: number | string;
+}
 
 function startOfWeek(d: Date): Date {
   const x = new Date(d);
@@ -72,20 +77,23 @@ export default function Analytics() {
       const { from, to } = range();
       const start = new Date(from);
       const end = new Date(to);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const ds = toDateStr(d);
+      const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
+      for (let offset = 0; offset <= dayCount; offset++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + offset);
+        const ds = toDateStr(date);
         const lbl =
           period() === "week"
-            ? d.toLocaleDateString("en-US", { weekday: "short" })
-            : String(d.getDate());
+            ? date.toLocaleDateString("en-US", { weekday: "short" })
+            : String(date.getDate());
         buckets.push({ label: lbl, key: ds });
         bucketOf.set(ds, ds);
       }
     }
 
-    const rowByKey = new Map<string, Record<string, number | string>>();
+    const rowByKey = new Map<string, ChartRow>();
     for (const b of buckets) {
-      const row: Record<string, number | string> = { label: b.label };
+      const row: ChartRow = { label: b.label };
       for (const r of activeRoutines()) row[r.id] = 0;
       rowByKey.set(b.key, row);
     }
@@ -95,10 +103,13 @@ export default function Analytics() {
       const key = period() === "year" ? String(new Date(c.date).getMonth()) : bucketOf.get(c.date);
       if (key === undefined) continue;
       const row = rowByKey.get(key);
-      if (row) row[c.routineId] = (row[c.routineId] as number) + 1;
+      if (row) row[c.routineId] = Number(row[c.routineId] ?? 0) + 1;
     }
 
-    return buckets.map((b) => rowByKey.get(b.key)!);
+    return buckets.flatMap((bucket) => {
+      const row = rowByKey.get(bucket.key);
+      return row ? [row] : [];
+    });
   });
 
   const totalDone = createMemo(() => {
@@ -133,7 +144,7 @@ export default function Analytics() {
               <h1 class="page-title">Your rhythm</h1>
             </div>
             <div class="period-tabs">
-              <For each={["week", "month", "year"] as Period[]}>
+              <For each={PERIODS}>
                 {(p) => (
                   <button
                     class="period-tab"

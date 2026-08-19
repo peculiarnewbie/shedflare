@@ -12,15 +12,14 @@ import { createStructuredLogger } from "#/effect";
 const logger = createStructuredLogger("chat-worker");
 
 type WorkerResponseInit = ResponseInit & { webSocket?: WebSocket };
-type WorkerResponse = Response & { readonly webSocket?: WebSocket };
-
 export const createVersionedResponseInit = (response: Response): WorkerResponseInit => {
   const init: WorkerResponseInit = {
     status: response.status,
     statusText: response.statusText,
     headers: response.headers,
   };
-  const webSocket = (response as WorkerResponse).webSocket;
+  // SAFETY: Cloudflare's WebSocket upgrade Response carries its socket in this runtime extension.
+  const webSocket = (response as Response & { readonly webSocket?: WebSocket }).webSocket;
   if (webSocket) init.webSocket = webSocket;
   return init;
 };
@@ -42,7 +41,6 @@ type RawEnv = {
   ASSETS: { fetch(request: Request): Promise<Response> };
   UPLOADS: R2Bucket;
   SYNC_ENGINE: DurableObjectNamespace;
-  [key: string]: unknown;
 };
 
 export function createRouter(env: RawEnv) {
@@ -62,8 +60,7 @@ export function createRouter(env: RawEnv) {
   return {
     async fetch(request: Request): Promise<Response> {
       try {
-        const resolved: Record<string, unknown> = { ...env };
-        setRuntimeEnv(resolved);
+        setRuntimeEnv(env);
 
         const url = new URL(request.url);
         const { pathname } = url;

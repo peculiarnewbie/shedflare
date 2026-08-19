@@ -1,17 +1,27 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Router, Route } from "@solidjs/router";
-import { createContext, createEffect, createSignal, type JSX, useContext, Show } from "solid-js";
+import {
+  createContext,
+  createEffect,
+  createSignal,
+  type JSX,
+  type Setter,
+  useContext,
+  Show,
+} from "solid-js";
 import { clearAuthHint, readAuthHint } from "@shedflare/auth-client/client";
+import { object, parse, string } from "valibot";
 import "./app.css";
 import { BUILD_INFO } from "./lib/build-info";
 import Dashboard from "./routes/index";
 import NotFound from "./routes/not-found";
 
 type Session = { email: string } | null;
+const SessionResponseSchema = object({ user: object({ email: string() }) });
 
 type SessionContextValue = {
   session: () => Session;
-  setSession: (value: Session) => void;
+  setSession: Setter<Session>;
   loading: () => boolean;
 };
 
@@ -41,7 +51,7 @@ function SessionProvider(props: { children?: JSX.Element }) {
       try {
         const res = await fetch("/api/session");
         if (res.ok) {
-          const data = (await res.json()) as { user: { email: string } };
+          const data = parse(SessionResponseSchema, await res.json());
           setSession(data.user);
         } else if (res.status === 401) {
           // Probe contradicts the hint: drop it so it can't paint a stale shell.
@@ -60,9 +70,7 @@ function SessionProvider(props: { children?: JSX.Element }) {
   });
 
   return (
-    <SessionContext.Provider
-      value={{ session, setSession: setSession as (value: Session) => void, loading }}
-    >
+    <SessionContext.Provider value={{ session, setSession, loading }}>
       {props.children}
     </SessionContext.Provider>
   );

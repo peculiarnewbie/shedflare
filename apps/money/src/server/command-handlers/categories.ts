@@ -3,7 +3,7 @@ import type { Db } from "../d1-access";
 import * as s from "../../db/schema";
 import { createCategory, createCategoryGroup } from "../../domain/factories";
 import { nowIso } from "../../domain/types";
-import type { CommandPayloadMap } from "../../domain/commands";
+import type { CommandInvocation } from "../../domain/commands";
 import type { CommandResult } from "../../domain/types";
 
 type CategoryCommand =
@@ -15,22 +15,23 @@ type CategoryCommand =
   | "delete_category_group"
   | "reorder_categories";
 
+type CategoryInvocation = Extract<CommandInvocation, { commandType: CategoryCommand }>;
+
 export async function handleCategoryCommands(
-  commandType: CategoryCommand,
-  payload: CommandPayloadMap[CategoryCommand],
+  command: CategoryInvocation,
   db: Db,
 ): Promise<CommandResult> {
-  switch (commandType) {
+  switch (command.commandType) {
     case "create_category": {
-      const p = payload as CommandPayloadMap["create_category"];
+      const p = command.payload;
       const row = createCategory(p);
       await db.insert(s.categories).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
     case "update_category": {
-      const p = payload as CommandPayloadMap["update_category"];
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const p = command.payload;
+      const set: Partial<typeof s.categories.$inferInsert> = { updatedAt: nowIso() };
       if (p.name !== undefined) set.name = p.name;
       if (p.hidden !== undefined) set.hidden = p.hidden;
       if (p.groupId !== undefined) set.groupId = p.groupId;
@@ -40,7 +41,7 @@ export async function handleCategoryCommands(
     }
 
     case "delete_category": {
-      const p = payload as CommandPayloadMap["delete_category"];
+      const p = command.payload;
       if (p.transferToId) {
         await db
           .update(s.transactions)
@@ -53,15 +54,15 @@ export async function handleCategoryCommands(
     }
 
     case "create_category_group": {
-      const p = payload as CommandPayloadMap["create_category_group"];
+      const p = command.payload;
       const row = createCategoryGroup(p);
       await db.insert(s.categoryGroups).values(row).run();
       return { ok: true, data: { id: row.id } };
     }
 
     case "update_category_group": {
-      const p = payload as CommandPayloadMap["update_category_group"];
-      const set: Record<string, unknown> = { updatedAt: nowIso() };
+      const p = command.payload;
+      const set: Partial<typeof s.categoryGroups.$inferInsert> = { updatedAt: nowIso() };
       if (p.name !== undefined) set.name = p.name;
       if (p.hidden !== undefined) set.hidden = p.hidden;
       if (p.isIncome !== undefined) set.isIncome = p.isIncome;
@@ -70,7 +71,7 @@ export async function handleCategoryCommands(
     }
 
     case "reorder_categories": {
-      const p = payload as CommandPayloadMap["reorder_categories"];
+      const p = command.payload;
       const now = nowIso();
       for (let i = 0; i < p.ids.length; i++) {
         await db
@@ -83,7 +84,7 @@ export async function handleCategoryCommands(
     }
 
     case "delete_category_group": {
-      const p = payload as CommandPayloadMap["delete_category_group"];
+      const p = command.payload;
       if (p.transferToGroupId) {
         await db
           .update(s.categories)
@@ -102,6 +103,6 @@ export async function handleCategoryCommands(
     }
 
     default:
-      return { ok: false, error: "Unknown category command: " + String(commandType) };
+      return { ok: false, error: "Unknown category command" };
   }
 }

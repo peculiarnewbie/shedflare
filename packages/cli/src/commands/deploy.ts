@@ -1,7 +1,7 @@
 import spawn from "nano-spawn";
 import { loadRepoDotEnv } from "@shedflare/alchemy";
 import { isAppSelected, loadConfig, validateConfig } from "../core/config.js";
-import { APP_IDS, loadManifest, type AppId } from "../core/manifests.js";
+import { isAppId, loadManifest, type AppId } from "../core/manifests.js";
 import { whoami, login } from "../core/wrangler.js";
 import { physicalWorkerName } from "../core/worker-names.js";
 import * as wrangler from "../core/wrangler.js";
@@ -35,9 +35,14 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
 
   const validConfig = validation.value;
 
-  if (options.app && !(APP_IDS as readonly string[]).includes(options.app)) {
-    console.error(`Unknown app: ${options.app}`);
-    process.exit(1);
+  let selectedApp: AppId | undefined;
+  if (options.app) {
+    if (!isAppId(options.app)) {
+      console.error(`Unknown app: ${options.app}`);
+      process.exit(1);
+    } else {
+      selectedApp = options.app;
+    }
   }
 
   if (options.app && !isAppSelected(validConfig, options.app)) {
@@ -45,11 +50,11 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     process.exit(1);
   }
 
-  const appIds = options.app
-    ? [options.app]
+  const appIds: AppId[] = selectedApp
+    ? [selectedApp]
     : Object.keys(validConfig.apps)
         .filter((id) => isAppSelected(validConfig, id))
-        .filter((id) => (APP_IDS as readonly string[]).includes(id));
+        .filter(isAppId);
 
   if (appIds.length === 0) {
     console.error("No enabled apps to deploy.");
@@ -74,9 +79,9 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   const missingOnCf: Array<{ appId: string; names: string[] }> = [];
   for (const appId of appIds) {
     try {
-      const manifest = loadManifest(appId as AppId);
+      const manifest = loadManifest(appId);
       const requiredSecrets = Object.entries(manifest.secrets)
-        .filter(([_, d]) => d.required)
+        .filter(([, definition]) => definition.required && definition.source === "operator")
         .map(([name]) => name);
       if (requiredSecrets.length === 0) continue;
 
@@ -118,9 +123,9 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   const allRequiredSecrets = new Set<string>();
   for (const appId of appIds) {
     try {
-      const manifest = loadManifest(appId as AppId);
-      for (const name of Object.keys(manifest.secrets)) {
-        allRequiredSecrets.add(name);
+      const manifest = loadManifest(appId);
+      for (const [name, definition] of Object.entries(manifest.secrets)) {
+        if (definition.source === "operator") allRequiredSecrets.add(name);
       }
     } catch {
       /* ignore */

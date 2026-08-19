@@ -3,6 +3,7 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import assert from "node:assert/strict";
 import ChatStack from "./alchemy.run";
+import * as Schema from "effect/Schema";
 
 const live = process.env.SHEDFLARE_LIVE_ALCHEMY_TESTS === "1";
 
@@ -28,14 +29,10 @@ test.skipIf(!live)(
 
     const bootstrap = yield* Effect.promise(() => fetch(`${base}/api/bootstrap`));
     assert.equal(bootstrap.status, 200);
-    const bootstrapBody: unknown = yield* Effect.promise(() => bootstrap.json());
-    assert.equal(
-      typeof bootstrapBody === "object" &&
-        bootstrapBody !== null &&
-        "session" in bootstrapBody &&
-        bootstrapBody.session === null,
-      true,
+    const bootstrapBody = Schema.decodeUnknownSync(Schema.Struct({ session: Schema.Null }))(
+      yield* Effect.promise(() => bootstrap.json()),
     );
+    assert.equal(bootstrapBody.session, null);
   }),
   { timeout: 120_000 },
 );

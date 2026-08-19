@@ -1,7 +1,7 @@
 import { useParams, A } from "@solidjs/router";
 import { For, Show, createResource } from "solid-js";
 import { apiGet } from "../lib/api";
-import type { SuiteOverview } from "../api/types";
+import { SuiteOverviewSchema } from "../api/types";
 import { useStage } from "../lib/stage-context";
 
 export default function AppDetail() {
@@ -12,7 +12,7 @@ export default function AppDetail() {
     () => selectedStage(),
     async (stage) => {
       const params = stage ? `?stage=${encodeURIComponent(stage)}` : "";
-      return apiGet<SuiteOverview>(`/api/overview${params}`);
+      return apiGet(`/api/overview${params}`, SuiteOverviewSchema);
     },
   );
   const app = () => overview()?.apps.find((a) => a.id === params.id) ?? null;

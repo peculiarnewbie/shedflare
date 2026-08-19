@@ -5,6 +5,7 @@ import { applyDrizzleMigrations } from "@shedflare/test-utils/migrations";
 import { describe, expect, test } from "vite-plus/test";
 import { createFuzzRandom, type FuzzRandom } from "../test/fuzz";
 import { buildFilterWhereSql, type FilterCondition } from "./conditions-to-sql";
+import * as Schema from "effect/Schema";
 
 const SEED = 0xf17e12;
 const MIGRATIONS_DIR = join(import.meta.dirname, "../migrations");
@@ -74,17 +75,8 @@ const FIXTURES: readonly TransactionFixture[] = [
 ];
 
 function toSqliteParams(params: readonly unknown[]): SQLInputValue[] {
-  return params.map((value): SQLInputValue => {
-    if (
-      value === null ||
-      typeof value === "number" ||
-      typeof value === "bigint" ||
-      typeof value === "string"
-    ) {
-      return value;
-    }
-    throw new Error(`Unsupported generated SQLite parameter type: ${typeof value}`);
-  });
+  const SqlInputSchema = Schema.Union([Schema.Null, Schema.Number, Schema.BigInt, Schema.String]);
+  return params.map((value) => Schema.decodeUnknownSync(SqlInputSchema)(value));
 }
 
 function valueFor(row: TransactionFixture, field: string): string | number | null {
@@ -129,17 +121,17 @@ function matches(row: TransactionFixture, condition: FilterCondition): boolean {
     case "doesNotContain":
       return !String(raw).toLowerCase().includes(condition.value.toLowerCase());
     case "gt":
-      return typeof raw === "number" && raw > condition.value;
+      return Number(raw) > condition.value;
     case "gte":
-      return typeof raw === "number" && raw >= condition.value;
+      return Number(raw) >= condition.value;
     case "lt":
-      return typeof raw === "number" && raw < condition.value;
+      return Number(raw) < condition.value;
     case "lte":
-      return typeof raw === "number" && raw <= condition.value;
+      return Number(raw) <= condition.value;
     case "oneOf":
       return condition.value.includes(raw);
     case "isbetween":
-      return typeof raw === "number" && raw >= condition.value && raw <= condition.value2;
+      return Number(raw) >= condition.value && Number(raw) <= condition.value2;
   }
 }
 

@@ -6,6 +6,13 @@ import type { ConfigMigration, ShedflareConfig, ShedflareConfigV2 } from "./mode
 
 const CONFIG_SCHEMA_PATH = "./packages/shedflare-core/schemas/shedflare-config.schema.json";
 
+function withSourceText(
+  migration: ConfigMigration,
+  sourceText: string | undefined,
+): ConfigMigration {
+  return sourceText === undefined ? migration : { ...migration, sourceText };
+}
+
 function configText(config: ShedflareConfigV2): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
@@ -21,15 +28,15 @@ export function migrateConfig(
   sourceText?: string,
 ): ConfigMigration {
   if (input.configVersion === 2) {
-    return {
+    const migration = {
       sourcePath,
-      ...(sourceText === undefined ? {} : { sourceText }),
       oldVersion: 2,
       config: input,
       warnings: [],
       diff: migrationDiff(2, input),
       canWrite: true,
-    };
+    } satisfies ConfigMigration;
+    return withSourceText(migration, sourceText);
   }
 
   const apps: Record<string, { subdomain?: string; vars?: Record<string, string> }> = {};
@@ -38,12 +45,10 @@ export function migrateConfig(
     const manifest = catalog.manifests.get(appId);
     if (!manifest) continue;
     const vars = input.vars[appId];
-    apps[appId] = {
-      ...(selection.subdomain === manifest.defaultSubdomain
-        ? {}
-        : { subdomain: selection.subdomain }),
-      ...(vars && Object.keys(vars).length > 0 ? { vars: { ...vars } } : {}),
-    };
+    const app: (typeof apps)[string] = {};
+    if (selection.subdomain !== manifest.defaultSubdomain) app.subdomain = selection.subdomain;
+    if (vars && Object.keys(vars).length > 0) app.vars = { ...vars };
+    apps[appId] = app;
   }
 
   const config: ShedflareConfigV2 = {
@@ -68,15 +73,15 @@ export function migrateConfig(
       ]
     : [];
 
-  return {
+  const migration = {
     sourcePath,
-    ...(sourceText === undefined ? {} : { sourceText }),
     oldVersion: 1,
     config,
     warnings,
     diff: migrationDiff(1, config),
     canWrite: warnings.length === 0,
-  };
+  } satisfies ConfigMigration;
+  return withSourceText(migration, sourceText);
 }
 
 export function writeConfigMigration(migration: ConfigMigration, catalog: ManifestCatalog): string {

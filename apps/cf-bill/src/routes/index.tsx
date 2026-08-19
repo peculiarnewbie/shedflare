@@ -1,16 +1,20 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
+import { fallback, object, parse, string } from "valibot";
 import UsageCard from "../components/UsageCard";
-import type { UsageResponse } from "../api/types";
+import { UsageResponseSchema, type UsageResponse } from "../api/types";
+
+const ErrorResponseSchema = object({ error: fallback(string(), "") });
 
 async function fetchUsage(): Promise<UsageResponse> {
   const res = await fetch("/api/usage");
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as {
-      error?: string;
-    };
+    const body = parse(
+      ErrorResponseSchema,
+      await res.json().catch(() => ({ error: `HTTP ${res.status}` })),
+    );
     throw new Error(body.error || `API error: ${res.status}`);
   }
-  return res.json();
+  return parse(UsageResponseSchema, await res.json());
 }
 
 export default function Dashboard() {
@@ -46,12 +50,14 @@ export default function Dashboard() {
       <div class="page-header">
         <div>
           <h1>Usage Monitor</h1>
-          {period() && (
-            <p class="period-label">
-              {new Date(period()!.start).toLocaleDateString()} –{" "}
-              {new Date(period()!.end).toLocaleDateString()}
-            </p>
-          )}
+          <Show when={period()}>
+            {(currentPeriod) => (
+              <p class="period-label">
+                {new Date(currentPeriod().start).toLocaleDateString()} –{" "}
+                {new Date(currentPeriod().end).toLocaleDateString()}
+              </p>
+            )}
+          </Show>
         </div>
         <button class="btn btn-ghost btn-sm" onClick={refresh} disabled={refreshing()}>
           {refreshing() ? "Refreshing..." : "Refresh"}

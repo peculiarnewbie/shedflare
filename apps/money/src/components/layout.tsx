@@ -164,10 +164,10 @@ export default function Layout(props: RouteSectionProps) {
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     } finally {
-      if (typeof localStorage !== "undefined") {
-        localStorage.removeItem("money.clientId");
-        localStorage.removeItem("money.lastServerSeq");
-        localStorage.removeItem("money.pendingOps");
+      if (globalThis.localStorage) {
+        globalThis.localStorage.removeItem("money.clientId");
+        globalThis.localStorage.removeItem("money.lastServerSeq");
+        globalThis.localStorage.removeItem("money.pendingOps");
       }
       window.location.href = "/";
     }

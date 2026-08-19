@@ -3,6 +3,7 @@ import {
   discoverManifests,
   findRepoRoot,
   inspectConfig,
+  isAppSelected,
   validateConfig as validateCoreConfig,
   writeConfig as writeCoreConfig,
   type ShedflareConfig,
@@ -33,8 +34,8 @@ export function loadConfig(): ShedflareConfig | null {
   return inspectConfig(root, manifests).config ?? null;
 }
 
-export function validateConfig(
-  config: unknown,
+export function validateConfig<Config>(
+  config: Config,
 ): { success: true; value: ShedflareConfig } | { success: false; error: string } {
   try {
     const { catalog: manifests } = catalog();
@@ -49,10 +50,4 @@ export function writeConfig(config: ShedflareConfigV2): void {
   writeCoreConfig(root, config, manifests);
 }
 
-export function isAppSelected(config: ShedflareConfig, appId: string): boolean {
-  if (config.configVersion === 1) {
-    const selection = config.apps[appId];
-    return !!selection && selection.enabled !== false;
-  }
-  return !!config.apps[appId];
-}
+export { isAppSelected };

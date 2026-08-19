@@ -4,8 +4,11 @@ import { createDb, rawD1Query } from "../d1-access";
 import { wrapHandler } from "./wrap-handler";
 
 type Env = { MONEY_DB: D1Database };
+type DumpValue = string | number | boolean | null;
+type DumpRow = { id?: string; key?: string; [column: string]: DumpValue | undefined };
+type DumpData = Record<string, Record<string, DumpRow>>;
 
-function json(data: unknown, status = 200) {
+function json<Payload>(data: Payload, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "content-type": "application/json" },
@@ -18,7 +21,7 @@ export function createDataGroup(env: Env) {
       "dump",
       wrapHandler(async (_req: Request): Promise<Response> => {
         const db = createDb(env.MONEY_DB);
-        const data: Record<string, Record<string, unknown>> = {};
+        const data: DumpData = {};
 
         const tables = [
           "accounts",
@@ -42,9 +45,7 @@ export function createDataGroup(env: Env) {
 
         for (const name of tables) {
           try {
-            const rows = await db.all<{ id?: string; key?: string } & Record<string, unknown>>(
-              rawD1Query(`SELECT * FROM ${name}`),
-            );
+            const rows = await db.all<DumpRow>(rawD1Query(`SELECT * FROM ${name}`));
             data[name] = {};
             for (const row of rows) {
               const id = row.id ?? row.key ?? null;

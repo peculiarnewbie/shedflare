@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse } from "jsonc-parser";
+import { parseJsonc } from "../src/jsonc.ts";
+import { parseManifest } from "../src/manifests/discover.ts";
 import { findRepoRoot } from "../src/paths.ts";
 
 const root = findRepoRoot(process.cwd());
@@ -10,10 +11,7 @@ const ids = readdirSync(appsDir, { withFileTypes: true })
   .filter((entry) => existsSync(join(appsDir, entry.name, "shedflare.app.jsonc")))
   .map((entry) => {
     const file = join(appsDir, entry.name, "shedflare.app.jsonc");
-    const parsed = parse(readFileSync(file, "utf8")) as { id?: unknown } | undefined;
-    if (!parsed || typeof parsed.id !== "string") {
-      throw new Error(`${file} is missing a string id`);
-    }
+    const parsed = parseManifest(parseJsonc(readFileSync(file, "utf8"), file), file);
     if (parsed.id !== entry.name) {
       throw new Error(`${file} declares id "${parsed.id}", but its directory is "${entry.name}"`);
     }

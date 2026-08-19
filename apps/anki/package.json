@@ -7,9 +7,9 @@
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
-    "test": "vp test --passWithNoTests",
+    "test": "vp test",
     "check": "vp check src alchemy.run.ts vite.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp check --no-fmt --no-lint",
     "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
     "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
     "prepare": "vp config"
@@ -18,11 +18,13 @@
     "@shedflare/auth-client": "workspace:*",
     "@solidjs/meta": "^0.29.4",
     "drizzle-orm": "catalog:",
-    "solid-js": "^1.9.12"
+    "solid-js": "^1.9.12",
+    "valibot": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.32.3",
     "@cloudflare/workers-types": "^4.20260415.1",
+    "@shedflare/test-utils": "workspace:*",
     "@typescript/native-preview": "catalog:",
     "drizzle-kit": "catalog:",
     "vite": "catalog:",

@@ -23,6 +23,7 @@ export interface VarDefinition {
 export interface SecretDefinition {
   readonly description: string;
   readonly required: boolean;
+  readonly source: "operator" | "generated";
 }
 
 export interface KvResourceDescriptor {

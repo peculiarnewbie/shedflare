@@ -8,6 +8,7 @@ import FileList from "../components/FileList";
 import DeleteConfirm from "../components/DeleteConfirm";
 import ToastContainer from "../components/ToastContainer";
 import ContextMenu from "../components/ContextMenu";
+import SecureUploadCommand from "../components/SecureUploadCommand";
 import { BUILD_INFO } from "../lib/build-info";
 
 function DriveShell() {
@@ -23,6 +24,7 @@ function DriveShell() {
         </div>
         <Show when={!ctx.checkingSession() && ctx.userEmail()}>
           <div class="top-bar-owner">
+            <SecureUploadCommand />
             <a class="btn top-bar-signout" href="/public">
               Public files
             </a>

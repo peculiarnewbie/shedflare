@@ -2,41 +2,13 @@ import { For, Show, createResource } from "solid-js";
 import { fileGlyph, formatSize } from "../context";
 import { BUILD_INFO } from "../lib/build-info";
 import type { DriveFile } from "../types";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function decodeDriveFile(value: unknown): DriveFile | null {
-  if (!isRecord(value)) return null;
-  if (
-    typeof value.id !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.mimeType !== "string" ||
-    typeof value.size !== "number" ||
-    typeof value.description !== "string" ||
-    typeof value.isPublic !== "boolean" ||
-    typeof value.createdAt !== "string" ||
-    typeof value.updatedAt !== "string" ||
-    !Array.isArray(value.tags) ||
-    !value.tags.every((tag) => typeof tag === "string")
-  ) {
-    return null;
-  }
-  return value as DriveFile;
-}
-
-function decodePublicFiles(value: unknown): DriveFile[] {
-  if (!isRecord(value) || !Array.isArray(value.files)) throw new Error("Invalid public files");
-  const files = value.files.map(decodeDriveFile);
-  if (files.some((file) => !file)) throw new Error("Invalid public files");
-  return files as DriveFile[];
-}
+import * as Schema from "effect/Schema";
+import { PublicFilesResponse } from "../shared/schema";
 
 async function loadPublicFiles() {
   const response = await fetch("/api/public/files");
   if (!response.ok) throw new Error(await response.text());
-  return decodePublicFiles(await response.json());
+  return Schema.decodeUnknownSync(PublicFilesResponse)(await response.json()).files;
 }
 
 function previewUrl(file: DriveFile) {

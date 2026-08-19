@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import * as v from "valibot";
 import {
   CHUNKED_UPLOAD_THRESHOLD,
   DriveUploadError,
@@ -6,7 +7,14 @@ import {
   type UploadProgress,
 } from "./upload";
 
-function jsonResponse(body: unknown, status = 200) {
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+const CompleteBodySchema = v.object({
+  uploadId: v.string(),
+  parts: v.array(v.object({ partNumber: v.number(), etag: v.string() })),
+});
+
+function jsonResponse(body: JsonValue, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
@@ -35,10 +43,10 @@ describe("uploadDriveFile", () => {
     const file = new File([new Uint8Array(fileSize)], "video.mp4", { type: "video/mp4" });
     const progress: UploadProgress[] = [];
     const partAttempts = new Map<number, number>();
-    let completeBody: unknown = null;
+    let completeBody: v.InferOutput<typeof CompleteBodySchema> | null = null;
 
     const fetchImpl: typeof fetch = async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const url = input instanceof Request ? input.url : input instanceof URL ? input.href : input;
       if (url === "/api/files/multipart") {
         return jsonResponse(
           {
@@ -60,8 +68,8 @@ describe("uploadDriveFile", () => {
         return jsonResponse({ partNumber, etag: `etag-${partNumber}` });
       }
       if (url.endsWith("/complete")) {
-        if (typeof init?.body !== "string") throw new Error("Expected JSON completion body");
-        completeBody = JSON.parse(init.body);
+        const requestBody = v.parse(v.string(), init?.body);
+        completeBody = v.parse(CompleteBodySchema, JSON.parse(requestBody));
         return jsonResponse(uploadedFile(fileSize), 201);
       }
       throw new Error(`Unexpected request: ${url}`);

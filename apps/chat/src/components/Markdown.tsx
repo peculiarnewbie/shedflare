@@ -146,6 +146,7 @@ const Markdown: Component<{
 
   const html = createMemo(() => {
     const raw = displayText() || "";
+    // SAFETY: Marked's `async: false` overload executes synchronously despite its broad return type.
     const rendered = marked.parse(raw, { async: false }) as string;
     const sanitized = DOMPurify.sanitize(rendered, { ADD_ATTR: ["data-code"] });
     let result = sanitized
@@ -160,7 +161,8 @@ const Markdown: Component<{
   });
 
   const handleClick = (e: MouseEvent) => {
-    const target = e.target as HTMLElement;
+    if (!(e.target instanceof HTMLElement)) return;
+    const target = e.target;
     if (!target.classList.contains("copy-btn")) return;
     const code = decodeURIComponent(target.getAttribute("data-code") || "");
     void navigator.clipboard.writeText(code);

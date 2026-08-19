@@ -8,6 +8,7 @@
  */
 
 import { decodeSyncSnapshot, type SyncTables } from "#/domain";
+import * as Schema from "effect/Schema";
 
 const DB_NAME = "shedflare-chat-offline";
 const DB_VERSION = 1;
@@ -42,12 +43,24 @@ export async function readCachedSnapshot(): Promise<CachedSnapshot | null> {
       const store = tx.objectStore(STORE_NAME);
       const request = store.get(SNAPSHOT_KEY);
       request.onsuccess = () => {
-        const result = request.result;
+        let result;
+        try {
+          result = Schema.decodeUnknownSync(
+            Schema.Struct({
+              tables: Schema.Any,
+              lastServerSeq: Schema.Number,
+              cachedAt: Schema.Number,
+            }),
+          )(request.result);
+        } catch {
+          resolve(null);
+          return;
+        }
         const snapshot = decodeSyncSnapshot({
-          tables: result?.tables,
-          serverSeq: result?.lastServerSeq,
+          tables: result.tables,
+          serverSeq: result.lastServerSeq,
         });
-        if (!snapshot || typeof result?.cachedAt !== "number") {
+        if (!snapshot) {
           resolve(null);
           return;
         }

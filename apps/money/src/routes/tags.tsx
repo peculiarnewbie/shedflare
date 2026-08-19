@@ -2,7 +2,7 @@
  * Tags page — create and manage tags for transaction categorization.
  */
 import { createSignal, For, Show, createEffect, onCleanup, onMount } from "solid-js";
-import { dispatch } from "../lib/pending-ops";
+import { dispatch, requireCommandId } from "../lib/pending-ops";
 import { api } from "../lib/api";
 import { PageState } from "../components/PageState";
 import { listenForMoneyDataChanged } from "../lib/data-events";
@@ -43,7 +43,10 @@ export default function TagsPage() {
       {
         undoInfo: {
           label: "Create tag",
-          inverse: (data) => ({ commandType: "delete_tag", payload: { id: data.id as string } }),
+          inverse: (data) => ({
+            commandType: "delete_tag",
+            payload: { id: requireCommandId(data) },
+          }),
         },
       },
     );

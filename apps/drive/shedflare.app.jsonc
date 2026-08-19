@@ -27,7 +27,13 @@
       "description": "Deployment owner email",
     },
   },
-  "secrets": {},
+  "secrets": {
+    "SECURE_UPLOAD_TOKEN_SECRET": {
+      "description": "Generated secret for signing short-lived upload capabilities",
+      "required": true,
+      "source": "generated",
+    },
+  },
   "resources": [
     {
       "type": "d1",

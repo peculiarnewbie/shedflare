@@ -1,9 +1,24 @@
-export function json(value: unknown): string {
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { SyncDecodeError } from "./errors";
+import { SyncClientEnvelopeSchema } from "./sync-types";
+
+export function json<Value>(value: Value): string {
   return JSON.stringify(value);
 }
 
-export function parseJson<T>(text: string): T {
-  return JSON.parse(text) as T;
+export function decodeSyncClientEnvelope(text: string) {
+  return Effect.try({
+    try: () => JSON.parse(text),
+    catch: (cause) => new SyncDecodeError({ target: "clientEnvelope", cause }),
+  }).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(SyncClientEnvelopeSchema)),
+    Effect.mapError((cause) =>
+      cause instanceof SyncDecodeError
+        ? cause
+        : new SyncDecodeError({ target: "clientEnvelope", cause }),
+    ),
+  );
 }
 
 export function nowIso(): string {

@@ -36,12 +36,14 @@ export const CfBillStack = Alchemy.Stack(
 
     const cfToken = yield* Shedflare.optionalSecretConfig("CF_API_TOKEN");
 
-    yield* Shedflare.WorkerSecret("CfApiToken", {
+    const secretProps: Shedflare.WorkerSecretProps = {
       workerName: worker.workerName,
       binding: "CF_API_TOKEN",
-      ...(Option.isSome(cfToken) ? { value: cfToken.value } : {}),
       required: true,
-    });
+    };
+    if (Option.isSome(cfToken)) secretProps.value = cfToken.value;
+
+    yield* Shedflare.WorkerSecret("CfApiToken", secretProps);
 
     return {
       app: "cf-bill" as const,

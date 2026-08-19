@@ -32,13 +32,13 @@ export function createHttpApiAuth(env: AuthEnv) {
           fn(webReq, session, { params: ctx.params, payload: ctx.payload }),
         );
       }).pipe(
-        Effect.catch((error: unknown) => {
+        Effect.catch((error) => {
           const actual = error instanceof Error && "cause" in error ? error.cause : error;
           if (actual instanceof Response) {
-            return Effect.succeed(HttpServerResponse.fromWeb(actual) as A);
+            return Effect.succeed(HttpServerResponse.fromWeb(actual));
           }
           return Effect.succeed(
-            HttpServerResponse.fromWeb(new Response("Internal error", { status: 500 })) as A,
+            HttpServerResponse.fromWeb(new Response("Internal error", { status: 500 })),
           );
         }),
       );

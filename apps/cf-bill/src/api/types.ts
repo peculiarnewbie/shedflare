@@ -1,26 +1,29 @@
-export interface UsageMetric {
-  label: string;
-  used: number;
-  unit: string;
-  limits: { free: number; paid: number; label?: string };
-  note?: string;
-}
+import { array, number, object, optional, picklist, string, type InferOutput } from "valibot";
 
-export interface ProductUsage {
-  id: string;
-  name: string;
-  metrics: UsageMetric[];
-}
+export const UsagePeriodSchema = object({ start: string(), end: string() });
+export type UsagePeriod = InferOutput<typeof UsagePeriodSchema>;
 
-export interface UsagePeriod {
-  start: string;
-  end: string;
-}
+export const UsageMetricSchema = object({
+  label: string(),
+  used: number(),
+  unit: string(),
+  limits: object({ free: number(), paid: number(), label: optional(string()) }),
+  note: optional(string()),
+});
+export type UsageMetric = InferOutput<typeof UsageMetricSchema>;
 
-export interface UsageResponse {
-  period: UsagePeriod;
-  products: ProductUsage[];
-}
+export const ProductUsageSchema = object({
+  id: picklist(["workers", "kv", "d1", "durableObjects", "r2", "http"]),
+  name: string(),
+  metrics: array(UsageMetricSchema),
+});
+export type ProductUsage = InferOutput<typeof ProductUsageSchema>;
+
+export const UsageResponseSchema = object({
+  period: UsagePeriodSchema,
+  products: array(ProductUsageSchema),
+});
+export type UsageResponse = InferOutput<typeof UsageResponseSchema>;
 
 export interface WorkersInvocation {
   requests: number;

@@ -1,21 +1,48 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
+import * as Schema from "effect/Schema";
+import {
+  AccountsResponseSchema,
+  AccountTagsResponseSchema,
+  AccountTransactionsResponseSchema,
+  CategoriesResponseSchema,
+  CategoryGroupsResponseSchema,
+  CommandResponseSchema,
+  DashboardWidgetsResponseSchema,
+  MonthBudgetResponseSchema,
+  RatesResponseSchema,
+  ReportsBudgetAnalysisResponseSchema,
+  ReportsCashFlowResponseSchema,
+  ReportsNetWorthResponseSchema,
+  ReportsSpendingResponseSchema,
+  SettingsResponseSchema,
+  TagsResponseSchema,
+} from "../src/domain/schemas-client";
+import type { CommandPayload } from "../src/lib/api";
 
-type CommandResult = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonResponse = { json(): Promise<JsonValue> };
 
-async function runCommand(
-  context: BrowserContext,
-  commandType: string,
-  payload: Record<string, unknown>,
-): Promise<{ ok: true; data: Record<string, unknown> }> {
+async function decodeResponse<SchemaType extends Parameters<typeof Schema.decodeUnknownSync>[0]>(
+  response: JsonResponse,
+  schema: SchemaType,
+): Promise<SchemaType["Type"]> {
+  return Schema.decodeUnknownSync(schema)(await response.json());
+}
+
+async function runCommand(context: BrowserContext, commandType: string, payload: CommandPayload) {
   const resp = await context.request.post("/api/command", {
     data: { commandType, payload },
   });
   expect(resp.status(), `POST /api/command ${commandType}`).toBe(200);
-  const body = (await resp.json()) as CommandResult;
+  const body = await decodeResponse(resp, CommandResponseSchema);
   if (!body.ok) {
     throw new Error(`Command ${commandType} failed: ${body.error}`);
   }
   return body;
+}
+
+function commandId(result: Awaited<ReturnType<typeof runCommand>>): string {
+  return Schema.decodeUnknownSync(Schema.String)(result.data.id);
 }
 
 function todayIso(): string {
@@ -52,19 +79,19 @@ test.describe("Money E2E", () => {
 
     // ── Step 2: Create a category group and category via API ──
     const groupResult = await runCommand(context, "create_category_group", { name: groupName });
-    const groupId = groupResult.data.id as string;
+    const groupId = commandId(groupResult);
     expect(groupId).toMatch(/^cgrp_/);
 
     const catResult = await runCommand(context, "create_category", {
       name: categoryName,
       groupId,
     });
-    const categoryId = catResult.data.id as string;
+    const categoryId = commandId(catResult);
     expect(categoryId).toMatch(/^cat_/);
 
     // ── Step 3: Create a payee via API ──
     const payeeResult = await runCommand(context, "create_payee", { name: payeeName });
-    const payeeId = payeeResult.data.id as string;
+    const payeeId = commandId(payeeResult);
     expect(payeeId).toMatch(/^pay_/);
 
     // ── Step 4: Create account via UI, verify via API ──
@@ -82,14 +109,13 @@ test.describe("Money E2E", () => {
 
     const listResp = await context.request.get("/api/accounts");
     expectStatus(listResp, 200);
-    const listBody = (await listResp.json()) as {
-      accounts: Array<{ id: string; name: string; balanceCurrent: number; offbudget: boolean }>;
-    };
+    const listBody = await decodeResponse(listResp, AccountsResponseSchema);
     const created = listBody.accounts.find((a) => a.name === accountName);
     expect(created, `account ${accountName} should exist`).toBeDefined();
-    expect(created!.balanceCurrent).toBe(startingBalanceCents);
-    expect(created!.offbudget).toBe(false);
-    const accountId = created!.id;
+    if (!created) throw new Error(`Expected account ${accountName} in the account listing`);
+    expect(created.balanceCurrent).toBe(startingBalanceCents);
+    expect(created.offbudget).toBe(false);
+    const accountId = created.id;
 
     // ── Step 5: Create transaction via API, verify it appears ──
     const txResult = await runCommand(context, "create_transaction", {
@@ -103,33 +129,25 @@ test.describe("Money E2E", () => {
         cleared: true,
       },
     });
-    const transactionId = txResult.data.id as string;
+    const transactionId = commandId(txResult);
     expect(transactionId).toMatch(/^txn_/);
 
     const txListResp = await context.request.get(`/api/accounts/${accountId}/transactions`);
     expectStatus(txListResp, 200);
-    const txListBody = (await txListResp.json()) as {
-      transactions: Array<{
-        id: string;
-        amount: number;
-        payee: string | null;
-        notes: string | null;
-      }>;
-    };
+    const txListBody = await decodeResponse(txListResp, AccountTransactionsResponseSchema);
     const tx = txListBody.transactions.find((t) => t.id === transactionId);
     expect(tx, `transaction ${transactionId} should exist`).toBeDefined();
-    expect(tx!.amount).toBe(transactionCents);
-    expect(tx!.payee).toBe(payeeName);
-    expect(tx!.notes).toBe("e2e grocery run");
+    if (!tx) throw new Error(`Expected transaction ${transactionId} in the transaction listing`);
+    expect(tx.amount).toBe(transactionCents);
+    expect(tx.payee).toBe(payeeName);
+    expect(tx.notes).toBe("e2e grocery run");
 
     // Account balance should now be 100_000 + (-2_500) = 97_500
     const balanceResp = await context.request.get("/api/accounts");
-    const balanceBody = (await balanceResp.json()) as {
-      accounts: Array<{ id: string; balanceCurrent: number }>;
-    };
-    expect(balanceBody.accounts.find((a) => a.id === accountId)!.balanceCurrent).toBe(
-      startingBalanceCents + transactionCents,
-    );
+    const balanceBody = await decodeResponse(balanceResp, AccountsResponseSchema);
+    const balancedAccount = balanceBody.accounts.find((account) => account.id === accountId);
+    if (!balancedAccount) throw new Error(`Expected account ${accountId} in the balance listing`);
+    expect(balancedAccount.balanceCurrent).toBe(startingBalanceCents + transactionCents);
 
     // ── Step 6: Set budget via UI, verify via API ──
     await page.goto("/budget", { waitUntil: "networkidle" });
@@ -150,17 +168,7 @@ test.describe("Money E2E", () => {
         async () => {
           const resp = await context.request.get(`/api/budget/${currentMonthInt()}`);
           expectStatus(resp, 200);
-          const body = (await resp.json()) as {
-            month: number;
-            toBudget: number;
-            categories: Array<{
-              categoryId: string;
-              categoryName: string;
-              budgeted: number;
-              spent: number;
-              leftover: number;
-            }>;
-          };
+          const body = await decodeResponse(resp, MonthBudgetResponseSchema);
           return body.categories.find((c) => c.categoryId === categoryId);
         },
         { timeout: 10_000 },
@@ -176,27 +184,22 @@ test.describe("Money E2E", () => {
     await runCommand(context, "delete_transaction", { id: transactionId });
 
     const txListAfter = await context.request.get(`/api/accounts/${accountId}/transactions`);
-    const txListAfterBody = (await txListAfter.json()) as {
-      transactions: Array<{ id: string }>;
-    };
+    const txListAfterBody = await decodeResponse(txListAfter, AccountTransactionsResponseSchema);
     expect(txListAfterBody.transactions.find((t) => t.id === transactionId)).toBeUndefined();
 
     // Account balance should be back to the starting balance
     const balanceAfter = await context.request.get("/api/accounts");
-    const balanceAfterBody = (await balanceAfter.json()) as {
-      accounts: Array<{ id: string; balanceCurrent: number }>;
-    };
-    expect(balanceAfterBody.accounts.find((a) => a.id === accountId)!.balanceCurrent).toBe(
-      startingBalanceCents,
-    );
+    const balanceAfterBody = await decodeResponse(balanceAfter, AccountsResponseSchema);
+    const restoredAccount = balanceAfterBody.accounts.find((account) => account.id === accountId);
+    if (!restoredAccount)
+      throw new Error(`Expected account ${accountId} after transaction deletion`);
+    expect(restoredAccount.balanceCurrent).toBe(startingBalanceCents);
 
     // ── Step 8: Delete account via API (UI delete uses `confirm()`, skip it) ──
     await runCommand(context, "delete_account", { id: accountId });
 
     const finalList = await context.request.get("/api/accounts");
-    const finalListBody = (await finalList.json()) as {
-      accounts: Array<{ id: string }>;
-    };
+    const finalListBody = await decodeResponse(finalList, AccountsResponseSchema);
     expect(finalListBody.accounts.find((a) => a.id === accountId)).toBeUndefined();
 
     // ── Step 9: Cleanup auxiliary resources ──
@@ -210,9 +213,7 @@ test.describe("Money E2E", () => {
   test("multi-currency settings + display", async ({ page, context }) => {
     // 1. Default currency is USD; verify settings page reflects it.
     const settingsResp = await context.request.get("/api/settings");
-    const settingsBody = (await settingsResp.json()) as {
-      settings: Array<{ key: string; value: string }>;
-    };
+    const settingsBody = await decodeResponse(settingsResp, SettingsResponseSchema);
     const initialCurrency = settingsBody.settings.find((s) => s.key === "display_currency");
     expect(initialCurrency?.value ?? "USD").toBe("USD");
 
@@ -230,9 +231,7 @@ test.describe("Money E2E", () => {
       .poll(
         async () => {
           const resp = await context.request.get("/api/settings");
-          const body = (await resp.json()) as {
-            settings: Array<{ key: string; value: string }>;
-          };
+          const body = await decodeResponse(resp, SettingsResponseSchema);
           return body.settings.find((s) => s.key === "display_currency")?.value;
         },
         { timeout: 10_000 },
@@ -242,7 +241,7 @@ test.describe("Money E2E", () => {
     // 4. Update exchange rate; verify GET /api/rates reflects it.
     await runCommand(context, "update_exchange_rate", { usdToIdr: 16_000 });
     const ratesResp = await context.request.get("/api/rates");
-    const ratesBody = (await ratesResp.json()) as { usdToIdr: number };
+    const ratesBody = await decodeResponse(ratesResp, RatesResponseSchema);
     expect(ratesBody.usdToIdr).toBe(16_000);
 
     // 5. Create an account; verify balance is rendered with the IDR symbol
@@ -267,9 +266,7 @@ test.describe("Money E2E", () => {
       .poll(
         async () => {
           const resp = await context.request.get("/api/settings");
-          const body = (await resp.json()) as {
-            settings: Array<{ key: string; value: string }>;
-          };
+          const body = await decodeResponse(resp, SettingsResponseSchema);
           return body.settings.find((s) => s.key === "display_currency")?.value;
         },
         { timeout: 10_000 },
@@ -278,9 +275,7 @@ test.describe("Money E2E", () => {
 
     // Cleanup
     const acctList = await context.request.get("/api/accounts");
-    const acctListBody = (await acctList.json()) as {
-      accounts: Array<{ id: string; name: string }>;
-    };
+    const acctListBody = await decodeResponse(acctList, AccountsResponseSchema);
     const acct = acctListBody.accounts.find((a) => a.name === accountName);
     if (acct) await runCommand(context, "delete_account", { id: acct.id });
   });
@@ -308,12 +303,11 @@ test.describe("Money E2E", () => {
 
     // Verify via API
     const groupsResp = await context.request.get("/api/category-groups");
-    const groupsBody = (await groupsResp.json()) as {
-      groups: Array<{ id: string; name: string }>;
-    };
+    const groupsBody = await decodeResponse(groupsResp, CategoryGroupsResponseSchema);
     const group = groupsBody.groups.find((g) => g.name === groupName);
     expect(group, `group ${groupName} should exist`).toBeDefined();
-    const groupId = group!.id;
+    if (!group) throw new Error(`Expected group ${groupName} in the group listing`);
+    const groupId = group.id;
 
     // Create a category inside this group via the per-group "+ Category" button.
     await page
@@ -326,20 +320,22 @@ test.describe("Money E2E", () => {
 
     // Verify via API
     const catsResp = await context.request.get("/api/categories");
-    const catsBody = (await catsResp.json()) as {
-      categories: Array<{ id: string; name: string; groupId: string | null }>;
-    };
+    const catsBody = await decodeResponse(catsResp, CategoriesResponseSchema);
     const cat = catsBody.categories.find((c) => c.name === categoryName);
     expect(cat, `category ${categoryName} should exist`).toBeDefined();
-    expect(cat!.groupId).toBe(groupId);
+    if (!cat) throw new Error(`Expected category ${categoryName} in the category listing`);
+    expect(cat.groupId).toBe(groupId);
 
     // Reorder via API (UI drag/drop is too flaky for e2e).
     const all = catsBody.categories;
-    const reorderedIds = [cat!.id, ...all.filter((c) => c.id !== cat!.id).map((c) => c.id)];
+    const reorderedIds = [
+      cat.id,
+      ...all.filter((category) => category.id !== cat.id).map((category) => category.id),
+    ];
     await runCommand(context, "reorder_categories", { ids: reorderedIds });
 
     // Cleanup
-    await runCommand(context, "delete_category", { id: cat!.id });
+    await runCommand(context, "delete_category", { id: cat.id });
     await runCommand(context, "delete_category_group", { id: groupId });
   });
 
@@ -356,23 +352,23 @@ test.describe("Money E2E", () => {
     const payeeName = `e2e-emp-${ts}`;
 
     const accRes = await runCommand(context, "create_account", { name: accountName, balance: 0 });
-    const accountId = accRes.data.id as string;
+    const accountId = commandId(accRes);
 
     const grpRes = await runCommand(context, "create_category_group", { name: groupName });
-    const groupId = grpRes.data.id as string;
+    const groupId = commandId(grpRes);
 
     const incRes = await runCommand(context, "create_category", {
       name: incomeCatName,
       groupId,
       isIncome: true,
     });
-    const incomeCatId = incRes.data.id as string;
+    const incomeCatId = commandId(incRes);
 
     const expRes = await runCommand(context, "create_category", {
       name: expenseCatName,
       groupId,
     });
-    const expenseCatId = expRes.data.id as string;
+    const expenseCatId = commandId(expRes);
 
     await runCommand(context, "create_payee", { name: payeeName });
 
@@ -403,18 +399,14 @@ test.describe("Money E2E", () => {
 
     // ── Net worth: 12 monthly points; final point reflects all balances.
     const netWorthResp = await context.request.get("/api/reports/net-worth");
-    const netWorthBody = (await netWorthResp.json()) as {
-      points: Array<{ date: string; value: number }>;
-    };
+    const netWorthBody = await decodeResponse(netWorthResp, ReportsNetWorthResponseSchema);
     expect(netWorthBody.points.length).toBe(12);
     const lastMonth = netWorthBody.points[netWorthBody.points.length - 1];
     expect(lastMonth.value).toBe(500_000 - 123_400);
 
     // ── Cash flow: 12 months; current month has income & expense.
     const cashFlowResp = await context.request.get("/api/reports/cash-flow");
-    const cashFlowBody = (await cashFlowResp.json()) as {
-      months: Array<{ month: string; income: number; expense: number }>;
-    };
+    const cashFlowBody = await decodeResponse(cashFlowResp, ReportsCashFlowResponseSchema);
     expect(cashFlowBody.months.length).toBe(12);
     const thisMonth = cashFlowBody.months[cashFlowBody.months.length - 1];
     expect(thisMonth.income).toBe(500_000);
@@ -422,26 +414,27 @@ test.describe("Money E2E", () => {
 
     // ── Spending by category (current month, abs value).
     const spendingResp = await context.request.get("/api/reports/spending");
-    const spendingBody = (await spendingResp.json()) as {
-      categories: Array<{ label: string; value: number; groupName: string | null }>;
-    };
+    const spendingBody = await decodeResponse(spendingResp, ReportsSpendingResponseSchema);
     const rent = spendingBody.categories.find((c) => c.label === expenseCatName);
     expect(rent, `${expenseCatName} should appear in spending`).toBeDefined();
-    expect(rent!.value).toBe(123_400);
-    expect(rent!.value).toBeGreaterThanOrEqual(0);
+    if (!rent) throw new Error(`Expected ${expenseCatName} in the spending report`);
+    expect(rent.value).toBe(123_400);
+    expect(rent.value).toBeGreaterThanOrEqual(0);
 
     // ── Budget analysis: current month, expense category shows actual.
     const budgetAnalysisResp = await context.request.get("/api/reports/budget-analysis");
-    const budgetAnalysisBody = (await budgetAnalysisResp.json()) as {
-      categories: Array<{ category: string; budgeted: number; actual: number }>;
-    };
+    const budgetAnalysisBody = await decodeResponse(
+      budgetAnalysisResp,
+      ReportsBudgetAnalysisResponseSchema,
+    );
     const rentBudget = budgetAnalysisBody.categories.find((c) => c.category === expenseCatName);
     expect(rentBudget, `${expenseCatName} should appear in budget analysis`).toBeDefined();
-    expect(rentBudget!.actual).toBe(-123_400);
+    if (!rentBudget) throw new Error(`Expected ${expenseCatName} in the budget analysis`);
+    expect(rentBudget.actual).toBe(-123_400);
 
     // Cleanup
-    await runCommand(context, "delete_transaction", { id: incomeTx.data.id as string });
-    await runCommand(context, "delete_transaction", { id: expenseTx.data.id as string });
+    await runCommand(context, "delete_transaction", { id: commandId(incomeTx) });
+    await runCommand(context, "delete_transaction", { id: commandId(expenseTx) });
     await runCommand(context, "delete_account", { id: accountId });
     await runCommand(context, "delete_category", { id: incomeCatId });
     await runCommand(context, "delete_category", { id: expenseCatId });
@@ -460,14 +453,14 @@ test.describe("Money E2E", () => {
 
     // Set up: account + group + category + transaction
     const accRes = await runCommand(context, "create_account", { name: accountName, balance: 0 });
-    const accountId = accRes.data.id as string;
+    const accountId = commandId(accRes);
     const grpRes = await runCommand(context, "create_category_group", { name: groupName });
-    const groupId = grpRes.data.id as string;
+    const groupId = commandId(grpRes);
     const catRes = await runCommand(context, "create_category", {
       name: categoryName,
       groupId,
     });
-    const categoryId = catRes.data.id as string;
+    const categoryId = commandId(catRes);
     const txRes = await runCommand(context, "create_transaction", {
       row: {
         accountId,
@@ -477,36 +470,34 @@ test.describe("Money E2E", () => {
         cleared: true,
       },
     });
-    const transactionId = txRes.data.id as string;
+    const transactionId = commandId(txRes);
 
     // Create a tag via API
     const tagRes = await runCommand(context, "create_tag", { name: tagName, color: "#ff0000" });
-    const tagId = tagRes.data.id as string;
+    const tagId = commandId(tagRes);
     expect(tagId).toMatch(/^tag_/);
 
     // Verify tag list
     const tagsResp = await context.request.get("/api/tags");
-    const tagsBody = (await tagsResp.json()) as {
-      tags: Array<{ id: string; name: string; color: string | null }>;
-    };
+    const tagsBody = await decodeResponse(tagsResp, TagsResponseSchema);
     const tag = tagsBody.tags.find((t) => t.id === tagId);
     expect(tag).toBeDefined();
-    expect(tag!.name).toBe(tagName);
-    expect(tag!.color).toBe("#ff0000");
+    if (!tag) throw new Error(`Expected tag ${tagId} in the tag listing`);
+    expect(tag.name).toBe(tagName);
+    expect(tag.color).toBe("#ff0000");
 
     // Attach tag to transaction
     await runCommand(context, "add_transaction_tag", { transactionId, tagId });
 
     // Verify the join
     const acctTagsResp = await context.request.get(`/api/accounts/${accountId}/tags`);
-    const acctTagsBody = (await acctTagsResp.json()) as {
-      transactionTags: Array<{ transactionId: string; tagId: string; tagName: string }>;
-    };
+    const acctTagsBody = await decodeResponse(acctTagsResp, AccountTagsResponseSchema);
     const link = acctTagsBody.transactionTags.find(
       (t) => t.transactionId === transactionId && t.tagId === tagId,
     );
     expect(link, "tag should be attached to transaction").toBeDefined();
-    expect(link!.tagName).toBe(tagName);
+    if (!link) throw new Error("Expected tag to be attached to the transaction");
+    expect(link.tagName).toBe(tagName);
 
     // Verify the tag appears in the Transactions page table.
     await page.goto("/transactions", { waitUntil: "networkidle" });
@@ -518,9 +509,7 @@ test.describe("Money E2E", () => {
     // Remove tag from transaction
     await runCommand(context, "remove_transaction_tag", { transactionId, tagId });
     const acctTagsAfter = await context.request.get(`/api/accounts/${accountId}/tags`);
-    const acctTagsAfterBody = (await acctTagsAfter.json()) as {
-      transactionTags: Array<{ transactionId: string; tagId: string }>;
-    };
+    const acctTagsAfterBody = await decodeResponse(acctTagsAfter, AccountTagsResponseSchema);
     expect(
       acctTagsAfterBody.transactionTags.find(
         (t) => t.transactionId === transactionId && t.tagId === tagId,
@@ -530,9 +519,7 @@ test.describe("Money E2E", () => {
     // Delete tag
     await runCommand(context, "delete_tag", { id: tagId });
     const tagsAfter = await context.request.get("/api/tags");
-    const tagsAfterBody = (await tagsAfter.json()) as {
-      tags: Array<{ id: string }>;
-    };
+    const tagsAfterBody = await decodeResponse(tagsAfter, TagsResponseSchema);
     expect(tagsAfterBody.tags.find((t) => t.id === tagId)).toBeUndefined();
 
     // Cleanup
@@ -555,9 +542,7 @@ test.describe("Money E2E", () => {
     await expect(addWidgetBtn).toBeVisible({ timeout: 15_000 });
 
     const beforeResp = await context.request.get("/api/dashboard/widgets");
-    const beforeBody = (await beforeResp.json()) as {
-      widgets: Array<{ id: string; type: string }>;
-    };
+    const beforeBody = await decodeResponse(beforeResp, DashboardWidgetsResponseSchema);
     const beforeCount = beforeBody.widgets.length;
 
     // Add a "Markdown Note" widget via the modal.
@@ -570,9 +555,7 @@ test.describe("Money E2E", () => {
       .poll(
         async () => {
           const resp = await context.request.get("/api/dashboard/widgets");
-          const body = (await resp.json()) as {
-            widgets: Array<{ id: string; type: string }>;
-          };
+          const body = await decodeResponse(resp, DashboardWidgetsResponseSchema);
           return body.widgets.filter((w) => w.type === "markdown-card").length;
         },
         { timeout: 10_000 },
@@ -583,9 +566,7 @@ test.describe("Money E2E", () => {
     // If there was already a markdown widget (unlikely on a fresh stage), skip remove.
     if (!newWidget) {
       const fresh = await context.request.get("/api/dashboard/widgets");
-      const freshBody = (await fresh.json()) as {
-        widgets: Array<{ id: string; type: string; meta: string | null }>;
-      };
+      const freshBody = await decodeResponse(fresh, DashboardWidgetsResponseSchema);
       const added = freshBody.widgets.filter((w) => w.type === "markdown-card");
       expect(added.length).toBeGreaterThan(0);
       const addedId = added[added.length - 1].id;
@@ -601,9 +582,7 @@ test.describe("Money E2E", () => {
         .poll(
           async () => {
             const resp = await context.request.get("/api/dashboard/widgets");
-            const body = (await resp.json()) as {
-              widgets: Array<{ id: string; type: string }>;
-            };
+            const body = await decodeResponse(resp, DashboardWidgetsResponseSchema);
             return body.widgets.find((w) => w.id === addedId);
           },
           { timeout: 10_000 },
@@ -613,9 +592,7 @@ test.describe("Money E2E", () => {
 
     // Final widget count should be back to the seeded value.
     const afterResp = await context.request.get("/api/dashboard/widgets");
-    const afterBody = (await afterResp.json()) as {
-      widgets: Array<{ id: string }>;
-    };
+    const afterBody = await decodeResponse(afterResp, DashboardWidgetsResponseSchema);
     expect(afterBody.widgets.length).toBe(beforeCount);
   });
 });

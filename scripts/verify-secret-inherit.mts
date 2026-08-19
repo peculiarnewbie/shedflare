@@ -2,45 +2,59 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import * as Schema from "effect/Schema";
 
 const ACCOUNT_ID = "3a855f7ef3ac127682a419eddeb9f884";
 const STAGE = "sec-verify";
 const STACK = "scripts/secret-inherit-verify/alchemy.run.ts";
 
-interface CfOAuth {
-  access: string;
-}
+type ExternalValue = Parameters<ReturnType<typeof Schema.decodeUnknownSync>>[0];
+const CfOAuthSchema = Schema.Struct({ access: Schema.String });
 
 function loadAccessToken(): string {
   const path = join(homedir(), ".alchemy/credentials/default/cf-oauth.json");
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as CfOAuth;
+  const parsed = Schema.decodeUnknownSync(CfOAuthSchema)(JSON.parse(readFileSync(path, "utf8")));
   if (!parsed.access)
     throw new Error("Missing Cloudflare OAuth access token in alchemy credentials");
   return parsed.access;
 }
 
-async function cf<T>(path: string): Promise<T> {
+async function cf<T>(path: string, decodeResult: (value: ExternalValue) => T): Promise<T> {
   const token = loadAccessToken();
   const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const body = (await response.json()) as { success: boolean; result: T; errors?: unknown[] };
+  const body = Schema.decodeUnknownSync(
+    Schema.Struct({
+      success: Schema.Boolean,
+      result: Schema.Any,
+      errors: Schema.optional(Schema.Array(Schema.Any)),
+    }),
+  )(await response.json());
   if (!response.ok || !body.success) {
     throw new Error(`Cloudflare API ${path} failed: ${JSON.stringify(body.errors ?? body)}`);
   }
-  return body.result;
+  return decodeResult(body.result);
 }
 
 async function listSecretNames(workerName: string): Promise<string[]> {
-  const secrets = await cf<Array<{ name: string }>>(
+  const secrets = await cf(
     `/accounts/${ACCOUNT_ID}/workers/scripts/${workerName}/secrets`,
+    Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ name: Schema.String }))),
   );
   return secrets.map((s) => s.name).sort();
 }
 
 async function listBindingNames(workerName: string): Promise<string[]> {
-  const settings = await cf<{ bindings?: Array<{ name: string; type: string }> }>(
+  const settings = await cf(
     `/accounts/${ACCOUNT_ID}/workers/scripts/${workerName}/settings`,
+    Schema.decodeUnknownSync(
+      Schema.Struct({
+        bindings: Schema.optional(
+          Schema.Array(Schema.Struct({ name: Schema.String, type: Schema.String })),
+        ),
+      }),
+    ),
   );
   return (settings.bindings ?? [])
     .filter((b) => b.type === "secret_text" || b.type === "secret_key")
@@ -51,24 +65,26 @@ async function listBindingNames(workerName: string): Promise<string[]> {
 async function probeWorker(url: string): Promise<{ hasSecret: boolean; plain: string | null }> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Worker probe failed: ${response.status}`);
-  return (await response.json()) as { hasSecret: boolean; plain: string | null };
+  return Schema.decodeUnknownSync(
+    Schema.Struct({ hasSecret: Schema.Boolean, plain: Schema.NullOr(Schema.String) }),
+  )(await response.json());
 }
 
 async function deploy(includeSecret: boolean): Promise<{ workerName: string; url?: string }> {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
+  const env = {
+    ...process.env,
     ALCHEMY_STAGE: STAGE,
     SHEDFLARE_DOMAIN: "example.com",
     OWNER_EMAIL: "verify@example.com",
     SHEDFLARE_VERIFY_INCLUDE_SECRET: includeSecret ? "1" : "0",
   };
-  if (includeSecret) {
-    env.TEST_SECRET = "shedflare-pattern-b-verify-secret";
-  }
+  const childEnv = includeSecret
+    ? { ...env, TEST_SECRET: "shedflare-pattern-b-verify-secret" }
+    : env;
 
   const stdout = await new Promise<string>((resolve, reject) => {
     const child = spawn("vp", ["exec", "alchemy", "deploy", STACK, "--yes"], {
-      env,
+      env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
@@ -91,9 +107,9 @@ async function deploy(includeSecret: boolean): Promise<{ workerName: string; url
   return { workerName: match[1], url: urlMatch?.[1] };
 }
 
-function printStep(title: string, data: unknown) {
+function printStep(title: string, data: ExternalValue) {
   console.log(`\n=== ${title} ===`);
-  console.log(typeof data === "string" ? data : JSON.stringify(data, null, 2));
+  console.log(Schema.is(Schema.String)(data) ? data : JSON.stringify(data, null, 2));
 }
 
 async function main() {

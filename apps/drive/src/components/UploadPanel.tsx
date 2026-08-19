@@ -20,8 +20,10 @@ export default function UploadPanel() {
     event.preventDefault();
     if (busy()) return;
 
-    const form = event.currentTarget as HTMLFormElement;
-    const input = form.elements.namedItem("file") as HTMLInputElement | null;
+    if (!(event.currentTarget instanceof HTMLFormElement)) return;
+    const form = event.currentTarget;
+    const namedFileInput = form.elements.namedItem("file");
+    const input = namedFileInput instanceof HTMLInputElement ? namedFileInput : null;
     const file = input?.files?.[0];
     if (!file) return;
 
@@ -83,9 +85,7 @@ export default function UploadPanel() {
         setDragging(false);
         const file = e.dataTransfer?.files?.[0];
         if (file) {
-          const input = e.currentTarget.querySelector(
-            "input[type='file']",
-          ) as HTMLInputElement | null;
+          const input = e.currentTarget.querySelector<HTMLInputElement>("input[type='file']");
           if (input) {
             const dt = new DataTransfer();
             dt.items.add(file);

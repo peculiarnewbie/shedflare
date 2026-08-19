@@ -15,7 +15,7 @@ const schema = {
   title: "Shedflare app manifest",
 };
 
-function schemaText(value: object): string {
+function schemaText<Value>(value: Value): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 

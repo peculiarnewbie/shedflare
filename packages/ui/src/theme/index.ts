@@ -8,7 +8,7 @@ import { properties } from "./properties";
  * Infrastructure (grid, selectors, aliases) borrows patterns from @tokenami/ds.
  */
 export const shedflareThemeOptions = {
-  include: [] as string[],
+  include: [] satisfies string[],
   grid: "0.25rem",
   responsive: {
     sm: "@media (width >= 40rem)",

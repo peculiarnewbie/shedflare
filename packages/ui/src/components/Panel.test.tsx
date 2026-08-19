@@ -6,13 +6,13 @@ import { renderWithTheme } from "../test/render-with-theme";
 
 describe("Panel", () => {
   test("renders children", () => {
-    const { getByText } = renderWithTheme(() => <Panel>Panel body</Panel>);
-    expect(getByText("Panel body")).toBeTruthy();
+    const view = renderWithTheme(() => <Panel>Panel body</Panel>);
+    expect(view.getByText("Panel body")).toBeTruthy();
   });
 
   test("merges class prop", () => {
-    const { getByText } = renderWithTheme(() => <Panel class="surface">Inside</Panel>);
-    expect(getByText("Inside").className).toContain("surface");
+    const view = renderWithTheme(() => <Panel class="surface">Inside</Panel>);
+    expect(view.getByText("Inside").className).toContain("surface");
   });
 
   test.each([

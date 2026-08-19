@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build": "tsc --noEmit",
-    "check": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "build": "vp check --no-fmt --no-lint",
+    "check": "vp check src *.test.ts alchemy.run.ts vite.config.ts",
+    "typecheck": "vp check --no-fmt --no-lint",
+    "test": "vp test",
     "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
     "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod"
   },

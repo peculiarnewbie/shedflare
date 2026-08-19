@@ -1,6 +1,6 @@
 import { For, createResource } from "solid-js";
 import { apiGet } from "../lib/api";
-import type { SuiteOverview } from "../api/types";
+import { SuiteOverviewSchema } from "../api/types";
 import AppCard from "../components/AppCard";
 import { useStage } from "../lib/stage-context";
 
@@ -10,7 +10,7 @@ export default function Apps() {
     () => selectedStage(),
     async (stage) => {
       const params = stage ? `?stage=${encodeURIComponent(stage)}` : "";
-      return apiGet<SuiteOverview>(`/api/overview${params}`);
+      return apiGet(`/api/overview${params}`, SuiteOverviewSchema);
     },
   );
 

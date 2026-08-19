@@ -6,6 +6,7 @@ import {
   FilesResponse,
   MultipartPartResponse,
   MultipartUploadResponse,
+  SecureUploadCommandResponse,
   TagsResponse,
 } from "../shared/schema";
 
@@ -74,4 +75,10 @@ const tagListEp = HttpApiEndpoint.get("list", "/api/tags", {
 
 const tagsGroup = HttpApiGroup.make("tags").add(tagListEp);
 
-export const driveApi = HttpApi.make("drive").add(filesGroup, tagsGroup);
+const secureUploadCommandEp = HttpApiEndpoint.post("createCommand", "/api/secure-uploads/command", {
+  success: SecureUploadCommandResponse,
+});
+
+const secureUploadsGroup = HttpApiGroup.make("secureUploads").add(secureUploadCommandEp);
+
+export const driveApi = HttpApi.make("drive").add(filesGroup, tagsGroup, secureUploadsGroup);

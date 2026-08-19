@@ -1,24 +1,40 @@
-export async function apiGet<T>(path: string): Promise<T> {
+import {
+  object,
+  optional,
+  parse,
+  safeParse,
+  string,
+  type GenericSchema,
+  type InferOutput,
+} from "valibot";
+
+const ErrorResponseSchema = object({ error: optional(string()) });
+
+export async function apiGet<ResultSchema extends GenericSchema>(
+  path: string,
+  schema: ResultSchema,
+): Promise<InferOutput<ResultSchema>> {
   const res = await fetch(path);
-  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body;
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = safeParse(ErrorResponseSchema, payload);
+    throw new Error(
+      error.success ? (error.output.error ?? `HTTP ${res.status}`) : `HTTP ${res.status}`,
+    );
+  }
+  return parse(schema, payload);
 }
 
-export async function apiPatch<T>(path: string, data: unknown): Promise<T> {
+export async function apiPatch<Data>(path: string, data: Data): Promise<void> {
   const res = await fetch(path, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(data),
   });
-  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body;
-}
-
-export async function apiPost<T>(path: string): Promise<T> {
-  const res = await fetch(path, { method: "POST" });
-  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body;
+  if (!res.ok) {
+    const error = safeParse(ErrorResponseSchema, await res.json().catch(() => ({})));
+    throw new Error(
+      error.success ? (error.output.error ?? `HTTP ${res.status}`) : `HTTP ${res.status}`,
+    );
+  }
 }

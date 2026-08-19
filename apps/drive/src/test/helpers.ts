@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { createTestD1, type D1Shim } from "./d1-shim";
+import { asD1Database, createTestD1, type D1Shim } from "./d1-shim";
 import { R2Mock, createR2Mock } from "./r2-mock";
 import { files, tags, fileTags } from "../db/schema";
 
@@ -9,6 +9,7 @@ export type TestEnv = {
   AUTH_ISSUER_URL: string;
   AUTH_CLIENT_ID: string;
   APP_PUBLIC_URL: string;
+  SECURE_UPLOAD_TOKEN_SECRET: string;
   OWNER_EMAIL: string;
   DEV_AUTH_EMAIL: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -21,6 +22,7 @@ export function createTestEnv(overrides?: Partial<TestEnv>): TestEnv {
     AUTH_ISSUER_URL: "https://auth.test.example.com",
     AUTH_CLIENT_ID: "shedflare-drive-test",
     APP_PUBLIC_URL: "https://drive.test.example.com",
+    SECURE_UPLOAD_TOKEN_SECRET: "test-secure-upload-token-secret-at-least-32-bytes",
     OWNER_EMAIL: "test@example.com",
     DEV_AUTH_EMAIL: "test@example.com",
     ASSETS: {
@@ -41,7 +43,7 @@ export function insertTestFile(
     isPublic: boolean;
   }>,
 ) {
-  const db = drizzle(d1 as unknown as D1Database);
+  const db = drizzle(asD1Database(d1));
   const id = overrides?.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
   void db.insert(files).values({
@@ -59,7 +61,7 @@ export function insertTestFile(
 }
 
 export function insertTestTag(d1: D1Shim, name: string) {
-  const db = drizzle(d1 as unknown as D1Database);
+  const db = drizzle(asD1Database(d1));
   const id = crypto.randomUUID();
   const normalized = name.trim().toLowerCase().replaceAll(/\s+/g, " ");
   void db.insert(tags).values({ id, name, normalizedName: normalized });
@@ -67,7 +69,7 @@ export function insertTestTag(d1: D1Shim, name: string) {
 }
 
 export function linkFileTag(d1: D1Shim, fileId: string, tagId: string) {
-  const db = drizzle(d1 as unknown as D1Database);
+  const db = drizzle(asD1Database(d1));
   void db.insert(fileTags).values({ fileId, tagId });
 }
 

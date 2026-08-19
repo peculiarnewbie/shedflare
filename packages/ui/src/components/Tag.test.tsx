@@ -6,21 +6,21 @@ import { renderWithTheme } from "../test/render-with-theme";
 
 describe("Tag", () => {
   test("renders label text", () => {
-    const { getByText } = renderWithTheme(() => <Tag>Work</Tag>);
-    expect(getByText("Work")).toBeTruthy();
+    const view = renderWithTheme(() => <Tag>Work</Tag>);
+    expect(view.getByText("Work")).toBeTruthy();
   });
 
   test("merges class prop", () => {
-    const { getByText } = renderWithTheme(() => <Tag class="pill">Draft</Tag>);
-    expect(getByText("Draft").className).toContain("pill");
+    const view = renderWithTheme(() => <Tag class="pill">Draft</Tag>);
+    expect(view.getByText("Draft").className).toContain("pill");
   });
 
   test.each([
     ["accent", "Accent"],
     ["neutral", "Neutral"],
   ] as const)("renders %s tone", (tone, label) => {
-    const { getByText } = renderWithTheme(() => <Tag tone={tone}>{label}</Tag>);
-    expect(getByText(label)).toBeTruthy();
+    const view = renderWithTheme(() => <Tag tone={tone}>{label}</Tag>);
+    expect(view.getByText(label)).toBeTruthy();
   });
 });
 
