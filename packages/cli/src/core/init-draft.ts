@@ -154,7 +154,7 @@ export function buildPlanFromConfig(
   mockResources = false,
 ): InitPlan {
   const enabledAppIds = Object.entries(config.apps)
-    .filter(([_, entry]) => (config.configVersion === 1 ? entry.enabled !== false : true))
+    .filter(([, entry]) => (config.configVersion === 1 ? entry.enabled !== false : true))
     .map(([id]) => id)
     .filter(isAppId);
 

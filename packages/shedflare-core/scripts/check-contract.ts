@@ -31,10 +31,23 @@ const packageJson = safeParse(
 );
 if (!packageJson.success) throw new Error(`${root}/package.json has invalid scripts.`);
 const scripts = packageJson.output.scripts ?? {};
+const externallyOwnedAppIds = new Set(["drive"]);
 
 for (const appId of catalog.appIds) {
   const stackPath = `${root}/apps/${appId}/alchemy.run.ts`;
   if (!existsSync(stackPath)) throw new Error(`${stackPath} is missing.`);
+  if (externallyOwnedAppIds.has(appId)) {
+    if (rootStack.includes(`./apps/${appId}/alchemy.run.ts`)) {
+      throw new Error(`${rootStackPath} must not compose externally owned app "${appId}".`);
+    }
+    if (scripts[`deploy:${appId}`] || scripts[`destroy:${appId}`]) {
+      throw new Error(`package.json must not deploy or destroy externally owned app "${appId}".`);
+    }
+    if (config.apps[appId]) {
+      throw new Error(`${examplePath} must not select externally owned app "${appId}".`);
+    }
+    continue;
+  }
   if (!rootStack.includes(`./apps/${appId}/alchemy.run.ts`)) {
     throw new Error(`${rootStackPath} does not compose the selected app "${appId}".`);
   }

@@ -16,6 +16,8 @@
     ".roo/**",
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
+    "**/dist/**",
+    "**/coverage/**",
     "**/alchemy.test.ts",
     "**/drizzle.config.ts",
     "**/migrations/**",

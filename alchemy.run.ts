@@ -7,7 +7,7 @@ import { AnkiStack } from "./apps/anki/alchemy.run.ts";
 import { AuthStack } from "./apps/auth/alchemy.run.ts";
 import { CfBillStack } from "./apps/cf-bill/alchemy.run.ts";
 import { ChatStack } from "./apps/chat/alchemy.run.ts";
-import { DriveStack } from "./apps/drive/alchemy.run.ts";
+import { DiscordStack } from "./apps/discord/alchemy.run.ts";
 import { MoneyStack } from "./apps/money/alchemy.run.ts";
 import { ObservabilityStack } from "./apps/observability/alchemy.run.ts";
 import { RoutinesStack } from "./apps/routines/alchemy.run.ts";
@@ -57,16 +57,16 @@ export default Alchemy.Stack(
     const stage = yield* Alchemy.Stage;
     const credentials = yield* yield* CloudflareEnvironment;
     const { accountId } = credentials;
-    const selectedApps = Shedflare.selectedAppIds(Shedflare.loadShedflareConfig()).filter(
-      Shedflare.isAppId,
-    );
+    const selectedApps = Shedflare.selectedAppIds(Shedflare.loadShedflareConfig())
+      .filter(Shedflare.isAppId)
+      .filter((appId) => appId !== "drive");
     const selected = new Set(selectedApps);
 
     const auth = yield* whenSelected(selected, "auth", AuthStack);
     const anki = yield* whenSelected(selected, "anki", AnkiStack);
     const cfBill = yield* whenSelected(selected, "cf-bill", CfBillStack);
     const chat = yield* whenSelected(selected, "chat", ChatStack);
-    const drive = yield* whenSelected(selected, "drive", DriveStack);
+    const discord = yield* whenSelected(selected, "discord", DiscordStack);
     const money = yield* whenSelected(selected, "money", MoneyStack);
     const short = yield* whenSelected(selected, "s", ShortStack);
     const routines = yield* whenSelected(selected, "routines", RoutinesStack);
@@ -104,7 +104,7 @@ export default Alchemy.Stack(
       homepageUrl: Option.isSome(homepage) ? homepage.value.output.url : undefined,
       cfBillUrl: Option.isSome(cfBill) ? cfBill.value.output.url : undefined,
       chatUrl: Option.isSome(chat) ? chat.value.output.url : undefined,
-      driveUrl: Option.isSome(drive) ? drive.value.output.url : undefined,
+      discordUrl: Option.isSome(discord) ? discord.value.output.url : undefined,
       moneyUrl: Option.isSome(money) ? money.value.output.url : undefined,
       shortUrl: Option.isSome(short) ? short.value.output.url : undefined,
       routinesUrl: Option.isSome(routines) ? routines.value.output.url : undefined,

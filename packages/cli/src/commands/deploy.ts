@@ -21,6 +21,13 @@ export interface DeployOptions {
 export async function deployCommand(options: DeployOptions): Promise<void> {
   loadRepoDotEnv();
 
+  if (options.app === "drive") {
+    console.error(
+      "Drive deployment is owned by https://github.com/shedflare/drive and is unavailable from the suite checkout.",
+    );
+    process.exit(1);
+  }
+
   const config = loadConfig();
   if (!config) {
     console.error("shedflare.config.jsonc not found. Run `shedflare init` first.");
@@ -54,6 +61,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     ? [selectedApp]
     : Object.keys(validConfig.apps)
         .filter((id) => isAppSelected(validConfig, id))
+        .filter((id) => id !== "drive")
         .filter(isAppId);
 
   if (appIds.length === 0) {
