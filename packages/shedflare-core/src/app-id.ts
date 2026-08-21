@@ -5,6 +5,7 @@ export const APP_IDS = [
   "auth",
   "cf-bill",
   "chat",
+  "discord",
   "drive",
   "homepage",
   "money",

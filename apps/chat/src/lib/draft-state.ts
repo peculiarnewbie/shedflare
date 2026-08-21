@@ -136,7 +136,10 @@ function serializeDrafts(drafts: Record<string, DraftChatState>) {
       workspaceId,
       {
         ...draft,
-        attachments: draft.attachments.map(({ previewUrl: _, ...attachment }) => attachment),
+        attachments: draft.attachments.map(({ previewUrl, ...attachment }) => {
+          void previewUrl;
+          return attachment;
+        }),
       },
     ]),
   );

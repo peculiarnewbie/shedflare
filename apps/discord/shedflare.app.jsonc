@@ -1,0 +1,73 @@
+{
+  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "id": "discord",
+  "name": "Shedflare Discord",
+  "description": "Personal AI Discord bot with Gateway @mention support on Cloudflare Workers",
+  "lifecycle": "experimental",
+  "category": "productivity",
+  "dataSensitivity": "high",
+  "dependsOn": [],
+  "defaultSubdomain": "discord",
+  "vars": {
+    "APP_PUBLIC_URL": {
+      "from": "appUrl",
+      "description": "Public URL of this Discord bot worker",
+    },
+    "DEFAULT_MODEL_ID": {
+      "from": "user",
+      "default": "auto",
+      "description": "Default LLM model ID for @mention replies",
+    },
+    "OWNER_DISCORD_USER_ID": {
+      "from": "user",
+      "default": "",
+      "description": "Optional Discord user snowflake allowed to invoke the bot (empty = any user)",
+    },
+    "SEARCH_ENABLED": {
+      "from": "user",
+      "default": "true",
+      "description": "Set to false to disable exa_web_search tool",
+    },
+    "PREFER_FREE_SEARCH": {
+      "from": "user",
+      "default": "false",
+      "description": "Use Exa MCP free endpoint even when EXA_API_KEY is set",
+    },
+  },
+  "secrets": {
+    "DISCORD_BOT_TOKEN": {
+      "description": "Discord bot token from the Developer Portal",
+      "required": true,
+    },
+    "DISCORD_PUBLIC_KEY": {
+      "description": "Discord application public key (for future slash commands)",
+      "required": false,
+    },
+    "GATEWAY_WEBHOOK_SECRET": {
+      "description": "Shared secret between the Gateway DO and worker webhook endpoint",
+      "required": true,
+    },
+    "GATEWAY_ADMIN_SECRET": {
+      "description": "Bearer token for /admin/gateway/* management routes",
+      "required": true,
+    },
+    "OPENCODE_GO_API_KEY": {
+      "description": "API key for OpenCode Go chat completions",
+      "required": true,
+    },
+    "EXA_API_KEY": {
+      "description": "Exa API key for web search (optional — falls back to free MCP endpoint)",
+      "required": false,
+    },
+  },
+  "resources": [
+    {
+      "type": "durable_object",
+      "binding": "DISCORD_GATEWAY",
+    },
+    {
+      "type": "durable_object",
+      "binding": "CHANNEL_CONVERSATION",
+    },
+  ],
+}

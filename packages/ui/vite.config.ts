@@ -5,6 +5,9 @@ const port = Number(process.env.UI_DEV_PORT ?? 5175);
 const isTest = !!process.env.VITEST;
 
 export default defineConfig({
+  staged: {
+    "*": "vp check --fix",
+  },
   root: isTest ? "." : "dev",
   plugins: [solid()],
   server: {

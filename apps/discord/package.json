@@ -1,0 +1,32 @@
+{
+  "name": "@shedflare/discord",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#/*": "./src/*.ts"
+  },
+  "scripts": {
+    "dev": "vp dev",
+    "build": "tsc --noEmit",
+    "test": "vp test",
+    "check": "vp check src alchemy.run.ts vite.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shedflare/alchemy": "workspace:*",
+    "valibot": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.32.3",
+    "@cloudflare/workers-types": "^4.20260415.1",
+    "@typescript/native-preview": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

@@ -30,3 +30,6 @@ jobs:
 
       - name: Verify generated registries and schemas
         run: pnpm contract:check
+
+      - name: Verify contributor workspace setup
+        run: pnpm contributor:setup:test
