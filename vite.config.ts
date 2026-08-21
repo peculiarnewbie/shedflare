@@ -10,6 +10,7 @@ const antiSlopIgnores = [
   ".pi/**",
   ".roo/**",
   ".windsurf/**",
+  "packages/shedflare-core/schemas/**",
   "tools/oxlint/anti-slop/**",
 ];
 
