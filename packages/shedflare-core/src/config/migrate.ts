@@ -4,7 +4,7 @@ import type { ManifestCatalog } from "../manifests/model.ts";
 import { validateConfig } from "./load.ts";
 import type { ConfigMigration, ShedflareConfig, ShedflareConfigV2 } from "./model.ts";
 
-const CONFIG_SCHEMA_PATH = "./packages/shedflare-core/schemas/shedflare-config.schema.json";
+const CONFIG_SCHEMA_PATH = "https://shedflare.dev/schemas/shedflare-config.schema.json";
 
 function withSourceText(
   migration: ConfigMigration,

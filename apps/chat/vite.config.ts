@@ -1,13 +1,13 @@
-import { defineConfig } from "vite-plus";
+import { antiSlopFmt, antiSlopLint } from "../../tooling/anti-slop.vite.ts";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import solid from "vite-plugin-solid";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { buildInfoDefines } from "../../infra/vite-build-info";
+import { buildInfoDefines } from "./build/vite-build-info.ts";
 
 const repoDir = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
+export default {
   resolve: {
     alias: {
       "#": path.resolve(repoDir, "src"),
@@ -19,12 +19,12 @@ export default defineConfig({
     allowedHosts: true,
   },
   test: {
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "deploy/**/*.test.ts"],
   },
   build: {
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        manualChunks(id: string) {
           if (id.includes("node_modules/solid-js") || id.includes("node_modules/@solidjs")) {
             return "vendor";
           }
@@ -45,5 +45,9 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  lint: { options: { typeAware: true, typeCheck: true } },
-});
+  lint: {
+    ...antiSlopLint("../../tools/oxlint/anti-slop/index.ts"),
+    options: { typeAware: true, typeCheck: true },
+  },
+  fmt: antiSlopFmt,
+};

@@ -17,8 +17,8 @@ test.skipIf(!live)(
   "homepage endpoints respond correctly",
   Effect.gen(function* () {
     const deployed = yield* deploy(HomepageStack);
-    assert.ok(deployed.url);
     const base = deployed.url;
+    if (!base) throw new Error("Homepage deployment did not return a URL");
 
     const root = yield* Effect.promise(() => fetch(base));
     assert.equal(root.status, 200);

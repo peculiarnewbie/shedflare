@@ -36,7 +36,7 @@ Configure the Google client with this redirect URI:
 https://auth.<your-domain>/google/callback
 ```
 
-Alchemy provisions the OpenAuth KV namespace from `apps/auth/alchemy.run.ts`.
+Alchemy provisions the OpenAuth KV namespace from `alchemy.run.ts`.
 Do not create a separate KV namespace or edit a Wrangler config by hand.
 
 ## Deploy
@@ -45,5 +45,5 @@ Do not create a separate KV namespace or edit a Wrangler config by hand.
 pnpm deploy:auth
 ```
 
-The command deploys the Auth Alchemy stack to the `prod` stage. For a temporary
+The command deploys only the Auth Alchemy stack to the `prod` stage. For a temporary
 stage, use the direct Alchemy command documented in the root README.

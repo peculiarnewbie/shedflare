@@ -1,5 +1,5 @@
 import { Data, Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { DataAccess, type SqlRow } from "./data-access";
 import { SyncDecodeError, SyncStorageError } from "./errors";
 import { SyncEventStore } from "./event-store";

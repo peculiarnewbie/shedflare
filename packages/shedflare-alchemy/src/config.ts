@@ -6,6 +6,7 @@ import {
   stageSubdomain,
   validateConfig,
   type AppId,
+  type ManifestCatalog,
   type ResolvedAppConfig,
   type ShedflareConfig,
   type ShedflareConfigV1,
@@ -30,25 +31,32 @@ export interface AppStackConfig extends ResolvedAppConfig {
   readonly subdomain: string;
 }
 
-function normalizeConfig(config: ShedflareAlchemyConfig, root: string): ShedflareConfig {
+function normalizeConfig(
+  config: ShedflareAlchemyConfig,
+  catalog: ManifestCatalog,
+): ShedflareConfig {
   if ("configVersion" in config) return config;
-  return validateConfig(config, discoverManifests(findRepoRoot(root)));
+  return validateConfig(config, catalog);
 }
 
-export function loadShedflareConfig(root = process.cwd()): ShedflareConfig {
+export function loadShedflareConfig(
+  root = process.cwd(),
+  catalog?: ManifestCatalog,
+): ShedflareConfig {
   const repositoryRoot = findRepoRoot(root);
-  return loadConfig(repositoryRoot, discoverManifests(repositoryRoot));
+  return loadConfig(repositoryRoot, catalog ?? discoverManifests(repositoryRoot));
 }
 
 export function appStackConfig(
   config: ShedflareAlchemyConfig,
   appId: AppId,
   stage = "prod",
-  root = process.cwd(),
+  catalog?: ManifestCatalog,
 ): AppStackConfig {
+  const resolvedCatalog = catalog ?? discoverManifests(findRepoRoot(process.cwd()));
   const resolved = resolveAppConfig(
-    normalizeConfig(config, root),
-    discoverManifests(findRepoRoot(root)),
+    normalizeConfig(config, resolvedCatalog),
+    resolvedCatalog,
     appId,
     stage,
   );

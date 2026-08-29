@@ -1,5 +1,5 @@
 {
-  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
+  "$schema": "https://shedflare.dev/schemas/app-manifest.schema.json",
   "id": "routines",
   "name": "Shedflare Routines",
   "description": "Daily routine tracker with progress visualization",

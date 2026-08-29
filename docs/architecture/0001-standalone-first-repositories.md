@@ -1,9 +1,13 @@
 # ADR 0001: Standalone-first repositories
 
-- Status: Accepted
+- Status: Superseded by [ADR 0002](0002-modular-monorepo.md)
 - Date: 2026-08-07
 - Owners: Shedflare maintainers
 - Supersedes: The monorepo-as-distribution model described in the root README
+
+This ADR records the split-repository experiment and remains useful historical context. The
+experiment was completed, evaluated in normal development, and reversed; its repositories are no
+longer canonical sources.
 
 ## Context
 

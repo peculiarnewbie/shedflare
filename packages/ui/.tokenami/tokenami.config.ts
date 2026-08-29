@@ -14,4 +14,6 @@ function tokenamiConfig<ConfigValue>(value: ConfigValue): Parameters<typeof crea
 
 // SAFETY: this static local config is consumed by Tokenami itself; its generic theme type cannot
 // represent a reusable theme object before createConfig performs its theme-key inference.
-export default createConfig(tokenamiConfig(config));
+const resolvedConfig: ReturnType<typeof createConfig> = createConfig(tokenamiConfig(config));
+
+export default resolvedConfig;

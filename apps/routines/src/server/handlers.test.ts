@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { applyDrizzleMigrations } from "@shedflare/test-utils/migrations";
-import { asD1Database, createD1Shim } from "@shedflare/test-utils/d1-shim";
+import { createD1Shim, type D1Shim } from "@shedflare/test-utils/d1-shim";
 import * as schema from "../db/schema";
 import { db } from "./db";
 import { createRoutine, getDay, setSleepTime, toggleCompletion } from "./handlers";
@@ -9,7 +9,8 @@ import { createRoutine, getDay, setSleepTime, toggleCompletion } from "./handler
 function createDatabase() {
   const shim = createD1Shim();
   applyDrizzleMigrations(shim, join(import.meta.dirname, "../migrations"));
-  return db(asD1Database(shim));
+  // SAFETY: The published shim implements the D1 methods Drizzle exercises in these tests.
+  return db(shim as D1Shim & D1Database);
 }
 
 describe("Routines handlers", () => {

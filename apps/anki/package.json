@@ -1,18 +1,29 @@
 {
   "name": "@shedflare/anki",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
+  "description": "A self-hosted, online-first spaced-repetition app for Cloudflare.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "apps/anki"
+  },
   "type": "module",
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
     "test": "vp test",
-    "check": "vp check src alchemy.run.ts vite.config.ts",
+    "test:live": "pnpm --dir ../.. test:anki",
+    "check": "vp check src alchemy.run.ts alchemy.test.ts vite.config.ts build",
     "typecheck": "vp check --no-fmt --no-lint",
-    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
-    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
-    "prepare": "vp config"
+    "plan": "vp build && pnpm --dir ../.. exec alchemy plan apps/anki/alchemy.run.ts",
+    "deploy": "pnpm --dir ../.. deploy:anki",
+    "deploy:stage": "vp build && pnpm --dir ../.. exec alchemy deploy apps/anki/alchemy.run.ts --yes",
+    "destroy": "pnpm --dir ../.. destroy:anki",
+    "destroy:stage": "pnpm --dir ../.. exec alchemy destroy apps/anki/alchemy.run.ts --yes",
+    "lint": "vp lint . --max-warnings=0"
   },
   "dependencies": {
     "@shedflare/auth-client": "workspace:*",
@@ -22,20 +33,24 @@
     "valibot": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.32.3",
-    "@cloudflare/workers-types": "^4.20260415.1",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@shedflare/alchemy": "workspace:*",
     "@shedflare/test-utils": "workspace:*",
+    "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "alchemy": "catalog:",
     "drizzle-kit": "catalog:",
+    "effect": "catalog:",
+    "jsonc-parser": "catalog:",
     "vite": "catalog:",
-    "vite-plugin-solid": "^2.11.12",
+    "vite-plugin-solid": "catalog:",
     "vite-plus": "catalog:",
     "wrangler": "catalog:"
   },
   "engines": {
     "node": ">=22.12.0"
   },
-  "packageManager": "pnpm@11.9.0",
   "cloudflare": {
     "bindings": {
       "APP_PUBLIC_URL": {

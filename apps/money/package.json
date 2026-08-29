@@ -2,6 +2,13 @@
   "name": "@shedflare/money",
   "version": "1.0.0",
   "private": true,
+  "description": "A self-hosted envelope-budgeting personal finance app for Cloudflare.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "apps/money"
+  },
   "type": "module",
   "imports": {
     "#/*": "./src/*.ts"
@@ -11,13 +18,16 @@
     "build": "vp build",
     "preview": "vp preview",
     "test": "vp test",
-    "check": "vp check src alchemy.run.ts vite.config.ts worker-configuration.d.ts",
+    "check": "vp check src build alchemy.run.ts vite.config.ts worker-configuration.d.ts drizzle.config.ts e2e.run.ts playwright.config.ts",
     "typecheck": "vp check --no-fmt --no-lint",
-    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
-    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
+    "plan": "vp build && pnpm --dir ../.. exec alchemy plan apps/money/alchemy.run.ts",
+    "deploy": "pnpm --dir ../.. deploy:money",
+    "deploy:stage": "vp build && pnpm --dir ../.. exec alchemy deploy apps/money/alchemy.run.ts --yes",
+    "destroy": "pnpm --dir ../.. destroy:money",
+    "destroy:stage": "pnpm --dir ../.. exec alchemy destroy apps/money/alchemy.run.ts --yes",
     "db:generate": "drizzle-kit generate",
     "test:e2e": "vp exec jiti e2e.run.ts",
-    "prepare": "vp config"
+    "lint": "vp lint . --max-warnings=0"
   },
   "dependencies": {
     "@effect/sql-d1": "catalog:",
@@ -34,22 +44,27 @@
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.32.3",
-    "@cloudflare/workers-types": "^4.20260415.1",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@playwright/test": "^1.60.0",
     "@shedflare/test-utils": "workspace:*",
     "@types/d3": "^7.4.3",
+    "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "alchemy": "catalog:",
     "drizzle-kit": "catalog:",
+    "jiti": "catalog:",
+    "jsdom": "catalog:",
+    "jsonc-parser": "catalog:",
+    "valibot": "catalog:",
     "vite": "catalog:",
-    "vite-plugin-solid": "^2.11.12",
+    "vite-plugin-solid": "catalog:",
     "vite-plus": "catalog:",
     "wrangler": "catalog:"
   },
   "engines": {
     "node": ">=22.12.0"
   },
-  "packageManager": "pnpm@10.32.1",
   "cloudflare": {
     "bindings": {
       "APP_PUBLIC_URL": {

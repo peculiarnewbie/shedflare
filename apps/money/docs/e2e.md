@@ -9,13 +9,13 @@
 
 Replicate the drive e2e setup, point it at money:
 
-- `apps/money/e2e.run.ts` — Alchemy deploy + Playwright invocation + destroy
-- `apps/money/playwright.config.ts` — base URL + e2e-token header injection
-- `apps/money/e2e/money.spec.ts` — single lifecycle test covering accounts → categories → transactions → budget → reports
-- `apps/money/alchemy.run.ts` — accept `E2E_AUTH_EMAIL` + `E2E_AUTH_TOKEN` from env when stage starts with `e2e-`
+- `e2e.run.ts` — Alchemy deploy + Playwright invocation + destroy
+- `playwright.config.ts` — base URL + e2e-token header injection
+- `e2e/money.spec.ts` — single lifecycle test covering accounts → categories → transactions → budget → reports
+- `alchemy.run.ts` — accepts `E2E_AUTH_EMAIL` + `E2E_AUTH_TOKEN` from env when the stage starts with `e2e-`
 - New `test:e2e:money` / `test:e2e:money:destroy` root scripts
 
-Auth bypass uses the **existing `E2E_AUTH_EMAIL` / `E2E_AUTH_TOKEN` env wiring in `packages/auth-client/src/consumer.ts:62-67`** — no auth-client changes needed. The token is sent as `x-shedflare-e2e-token`, accepted only when both env vars are set (drive uses this exact pattern).
+Auth bypass uses the released `@shedflare/auth-client` E2E bindings. The token is sent as `x-shedflare-e2e-token` and accepted only when both environment values are set.
 
 ## 2. Why drive's pattern fits money
 
@@ -31,7 +31,7 @@ No Durable Object, no WebSocket — money's current implementation is D1 + R2 + 
 
 ## 3. Files to Create / Modify
 
-### 3.1 Modify `apps/money/alchemy.run.ts`
+### 3.1 Configure `alchemy.run.ts`
 
 Mirror drive's gating on stage prefix and pass through e2e auth env:
 
@@ -48,16 +48,16 @@ const isE2eStage = stage.startsWith("e2e-");
 domain: !isE2eStage && config.url.startsWith("https://") ? new URL(config.url).hostname : undefined,
 ```
 
-### 3.2 Modify `apps/money/package.json`
+### 3.2 Configure `package.json`
 
 - Add `@playwright/test` devDependency
 - Add `test:e2e` script: `vp exec jiti e2e.run.ts`
 
-### 3.3 Create `apps/money/playwright.config.ts`
+### 3.3 Configure `playwright.config.ts`
 
 Copy drive verbatim, change `testDir` is implicit (relative `./e2e`).
 
-### 3.4 Create `apps/money/e2e.run.ts`
+### 3.4 Configure `e2e.run.ts`
 
 Copy drive's structure. Rename env vars:
 
@@ -68,7 +68,7 @@ Copy drive's structure. Rename env vars:
 
 Stage default: `e2e-money-${CI_JOB_ID ?? Date.now()}`.
 
-### 3.5 Create `apps/money/e2e/money.spec.ts`
+### 3.5 Maintain `e2e/money.spec.ts`
 
 Single `test("full money lifecycle")` that exercises:
 
@@ -96,11 +96,10 @@ All assertions should go through `context.request.get` (or `.post`) so the spec 
 Add scripts (mirror drive):
 
 ```json
-"test:e2e:money": "vp exec jiti apps/money/e2e.run.ts",
-"test:e2e:money:destroy": "vp exec jiti apps/money/e2e.run.ts --destroy-only"
+"test:e2e": "vp exec jiti e2e.run.ts"
 ```
 
-### 3.7 Modify `pnpm-workspace.yaml` / catalog
+### 3.7 Keep Playwright and Jiti in this repository's lockfile
 
 Add `playwright` to the catalog if not already there for apps (it's in the root devDependencies but may need to be in catalog for the app's `@playwright/test` dep).
 
@@ -115,14 +114,14 @@ Add `playwright` to the catalog if not already there for apps (it's in the root 
 
 ## 5. Phased Rollout (small, but sequenced for safety)
 
-| Step | What                                                | Why first                                           |
-| ---- | --------------------------------------------------- | --------------------------------------------------- |
-| 1    | Add e2e env wiring to `apps/money/alchemy.run.ts`   | Unblocks deploy-with-auth; smallest possible change |
-| 2    | Add `playwright.config.ts` + `@playwright/test` dep | Test infra only — no behavior change                |
-| 3    | Copy `e2e.run.ts` from drive, rename env vars       | Mirrors known-working pattern                       |
-| 4    | Write `e2e/money.spec.ts` happy path                | First runnable test                                 |
-| 5    | Run `pnpm test:e2e:money` against a real stage      | End-to-end validation; iterate on flaky selectors   |
-| 6    | Add root scripts, update AGENTS.md if relevant      | Discoverability                                     |
+| Step | What                                                | Why first                                         |
+| ---- | --------------------------------------------------- | ------------------------------------------------- |
+| 1    | Maintain E2E env wiring in `alchemy.run.ts`         | Keeps preview auth isolated from production       |
+| 2    | Add `playwright.config.ts` + `@playwright/test` dep | Test infra only — no behavior change              |
+| 3    | Copy `e2e.run.ts` from drive, rename env vars       | Mirrors known-working pattern                     |
+| 4    | Write `e2e/money.spec.ts` happy path                | First runnable test                               |
+| 5    | Run `pnpm test:e2e:money` against a real stage      | End-to-end validation; iterate on flaky selectors |
+| 6    | Add root scripts, update AGENTS.md if relevant      | Discoverability                                   |
 
 ## 6. What This Test Will NOT Cover (deliberate)
 

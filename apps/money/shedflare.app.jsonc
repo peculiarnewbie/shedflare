@@ -1,5 +1,5 @@
 {
-  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
+  "$schema": "https://shedflare.dev/schemas/app-manifest.schema.json",
   "id": "money",
   "name": "Shedflare Money",
   "description": "Envelope-budgeting personal finance app",

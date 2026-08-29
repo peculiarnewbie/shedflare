@@ -1,6 +1,9 @@
 import { issuer } from "@openauthjs/openauth";
 import { GoogleOidcProvider } from "@openauthjs/openauth/provider/google";
-import { CloudflareStorage } from "@openauthjs/openauth/storage/cloudflare";
+import {
+  CloudflareStorage,
+  type CloudflareStorageOptions,
+} from "@openauthjs/openauth/storage/cloudflare";
 import { boolean, object, optional, safeParse, string } from "valibot";
 import { createSubjects } from "@openauthjs/openauth/subject";
 
@@ -12,7 +15,7 @@ export const subjects = createSubjects({
 
 export type IssuerEnv = {
   GOOGLE_CLIENT_ID: string;
-  OPENAUTH_STORAGE: KVNamespace;
+  OPENAUTH_STORAGE: CloudflareStorageOptions["namespace"];
   OWNER_EMAIL: string;
   APP_PUBLIC_URL: string;
 };
@@ -26,7 +29,7 @@ const GoogleOidcClaimsSchema = object({
   email_verified: optional(boolean()),
 });
 
-export function createAuthIssuer(env: IssuerEnv) {
+export function createAuthIssuer(env: IssuerEnv): ReturnType<typeof issuer> {
   return issuer({
     providers: {
       google: GoogleOidcProvider({

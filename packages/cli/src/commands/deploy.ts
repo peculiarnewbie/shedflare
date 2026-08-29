@@ -23,7 +23,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
 
   if (options.app === "drive") {
     console.error(
-      "Drive deployment is owned by https://github.com/shedflare/drive and is unavailable from the suite checkout.",
+      "Drive has an independent production lifecycle and is unavailable through the suite deploy command. Use its scoped workspace deployment command only with explicit production approval.",
     );
     process.exit(1);
   }

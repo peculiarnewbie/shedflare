@@ -306,10 +306,29 @@ async function rotateRefreshToken(refreshToken: string, env: AppEnv) {
       signal: controller.signal,
     });
     const issuerEnv = Object.fromEntries(Object.entries(env));
+    class DetachedSpan {
+      readonly isTraced = false;
+      setAttribute(_key: string, _value?: boolean | number | string) {}
+      end() {}
+    }
+    const tracing = {
+      enterSpan: <T, Arguments extends unknown[]>(
+        _name: string,
+        callback: (span: DetachedSpan, ...args: Arguments) => T,
+        ...args: Arguments
+      ) => callback(new DetachedSpan(), ...args),
+      startActiveSpan: <T, Arguments extends unknown[]>(
+        _name: string,
+        callback: (span: DetachedSpan, ...args: Arguments) => T,
+        ...args: Arguments
+      ) => callback(new DetachedSpan(), ...args),
+      Span: DetachedSpan,
+    };
     const executionContext = {
       waitUntil() {},
       passThroughOnException() {},
       props: {},
+      tracing,
     } satisfies ExecutionContext;
     const response = await createAuthIssuer(env).fetch(tokenRequest, issuerEnv, executionContext);
     if (!response.ok) {
