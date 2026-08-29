@@ -1,30 +1,55 @@
-# Drive Deployment Guide
+# Drive deployment guide
 
-Alchemy is the supported deployment lifecycle for Shedflare. Deploy Auth first,
-then deploy Drive as an Auth client.
+Alchemy is the supported deployment lifecycle. Drive's source lives in the monorepo, while its
+production stack remains deliberately outside the root suite composition.
 
-## Configure
+## Configuration
 
-Keep `drive` selected in `shedflare.config.jsonc`. The app URL, Auth issuer URL,
-client ID, and owner email are derived from the root config and the app manifest.
+Create the root desired-state config if needed:
 
-Alchemy provisions the Drive D1 database and private R2 bucket, and applies the
-checked-in migrations from `apps/drive/src/migrations`. Do not create resources,
-copy IDs, or edit a Wrangler config by hand.
+```bash
+cp shedflare.config.example.jsonc shedflare.config.jsonc
+```
 
-Alchemy also generates and installs `SECURE_UPLOAD_TOKEN_SECRET`. Drive uses it
-to sign the short-lived capabilities created by the secure upload command button;
-operators do not need to create or rotate this secret manually.
+Set `domain` and `ownerEmail`, add `"drive": {}` under `apps`, and keep Auth configured as
+the external issuer. The app URL, issuer URL, client ID, and owner identity are resolved from the
+root catalog and Drive manifest.
 
-## Deploy
+Alchemy generates and installs `SECURE_UPLOAD_TOKEN_SECRET`; operators do not need to create or
+rotate that secret manually.
+
+## Resource ownership
+
+Each Drive stage owns:
+
+- one Worker and its static assets;
+- one D1 database for metadata, tags, and file records;
+- one private R2 bucket containing file bodies.
+
+Non-production stages derive separate Worker, D1, R2, and hostname values. Checked-in migrations
+under `apps/drive/src/migrations` are applied to the stage's D1 database.
+
+## Rehearsal
+
+Run scoped commands from the monorepo root:
+
+```bash
+pnpm --filter @shedflare/drive plan --stage pilot
+pnpm --filter @shedflare/drive deploy:stage --stage pilot
+pnpm --filter @shedflare/drive destroy:stage --stage pilot
+```
+
+Review the plan before approval. It must not update, replace, or delete production resources.
+Destruction removes the temporary stage's bucket and database, so confirm the stage name.
+
+## Production
 
 ```bash
 pnpm deploy:drive
 ```
 
-The command deploys the Drive Alchemy stack to the `prod` stage. To remove only
-Drive's production resources, run:
-
-```bash
-pnpm destroy:drive
-```
+Drive retains its existing `ShedflareDrive/prod` Alchemy state and physical resources. Moving the
+source back into the monorepo does not copy data or transfer state ownership. Production deploy and
+destroy operations require explicit approval; see the
+[historical production cutover proof](production-cutover-proof.md) for the invariants previously
+used to verify continuity.

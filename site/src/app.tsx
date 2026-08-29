@@ -239,27 +239,29 @@ function DeploymentDoc() {
       <p class="eyebrow">Deployment</p>
       <h1>How to deploy.</h1>
       <p class="doc-lede">
-        Each app lives under <code>apps/*</code> and has an Alchemy stack that declares its Worker,
-        assets, bindings, and Cloudflare resources.
+        Each app has its own repository and Alchemy stack declaring its Worker, assets, bindings,
+        and Cloudflare resources.
       </p>
       <div class="steps">
         <p>
           <strong>1.</strong> Create <code>shedflare.config.jsonc</code> from the example template.
         </p>
         <p>
-          <strong>2.</strong> Fill in domain, owner email, app subdomains, and required vars.
+          <strong>2.</strong> Fill in the app URL, owner email, Auth issuer, and app-specific
+          values.
         </p>
         <p>
-          <strong>3.</strong> Deploy auth first, or use the root stack to wire auth into child apps.
+          <strong>3.</strong> If using shared SSO, deploy Auth first and explicitly allow the app's
+          client ID and origin.
         </p>
         <p>
-          <strong>4.</strong> Run <code>pnpm deploy</code> for the suite or{" "}
-          <code>pnpm deploy:&lt;app&gt;</code> for one app.
+          <strong>4.</strong> Run <code>pnpm deploy</code> from that app repository, or use the
+          optional suite with pinned releases.
         </p>
       </div>
       <p>
-        This website is different: it lives in <code>site/</code> because it is Shedflare project
-        infrastructure, not something every owner deploys as part of their private suite.
+        This website is project infrastructure and is released independently from private owner
+        applications.
       </p>
     </>
   );

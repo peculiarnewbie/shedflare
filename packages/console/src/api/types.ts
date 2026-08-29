@@ -1,4 +1,4 @@
-import { ShedflareConfigV2Schema } from "@shedflare/core";
+import { ShedflareConfigV2Schema } from "@shedflare/core/config/schema";
 import {
   array,
   boolean,

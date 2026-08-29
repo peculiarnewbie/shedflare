@@ -1,5 +1,5 @@
 {
-  "$schema": "../../packages/shedflare-core/schemas/app-manifest.schema.json",
+  "$schema": "https://shedflare.dev/schemas/app-manifest.schema.json",
   "id": "homepage",
   "name": "Shedflare Homepage",
   "description": "Personal homepage with profile, experience, and project showcase",

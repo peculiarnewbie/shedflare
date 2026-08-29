@@ -1,5 +1,5 @@
 {
-  "$schema": "../../packages/cli/schemas/app-manifest-schema.json",
+  "$schema": "https://shedflare.dev/schemas/app-manifest.schema.json",
   "id": "discord",
   "name": "Shedflare Discord",
   "description": "Personal AI Discord bot with Gateway @mention support on Cloudflare Workers",

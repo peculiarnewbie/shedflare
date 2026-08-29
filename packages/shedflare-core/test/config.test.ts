@@ -4,19 +4,60 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   CoreError,
-  discoverManifests,
+  createManifestCatalog,
   isAppSelected,
   loadConfig,
   migrateConfig,
   patchConfig,
+  parseManifest,
   resolveAppConfig,
   selectedAppIds,
   validateConfig,
   writeConfigMigration,
 } from "../src/index.ts";
 
-const root = join(import.meta.dirname, "../../..");
-const catalog = discoverManifests(root);
+function manifest(
+  id: string,
+  options: {
+    dependsOn?: readonly string[];
+    vars?: Record<string, { from: "user"; description: string; default?: string }>;
+  } = {},
+) {
+  return parseManifest(
+    {
+      id,
+      name: `Shedflare ${id}`,
+      description: `Description for ${id}`,
+      lifecycle: "experimental",
+      category: "productivity",
+      dataSensitivity: "personal",
+      dependsOn: options.dependsOn ?? [],
+      defaultSubdomain: id,
+      vars: options.vars ?? {},
+      secrets: {},
+      resources: [],
+    },
+    `fixture:${id}`,
+  );
+}
+
+const catalog = createManifestCatalog([
+  { manifest: manifest("auth"), source: "fixture:auth" },
+  {
+    manifest: manifest("chat", {
+      dependsOn: ["auth"],
+      vars: {
+        DEFAULT_MODEL_ID: {
+          from: "user",
+          description: "Default model",
+          default: "auto",
+        },
+      },
+    }),
+    source: "fixture:chat",
+  },
+  { manifest: manifest("drive", { dependsOn: ["auth"] }), source: "fixture:drive" },
+]);
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
@@ -105,7 +146,7 @@ describe("config migration", () => {
 
     expect(migration).toMatchObject({ oldVersion: 1, canWrite: true, warnings: [] });
     expect(migration.config).toEqual({
-      $schema: "./packages/shedflare-core/schemas/shedflare-config.schema.json",
+      $schema: "https://shedflare.dev/schemas/shedflare-config.schema.json",
       configVersion: 2,
       domain: "example.com",
       ownerEmail: "owner@example.com",

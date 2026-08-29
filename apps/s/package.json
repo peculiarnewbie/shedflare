@@ -1,19 +1,31 @@
 {
   "name": "@shedflare/s",
+  "version": "0.1.0",
   "private": true,
+  "description": "A self-hosted link shortener for Cloudflare.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "apps/s"
+  },
   "type": "module",
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "check": "vp check src alchemy.run.ts vite.config.ts",
+    "test": "vp test --passWithNoTests",
+    "check": "vp check src build alchemy.run.ts alchemy.test.ts vite.config.ts drizzle.config.ts",
     "typecheck": "vp check --no-fmt --no-lint",
-    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
-    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
+    "plan": "vp build && pnpm --dir ../.. exec alchemy plan apps/s/alchemy.run.ts",
+    "deploy": "pnpm --dir ../.. deploy:s",
+    "deploy:stage": "vp build && pnpm --dir ../.. exec alchemy deploy apps/s/alchemy.run.ts --yes",
+    "destroy": "pnpm --dir ../.. destroy:s",
+    "destroy:stage": "pnpm --dir ../.. exec alchemy destroy apps/s/alchemy.run.ts --yes",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "wrangler d1 migrations apply shedflare-s --remote",
-    "prepare": "vp config"
+    "lint": "vp lint . --max-warnings=0"
   },
   "dependencies": {
+    "@shedflare/alchemy": "workspace:*",
     "@shedflare/auth-client": "workspace:*",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
@@ -22,11 +34,21 @@
     "valibot": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.0.0",
-    "@cloudflare/workers-types": "^4.20250401.0",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "alchemy": "catalog:",
     "drizzle-kit": "catalog:",
-    "vite-plugin-solid": "^2.11.6",
+    "effect": "catalog:",
+    "jsdom": "catalog:",
+    "jsonc-parser": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:",
     "vite-plus": "catalog:",
-    "wrangler": "^4.14.1"
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

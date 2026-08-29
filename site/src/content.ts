@@ -1,5 +1,12 @@
 export const apps = [
   {
+    id: "anki",
+    name: "Anki",
+    summary: "Online-first spaced repetition for personal flashcards.",
+    resources: "Worker + D1",
+    notes: "Review and edit cards in an independently deployable owner-only app.",
+  },
+  {
     id: "chat",
     name: "Chat",
     summary: "An AI workspace with sync, file uploads, search, and browser automation.",
@@ -14,6 +21,20 @@ export const apps = [
     notes: "Metadata lives in D1. Files live in R2. The app is intentionally personal-scale.",
   },
   {
+    id: "discord",
+    name: "Discord",
+    summary: "A personal AI Discord bot with Gateway mention support.",
+    resources: "Worker + Durable Objects",
+    notes: "Runs the bot and conversation state inside your Cloudflare account.",
+  },
+  {
+    id: "homepage",
+    name: "Homepage",
+    summary: "A personal profile, experience, and project showcase.",
+    resources: "Worker + D1 + R2",
+    notes: "Own the profile data and project imagery behind your homepage.",
+  },
+  {
     id: "money",
     name: "Money",
     summary: "Envelope budgeting for personal finance workflows.",
@@ -26,6 +47,13 @@ export const apps = [
     summary: "A simple link shortener with a dashboard.",
     resources: "Worker + D1",
     notes: "Shorten and manage links under your own domain.",
+  },
+  {
+    id: "routines",
+    name: "Routines",
+    summary: "Daily routine tracking with progress visualization.",
+    resources: "Worker + D1",
+    notes: "A compact owner-only habit and routine workspace.",
   },
 ];
 
@@ -60,7 +88,7 @@ export const guides = [
   },
   {
     title: "Deploy with Alchemy",
-    body: "Alchemy stacks declare the Cloudflare resources and Workers for each app. The root suite stack composes deployable apps; this public website is intentionally outside that suite.",
+    body: "Each independently released app owns an Alchemy stack for its Cloudflare resources. The optional suite composes pinned app releases instead of importing sibling source.",
   },
   {
     title: "Own the cloud boundary",

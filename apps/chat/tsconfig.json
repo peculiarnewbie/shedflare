@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "@cloudflare/workers-types"],
+    "types": ["vite/client", "@cloudflare/workers-types", "node"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",
@@ -18,5 +18,13 @@
       "#/*": ["./src/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "alchemy.run.ts"]
+  "include": [
+    "src",
+    "test",
+    "build",
+    "vite.config.ts",
+    "alchemy.run.ts",
+    "alchemy.test.ts",
+    "vitest.workers.config.ts"
+  ]
 }

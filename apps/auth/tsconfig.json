@@ -1,7 +1,17 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
     "types": ["@cloudflare/workers-types", "node"]
   },
-  "include": ["src", "worker-configuration.d.ts", "alchemy.run.ts"]
+  "include": ["src", "worker-configuration.d.ts", "alchemy.run.ts", "alchemy.test.ts"]
 }

@@ -31,20 +31,31 @@ const packageJson = safeParse(
 );
 if (!packageJson.success) throw new Error(`${root}/package.json has invalid scripts.`);
 const scripts = packageJson.output.scripts ?? {};
-const externallyOwnedAppIds = new Set(["drive"]);
+const independentlyDeployedAppIds = new Set(["drive"]);
 
 for (const appId of catalog.appIds) {
   const stackPath = `${root}/apps/${appId}/alchemy.run.ts`;
   if (!existsSync(stackPath)) throw new Error(`${stackPath} is missing.`);
-  if (externallyOwnedAppIds.has(appId)) {
+  const liveTestPath = `${root}/apps/${appId}/alchemy.test.ts`;
+  if (
+    existsSync(liveTestPath) &&
+    !scripts[`test:${appId}`]?.includes("node_modules/alchemy-vitest/vitest.mjs")
+  ) {
+    throw new Error(
+      `package.json test:${appId} must use the isolated Alchemy Vitest runner for live tests.`,
+    );
+  }
+  if (independentlyDeployedAppIds.has(appId)) {
     if (rootStack.includes(`./apps/${appId}/alchemy.run.ts`)) {
-      throw new Error(`${rootStackPath} must not compose externally owned app "${appId}".`);
+      throw new Error(`${rootStackPath} must not compose independently deployed app "${appId}".`);
     }
-    if (scripts[`deploy:${appId}`] || scripts[`destroy:${appId}`]) {
-      throw new Error(`package.json must not deploy or destroy externally owned app "${appId}".`);
+    if (!scripts[`deploy:${appId}`] || !scripts[`destroy:${appId}`]) {
+      throw new Error(
+        `package.json must define explicit deploy and destroy commands for independently deployed app "${appId}".`,
+      );
     }
     if (config.apps[appId]) {
-      throw new Error(`${examplePath} must not select externally owned app "${appId}".`);
+      throw new Error(`${examplePath} must not select independently deployed app "${appId}".`);
     }
     continue;
   }

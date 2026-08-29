@@ -1,14 +1,14 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Core from "alchemy/Test/Core";
 import { loadShedflareConfig } from "@shedflare/alchemy";
-import { execSync } from "node:child_process";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import DriveStack from "./alchemy.run";
 
-const driveRoot = process.cwd();
-const repoRoot = join(driveRoot, "../..");
-process.chdir(repoRoot);
-
+const driveRoot = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = resolve(driveRoot, "../..");
+process.chdir(repositoryRoot);
 const stage =
   process.env.SHEDFLARE_DRIVE_E2E_STAGE ??
   `e2e-drive-${process.env.GITHUB_RUN_ID ?? process.env.CI_JOB_ID ?? Date.now()}`;
@@ -31,12 +31,44 @@ async function destroyDrive() {
   await Core.run(Core.destroy(options, DriveStack, { stage }), options);
 }
 
+async function waitForDrive(baseUrl: string) {
+  const deadline = Date.now() + 60_000;
+  let consecutiveReadyChecks = 0;
+  while (Date.now() < deadline) {
+    try {
+      const request = (path: string) =>
+        fetch(new URL(path, baseUrl), {
+          headers: { "x-shedflare-e2e-token": authToken },
+          redirect: "manual",
+        });
+      const [root, session, files, tags] = await Promise.all([
+        request("/"),
+        request("/api/session"),
+        request("/api/files?limit=1&offset=0"),
+        request("/api/tags"),
+      ]);
+      const ready =
+        root.status === 200 &&
+        (await root.text()).includes("<title>Shedflare Drive</title>") &&
+        session.status === 200 &&
+        files.status === 200 &&
+        tags.status === 200;
+      consecutiveReadyChecks = ready ? consecutiveReadyChecks + 1 : 0;
+      if (consecutiveReadyChecks >= 2) return;
+    } catch {
+      // A newly created workers.dev route can be briefly unavailable while it propagates.
+      consecutiveReadyChecks = 0;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error(`Drive did not become ready at ${baseUrl} within 60 seconds`);
+}
+
 function runPlaywright(baseUrl: string) {
   const extraArgs = process.argv
     .slice(2)
-    .filter((a) => a !== "--destroy-only" && a !== "--")
-    .join(" ");
-  execSync(`npx playwright test ${extraArgs}`, {
+    .filter((argument) => argument !== "--destroy-only" && argument !== "--");
+  execFileSync("vp", ["exec", "playwright", "test", ...extraArgs], {
     cwd: driveRoot,
     stdio: "inherit",
     env: {
@@ -59,8 +91,11 @@ async function main() {
   let deployed: Awaited<ReturnType<typeof deployDrive>> | null = null;
   try {
     deployed = await deployDrive();
-    console.log(`Testing ${deployed.url}`);
-    runPlaywright(deployed.url ?? deployed.configuredUrl);
+    const baseUrl = deployed.url ?? deployed.configuredUrl;
+    console.log(`Waiting for ${baseUrl}`);
+    await waitForDrive(baseUrl);
+    console.log(`Testing ${baseUrl}`);
+    runPlaywright(baseUrl);
     console.log("Drive E2E passed");
   } finally {
     console.log(`Destroying drive E2E stage ${stage}`);

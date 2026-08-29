@@ -1,6 +1,6 @@
-import { defineConfig } from "vite-plus";
+import { antiSlopFmt, antiSlopLint } from "../../tooling/anti-slop.vite.ts";
 
-export default defineConfig({
+export default {
   test: {
     environment: "node",
     include: ["*.test.ts"],
@@ -9,5 +9,9 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  lint: { options: { typeAware: true, typeCheck: true } },
-});
+  lint: {
+    ...antiSlopLint("../../tools/oxlint/anti-slop/index.ts"),
+    options: { typeAware: true, typeCheck: true },
+  },
+  fmt: antiSlopFmt,
+};

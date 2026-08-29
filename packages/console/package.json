@@ -1,14 +1,18 @@
 {
   "name": "@shedflare/console",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "packages/console"
+  },
   "type": "module",
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
     "check": "vp check src vite.config.ts",
     "test": "vp test",
-    "typecheck": "vp check --no-fmt --no-lint",
-    "prepare": "vp config"
+    "typecheck": "vp check --no-fmt --no-lint"
   },
   "dependencies": {
     "@shedflare/alchemy": "workspace:*",
@@ -20,7 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "vite-plugin-solid": "^2.11.6",
+    "vite-plugin-solid": "catalog:",
     "vite-plus": "catalog:",
     "vitest": "catalog:"
   }

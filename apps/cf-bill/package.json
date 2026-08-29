@@ -1,17 +1,30 @@
 {
   "name": "@shedflare/cf-bill",
+  "version": "0.1.0",
   "private": true,
+  "description": "A self-hosted Cloudflare usage and plan-limit dashboard.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "apps/cf-bill"
+  },
   "type": "module",
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "check": "vp check src alchemy.run.ts vite.config.ts",
+    "test": "vp test --passWithNoTests",
+    "check": "vp check src build alchemy.run.ts alchemy.test.ts vite.config.ts",
     "typecheck": "vp check --no-fmt --no-lint",
-    "deploy": "vp exec alchemy deploy alchemy.run.ts --stage prod",
-    "destroy": "vp exec alchemy destroy alchemy.run.ts --stage prod",
-    "prepare": "vp config"
+    "plan": "vp build && pnpm --dir ../.. exec alchemy plan apps/cf-bill/alchemy.run.ts",
+    "deploy": "pnpm --dir ../.. deploy:cf-bill",
+    "deploy:stage": "vp build && pnpm --dir ../.. exec alchemy deploy apps/cf-bill/alchemy.run.ts --yes",
+    "destroy": "pnpm --dir ../.. destroy:cf-bill",
+    "destroy:stage": "pnpm --dir ../.. exec alchemy destroy apps/cf-bill/alchemy.run.ts --yes",
+    "lint": "vp lint . --max-warnings=0"
   },
   "dependencies": {
+    "@shedflare/alchemy": "workspace:*",
     "@shedflare/auth-client": "workspace:*",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
@@ -19,10 +32,19 @@
     "valibot": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.0.0",
-    "@cloudflare/workers-types": "^4.20250401.0",
-    "vite-plugin-solid": "^2.11.6",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "alchemy": "catalog:",
+    "effect": "catalog:",
+    "jsdom": "catalog:",
+    "jsonc-parser": "catalog:",
+    "vite-plugin-solid": "catalog:",
     "vite-plus": "catalog:",
-    "wrangler": "^4.14.1"
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

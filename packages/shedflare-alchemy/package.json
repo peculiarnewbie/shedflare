@@ -2,6 +2,11 @@
   "name": "@shedflare/alchemy",
   "version": "0.0.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "packages/shedflare-alchemy"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -26,6 +31,5 @@
   },
   "engines": {
     "node": ">=22.12.0"
-  },
-  "packageManager": "pnpm@10.32.1"
+  }
 }

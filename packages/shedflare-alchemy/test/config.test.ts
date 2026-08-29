@@ -4,6 +4,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appStackConfig, stageSubdomain, type ShedflareAlchemyConfig } from "../src/config";
 import { loadDotEnvFile, parseDotEnv } from "../src/dotenv";
+import { createManifestCatalog, parseManifest } from "@shedflare/core";
+
+function manifest(
+  id: string,
+  options: {
+    vars?: Record<string, { from: "user"; description: string; default?: string }>;
+  } = {},
+) {
+  return parseManifest(
+    {
+      id,
+      name: `Shedflare ${id}`,
+      description: `Description for ${id}`,
+      lifecycle: "experimental",
+      category: "productivity",
+      dataSensitivity: "personal",
+      dependsOn: [],
+      defaultSubdomain: id,
+      vars: options.vars ?? {},
+      secrets: {},
+      resources: [],
+    },
+    `fixture:${id}`,
+  );
+}
+
+const catalog = createManifestCatalog([
+  {
+    manifest: manifest("chat", {
+      vars: {
+        DEFAULT_MODEL_ID: {
+          from: "user",
+          description: "Default model",
+          default: "auto",
+        },
+      },
+    }),
+  },
+  { manifest: manifest("money") },
+]);
 
 const config: ShedflareAlchemyConfig = {
   domain: "peculiarnewbie.com",
@@ -71,7 +111,7 @@ describe("dotenv loading", () => {
 
 describe("appStackConfig", () => {
   test("uses configured subdomains in production", () => {
-    expect(appStackConfig(config, "chat", "prod")).toMatchObject({
+    expect(appStackConfig(config, "chat", "prod", catalog)).toMatchObject({
       subdomain: "chat",
       configuredSubdomain: "chat",
       url: "https://chat.peculiarnewbie.com",
@@ -79,7 +119,7 @@ describe("appStackConfig", () => {
   });
 
   test("derives non-production subdomains from the stage", () => {
-    expect(appStackConfig(config, "chat", "dev-bolt")).toMatchObject({
+    expect(appStackConfig(config, "chat", "dev-bolt", catalog)).toMatchObject({
       subdomain: "chat-dev-bolt",
       configuredSubdomain: "chat",
       url: "https://chat-dev-bolt.peculiarnewbie.com",
@@ -94,7 +134,7 @@ describe("appStackConfig", () => {
       apps: { chat: {} },
     };
 
-    expect(appStackConfig(versionTwoConfig, "chat", "prod")).toMatchObject({
+    expect(appStackConfig(versionTwoConfig, "chat", "prod", catalog)).toMatchObject({
       subdomain: "chat",
       configuredSubdomain: "chat",
       vars: { DEFAULT_MODEL_ID: "auto" },

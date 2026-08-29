@@ -11,6 +11,8 @@ allowBuilds:
 
 catalog:
   "@better-auth/infra": ^0.1.14
+  "@cloudflare/vite-plugin": ^1.32.3
+  "@cloudflare/workers-types": ^4.20260415.1
   "@effect/platform-node": 4.0.0-beta.92
   "@effect/sql-d1": 4.0.0-beta.92
   "@effect/sql-sqlite-do": 4.0.0-beta.92
@@ -37,10 +39,11 @@ catalog:
   marked-highlight: ^2.2.4
   peculiar-charts: ^0.2.1
   playwright: ^1.60.0
-  valibot: ^1.3.1
-  vite: npm:@voidzero-dev/vite-plus-core@latest
-  vite-plus: ^0.1.18
-  vitest: npm:@voidzero-dev/vite-plus-test@latest
+  valibot: ^1.4.2
+  vite: npm:@voidzero-dev/vite-plus-core@0.1.24
+  vite-plugin-solid: ^2.11.12
+  vite-plus: 0.1.24
+  vitest: npm:@voidzero-dev/vite-plus-test@0.1.24
   wrangler: ^4.83.0
   "@tokenami/css": ^0.0.98
   "@tokenami/unplugin": ^0.0.98

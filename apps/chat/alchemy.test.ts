@@ -17,8 +17,8 @@ test.skipIf(!live)(
   "chat endpoints respond correctly",
   Effect.gen(function* () {
     const deployed = yield* deploy(ChatStack);
-    assert.ok(deployed.url);
     const base = deployed.url;
+    if (!base) throw new Error("Chat deployment did not return a URL");
     const root = yield* Effect.promise(() => fetch(base));
     assert.equal(root.status, 200);
 

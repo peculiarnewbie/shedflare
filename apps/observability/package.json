@@ -1,21 +1,47 @@
 {
   "name": "@shedflare/observability",
+  "version": "0.1.0",
   "private": true,
+  "description": "Optional centralized error collection for Shedflare Workers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "apps/observability"
+  },
   "type": "module",
   "scripts": {
+    "dev": "vp exec wrangler dev src/worker.ts",
     "build": "vp check --no-fmt --no-lint",
+    "test": "vp test --passWithNoTests",
     "typecheck": "vp check --no-fmt --no-lint",
-    "check": "vp check src alchemy.run.ts drizzle.config.ts",
-    "db:generate": "drizzle-kit generate --config drizzle.config.ts"
+    "check": "vp check src alchemy.run.ts drizzle.config.ts vite.config.ts",
+    "plan": "pnpm --dir ../.. exec alchemy plan apps/observability/alchemy.run.ts",
+    "deploy": "pnpm --dir ../.. deploy:observability",
+    "deploy:stage": "pnpm --dir ../.. exec alchemy deploy apps/observability/alchemy.run.ts --yes",
+    "destroy": "pnpm --dir ../.. destroy:observability",
+    "destroy:stage": "pnpm --dir ../.. exec alchemy destroy apps/observability/alchemy.run.ts --yes",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "lint": "vp lint . --max-warnings=0"
   },
   "dependencies": {
     "@shedflare/alchemy": "workspace:*",
     "drizzle-orm": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^0.1.8",
-    "@cloudflare/workers-types": "^4.20260415.1",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "alchemy": "catalog:",
     "drizzle-kit": "catalog:",
-    "wrangler": "^4.15.1"
+    "effect": "catalog:",
+    "jsonc-parser": "catalog:",
+    "valibot": "catalog:",
+    "vite-plus": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

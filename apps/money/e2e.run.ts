@@ -1,13 +1,14 @@
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Core from "alchemy/Test/Core";
 import { loadShedflareConfig } from "@shedflare/alchemy";
-import { execSync } from "node:child_process";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import MoneyStack from "./alchemy.run";
 
-const moneyRoot = process.cwd();
-const repoRoot = join(moneyRoot, "../..");
-process.chdir(repoRoot);
+const moneyRoot = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = resolve(moneyRoot, "../..");
+process.chdir(repositoryRoot);
 
 const stage =
   process.env.SHEDFLARE_MONEY_E2E_STAGE ??
@@ -34,9 +35,8 @@ async function destroyMoney() {
 function runPlaywright(baseUrl: string) {
   const extraArgs = process.argv
     .slice(2)
-    .filter((a) => a !== "--destroy-only" && a !== "--")
-    .join(" ");
-  execSync(`npx playwright test ${extraArgs}`, {
+    .filter((argument) => argument !== "--destroy-only" && argument !== "--");
+  execFileSync("vp", ["exec", "playwright", "test", ...extraArgs], {
     cwd: moneyRoot,
     stdio: "inherit",
     env: {

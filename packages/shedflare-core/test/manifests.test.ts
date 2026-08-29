@@ -4,13 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { object, record, safeParse, string, unknown } from "valibot";
 import {
-  APP_IDS,
   CatalogValidationError,
   CoreError,
   computeDeployOrder,
   createManifestCatalog,
   discoverManifestDirectory,
   discoverManifests,
+  isAppId,
   loadManifest,
   loadManifestFile,
   parseManifest,
@@ -57,36 +57,6 @@ function writeManifest(root: string, directory: string, contents: string): void 
   writeFileSync(join(appDir, "shedflare.app.jsonc"), contents);
 }
 
-describe("current app catalog", () => {
-  test("discovers every manifest and matches the generated registry", () => {
-    const root = join(import.meta.dirname, "../../..");
-    const catalog = discoverManifests(root);
-
-    expect(catalog.appIds).toEqual([...APP_IDS]);
-    expect(catalog.manifests.get("auth")).toMatchObject({
-      lifecycle: "beta",
-      category: "platform",
-      dataSensitivity: "high",
-    });
-  });
-
-  test("accepts computed variables and legacy resource descriptor variations", () => {
-    const root = join(import.meta.dirname, "../../..");
-    const auth = loadManifest(root, "auth");
-    const money = loadManifest(root, "money");
-
-    expect(auth.vars.ALLOWED_CLIENTS?.from).toBe("computed");
-    expect(money.resources).toContainEqual({ type: "d1", binding: "MONEY_DB" });
-  });
-
-  test("orders dependencies before selected apps", () => {
-    const root = join(import.meta.dirname, "../../..");
-    const catalog = discoverManifests(root);
-
-    expect(computeDeployOrder(["chat", "drive"], catalog)).toEqual(["auth", "chat", "drive"]);
-  });
-});
-
 describe("manifest validation", () => {
   test("parses and catalogs manifests without a repository filesystem", () => {
     const auth = parseManifest(JSON.parse(manifest("auth")), "inline:auth");
@@ -98,6 +68,8 @@ describe("manifest validation", () => {
 
     expect(catalog.appIds).toEqual(["auth", "drive"]);
     expect(computeDeployOrder(["drive"], catalog)).toEqual(["auth", "drive"]);
+    expect(isAppId("auth")).toBe(true);
+    expect(isAppId("Not An App")).toBe(false);
   });
 
   test("loads an explicit manifest file and discovers an explicit apps directory", () => {
@@ -167,14 +139,10 @@ describe("manifest validation", () => {
   });
 
   test("emits the committed editor-facing schema", () => {
-    const root = join(import.meta.dirname, "../../..");
     const schemaResult = safeParse(
       object({ $id: string(), properties: record(string(), unknown()) }),
       JSON.parse(
-        readFileSync(
-          join(root, "packages/shedflare-core/schemas/app-manifest.schema.json"),
-          "utf8",
-        ),
+        readFileSync(join(import.meta.dirname, "../schemas/app-manifest.schema.json"), "utf8"),
       ),
     );
     if (!schemaResult.success) throw new Error("Generated app manifest schema is invalid");

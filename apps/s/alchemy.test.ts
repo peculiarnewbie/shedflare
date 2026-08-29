@@ -16,8 +16,8 @@ test.skipIf(!live)(
   "s endpoints respond correctly",
   Effect.gen(function* () {
     const deployed = yield* deploy(ShortStack);
-    assert.ok(deployed.url);
     const base = deployed.url;
+    if (!base) throw new Error("Links deployment did not return a URL");
 
     const root = yield* Effect.promise(() => fetch(base));
     assert.equal(root.status, 200);

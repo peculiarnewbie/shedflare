@@ -2,7 +2,7 @@
  * Shared env factory for money tests.
  * Mirrors the surface money's worker hands to `createRouter(env)`.
  */
-import { asD1Database, D1Shim } from "@shedflare/test-utils/d1-shim";
+import { D1Shim } from "@shedflare/test-utils/d1-shim";
 import { R2Mock } from "@shedflare/test-utils/r2-mock";
 import { createDb } from "../server/d1-access";
 import { createMoneyTestD1 } from "./d1-shim";
@@ -40,7 +40,8 @@ export function createMoneyTestEnv(overrides?: Partial<MoneyTestEnv>): MoneyTest
  * `createDb(env.MONEY_DB)`, so handler code can run unmodified.
  */
 export function dbFor(env: MoneyTestEnv) {
-  return createDb(asD1Database(env.MONEY_DB));
+  // SAFETY: The published shim implements the D1 methods Drizzle exercises in these tests.
+  return createDb(env.MONEY_DB as D1Shim & D1Database);
 }
 
 export type Db = ReturnType<typeof dbFor>;

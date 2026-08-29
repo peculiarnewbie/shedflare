@@ -2,9 +2,15 @@
   "name": "@shedflare/core",
   "version": "0.0.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shedflare/shedflare.git",
+    "directory": "packages/shedflare-core"
+  },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./config/schema": "./src/config/schema.ts"
   },
   "scripts": {
     "check": "vp check src test vite.config.ts",
@@ -18,7 +24,7 @@
     "generate": "pnpm registry:generate && pnpm schemas:generate"
   },
   "dependencies": {
-    "@valibot/to-json-schema": "^1.7.1",
+    "@valibot/to-json-schema": "catalog:",
     "jsonc-parser": "catalog:",
     "valibot": "catalog:"
   },

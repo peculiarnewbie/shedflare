@@ -1,173 +1,117 @@
 # Shedflare
 
-Shedflare is a family of self-hosted personal productivity tools for Cloudflare. Each app is a
-standalone Worker deployed to your own Cloudflare account via [Alchemy](https://alchemy.run). This
-repository is the optional suite orchestrator and a temporary compatibility snapshot of app source.
+Shedflare is a modular, self-hosted collection of personal productivity apps for Cloudflare. The
+source lives in one monorepo, while every app remains an independently selectable and deployable
+Alchemy stack. You can run one app, a hand-picked set, or the full suite.
 
-> [!NOTE]
-> Shedflare is moving toward independently installable app repositories, with the suite becoming an
-> optional orchestration layer. See [ADR 0001](docs/architecture/0001-standalone-first-repositories.md)
-> for the accepted direction and migration gates.
+See [ADR 0002](docs/architecture/0002-modular-monorepo.md) for why the project returned to a
+monorepo after completing a split-repository experiment.
 
-## Contributor Workspace
-
-Changes that span Shedflare repositories use sibling checkouts, not a combined package-manager
-workspace. Create the local umbrella layout used by the maintainers:
-
-```bash
-mkdir shedflare
-git clone https://github.com/shedflare/shedflare.git shedflare/shedflare
-cd shedflare/shedflare
-node scripts/setup-contributor-workspace.mjs
-```
-
-The setup command clones every standalone repository beside `shedflare/` and adds umbrella guidance:
+## Repository layout
 
 ```text
-shedflare/
-  AGENTS.md
-  shedflare/
-  packages/
-  anki/
-  auth/
-  cf-bill/
-  chat/
-  discord/
-  drive/
-  homepage/
-  links/
-  money/
-  observability/
-  routines/
-  site/
+apps/       independently deployable applications
+packages/   shared libraries, CLI, and local console
+site/       public Shedflare project website
+tools/      repository-owned development tooling
 ```
 
-Use `--ssh` for SSH clone URLs or `--dry-run` to inspect the plan. Existing canonical clones are
-reused, and conflicting directories stop setup without being changed. Install and test only the
-repositories involved in your contribution; each remains independently installable and testable.
+There is one Git history, pnpm workspace, lockfile, toolchain, and CI pipeline. Internal
+`@shedflare/*` dependencies use `workspace:*`; apps do not carry nested lockfiles or copies of root
+tooling.
 
 ## Apps
 
-The standalone repositories below are canonical. Copies under `apps/` remain frozen compatibility
-snapshots until the suite consumes pinned releases.
-
-| App           | Canonical repository                                                    | Description                                                        |
-| ------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Anki          | [`shedflare/anki`](https://github.com/shedflare/anki)                   | Personal spaced-repetition cards and review                        |
-| Auth          | [`shedflare/auth`](https://github.com/shedflare/auth)                   | OAuth2/OIDC authentication provider (OpenAuth)                     |
-| CF Bill       | [`shedflare/cf-bill`](https://github.com/shedflare/cf-bill)             | Cloudflare usage vs plan limits dashboard                          |
-| Chat          | [`shedflare/chat`](https://github.com/shedflare/chat)                   | AI chat interface with browser automation and Durable Objects sync |
-| Discord       | [`shedflare/discord`](https://github.com/shedflare/discord)             | Personal Discord bot                                               |
-| Drive         | [`shedflare/drive`](https://github.com/shedflare/drive)                 | Independently deployed file storage app                            |
-| Homepage      | [`shedflare/homepage`](https://github.com/shedflare/homepage)           | Personal homepage with profile, experience, and projects           |
-| Links         | [`shedflare/links`](https://github.com/shedflare/links)                 | Link shortener with dashboard                                      |
-| Money         | [`shedflare/money`](https://github.com/shedflare/money)                 | Envelope-budgeting personal finance app                            |
-| Observability | [`shedflare/observability`](https://github.com/shedflare/observability) | Centralized error collection from tail events                      |
-| Routines      | [`shedflare/routines`](https://github.com/shedflare/routines)           | Daily routine tracker with progress visualization                  |
-
-## Quick Start
-
-```bash
-pnpm install
-cp shedflare.config.example.jsonc shedflare.config.jsonc
-# Edit shedflare.config.jsonc with your domain, email, and selected apps
-
-# Deploy the full production suite
-pnpm deploy
-```
-
-Deploy auth first if you want to deploy apps individually:
-
-```bash
-pnpm deploy:auth
-pnpm deploy:chat
-pnpm deploy:anki
-pnpm deploy:homepage
-# ...etc
-```
+| App           | Source                                     | Description                                            |
+| ------------- | ------------------------------------------ | ------------------------------------------------------ |
+| Anki          | [`apps/anki`](apps/anki)                   | Spaced-repetition cards and review                     |
+| Auth          | [`apps/auth`](apps/auth)                   | Optional shared OAuth2/OIDC provider                   |
+| CF Bill       | [`apps/cf-bill`](apps/cf-bill)             | Cloudflare usage and plan-limit dashboard              |
+| Chat          | [`apps/chat`](apps/chat)                   | AI chat with browser automation and synchronized state |
+| Discord       | [`apps/discord`](apps/discord)             | Personal Discord bot                                   |
+| Drive         | [`apps/drive`](apps/drive)                 | File storage backed by D1 and R2                       |
+| Homepage      | [`apps/homepage`](apps/homepage)           | Personal homepage                                      |
+| Links         | [`apps/s`](apps/s)                         | Link shortener; its stable app ID remains `s`          |
+| Money         | [`apps/money`](apps/money)                 | Envelope-budgeting personal finance app                |
+| Observability | [`apps/observability`](apps/observability) | Centralized Worker tail-event collection               |
+| Routines      | [`apps/routines`](apps/routines)           | Daily routine tracker                                  |
 
 ## Development
 
-Make application changes in its standalone sibling repository. Use this checkout only for the
-suite CLI, console, compatibility orchestration, and release-registry migration work.
-
-## Deployment
-
-All apps deploy with Alchemy. Each app has its own `alchemy.run.ts` that declares its Cloudflare resources (Workers, D1, R2, Durable Objects, etc). The public deploy and destroy scripts target the `prod` Alchemy stage.
+Install and verify the whole workspace from the repository root:
 
 ```bash
-# Full production suite
-pnpm deploy
-
-# Individual apps
-pnpm deploy:auth
-pnpm deploy:chat
-pnpm deploy:money
-pnpm deploy:anki
-pnpm deploy:homepage
-pnpm deploy:cf-bill
-pnpm deploy:routines
-pnpm deploy:observability
-pnpm deploy:s
-
-# Destroy production resources
-pnpm destroy           # full suite
-pnpm destroy:auth      # individual
+pnpm install
+pnpm check
+pnpm test
+pnpm build
 ```
 
-Deploy `@shedflare/auth` first if deploying individually — other apps use it as `AUTH_ISSUER_URL`.
-Drive production deployment is owned by the standalone
-[`shedflare/drive`](https://github.com/shedflare/drive) repository and is not part of suite deploy or
-destroy commands.
-
-For temporary stages, call Alchemy directly and pass a stage explicitly:
+Use pnpm filters when working on one app or package:
 
 ```bash
-vp exec alchemy deploy apps/chat/alchemy.run.ts --stage dev-bolt --yes
+pnpm --filter @shedflare/chat dev
+pnpm --filter @shedflare/chat check
+pnpm --filter @shedflare/chat test
+pnpm --filter @shedflare/chat build
 ```
 
-Non-production stages derive separate subdomains automatically. For example, configured
-subdomain `chat` becomes `chat-dev-bolt.peculiarnewbie.com` for `--stage dev-bolt`;
-`prod` keeps the configured subdomain unchanged.
+The root checks also enforce monorepo boundaries, generated app registry/schema consistency, and
+the suite deployment contract.
+
+When filing an issue or opening a pull request, name the affected app or package. The repository's
+issue forms keep app-specific reports searchable even though they share one tracker.
 
 ## Configuration
 
-`shedflare.config.jsonc` (gitignored) is the source of truth for desired deployment state. App presence means selected; manifest defaults supply subdomains and user-var defaults, so the config stores only deviations. Create it from the committed version-2 template:
+`shedflare.config.jsonc` is the gitignored desired-state configuration. Copy the versioned example,
+then select only the apps you want:
 
 ```bash
 cp shedflare.config.example.jsonc shedflare.config.jsonc
 ```
 
-Operator secrets are managed via `Shedflare.WorkerSecret` in Alchemy stacks. See `docs/operator-secrets.md`.
-
-The app catalog comes from `apps/*/shedflare.app.jsonc`. After adding or removing an app, regenerate and verify the typed registry:
+App manifests live at `apps/*/shedflare.app.jsonc`. After changing the catalog, regenerate and
+verify the typed registry and schemas:
 
 ```bash
 pnpm registry:generate
 pnpm contract:check
 ```
 
-Existing version-1 configs remain readable. Preview or explicitly write a local, backed-up migration with:
+Operator secrets are managed through `Shedflare.WorkerSecret`; see
+[`docs/operator-secrets.md`](docs/operator-secrets.md).
+
+## Deployment
+
+All deployments use [Alchemy](https://alchemy.run). Production commands are intentionally explicit:
 
 ```bash
-shedflare config migrate
-shedflare config migrate --write --yes
+pnpm deploy:auth       # one app
+pnpm deploy:chat
+pnpm deploy:s          # Links
+pnpm deploy            # selected suite
 ```
 
-## Testing
+Deploy Auth first when using shared SSO. Drive's source is maintained here, but its existing
+production stack retains an independent deployment lifecycle and is deliberately excluded from the
+root suite deploy/destroy commands.
+
+For a temporary stage, invoke an app stack with a non-production stage name:
 
 ```bash
-pnpm check          # lint + format + typecheck across all packages
-pnpm test           # run all package tests
-pnpm test:auth      # live Alchemy smoke test (requires SHEDFLARE_LIVE_ALCHEMY_TESTS=1)
+pnpm --filter @shedflare/chat deploy:stage --stage dev-bolt
 ```
 
-## CLI
+Never deploy, destroy, publish, or transfer production resource ownership merely as part of a source
+change. Those operations require explicit approval.
 
-The `shedflare` CLI exposes scriptable configuration, deployment, and secret operations. The local Console (`shedflare dashboard`) is the primary human-facing control plane.
+## CLI and console
 
-| Command                    | Description                                           |
-| -------------------------- | ----------------------------------------------------- |
-| `shedflare init`           | Create a new Shedflare workspace and configure apps   |
-| `shedflare doctor`         | Check workspace for issues and missing configuration  |
-| `shedflare config migrate` | Preview or write an explicit config v1 → v2 migration |
+The `shedflare` CLI provides configuration, deployment, secret, and diagnostic commands. The local
+Console is the human-facing control plane:
+
+```bash
+pnpm dashboard
+shedflare doctor
+```

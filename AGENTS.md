@@ -1,94 +1,97 @@
-# Shedflare – Agent Guidance
+# Shedflare agent guidance
 
-## This is a personal suite, not a multi-user SaaS
+## Repository model
 
-Shedflare is a **self-hosted suite of personal productivity tools** meant to be deployed by a single person for their own use. There are no "users," no sign-up flow, no tenant isolation, and no per-user settings that differ from the deployment owner's preferences.
+This repository is the canonical source for the Shedflare apps, shared packages, site, CLI, console,
+and optional suite orchestration. It is one pnpm monorepo with one Git history, root lockfile,
+dependency catalog, CI workflow, and development toolchain.
 
-- Auth exists solely to protect the deployment from public access — it gates the owner's own sessions, not a user base.
-- API keys are the owner's keys.
-- **Do not add multi-user features** unless explicitly requested.
+- `apps/*` contains independently selectable and deployable application stacks.
+- `packages/*` contains shared libraries and repository tooling products.
+- `site` contains the public project website.
+- Use `workspace:*` for dependencies on another local `@shedflare/*` package.
+- Never add nested Git metadata, lockfiles, package-manager workspaces, or copies of root tooling.
+- Never add `file:`, `link:`, implicit sibling, or source-directory dependency paths.
+- Run package-manager and Git-wide operations from the repository root. Use pnpm filters for scoped
+  app/package work.
+- Read the nearest child `AGENTS.md` before changing an app or shared-package area.
 
-## Deployment (Alchemy)
+## Product boundary
 
-**Alchemy** is the only supported deployment lifecycle. Each app has an Alchemy stack that declares its Cloudflare resources and wires them together. The root stack deploys the full suite.
+Shedflare is a self-hosted suite of personal productivity tools, normally deployed by one owner.
+There is no public registration, tenant isolation, or general multi-user account model.
 
-### Architecture
+- Auth protects the deployment owner's sessions; it does not represent a customer user base.
+- API keys, stored data, and preferences belong to the deployment owner.
+- Do not add multi-user or tenant behavior unless explicitly requested.
 
-```
-alchemy.run.ts          # Root suite stack — composes all app stacks
-packages/shedflare-alchemy/ # WorkerSecret provider, config loading, physical naming
-infra/alchemy-env.ts # Deprecated re-exports; use @shedflare/alchemy
-apps/*/
-  alchemy.run.ts        # Per-app Alchemy stack (resource lifecycle + Worker deploy)
-  alchemy.test.ts       # Live smoke tests (guarded by SHEDFLARE_LIVE_ALCHEMY_TESTS)
-  shedflare.app.jsonc   # App manifest (vars, secrets, resource declarations)
-  .dev.vars.example     # Local dev environment template
-packages/cli/           # Shedflare CLI (init, configure, doctor — deprecated)
-```
+## Verification
 
-### Deploy Commands
+Use Vite+ through the root scripts:
 
-| Command            | What it does                         |
-| ------------------ | ------------------------------------ |
-| `pnpm deploy:auth` | Deploy auth app standalone to `prod` |
-| `pnpm deploy`      | Deploy the full suite to `prod`      |
-| `pnpm destroy`     | Destroy the full `prod` suite        |
-| `pnpm test:auth`   | Run auth live smoke test             |
+- `pnpm check` runs formatting/linting/type checks plus repository boundary and generated-contract
+  verification.
+- `pnpm test` runs normal workspace tests.
+- `pnpm build` builds every deployable project with a build script.
+- Use `pnpm --filter <package> <script>` for fast scoped feedback, then run the relevant root checks
+  before handoff.
+- Live Alchemy and browser E2E tests are separate because they create Cloudflare resources.
 
-### Console (Local Dashboard)
+Do not install Vitest, Oxlint, Oxfmt, or tsdown directly when Vite+ already provides them. Root-owned
+anti-slop configuration and the Oxlint plugin must remain centralized.
 
-`packages/console/` is a local-only SolidJS SPA for managing the suite. It is **not** deployed to Cloudflare — it runs via `shedflare dashboard` or `pnpm --filter @shedflare/console dev`.
+`alchemy.test.ts` is the narrow exception: Alchemy's Vitest integration requires the official
+Vitest runner context, so guarded live tests use the root `alchemy-vitest` package alias. Normal
+unit/component tests continue to run through Vite+ and must not discover live Alchemy suites.
 
-- **Stage discovery is automatic.** The console scans all Workers on the Cloudflare account, extracts stage names from the `shedflare-{stage}-{appId}` naming pattern, and populates a stage selector dropdown in the sidebar. No need to set `ALCHEMY_STAGE` beforehand.
-- **Stage selection persists** in `localStorage` across sessions.
-- **API endpoints:** `GET /api/stages` returns `{ stages: string[], currentStage: string }`. `GET /api/overview?stage=<name>` returns the suite overview for that stage.
-- **The stage from `ALCHEMY_STAGE` env var is still honoured** if explicitly set — it becomes the default selection.
+## Deployment safety
 
-### Design Rules
+Alchemy is the only supported resource lifecycle. Each app owns an `alchemy.run.ts`; the root stack
+composes the selected suite. Drive remains independently deployed and is intentionally omitted from
+the root production deploy/destroy contract.
 
-- **`shedflare.config.jsonc`** is the gitignored desired-state source of truth. Version 2 is sparse: app presence means selected, and it stores only non-secret deviations from manifest defaults. `shedflare.config.example.jsonc` is the committed template.
-- **App manifests** (`apps/*/shedflare.app.jsonc`) remain the compatibility catalog until release orchestration replaces source composition. Extracted app repositories own new application changes.
-- **`@shedflare/core`** is the only implementation of manifest discovery, app identity, config validation, migration, config patching, and dependency ordering. Alchemy, the CLI, and the Console consume it; do not add a local manifest registry or config parser.
-- **Alchemy stacks** in each standalone repository are the source of truth for extracted apps. Suite copies are frozen compatibility or rollback snapshots until release orchestration and production ownership cutover are complete.
-- **Never deploy merely because a stack changed.** Production deploy, destroy, and ownership cutover require explicit operator approval. Use isolated non-production stages for rehearsals.
-- **Non-production stages use derived subdomains.** `prod` uses configured subdomains as-is; any other stage appends the sanitized stage, e.g. `chat` + `dev-bolt` becomes `chat-dev-bolt.example.com`.
-- **Root `alchemy.run.ts`** wires auth URL into all child apps. Update when adding a new app.
-- **Non-secret config** (domain and vars like `DEFAULT_MODEL_ID`) goes in gitignored `shedflare.config.jsonc`; secrets and physical Cloudflare resource IDs do not. **Operator secrets** use `Shedflare.WorkerSecret` in Alchemy stacks (Cloudflare Worker is source of truth; set via `shedflare secret set` or env at deploy time). See `docs/operator-secrets.md`.
-- **Every interactive prompt must have a non-interactive flag equivalent** for CI and scripting.
-- **Run `shedflare doctor` to validate local and deployed state.** Use `shedflare config migrate --write` for an explicit, backed-up version-1 migration.
+- Never deploy or destroy `prod`, publish packages, rotate secrets, or change production resource
+  ownership without explicit operator approval.
+- Use isolated non-production stages for deployment proofs and destroy them after verification.
+- Never point a temporary stage at production D1, R2, KV, Durable Object, or Worker resources.
+- Preserve physical names, stack identities, stage behavior, and persistent resource bindings unless
+  a separately approved migration says otherwise.
+- Secrets belong in Cloudflare secret storage or documented local environment files, never Git,
+  logs, structured output, or generated artifacts.
+- Every interactive command must provide a non-interactive equivalent for automation.
 
-### Extracted application freeze
+## Architecture rules
 
-`auth`, `cf-bill`, `chat`, `discord`, `homepage`, `money`, `observability`, `routines`, and `s`/Links now have standalone repositories, as do Anki and Drive. Make new app changes in those repositories. Do not backport by copying sibling source; the suite must eventually consume versioned releases.
+- `shedflare.config.jsonc` is the gitignored desired-state source; manifests in
+  `apps/*/shedflare.app.jsonc` define app contracts and defaults.
+- `@shedflare/core` is the source of truth for app identity, discovery, validation, migration,
+  configuration patching, and dependency ordering.
+- Root `alchemy.run.ts` performs optional shared Auth and observability wiring. Update it and the
+  contract checks when adding an app to suite composition.
+- Keep app feature code inside its app. Promote code to a shared package only after there is a real,
+  stable cross-app contract.
+- Preserve app-specific build/test/deploy entry points so contributors can reason about and verify a
+  single app without running unrelated live infrastructure.
 
-### Adding a New App
+## TypeScript and data
 
-1. Create an independent organization repository with its own manifest, Alchemy stack, package manager metadata, lockfile, checks, tests, and `AGENTS.md`.
-2. Consume only released semver shared packages; never add sibling paths or workspace dependencies.
-3. Add a pinned release to the suite registry once the release-orchestration transport exists.
-4. Rehearse on an isolated non-production stage before any production ownership cutover.
+- Do not use `as any` to suppress type errors. Validate untrusted input at boundaries and use
+  `unknown`, schemas, precise generics, or a narrowly typed adapter.
+- Model invalid states out of core domain types where practical; prefer discriminated unions for
+  stateful workflows.
+- Prefer tests against real module boundaries over mock-heavy tests.
 
-### Schema Convention
+For SQLite-backed apps, Drizzle schema definitions in `src/db/schema.ts` are authoritative. Generate
+and commit migrations after schema changes, run Durable Object migrations inside
+`ctx.blockConcurrencyWhile()`, and reserve raw SQL for genuinely dynamic-table operations.
 
-For apps using SQLite (DO storage):
+## Adding an app
 
-- **`src/db/schema.ts`** — Drizzle table definitions (single source of truth for types and DDL)
-- **`drizzle/migrations/`** — Migrations generated by `drizzle-kit generate` from `src/db/schema.ts`
-- **`drizzle/migrations/index.ts`** — Auto-generated manifest consumed by `drizzle-orm/durable-sqlite/migrator` (regenerate with `pnpm db:generate`)
-
-Do not write raw `CREATE TABLE` strings in TypeScript. Run `pnpm db:generate` after changing `src/db/schema.ts`, commit the generated migration files, and run migrations inside `ctx.blockConcurrencyWhile()` before any query. All queries must use Drizzle; raw SQL is only for dynamic-table operations.
-
-## TypeScript: No `as any` unless absolutely necessary
-
-**Never use `as any` to silence type errors.** It erases compile-time safety and causes bugs like the drive 400 incident (schema mismatch hidden behind `any` cast). If a type doesn't fit, use proper generics, `unknown`, type assertions to the correct type, or `satisfies`. The only acceptable use is when interfacing with a library that has genuinely untyped APIs — and even then, wrap it in a typed helper so the `any` is contained.
-
-## Using Vite+
-
-The apps in this repo use Vite+. See `apps/chat/AGENTS.md` for detailed Vite+ workflow guidance.
-
-Key rules:
-
-- Use `vp <command>` instead of `pnpm exec` or direct tool calls.
-- `vp check` runs format, lint, and TypeScript type checks.
-- `vp test` runs tests.
-- Do not install Vitest, Oxlint, Oxfmt, or tsdown directly.
+1. Add `apps/<app-id>` with a package manifest, app manifest, Alchemy stack, tests, and local
+   `AGENTS.md`.
+2. Use shared packages through `workspace:*`; add app-specific dependencies to the root catalog when
+   they should be centrally aligned.
+3. Add the app to the generated registry, root composition when applicable, configuration example,
+   scripts, issue-form scope list, and contract checks.
+4. Run `pnpm registry:generate`, `pnpm schemas:generate`, and `pnpm check`.
+5. Rehearse deployment only on an explicitly approved isolated stage.

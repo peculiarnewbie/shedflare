@@ -53,6 +53,12 @@ async function closeSidebar(page: Page) {
 }
 
 test.describe("Drive E2E", () => {
+  test.beforeEach(async ({ context }) => {
+    await expect
+      .poll(async () => (await context.request.get("/api/session")).status(), { timeout: 15_000 })
+      .toBe(200);
+  });
+
   test("keeps the file browser usable on a phone viewport", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/", { waitUntil: "networkidle" });
@@ -64,6 +70,7 @@ test.describe("Drive E2E", () => {
     await expect(sidebar).toHaveClass(/collapsed/);
     await expect(navigationToggle).toBeVisible();
     await expect(page.locator(".main-content")).toBeVisible();
+    await expect(page.locator(".session-overlay")).not.toBeVisible({ timeout: 15_000 });
     const mainContentBox = await page.locator(".main-content").boundingBox();
     expect(mainContentBox?.width).toBeGreaterThan(350);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

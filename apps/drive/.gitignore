@@ -4,3 +4,10 @@ dist/
 .dev.vars.*
 !.dev.vars.example
 node_modules/
+.alchemy/
+.vite-hooks/
+coverage/
+playwright-report/
+test-results/
+shedflare.config.jsonc
+*.tsbuildinfo
