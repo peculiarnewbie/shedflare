@@ -1,5 +1,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "workers-vitest";
+import { runPersistenceConformance } from "@tanstack/ai-persistence/testkit";
+import type { ChatPersistence } from "@tanstack/ai-persistence";
 import { DataAccess as SyncDataAccess } from "@shedflare/sync-protocol";
 import {
   createAccountSettings,
@@ -23,6 +25,7 @@ import * as dbSchema from "../../src/db/schema";
 import { ChatRepository } from "../../src/server/chat-repository";
 import { DataAccess } from "../../src/server/data-access";
 import { EffectDatabase } from "../../src/server/effect-database";
+import { createChatPersistence } from "../../src/server/chat-persistence";
 import { EventStore } from "../../src/server/event-store";
 import * as Schema from "effect/Schema";
 
@@ -33,7 +36,7 @@ const ThreadSummaryPageResponseSchema = Schema.Struct({
   nextCursor: Schema.NullOr(Schema.String),
 });
 const ChatBackupResponseSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   app: Schema.Literal("chat"),
   createdAt: Schema.String,
   serverSeq: Schema.Number,
@@ -44,6 +47,12 @@ const ChatBackupResponseSchema = Schema.Struct({
       ackedSeq: Schema.NullOr(Schema.Number),
     }),
   ),
+  ai: Schema.Struct({
+    threads: Schema.Array(Schema.Any),
+    runs: Schema.Array(Schema.Any),
+    interrupts: Schema.Array(Schema.Any),
+    metadata: Schema.Array(Schema.Any),
+  }),
 });
 
 async function initialize(name: string) {
@@ -104,6 +113,67 @@ function insertWorkspaceRaw(access: DataAccess, row: Workspace): void {
     row.opId ?? null,
   );
 }
+
+function remoteChatPersistence(stub: Awaited<ReturnType<typeof initialize>>): ChatPersistence {
+  const invoke = <T>(run: (persistence: ReturnType<typeof createChatPersistence>) => Promise<T>) =>
+    runInDurableObject(stub, (_instance, state) =>
+      run(createChatPersistence(new EffectDatabase(state.storage))),
+    );
+
+  return {
+    stores: {
+      messages: {
+        loadThread: (threadId) =>
+          invoke((persistence) => persistence.stores.messages.loadThread(threadId)),
+        saveThread: (threadId, messages) =>
+          invoke((persistence) => persistence.stores.messages.saveThread(threadId, messages)),
+      },
+      runs: {
+        get: (runId) => invoke((persistence) => persistence.stores.runs.get(runId)),
+        createOrResume: (input) =>
+          invoke((persistence) => persistence.stores.runs.createOrResume(input)),
+        update: (runId, patch) =>
+          invoke((persistence) => persistence.stores.runs.update(runId, patch)),
+        findActiveRun: (threadId) =>
+          invoke((persistence) => persistence.stores.runs.findActiveRun(threadId)),
+        listByThread: (threadId) =>
+          invoke((persistence) => persistence.stores.runs.listByThread(threadId)),
+        listReclaimable: (options) =>
+          invoke((persistence) => persistence.stores.runs.listReclaimable(options)),
+      },
+      interrupts: {
+        create: (record) => invoke((persistence) => persistence.stores.interrupts.create(record)),
+        resolve: (interruptId, response) =>
+          invoke((persistence) => persistence.stores.interrupts.resolve(interruptId, response)),
+        cancel: (interruptId) =>
+          invoke((persistence) => persistence.stores.interrupts.cancel(interruptId)),
+        get: (interruptId) =>
+          invoke((persistence) => persistence.stores.interrupts.get(interruptId)),
+        list: (threadId) => invoke((persistence) => persistence.stores.interrupts.list(threadId)),
+        listPending: (threadId) =>
+          invoke((persistence) => persistence.stores.interrupts.listPending(threadId)),
+        listByRun: (runId) =>
+          invoke((persistence) => persistence.stores.interrupts.listByRun(runId)),
+        listPendingByRun: (runId) =>
+          invoke((persistence) => persistence.stores.interrupts.listPendingByRun(runId)),
+      },
+      metadata: {
+        get: (namespace, key) =>
+          invoke((persistence) => persistence.stores.metadata.get(namespace, key)),
+        set: (namespace, key, value) =>
+          invoke((persistence) => persistence.stores.metadata.set(namespace, key, value)),
+        delete: (namespace, key) =>
+          invoke((persistence) => persistence.stores.metadata.delete(namespace, key)),
+      },
+    },
+  };
+}
+
+runPersistenceConformance(
+  "chat Durable Object SQLite",
+  async () => remoteChatPersistence(await initialize("tanstack-ai-conformance")),
+  { skip: ["generationRuns", "artifacts", "blobs"] },
+);
 
 function seedThreadGraph(access: DataAccess, id: string, lastMessageAt = NOW): void {
   const messageId = `${id}-message`;
@@ -305,8 +375,8 @@ describe("Chat persistence boundaries", () => {
   it("reads paged history, detail and trace snapshots, and a complete backup", async () => {
     const stub = await initialize("read-models");
 
-    await runInDurableObject(stub, (_instance, state) => {
-      const { access } = persistence(state);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const { access, database } = persistence(state);
       insertWorkspaceRaw(access, workspace("workspace"));
       seedThreadGraph(access, "older", "2025-12-31T00:00:00.000Z");
       seedThreadGraph(access, "newer", NOW);
@@ -315,6 +385,34 @@ describe("Chat persistence boundaries", () => {
          VALUES ('backup-command', 'test_command', 'acked', '{}', ?, 0)`,
         NOW,
       );
+      const ai = createChatPersistence(database);
+      await ai.stores.messages.saveThread("newer", [
+        { id: "newer-message", role: "user", content: "hello", createdAt: new Date(NOW) },
+        {
+          role: "assistant",
+          content: null,
+          toolCalls: [
+            {
+              id: "backup-tool-call",
+              type: "function",
+              function: { name: "exa_web_search", arguments: '{"query":"hello"}' },
+            },
+          ],
+        },
+        { role: "tool", toolCallId: "backup-tool-call", content: '{"ok":true}' },
+      ]);
+      await ai.stores.runs.createOrResume({
+        runId: "backup-run",
+        threadId: "newer",
+        startedAt: 1,
+      });
+      await ai.stores.interrupts.create({
+        interruptId: "backup-interrupt",
+        runId: "backup-run",
+        threadId: "newer",
+        requestedAt: 2,
+        payload: { kind: "approval" },
+      });
     });
 
     const firstPageResponse = await stub.fetch(
@@ -365,15 +463,53 @@ describe("Chat persistence boundaries", () => {
       body: JSON.stringify({ createdAt: NOW }),
     });
     expect(backupResponse.status).toBe(200);
-    const backup = Schema.decodeUnknownSync(ChatBackupResponseSchema)(await backupResponse.json());
+    const backupBody = await backupResponse.json();
+    const backup = Schema.decodeUnknownSync(ChatBackupResponseSchema)(backupBody);
     expect(backup).toMatchObject({
-      version: 1,
+      version: 2,
       app: "chat",
       createdAt: NOW,
       serverSeq: 0,
       commands: [{ opId: "backup-command", ackedSeq: 0 }],
+      ai: {
+        threads: [{ threadId: "newer" }],
+        runs: [{ runId: "backup-run", status: "running" }],
+        interrupts: [{ interruptId: "backup-interrupt", status: "pending" }],
+        metadata: [],
+      },
     });
     expect(Object.keys(backup.snapshot.tables.threads ?? {}).sort()).toEqual(["newer", "older"]);
+
+    await runInDurableObject(stub, (_instance, state) => {
+      persistence(state).repository.deleteThreadCascade("newer");
+    });
+    const missingResponse = await stub.fetch("https://sync-engine.test/history/threads/newer");
+    expect(missingResponse.status).toBe(404);
+
+    const restoreResponse = await stub.fetch("https://sync-engine.test/backup/restore", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(backupBody),
+    });
+    expect(restoreResponse.status).toBe(200);
+    expect(await restoreResponse.json()).toMatchObject({
+      ok: true,
+      backupCreatedAt: NOW,
+      counts: { aiThreads: 1, aiRuns: 1, aiInterrupts: 1 },
+    });
+
+    const restoredResponse = await stub.fetch("https://sync-engine.test/history/threads/newer");
+    expect(restoredResponse.status).toBe(200);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const ai = createChatPersistence(new EffectDatabase(state.storage));
+      const restoredMessages = await ai.stores.messages.loadThread("newer");
+      expect(restoredMessages).toHaveLength(3);
+      expect(restoredMessages[0]?.createdAt).toEqual(new Date(NOW));
+      expect(await ai.stores.runs.get("backup-run")).toMatchObject({ status: "aborted" });
+      expect(await ai.stores.interrupts.get("backup-interrupt")).toMatchObject({
+        status: "cancelled",
+      });
+    });
   });
 
   it("projects every event family into the shared SQLite state", async () => {

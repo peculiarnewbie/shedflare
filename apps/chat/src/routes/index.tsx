@@ -104,6 +104,7 @@ import { init as initSyncAdapter } from "../lib/sync-adapter";
 import { authFetch } from "../lib/auth-fetch";
 import { loadOlderThreads, loadThreadDetail } from "../lib/history";
 import { debugLog } from "../lib/client-debug";
+import { selectAutomaticModelId } from "../lib/model-selection";
 import {
   readChatNavigationState,
   writeChatNavigationState,
@@ -1246,7 +1247,7 @@ export default function Home() {
         model.id === workspaceDefault ||
         model.id.split("/").at(-1) === workspaceDefault?.split("/").at(-1),
     );
-    const fallbackId = workspaceDefaultModel?.id ?? modelList[0]?.id;
+    const fallbackId = workspaceDefaultModel?.id ?? selectAutomaticModelId(modelList);
     if (!fallbackId) return;
 
     if (selectedCatalogModel && selectedCatalogModel.id !== selectedId) {

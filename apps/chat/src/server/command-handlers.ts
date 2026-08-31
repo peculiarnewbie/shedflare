@@ -298,21 +298,26 @@ export function handleCreateUserMessage(
       }
     }
   }
-  const followUp: DeferredFollowUp = () =>
-    Promise.allSettled([
-      ctx.generateThreadTitle({
-        threadId: normalizedThread.id,
-        promptText: payload.promptText,
-        chatModelId: payload.modelId,
-        chatModelInterleavedField: payload.modelInterleavedField,
-      }),
+  const followUp: DeferredFollowUp = async () => {
+    // The answer owns the latency-sensitive provider slot. Title generation is
+    // useful metadata, but it should never compete with first-token latency.
+    await Promise.allSettled([
       ctx.runAssistantTurn({
         ...payload,
         thread: normalizedThread,
         userMessage,
         assistantMessage,
       }),
-    ]).then(() => undefined);
+    ]);
+    await Promise.allSettled([
+      ctx.generateThreadTitle({
+        threadId: normalizedThread.id,
+        promptText: payload.promptText,
+        chatModelId: payload.modelId,
+        chatModelInterleavedField: payload.modelInterleavedField,
+      }),
+    ]);
+  };
   return { events, followUp };
 }
 

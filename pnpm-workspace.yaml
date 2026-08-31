@@ -52,6 +52,11 @@ catalog:
   "@cloudflare/vitest-pool-workers": ^0.20.1
   oxlint: 1.79.0
   "@oxlint/plugins": 1.79.0
+  "@tanstack/ai": 0.52.0
+  "@tanstack/ai-compaction": 0.1.0
+  "@tanstack/ai-openai": 0.22.3
+  "@tanstack/ai-persistence": 0.5.4
+  openai: ^6.41.0
 
 catalogMode: prefer
 minimumReleaseAge: 0

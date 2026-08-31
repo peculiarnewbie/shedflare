@@ -4,6 +4,7 @@ import {
   createTraceRun,
   createTraceSpan,
   clampSearchesPerTurn,
+  MAX_BROWSER_RENDERS_PER_TURN,
   MAX_TOOL_ITERATIONS_PER_TURN,
   nowIso,
   type JsonObject,
@@ -14,16 +15,16 @@ import {
   type TraceRun,
   type TraceSpan,
 } from "#/domain";
-import {
-  OPENCODE_GO_BASE_URL,
-  chat,
-  createChatCompletionsAdapter,
-  createResponsesAdapter,
-  getDefaultModelId,
-  modelTransportFor,
-  type AppEnv,
-} from "#/runtime";
+import { chat, getDefaultModelId, type AppEnv } from "#/runtime";
 import { combineStrategies, maxIterations, untilFinishReason } from "@tanstack/ai";
+import {
+  clearToolResults,
+  composeStrategies,
+  evictOldest,
+  withCompaction,
+} from "@tanstack/ai-compaction";
+import { toolCacheMiddleware } from "@tanstack/ai/middlewares";
+import { withPersistence } from "@tanstack/ai-persistence";
 import {
   AssistantTurnError,
   createStructuredLogger,
@@ -41,11 +42,7 @@ import {
   requireSuccessfulAssistantStream,
   type StreamConsumerDeps,
 } from "./stream-consumer";
-import {
-  getProviderModelOptions,
-  getSearchToolSystemPrompt,
-  EXTRACT_TOOL_SYSTEM_PROMPT,
-} from "./model-config";
+import { getProviderModelOptions } from "./model-config";
 import {
   syncLog,
   json,
@@ -55,8 +52,13 @@ import {
   looksLikeMissingRealtimeAccess,
 } from "./sync-utils";
 import type { ChatRepository } from "./chat-repository";
-import { buildModelMessages } from "./model-message-builder";
+import { buildModelMessages, mergePersistedModelHistory } from "./model-message-builder";
 import type { EventStore } from "./event-store";
+import { createOpenCodeAdapter } from "./ai-provider";
+import { createChatPersistence } from "./chat-persistence";
+import type { EffectDatabase } from "./effect-database";
+import { modelCapabilityFor } from "./model-capabilities";
+import { liveGroundingMiddleware, toolBudgetMiddleware } from "./tool-budget";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,6 +81,7 @@ export type AssistantTurnPayload = Pick<
 
 export interface AssistantTurnContext {
   access: ChatRepository;
+  database: EffectDatabase;
   eventStore: EventStore;
   env: AppEnv;
   broadcast: (envelope: SyncServerEnvelope) => void;
@@ -347,9 +350,7 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         ? createExaSearchTool({
             env: ctx.env,
             assistantMessageId: payload.assistantMessage.id,
-            maxSearchesPerTurn: searchLimit,
             preferFreeExa: payload.preferFreeSearch ?? false,
-            signal: abortController.signal,
             log: syncLog,
             trace: (name, attrs, run) =>
               traceAsync(
@@ -358,7 +359,6 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
                 attrs,
                 run,
               ),
-            onProgress: reportActivity,
             onSearchStateChange: async (state) => {
               const searchRunEvent = await ctx.eventStore.appendServerEvent(
                 null,
@@ -389,7 +389,6 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
           ? createBrowserExtractTool({
               env: ctx.env,
               assistantMessageId: payload.assistantMessage.id,
-              signal: abortController.signal,
               log: syncLog,
               trace: (name, attrs, run) =>
                 traceAsync(
@@ -398,7 +397,6 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
                   attrs,
                   run,
                 ),
-              onProgress: reportActivity,
               onExtractStateChange: async (state) => {
                 const extractEvent = await ctx.eventStore.appendServerEvent(
                   null,
@@ -419,37 +417,34 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
       ];
       const toolCount = activeTools.length;
 
-      const { messages: modelMessages, systemPrompts } = await traceAsync(
+      const { messages: rebuiltModelMessages, systemPrompts } = await traceAsync(
         "assistant.attachments.resolve",
         "io",
         { threadMessageCount: threadMessages.length },
         () => buildModelMessages(workspace.id, threadMessages, ctx.access, ctx.env),
       );
-      if (searchTool) {
-        systemPrompts.push(getSearchToolSystemPrompt(searchLimit));
-      }
-      if (extractTool) {
-        systemPrompts.push(EXTRACT_TOOL_SYSTEM_PROMPT);
-      }
+      const persistence = createChatPersistence(ctx.database);
+      const persistedModelMessages = await traceAsync(
+        "assistant.model_history.load",
+        "sync",
+        { threadId: payload.threadId },
+        () => persistence.stores.messages.loadThread(payload.threadId),
+      );
+      const modelMessages = mergePersistedModelHistory({
+        persisted: persistedModelMessages,
+        rebuilt: rebuiltModelMessages,
+        latestUserMessageId: payload.userMessage.id,
+      });
 
       const now = new Date();
       const datePrompt = `Current date: ${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}. When searching for current/recent information, use this date as reference—do not default to years from your training data.`;
       systemPrompts.push(datePrompt);
 
-      const adapterConfig = {
-        baseUrl: OPENCODE_GO_BASE_URL,
-        apiKey: ctx.env.OPENCODE_GO_API_KEY,
-        trace: <A>(
-          name: string,
-          kind: TraceSpan["kind"],
-          attrs: JsonObject,
-          run: () => Promise<A>,
-        ) => traceAsync(name, kind, attrs, run),
-      };
-      const adapter =
-        modelTransportFor(modelId) === "responses"
-          ? createResponsesAdapter(adapterConfig, modelId)
-          : createChatCompletionsAdapter(adapterConfig, modelId);
+      const adapter = createOpenCodeAdapter({
+        env: ctx.env,
+        modelId,
+        trace: (name, kind, attrs, run) => traceAsync(name, kind, attrs, run),
+      });
       const providerOptions = await traceSync(
         "assistant.provider.options",
         "model",
@@ -461,12 +456,7 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
           extractToolConfigured,
         },
         () =>
-          getProviderModelOptions(
-            modelId,
-            toolCount,
-            payload.reasoningLevel,
-            payload.modelInterleavedField,
-          ),
+          getProviderModelOptions(modelId, payload.reasoningLevel, payload.modelInterleavedField),
       );
       const modelOptions = providerOptions.modelOptions;
 
@@ -515,6 +505,39 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
             ])
           : maxIterations(1);
 
+      const toolLimits: Record<string, number> = {};
+      if (searchTool) toolLimits.exa_web_search = searchLimit;
+      if (extractTool) toolLimits.web_extract = MAX_BROWSER_RENDERS_PER_TURN;
+
+      const contextLimit = modelCapabilityFor(modelId.split("/").at(-1) ?? modelId)?.limit?.context;
+      const compactionLimit = Math.max(8_192, Math.floor((contextLimit ?? 128_000) * 0.8));
+      const middleware = [
+        withPersistence(persistence),
+        withCompaction({
+          maxTokens: compactionLimit,
+          strategyKey: "clear-tools-then-evict-v1",
+          strategy: composeStrategies(
+            clearToolResults({ keepRecentToolResults: 3 }),
+            evictOldest({ keepRecentTokens: Math.floor(compactionLimit / 2) }),
+          ),
+          onCompact: (info) =>
+            syncLog("assistant_turn_context_compacted", {
+              assistantMessageId: payload.assistantMessage.id,
+              beforeTokens: info.before,
+              afterTokens: info.after,
+              messagesBefore: info.messagesBefore,
+              messagesAfter: info.messagesAfter,
+            }),
+        }),
+        ...(activeTools.length > 0
+          ? [
+              toolBudgetMiddleware(toolLimits),
+              toolCacheMiddleware({ toolNames: activeTools.map((tool) => tool.name) }),
+              liveGroundingMiddleware(),
+            ]
+          : []),
+      ];
+
       const stream = chat({
         adapter,
         messages: modelMessages,
@@ -523,6 +546,9 @@ export async function runAssistantTurn(payload: AssistantTurnPayload, ctx: Assis
         abortController,
         modelOptions: modelOptions ?? undefined,
         tools: activeTools.length > 0 ? activeTools : undefined,
+        middleware,
+        threadId: payload.threadId,
+        runId: traceContext.traceRunId,
       });
 
       const streamOutcome = await runAppEffect(

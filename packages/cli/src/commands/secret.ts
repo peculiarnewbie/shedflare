@@ -1,13 +1,39 @@
 import { stdout as output } from "node:process";
-import { openSync, readSync, closeSync } from "node:fs";
-import { isAppId, loadManifest } from "../core/manifests.js";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import {
+  listWorkerSecretNames,
+  loadCloudflareCredentials,
+  putWorkerSecret,
+} from "@shedflare/alchemy";
+import { getWorkspaceRoot, isAppId, loadManifest } from "../core/manifests.js";
 import { assertEnabledApp, physicalWorkerName } from "../core/worker-names.js";
-import * as wrangler from "../core/wrangler.js";
+
+export type SecretSetDestination = "remote" | "local" | "both";
+
+export type SecretCommand =
+  | { readonly action: "list"; readonly app: string }
+  | {
+      readonly action: "set";
+      readonly app: string;
+      readonly name: string;
+      readonly value?: string;
+      readonly destination: SecretSetDestination;
+    };
 
 export interface SecretSetOptions {
   app: string;
   name: string;
   value?: string;
+  destination?: SecretSetDestination;
 }
 
 export interface SecretListOptions {
@@ -16,6 +42,81 @@ export interface SecretListOptions {
 
 export interface SecretValues {
   [name: string]: string;
+}
+
+export function resolveSecretSetDestination(options: {
+  local?: boolean;
+  both?: boolean;
+}): SecretSetDestination {
+  if (options.local && options.both) {
+    throw new Error("Choose either --local or --both, not both.");
+  }
+  if (options.local) return "local";
+  if (options.both) return "both";
+  return "remote";
+}
+
+export function resolveSecretCommand(options: {
+  action: string;
+  app: string;
+  name?: string;
+  value?: string;
+  local?: boolean;
+  both?: boolean;
+}): SecretCommand {
+  if (options.action === "list") {
+    if (options.name || options.value || options.local || options.both) {
+      throw new Error("Usage: shedflare secret list <app>");
+    }
+    return { action: "list", app: options.app };
+  }
+
+  if (options.action === "set") {
+    if (!options.name) {
+      throw new Error("Usage: shedflare secret set <app> <name>");
+    }
+    return {
+      action: "set",
+      app: options.app,
+      name: options.name,
+      value: options.value,
+      destination: resolveSecretSetDestination(options),
+    };
+  }
+
+  throw new Error(`Unknown secret action: ${options.action}. Use "set" or "list".`);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function upsertDotEnvValue(source: string, name: string, value: string): string {
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const assignment = `${name}=${JSON.stringify(value)}`;
+  const matcher = new RegExp(`^\\s*(?:export\\s+)?${escapeRegExp(name)}\\s*=`);
+  const lines = source.split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+
+  let replaced = false;
+  const updated = lines.flatMap((line) => {
+    if (!matcher.test(line)) return [line];
+    if (replaced) return [];
+    replaced = true;
+    return [assignment];
+  });
+
+  if (!replaced) updated.push(assignment);
+  return `${updated.join(newline)}${newline}`;
+}
+
+export function writeLocalSecret(options: { filePath: string; name: string; value: string }): void {
+  const source = existsSync(options.filePath) ? readFileSync(options.filePath, "utf8") : "";
+  writeFileSync(options.filePath, upsertDotEnvValue(source, options.name, options.value), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  chmodSync(options.filePath, 0o600);
 }
 
 async function readSecret(prompt: string): Promise<string> {
@@ -61,10 +162,15 @@ export async function secretSetCommand(options: SecretSetOptions): Promise<void>
   }
 
   const manifest = loadManifest(options.app);
-  if (!manifest.secrets[options.name]) {
+  const definition = manifest.secrets[options.name];
+  if (!definition) {
     console.error(
       `Secret "${options.name}" is not declared in apps/${options.app}/shedflare.app.jsonc`,
     );
+    process.exit(1);
+  }
+  if (definition.source === "generated") {
+    console.error(`Secret "${options.name}" is generated and cannot be set by the operator.`);
     process.exit(1);
   }
 
@@ -78,9 +184,19 @@ export async function secretSetCommand(options: SecretSetOptions): Promise<void>
     process.exit(1);
   }
 
-  const workerName = physicalWorkerName(options.app);
-  await wrangler.putSecret(options.name, value, { workerName });
-  console.log(`Set ${options.name} on worker ${workerName}`);
+  const destination = options.destination ?? "remote";
+  if (destination === "remote" || destination === "both") {
+    const workerName = physicalWorkerName(options.app);
+    const credentials = await loadCloudflareCredentials();
+    await putWorkerSecret(credentials, credentials.accountId, workerName, options.name, value);
+    console.log(`Set ${options.name} on worker ${workerName}`);
+  }
+
+  if (destination === "local" || destination === "both") {
+    const filePath = join(getWorkspaceRoot(), ".env");
+    writeLocalSecret({ filePath, name: options.name, value });
+    console.log(`Set ${options.name} in ${filePath}`);
+  }
 }
 
 export async function secretListCommand(options: SecretListOptions): Promise<void> {
@@ -98,7 +214,8 @@ export async function secretListCommand(options: SecretListOptions): Promise<voi
 
   const manifest = loadManifest(options.app);
   const workerName = physicalWorkerName(options.app);
-  const setOnWorker = await wrangler.listSecrets({ workerName });
+  const credentials = await loadCloudflareCredentials();
+  const setOnWorker = await listWorkerSecretNames(credentials, credentials.accountId, workerName);
 
   console.log(`Worker: ${workerName}\n`);
   for (const [name, def] of Object.entries(manifest.secrets)) {

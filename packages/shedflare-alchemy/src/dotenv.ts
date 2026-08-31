@@ -13,11 +13,18 @@ export function parseDotEnv(source: string) {
 
     const [, key, rawValue] = match;
     let value = rawValue.trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replaceAll(/\\([nrt"\\])/g, (_full, escaped: string) => {
+        if (escaped === "n") return "\n";
+        if (escaped === "r") return "\r";
+        if (escaped === "t") return "\t";
+        return escaped;
+      });
+    } else if (value.startsWith("'") && value.endsWith("'")) {
       value = value.slice(1, -1);
+    } else {
+      const commentStart = value.search(/\s#/);
+      if (commentStart >= 0) value = value.slice(0, commentStart).trimEnd();
     }
     values[key] = value;
   }

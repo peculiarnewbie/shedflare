@@ -1,16 +1,5 @@
-export {
-  ChatCompletionsAdapter,
-  createChatCompletionsAdapter,
-  createResponsesAdapter,
-  REASONING_CONTENT_EVENT,
-  type ChatCompletionsAdapterConfig,
-  type ChatCompletionsUsage,
-  type ModelMessage,
-  type ContentPart,
-  type StreamChunk,
-  type ExtendedStreamChunk,
-} from "./chat-completions-adapter.js";
 export { chat } from "@tanstack/ai";
+export type { ContentPart, ModelMessage, StreamChunk } from "@tanstack/ai";
 import { createStructuredLogger, decodeAppEnv, type AppEnv } from "#/effect";
 import { modelCapabilityFor, type ModelCapabilitySource } from "#/server/model-capabilities";
 export { modelTransportFor } from "#/server/model-capabilities";

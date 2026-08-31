@@ -76,11 +76,15 @@ describe("dotenv loading", () => {
         OPENCODE_GO_API_KEY=plain
         export CF_API_TOKEN="quoted"
         SINGLE='single quoted'
+        ESCAPED="line one\\nline two\\t\\"quoted\\""
+        COMMENTED=value # explanation
       `),
     ).toEqual({
       OPENCODE_GO_API_KEY: "plain",
       CF_API_TOKEN: "quoted",
       SINGLE: "single quoted",
+      ESCAPED: 'line one\nline two\t"quoted"',
+      COMMENTED: "value",
     });
   });
 

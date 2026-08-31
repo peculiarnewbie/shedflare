@@ -63,19 +63,34 @@ cli
   );
 
 cli
-  .command("secret set <app> <name>", "Set an operator secret on a deployed Worker")
+  .command("secret <action> <app> [name]", "Set or inspect operator secrets")
   .option("--value <value>", "Secret value (otherwise prompted)")
-  .action(async (app: string, name: string, options: { value?: string }) => {
-    const { secretSetCommand } = await import("./commands/secret.js");
-    await secretSetCommand({ app, name, value: options.value });
-  });
-
-cli
-  .command("secret list <app>", "List declared secrets and whether they are set on Cloudflare")
-  .action(async (app: string) => {
-    const { secretListCommand } = await import("./commands/secret.js");
-    await secretListCommand({ app });
-  });
+  .option("--local", "Write only to the repository's ignored .env file")
+  .option("--both", "Set the deployed Worker secret and local .env value")
+  .action(
+    async (
+      action: string,
+      app: string,
+      name: string | undefined,
+      options: { value?: string; local?: boolean; both?: boolean },
+    ) => {
+      const { resolveSecretCommand, secretListCommand, secretSetCommand } =
+        await import("./commands/secret.js");
+      const command = resolveSecretCommand({
+        action,
+        app,
+        name,
+        value: options.value,
+        local: options.local,
+        both: options.both,
+      });
+      if (command.action === "set") {
+        await secretSetCommand(command);
+      } else {
+        await secretListCommand(command);
+      }
+    },
+  );
 
 cli.help();
 cli.version("0.0.0");

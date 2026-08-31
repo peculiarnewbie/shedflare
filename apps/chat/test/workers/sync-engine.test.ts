@@ -8,6 +8,10 @@ import { migrateDatabase } from "../../src/server/migrator";
 const EXPECTED_TABLES = [
   "__drizzle_migrations",
   "account_settings",
+  "ai_interrupts",
+  "ai_metadata",
+  "ai_runs",
+  "ai_threads",
   "attachments",
   "commands",
   "comparison_groups",
@@ -23,6 +27,10 @@ const EXPECTED_TABLES = [
   "trace_runs",
   "trace_spans",
   "workspaces",
+] as const;
+const EXPECTED_MIGRATIONS = [
+  { name: "20260616210015_powerful_hellion" },
+  { name: "20260831113939_huge_molly_hayes" },
 ] as const;
 
 async function initialize(name: string) {
@@ -140,7 +148,7 @@ describe("SyncEngineDurableObject SQLite migrations", () => {
         .toArray();
 
       expect(tableNames(state)).toEqual(EXPECTED_TABLES);
-      expect(migrations).toEqual([{ name: "20260616210015_powerful_hellion" }]);
+      expect(migrations).toEqual(EXPECTED_MIGRATIONS);
     });
   });
 
@@ -160,7 +168,7 @@ describe("SyncEngineDurableObject SQLite migrations", () => {
       const probe = state.storage.sql
         .exec<{ value: string }>("SELECT value FROM metadata WHERE key = 'migration_noop_probe'")
         .one();
-      expect(migrationCount).toBe(1);
+      expect(migrationCount).toBe(EXPECTED_MIGRATIONS.length);
       expect(probe.value).toBe("preserved");
     });
   });
@@ -187,7 +195,7 @@ describe("SyncEngineDurableObject SQLite migrations", () => {
         state.storage.sql
           .exec<{ count: number }>("SELECT COUNT(*) AS count FROM __drizzle_migrations")
           .one().count,
-      ).toBe(1);
+      ).toBe(EXPECTED_MIGRATIONS.length);
     });
   });
 
@@ -261,7 +269,7 @@ describe("SyncEngineDurableObject SQLite migrations", () => {
         expect(threadColumns).toContain(column);
       }
       expect(legacyWorkspace.default_search_limit).toBe(3);
-      expect(migrationCount).toBe(1);
+      expect(migrationCount).toBe(EXPECTED_MIGRATIONS.length);
     });
   });
 
@@ -285,7 +293,7 @@ describe("SyncEngineDurableObject SQLite migrations", () => {
         state.storage.sql
           .exec<{ count: number }>("SELECT COUNT(*) AS count FROM __drizzle_migrations")
           .one().count,
-      ).toBe(1);
+      ).toBe(EXPECTED_MIGRATIONS.length);
     });
   });
 

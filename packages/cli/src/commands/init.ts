@@ -4,7 +4,6 @@ import { APP_IDS, loadManifest } from "../core/manifests.js";
 import type { AppId } from "../core/manifests.js";
 import { writeConfig } from "../core/config.js";
 import type { AppSelection, ShedflareConfigV2 } from "@shedflare/core";
-import { whoami, login } from "../core/wrangler.js";
 import {
   selectApps,
   askEmail,
@@ -12,7 +11,6 @@ import {
   askSubdomain,
   askVar,
   askSecret,
-  askConfirm,
 } from "../headless/prompts.js";
 
 export async function initCommand(options: InitOptions): Promise<void> {
@@ -26,16 +24,6 @@ export async function initCommand(options: InitOptions): Promise<void> {
   const secrets: Record<string, Record<string, string>> = {};
 
   if (interactive) {
-    // Check wrangler login
-    const user = await whoami();
-    if (!user) {
-      console.log("You need to be logged in to Cloudflare via Wrangler.");
-      const shouldLogin = await askConfirm("Open browser to log in with Wrangler?");
-      if (shouldLogin) {
-        await login();
-      }
-    }
-
     selectedApps = await selectApps();
     ownerEmail = await askEmail();
     domain = await askDomain();

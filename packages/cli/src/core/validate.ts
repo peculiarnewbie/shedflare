@@ -1,6 +1,10 @@
+import {
+  listWorkerSecretNames,
+  loadCloudflareCredentials,
+  type CfCredentials,
+} from "@shedflare/alchemy";
 import { APP_IDS, isAppId, loadManifest, getWorkspaceRoot } from "./manifests.js";
 import { isAppSelected, loadConfig, validateConfig } from "./config.js";
-import * as wrangler from "./wrangler.js";
 import { physicalWorkerName } from "./worker-names.js";
 
 export interface CheckResult {
@@ -23,13 +27,21 @@ export async function runDoctor(): Promise<CheckResult[]> {
         : `Node.js ${process.versions.node} — need >= 22`,
   });
 
-  // Wrangler login
-  const user = await wrangler.whoami();
-  checks.push({
-    name: "wrangler-login",
-    status: user ? "pass" : "fail",
-    message: user ? `Logged in as ${user.email}` : "Not logged in — run `wrangler login`",
-  });
+  let credentials: CfCredentials | null = null;
+  try {
+    credentials = await loadCloudflareCredentials();
+    checks.push({
+      name: "cloudflare-profile",
+      status: "pass",
+      message: `Alchemy Cloudflare profile for account ${credentials.accountId}`,
+    });
+  } catch (error) {
+    checks.push({
+      name: "cloudflare-profile",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   // Config file
   const config = loadConfig();
@@ -83,8 +95,8 @@ export async function runDoctor(): Promise<CheckResult[]> {
   }
 
   // Missing required secrets
-  if (config) {
-    const missingSecrets = await getMissingSecrets(config);
+  if (config && credentials) {
+    const missingSecrets = await getMissingSecrets(config, credentials);
     if (missingSecrets.length > 0) {
       checks.push({
         name: "missing-secrets",
@@ -102,7 +114,10 @@ export async function runDoctor(): Promise<CheckResult[]> {
   return checks;
 }
 
-async function getMissingSecrets(config: import("./config.js").ShedflareConfig): Promise<string[]> {
+async function getMissingSecrets(
+  config: import("./config.js").ShedflareConfig,
+  credentials: CfCredentials,
+): Promise<string[]> {
   const requireSecrets: string[] = [];
 
   for (const appId of Object.keys(config.apps)) {
@@ -115,9 +130,11 @@ async function getMissingSecrets(config: import("./config.js").ShedflareConfig):
         .map(([name]) => name);
       if (requiredSecrets.length === 0) continue;
 
-      const setSecrets = await wrangler.listSecrets({
-        workerName: physicalWorkerName(appId),
-      });
+      const setSecrets = await listWorkerSecretNames(
+        credentials,
+        credentials.accountId,
+        physicalWorkerName(appId),
+      );
       const missing = requiredSecrets.filter((s) => !setSecrets.includes(s));
       if (missing.length > 0) {
         requireSecrets.push(appId);

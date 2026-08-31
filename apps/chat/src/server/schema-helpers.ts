@@ -22,10 +22,21 @@ export const DATA_TABLES = [
   "comparison_groups",
 ] as const;
 
-export const ALL_TABLES = [...DATA_TABLES, "events", "commands", "pending_turns"] as const;
+export const AI_DATA_TABLES = ["ai_threads", "ai_runs", "ai_interrupts", "ai_metadata"] as const;
+
+export const ALL_TABLES = [
+  ...DATA_TABLES,
+  ...AI_DATA_TABLES,
+  "events",
+  "commands",
+  "pending_turns",
+] as const;
 
 export function deleteAllData(exec: (query: string, ...params: unknown[]) => void) {
   for (const tableName of DATA_TABLES) {
+    exec(`DELETE FROM ${tableName}`);
+  }
+  for (const tableName of AI_DATA_TABLES) {
     exec(`DELETE FROM ${tableName}`);
   }
   exec(`DELETE FROM events`);

@@ -35,5 +35,3 @@ export {
 } from "./init-draft.js";
 
 export { type CheckResult, runDoctor } from "./validate.js";
-
-export { type WranglerUser, whoami, login, putSecret, listSecrets } from "./wrangler.js";

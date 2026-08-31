@@ -17,6 +17,7 @@ export {
   listWorkerSecretNames,
   putWorkerSecret,
 } from "./cf-secrets-api.ts";
+export { loadCloudflareCredentials } from "./cloudflare-profile.ts";
 export { loadDotEnvFile, loadRepoDotEnv, parseDotEnv } from "./dotenv.ts";
 export { resolveE2eAuthBindings, type E2eAuthBindings } from "./e2e-auth.ts";
 export { optionalSecretConfig } from "./optional-secret-config.ts";

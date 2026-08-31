@@ -82,9 +82,19 @@ pnpm contract:check
 Operator secrets are managed through `Shedflare.WorkerSecret`; see
 [`docs/operator-secrets.md`](docs/operator-secrets.md).
 
+```bash
+shedflare secret set chat OPENCODE_GO_API_KEY          # Cloudflare only (default)
+shedflare secret set chat OPENCODE_GO_API_KEY --local  # local .env only
+shedflare secret set chat OPENCODE_GO_API_KEY --both   # explicit mirror
+```
+
+Production deploys authenticate with the Alchemy Cloudflare profile and preserve secrets already
+stored on the Worker. They deliberately ignore the repository `.env`; local development reads it.
+
 ## Deployment
 
-All deployments use [Alchemy](https://alchemy.run). Production commands are intentionally explicit:
+All deployments use [Alchemy](https://alchemy.run); Wrangler is not part of the deployment or
+secret-management path. Production commands are intentionally explicit:
 
 ```bash
 pnpm deploy:auth       # one app

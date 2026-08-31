@@ -10,12 +10,12 @@ retained as the design record. For current operational commands, see
 Shedflare is mid-migration to Alchemy. Config and secrets are split across several
 systems that disagree:
 
-| System                  | File / mechanism             | Used by                                            |
-| ----------------------- | ---------------------------- | -------------------------------------------------- |
-| CLI init                | `shedflare.config.jsonc`     | `shedflare init`, `doctor`, `configure`            |
+| System                  | File / mechanism                       | Used by                                          |
+| ----------------------- | -------------------------------------- | ------------------------------------------------ |
+| CLI init                | `shedflare.config.jsonc`               | `shedflare init`, `doctor`, `configure`          |
 | Alchemy stacks (actual) | `shedflare.config.jsonc` + environment | `apps/*/alchemy.run.ts` via `@shedflare/alchemy` |
-| App manifests           | `apps/*/shedflare.app.jsonc` | Core catalog consumed by Alchemy and the CLI       |
-| Per-app deployment docs | `apps/*/docs/deployment.md`  | Alchemy deployment guides                         |
+| App manifests           | `apps/*/shedflare.app.jsonc`           | Core catalog consumed by Alchemy and the CLI     |
+| Per-app deployment docs | `apps/*/docs/deployment.md`            | Alchemy deployment guides                        |
 
 Additionally:
 
@@ -184,33 +184,35 @@ Reference: [Alchemy Resource](https://v2.alchemy.run/concepts/resource/),
 
 ## CLI role (thin wrapper)
 
-The CLI does **not** store secrets. It handles human/CI input and delegates to Alchemy.
+The CLI does **not** put secret values in Shedflare or Alchemy state. Remote
+commands use the same Cloudflare API and persisted Alchemy profile as the
+`WorkerSecret` provider.
 
 ### `shedflare deploy [app]`
 
 ```
 1. Load shedflare.config.jsonc (non-secrets only)
-2. alchemy plan / preflight — WorkerSecret read checks CF for missing bindings
-3. For each missing required operator secret:
-     interactive → prompt stdin
-     CI          → require env var or --secret flag
-4. Set values in process.env only (never write .env)
-5. vp exec alchemy deploy ...
-6. finally: delete injected secret keys from process.env
+2. Invoke Alchemy with an explicit empty env file, preventing its default `.env` load
+3. WorkerSecret checks the deployed Worker for each declared binding
+4. Existing remote binding → noop
+5. Missing required binding → fail with `shedflare secret set` guidance
+6. Explicit process environment / deprecated --secret value → rotate remotely
+7. finally: delete any CLI-injected secret keys from process.env
 ```
 
-Deploy #1: prompts → push via WorkerSecret.  
-Deploy #2+: CF has bindings → WorkerSecret noop → no prompt, no local files.
+Set once with `shedflare secret set`, then deploy repeatedly with no local copy.
 
 ### `shedflare secret set <app> <NAME>`
 
-Wraps the same CF API as the WorkerSecret provider:
+Calls the same CF API as the WorkerSecret provider, authenticated through the
+Alchemy Cloudflare profile:
 
 ```bash
-wrangler secret put <NAME> --name <physical-worker-name>
+shedflare secret set chat OPENCODE_GO_API_KEY
 ```
 
-Use for rotation without a full deploy.
+The default destination is the remote Worker. `--local` writes only the ignored
+repository `.env`; `--both` is the explicit opt-in to update both destinations.
 
 ### `shedflare secret list <app>` / `shedflare doctor`
 
@@ -221,10 +223,10 @@ names (not values). Target worker name from `physicalName(stage, appId)`.
 
 Deploy and dev differ:
 
-|         | Deploy             | Local dev                           |
-| ------- | ------------------ | ----------------------------------- |
-| Secrets | CF Worker bindings | `apps/<app>/.dev.vars` (gitignored) |
-| Command | `shedflare deploy` | `shedflare dev` / `pnpm dev:<app>`  |
+|         | Deploy             | Local dev                          |
+| ------- | ------------------ | ---------------------------------- |
+| Secrets | CF Worker bindings | repository `.env` (gitignored)     |
+| Command | `shedflare deploy` | `shedflare dev` / `pnpm dev:<app>` |
 
 ---
 
@@ -346,13 +348,14 @@ Per-app `docs/deployment.md` files should be rewritten or replaced by a single
 
 ## Summary
 
-| Do                                           | Don't                                        |
-| -------------------------------------------- | -------------------------------------------- |
-| `Shedflare.WorkerSecret` custom Resource     | Secrets in `shedflare.config.jsonc`          |
-| `Alchemy.Variable` for config vars           | `secretEnv()` requiring `.env` every deploy  |
-| `Alchemy.Random` for auto secrets            | Custom Alchemy state store for secret values |
-| CLI prompts → `process.env` → deploy → clear | Temp `.env` create/delete                    |
-| CF Worker as authority for "already set"     | Secrets Store in v1                          |
+| Do                                         | Don't                                        |
+| ------------------------------------------ | -------------------------------------------- |
+| `Shedflare.WorkerSecret` custom Resource   | Secrets in `shedflare.config.jsonc`          |
+| `Alchemy.Variable` for config vars         | `secretEnv()` requiring `.env` every deploy  |
+| `Alchemy.Random` for auto secrets          | Custom Alchemy state store for secret values |
+| `secret set` defaults to the remote Worker | Implicitly mirror production into `.env`     |
+| Explicit process env → deploy → clear      | Read repository `.env` during deployment     |
+| CF Worker as authority for "already set"   | Secrets Store in v1                          |
 
 **One line:** A version of `Alchemy.Secret` that treats the deployed Worker as the
 authority for operator secrets, and local env as "new value to push."

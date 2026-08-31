@@ -1,12 +1,7 @@
 import { toolDefinition } from "@tanstack/ai";
 import { toStandardJsonSchema } from "@valibot/to-json-schema";
 import * as v from "valibot";
-import {
-  createExtractRun,
-  MAX_BROWSER_RENDERS_PER_TURN,
-  type ExtractRun,
-  type JsonObject,
-} from "#/domain";
+import { createExtractRun, type ExtractRun, type JsonObject } from "#/domain";
 import {
   BrowserRenderError,
   cloudflareBrowserMarkdown,
@@ -14,7 +9,7 @@ import {
   truncateExtractedMarkdown,
   type AppEnv,
 } from "#/runtime";
-import type { ToolProgressEvent } from "./search";
+import { TOOL_PROGRESS_EVENT } from "./search";
 
 type ExtractToolResult =
   | {
@@ -31,8 +26,6 @@ type ExtractToolResult =
       error: string;
       reason:
         | "invalid_url"
-        | "duplicate_url"
-        | "max_extracts_reached"
         | "not_configured"
         | "extract_timeout"
         | "extract_rate_limited"
@@ -44,10 +37,7 @@ type ExtractToolResult =
       hint: string;
     };
 
-type RenderFailureReason = Exclude<
-  (ExtractToolResult & { ok: false })["reason"],
-  "invalid_url" | "duplicate_url" | "max_extracts_reached"
->;
+type RenderFailureReason = Exclude<(ExtractToolResult & { ok: false })["reason"], "invalid_url">;
 type RenderErrorClassification = { reason: RenderFailureReason; hint: string };
 type ClassifiedRenderError = RenderErrorClassification & { message: string };
 type CaughtError = Parameters<typeof String>[0];
@@ -56,6 +46,23 @@ const ExtractToolArgsSchema = v.strictObject({
   url: v.pipe(v.string(), v.minLength(4), v.maxLength(2048)),
 });
 const extractToolInputSchema = toStandardJsonSchema(ExtractToolArgsSchema);
+const ExtractToolResultSchema = v.variant("ok", [
+  v.strictObject({
+    ok: v.literal(true),
+    url: v.string(),
+    content: v.string(),
+    truncated: v.boolean(),
+    originalLength: v.number(),
+  }),
+  v.strictObject({
+    ok: v.literal(false),
+    url: v.string(),
+    error: v.string(),
+    reason: v.string(),
+    hint: v.string(),
+  }),
+]);
+const extractToolOutputSchema = toStandardJsonSchema(ExtractToolResultSchema);
 
 const RENDER_ERROR_CLASSIFICATIONS = {
   not_configured: {
@@ -114,28 +121,6 @@ function classifyRenderError(error: CaughtError): ClassifiedRenderError {
   };
 }
 
-function normalizeUrlKey(url: string): string {
-  const parsed = normalizeExtractUrl(url);
-  if (!parsed) return url.trim().toLowerCase();
-  // Collapse near-duplicates: ignore trailing slash, hash, and common utm_*
-  // params so the model can't blow budget by reformulating the same link.
-  // Snapshot keys before mutating since URLSearchParams iterators are live.
-  const clean = new URL(parsed.toString());
-  const keysToStrip = Array.from(clean.searchParams.keys()).filter(
-    (key) => key.startsWith("utm_") || key === "ref" || key === "fbclid" || key === "gclid",
-  );
-  for (const key of keysToStrip) {
-    clean.searchParams.delete(key);
-  }
-  clean.hash = "";
-  let pathname = clean.pathname;
-  if (pathname.length > 1 && pathname.endsWith("/")) {
-    pathname = pathname.slice(0, -1);
-  }
-  clean.pathname = pathname;
-  return clean.toString().toLowerCase();
-}
-
 type ExtractToolState = {
   /**
    * Full ExtractRun rows (mirrors search tool). Storing the final decoded
@@ -149,17 +134,8 @@ type ExtractToolState = {
 export function createBrowserExtractTool(input: {
   env: AppEnv;
   assistantMessageId: string;
-  /**
-   * Abort signal tied to the assistant turn. When the user presses Stop we
-   * abort the turn's controller; the signal short-circuits queued tool
-   * calls and tears down the Cloudflare Browser Rendering session mid-
-   * fetch so the worker doesn't keep rendering a page the user no longer
-   * wants.
-   */
-  signal?: AbortSignal;
   log?: (event: string, details?: JsonObject) => void;
   trace?: <A>(name: string, attrs: JsonObject, run: () => Promise<A>) => Promise<A>;
-  onProgress?: (event: ToolProgressEvent) => void | Promise<void>;
   /**
    * Called whenever `state.extractRuns` changes (after the active row is
    * appended pre-fetch, and again when it flips to completed/failed). The
@@ -178,7 +154,6 @@ export function createBrowserExtractTool(input: {
   extract?: (env: AppEnv, url: string, signal?: AbortSignal) => Promise<string>;
 }) {
   const state: ExtractToolState = { extractRuns: [] };
-  const urlCache = new Map<string, ExtractToolResult & { ok: true }>();
   const trace = input.trace ?? (<A>(_: string, __: JsonObject, run: () => Promise<A>) => run());
   const extract = input.extract ?? cloudflareBrowserMarkdown;
 
@@ -202,28 +177,19 @@ export function createBrowserExtractTool(input: {
       "",
       "Do NOT use this tool to discover URLs; use exa_web_search first if you don't already have one.",
       "Do NOT extract homepage URLs hoping to find a specific article; pass the actual article URL.",
-      "",
-      `Budget: at most ${MAX_BROWSER_RENDERS_PER_TURN} browser renders per assistant turn. The response is capped to the first ~12k characters; do not re-extract the same URL.`,
+      "The response is capped to the first ~12k characters.",
     ].join("\n"),
     inputSchema: extractToolInputSchema,
-  }).server(async (value): Promise<ExtractToolResult> => {
-    const decoded = v.safeParse(ExtractToolArgsSchema, value);
-    if (!decoded.success) {
-      return {
-        ok: false,
-        url: "",
-        error: `Invalid extract arguments: ${decoded.issues.map((issue) => issue.message).join("; ")}`,
-        reason: "invalid_url",
-        hint: "Pass one absolute http(s) article or document URL.",
-      };
-    }
-    const args = decoded.output;
-    // Guard -1: the user already pressed Stop. The model may still be
+    outputSchema: extractToolOutputSchema,
+  }).server(async (args, context): Promise<ExtractToolResult> => {
+    // TanStack AI validates model-emitted input before execution.
+    // The user may already have pressed Stop while this call was queued.
     // emitting queued tool_calls from before the abort arrived; short-
     // circuit them instead of kicking off a Browser Rendering session we
     // immediately tear down. No activity chip — the cancel handler
     // already drove the UI into the cancelled state.
-    if (input.signal?.aborted) {
+    const signal = context?.abortSignal;
+    if (signal?.aborted) {
       return {
         ok: false,
         url: args.url,
@@ -252,48 +218,6 @@ export function createBrowserExtractTool(input: {
     }
     const url = parsed.toString();
 
-    // Guard 1: per-turn budget.
-    if (state.extractRuns.length >= MAX_BROWSER_RENDERS_PER_TURN) {
-      input.log?.("assistant_turn_tool_extract_rejected", {
-        assistantMessageId: input.assistantMessageId,
-        reason: "max_extracts_reached",
-        url,
-        priorRuns: state.extractRuns.length,
-      });
-      await input.onProgress?.({
-        tool: "extract",
-        label: `Extract budget reached (${MAX_BROWSER_RENDERS_PER_TURN}); answering with existing content`,
-        state: "failed",
-        step: state.extractRuns.length + 1,
-        detail: "max extracts per turn",
-      });
-      return {
-        ok: false,
-        url,
-        error: `Extract budget reached: ${MAX_BROWSER_RENDERS_PER_TURN} pages already fetched this turn.`,
-        reason: "max_extracts_reached",
-        hint: "Do not call web_extract again this turn. Answer using the content you already have.",
-      };
-    }
-
-    // Guard 2: duplicate URL. Return cached content rather than re-fetching.
-    const urlKey = normalizeUrlKey(url);
-    const cached = urlCache.get(urlKey);
-    if (cached) {
-      input.log?.("assistant_turn_tool_extract_deduped", {
-        assistantMessageId: input.assistantMessageId,
-        url,
-        urlKey,
-      });
-      return {
-        ok: false,
-        url,
-        error: "This URL (or a near-duplicate) was already extracted this turn.",
-        reason: "duplicate_url",
-        hint: "Do not re-extract the same URL. Use the previous content, or extract a different page.",
-      };
-    }
-
     return trace("assistant.extract.prepare", { url }, async () => {
       const step = state.extractRuns.length + 1;
       // Append an `active` row up front so the UI shows a "Reading …" chip
@@ -309,7 +233,7 @@ export function createBrowserExtractTool(input: {
       });
       state.extractRuns.push(activeRun);
       await publishState();
-      await input.onProgress?.({
+      context?.emitCustomEvent(TOOL_PROGRESS_EVENT, {
         tool: "extract",
         label: `Reading ${safeHost(url) || url}`,
         state: "active",
@@ -318,7 +242,7 @@ export function createBrowserExtractTool(input: {
 
       return trace("assistant.extract.run", { url, step }, async () => {
         try {
-          const markdown = await extract(input.env, url, input.signal);
+          const markdown = await extract(input.env, url, signal);
           const { text, truncated, originalLength } = truncateExtractedMarkdown(markdown);
           state.extractRuns[runIndex] = createExtractRun({
             id: activeRun.id,
@@ -332,13 +256,6 @@ export function createBrowserExtractTool(input: {
             truncated,
           });
           await publishState();
-          urlCache.set(urlKey, {
-            ok: true,
-            url,
-            content: text,
-            truncated,
-            originalLength,
-          });
           input.log?.("assistant_turn_tool_extract_success", {
             assistantMessageId: input.assistantMessageId,
             step,
@@ -347,7 +264,7 @@ export function createBrowserExtractTool(input: {
             originalLength,
             truncated,
           });
-          await input.onProgress?.({
+          context?.emitCustomEvent(TOOL_PROGRESS_EVENT, {
             tool: "extract",
             label: truncated
               ? `Read ${safeHost(url) || url} (${originalLength.toLocaleString()} chars, truncated)`
@@ -369,7 +286,7 @@ export function createBrowserExtractTool(input: {
           // Still flip the run row to failed (so the Reading chip doesn't
           // stay "active" forever), but skip the "Failed to read X" activity
           // chip so the timeline isn't littered with fake render failures.
-          const cancelled = Boolean(input.signal?.aborted);
+          const cancelled = Boolean(signal?.aborted);
           state.extractRuns[runIndex] = createExtractRun({
             id: activeRun.id,
             createdAt: activeRun.createdAt,
@@ -389,7 +306,7 @@ export function createBrowserExtractTool(input: {
             cancelled,
           });
           if (!cancelled) {
-            await input.onProgress?.({
+            context?.emitCustomEvent(TOOL_PROGRESS_EVENT, {
               tool: "extract",
               label: `Failed to read ${safeHost(url) || url}`,
               state: "failed",

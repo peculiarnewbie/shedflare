@@ -1,4 +1,6 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import type { ModelMessage, RunStatus, TokenUsage } from "@tanstack/ai";
+import type { InterruptRecord } from "@tanstack/ai-persistence";
 
 export const metadata = sqliteTable("metadata", {
   key: text("key").primaryKey(),
@@ -266,6 +268,70 @@ export const pendingTurns = sqliteTable("pending_turns", {
   payloadJson: text("payload_json").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+/**
+ * TanStack AI's canonical provider-facing transcript. The product-facing
+ * messages/message_parts tables remain the sync/UI projection; this record
+ * retains tool calls, tool results, reasoning signatures, and provider
+ * metadata exactly as the agent loop produced them.
+ */
+export const aiThreads = sqliteTable("ai_threads", {
+  threadId: text("thread_id").primaryKey(),
+  messagesJson: text("messages_json", { mode: "json" }).$type<ModelMessage[]>().notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const aiRuns = sqliteTable(
+  "ai_runs",
+  {
+    runId: text("run_id").primaryKey(),
+    threadId: text("thread_id").notNull(),
+    status: text("status").$type<RunStatus>().notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    error: text("error"),
+    errorCode: text("error_code"),
+    usageJson: text("usage_json", { mode: "json" }).$type<TokenUsage>(),
+    sandboxKey: text("sandbox_key"),
+    detachedSince: integer("detached_since"),
+    cancelRequested: integer("cancel_requested", { mode: "boolean" }),
+    driverEpoch: integer("driver_epoch"),
+  },
+  (table) => [
+    index("ai_runs_thread_started").on(table.threadId, table.startedAt),
+    index("ai_runs_status_detached").on(table.status, table.detachedSince),
+  ],
+);
+
+export const aiInterrupts = sqliteTable(
+  "ai_interrupts",
+  {
+    interruptId: text("interrupt_id").primaryKey(),
+    runId: text("run_id").notNull(),
+    threadId: text("thread_id").notNull(),
+    status: text("status").$type<InterruptRecord["status"]>().notNull(),
+    requestedAt: integer("requested_at").notNull(),
+    resolvedAt: integer("resolved_at"),
+    payloadJson: text("payload_json", { mode: "json" })
+      .$type<InterruptRecord["payload"]>()
+      .notNull(),
+    responseJson: text("response_json", { mode: "json" }).$type<InterruptRecord["response"]>(),
+  },
+  (table) => [
+    index("ai_interrupts_thread_requested").on(table.threadId, table.requestedAt),
+    index("ai_interrupts_run_requested").on(table.runId, table.requestedAt),
+  ],
+);
+
+export const aiMetadata = sqliteTable(
+  "ai_metadata",
+  {
+    namespace: text("namespace").notNull(),
+    key: text("key").notNull(),
+    valueJson: text("value_json", { mode: "json" }).$type<unknown>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.namespace, table.key] })],
+);
 
 type SyncMeta<T extends { optimistic: boolean | null; opId: string | null }> = Omit<
   T,

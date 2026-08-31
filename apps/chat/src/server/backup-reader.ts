@@ -22,8 +22,14 @@ export type ChatBackupCommand = {
   ackedSeq: number | null;
 };
 
-export type ChatBackup = {
-  version: 1;
+export type ChatAiBackup = {
+  threads: Array<typeof dbSchema.aiThreads.$inferSelect>;
+  runs: Array<typeof dbSchema.aiRuns.$inferSelect>;
+  interrupts: Array<typeof dbSchema.aiInterrupts.$inferSelect>;
+  metadata: Array<typeof dbSchema.aiMetadata.$inferSelect>;
+};
+
+type ChatBackupBase = {
   app: "chat";
   createdAt: string;
   protocolVersion: string;
@@ -32,6 +38,10 @@ export type ChatBackup = {
   events: ChatBackupEvent[];
   commands: ChatBackupCommand[];
 };
+
+export type ChatBackup =
+  | (ChatBackupBase & { version: 1 })
+  | (ChatBackupBase & { version: 2; ai: ChatAiBackup });
 
 type BackupReaderInput = {
   access: DataAccess;
@@ -76,8 +86,29 @@ export class BackupReader {
         .orderBy(asc(dbSchema.commands.createdAt), asc(dbSchema.commands.opId)),
     );
 
+    const ai: ChatAiBackup = {
+      threads: this.access.database.runSync(
+        this.access.db.select().from(dbSchema.aiThreads).orderBy(asc(dbSchema.aiThreads.threadId)),
+      ),
+      runs: this.access.database.runSync(
+        this.access.db.select().from(dbSchema.aiRuns).orderBy(asc(dbSchema.aiRuns.startedAt)),
+      ),
+      interrupts: this.access.database.runSync(
+        this.access.db
+          .select()
+          .from(dbSchema.aiInterrupts)
+          .orderBy(asc(dbSchema.aiInterrupts.requestedAt)),
+      ),
+      metadata: this.access.database.runSync(
+        this.access.db
+          .select()
+          .from(dbSchema.aiMetadata)
+          .orderBy(asc(dbSchema.aiMetadata.namespace), asc(dbSchema.aiMetadata.key)),
+      ),
+    };
+
     return {
-      version: 1,
+      version: 2,
       app: "chat",
       createdAt: input.createdAt,
       protocolVersion: input.protocolVersion,
@@ -85,6 +116,7 @@ export class BackupReader {
       snapshot,
       events,
       commands,
+      ai,
     };
   }
 }

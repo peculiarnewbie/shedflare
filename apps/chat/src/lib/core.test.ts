@@ -8,7 +8,6 @@ import {
   createThread,
   createWorkspace,
   DEFAULT_SEARCHES_PER_TURN,
-  MAX_BROWSER_RENDERS_PER_TURN,
   MAX_SEARCHES_PER_TURN,
   mergeAttachmentLink,
   resolveThreadMessagePath,
@@ -21,11 +20,8 @@ import {
 } from "#/domain";
 import {
   BrowserRenderError,
-  chat,
   clampExaResults,
   cloudflareBrowserMarkdown,
-  createChatCompletionsAdapter,
-  createResponsesAdapter,
   exaSearch,
   ExaSearchError,
   extractReasoningTokens,
@@ -44,17 +40,22 @@ import {
   parseExaMcpTextResponse,
   truncateExtractedMarkdown,
   verifyUploadToken,
-  type ExtendedStreamChunk,
 } from "#/runtime";
 import { createExaSearchTool } from "../server/search";
 import type { SearchProgressEvent } from "../server/search";
 import { createBrowserExtractTool } from "../server/extract";
-import { getSearchToolSystemPrompt } from "../server/model-config";
 import {
   consumeAssistantStream,
   requireSuccessfulAssistantStream,
 } from "../server/stream-consumer";
-import { convertSchemaToJsonSchema, toolDefinition } from "@tanstack/ai";
+import {
+  chat,
+  convertSchemaToJsonSchema,
+  EventType,
+  toolDefinition,
+  type ModelMessage,
+  type StreamChunk,
+} from "@tanstack/ai";
 import { AssistantTurnError, decodeAppEnv } from "#/effect";
 import { Effect } from "effect";
 import * as Schema from "effect/Schema";
@@ -91,6 +92,10 @@ import {
   parseChatBackupKeyTimestamp,
   selectExpiredChatBackupKeys,
 } from "../api/backups";
+import { createOpenCodeAdapter } from "../server/ai-provider";
+import { toolBudgetMiddleware } from "../server/tool-budget";
+import { mergePersistedModelHistory } from "../server/model-message-builder";
+import { selectAutomaticModelId } from "./model-selection";
 
 function replaceFetch(implementation: typeof fetch) {
   globalThis.fetch = implementation;
@@ -105,52 +110,17 @@ function resolveRequestUrl(input: RequestInfo | URL) {
   return new Request(input).url;
 }
 
-const ProviderRequestSchema = Schema.Struct({
-  messages: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        role: Schema.optional(Schema.String),
-        content: Schema.optional(Schema.Any),
-        tool_calls: Schema.optional(Schema.Array(Schema.Any)),
-        reasoning_content: Schema.optional(Schema.String),
-      }),
-    ),
-  ),
-  input: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        role: Schema.optional(Schema.String),
-        content: Schema.optional(Schema.Any),
-      }),
-    ),
-  ),
-  tools: Schema.optional(Schema.Array(Schema.Struct({ strict: Schema.optional(Schema.Boolean) }))),
-  thinking: Schema.optional(Schema.Struct({ type: Schema.String })),
-});
-type ProviderRequest = Schema.Schema.Type<typeof ProviderRequestSchema>;
-
-function decodeProviderRequest(init?: RequestInit): ProviderRequest {
-  return Schema.decodeUnknownSync(ProviderRequestSchema)(decodeRequestBody(init));
-}
-
-function requireProviderRequest(value: ProviderRequest | null): ProviderRequest {
-  if (!value) throw new Error("Expected the adapter to send a request");
-  return value;
-}
-
 function requireCaptured<T>(value: T | null, message: string): T {
   if (value === null) throw new Error(message);
   return value;
 }
 
-type TestTool = {
-  execute?: (args: ExternalValue) => ExternalValue;
-};
-
-function requireToolExecutor(tool: TestTool) {
+function requireToolExecutor<TArgs, TResult>(tool: {
+  execute?: (args: TArgs, context?: never) => TResult | Promise<TResult>;
+}) {
   const execute = tool.execute;
   if (!execute) throw new Error("Expected a server-side tool executor");
-  return async (args: ExternalValue): Promise<ExternalValue> => execute(args);
+  return async (args: TArgs): Promise<TResult> => execute(args);
 }
 
 const SearchToolResultSchema = Schema.Struct({
@@ -159,7 +129,6 @@ const SearchToolResultSchema = Schema.Struct({
   hint: Schema.optional(Schema.String),
   context: Schema.optional(Schema.String),
   resultCount: Schema.optional(Schema.Number),
-  disableFurtherToolCalls: Schema.optional(Schema.Boolean),
 });
 const ExtractToolResultSchema = Schema.Struct({
   ok: Schema.Boolean,
@@ -907,6 +876,72 @@ describe("domain helpers", () => {
   });
 });
 
+describe("TanStack model history", () => {
+  const user = (id: string, content = id): ModelMessage => ({
+    id,
+    role: "user",
+    content,
+  });
+  const assistant = (content: string): ModelMessage => ({ role: "assistant", content });
+
+  it("keeps native tool history when appending a product turn", () => {
+    const persisted: ModelMessage[] = [
+      user("u1"),
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [
+          {
+            id: "call-1",
+            type: "function",
+            function: { name: "exa_web_search", arguments: '{"query":"latest"}' },
+          },
+        ],
+      },
+      { role: "tool", toolCallId: "call-1", content: '{"ok":true}' },
+      assistant("answer"),
+    ];
+    const rebuilt = [user("u1"), assistant("answer"), user("u2", "follow up")];
+
+    expect(
+      mergePersistedModelHistory({
+        persisted,
+        rebuilt,
+        latestUserMessageId: "u2",
+      }),
+    ).toEqual([...persisted, rebuilt[2]]);
+  });
+
+  it("replaces only the changed native suffix for retries and edits", () => {
+    expect(
+      mergePersistedModelHistory({
+        persisted: [user("u1"), assistant("old answer")],
+        rebuilt: [user("u1", "updated attachment")],
+        latestUserMessageId: "u1",
+      }),
+    ).toEqual([user("u1", "updated attachment")]);
+
+    expect(
+      mergePersistedModelHistory({
+        persisted: [user("u1"), assistant("answer 1"), user("u2-old"), assistant("old")],
+        rebuilt: [user("u1"), assistant("answer 1"), user("u2-new", "edited")],
+        latestUserMessageId: "u2-new",
+      }),
+    ).toEqual([user("u1"), assistant("answer 1"), user("u2-new", "edited")]);
+  });
+
+  it("uses an explicit auto-model policy instead of catalog order", () => {
+    expect(
+      selectAutomaticModelId([
+        { id: "deepseek-v4-flash" },
+        { id: "opencode/qwen3.6-plus" },
+        { id: "kimi-k3" },
+      ]),
+    ).toBe("kimi-k3");
+    expect(selectAutomaticModelId([{ id: "only-model" }])).toBe("only-model");
+  });
+});
+
 describe("server helpers", () => {
   beforeEach(() => clearEnvOverrideCache());
 
@@ -937,16 +972,6 @@ describe("server helpers", () => {
   it("matches owner email addresses after normalization", () => {
     expect(isOwnerEmail(" Owner@Example.com ", "owner@example.com")).toBe(true);
     expect(isOwnerEmail("other@example.com", "owner@example.com")).toBe(false);
-  });
-
-  it("keeps search guidance concise while surfacing the budget", () => {
-    const prompt = getSearchToolSystemPrompt(3);
-
-    expect(prompt).toContain("materially improve the answer");
-    expect(prompt).toContain("limited to 3 calls per turn");
-    expect(prompt).toContain("Cite source numbers inline");
-    expect(prompt).not.toContain("Never repeat");
-    expect(prompt).not.toContain("If the tool returns");
   });
 
   it("creates sortable chat backup keys", () => {
@@ -1209,158 +1234,29 @@ describe("server helpers", () => {
     expect(extractReasoningTokens({ completion_tokens: 42 })).toBe(null);
   });
 
-  it("sends inline image data through the chat-completions adapter", async () => {
+  it("uses TanStack's official adapter and middleware to bound parallel tool calls", async () => {
     const originalFetch = globalThis.fetch;
-    let requestBody: ProviderRequest | null = null;
+    const requests: ExternalValue[] = [];
+    let requestCount = 0;
+    let executions = 0;
     replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        requestBody = decodeProviderRequest(init);
-        return new Response(
-          'data: {"choices":[{"delta":{"content":"I can see it."}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
-          { status: 200, headers: { "content-type": "text/event-stream" } },
-        );
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        { baseUrl: "https://api.example.com", apiKey: "test-key" },
-        "kimi-k3",
-      );
-      for await (const _chunk of chat({
-        adapter,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", content: "What is this?" },
-              {
-                type: "image",
-                source: { type: "data", mimeType: "image/png", value: "AAE=" },
-              },
-            ],
-          },
-        ],
-      })) {
-        // Drain the stream so the request completes.
-      }
-
-      const capturedBody = requireProviderRequest(requestBody);
-      const content = capturedBody.messages?.[0]?.content;
-      const contentParts = Schema.decodeUnknownSync(Schema.Array(Schema.Any))(content);
-      expect(contentParts[1]).toEqual({
-        type: "image_url",
-        image_url: { url: "data:image/png;base64,AAE=" },
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("uses the Responses API, preserves images, and keeps function schemas non-strict", async () => {
-    const originalFetch = globalThis.fetch;
-    let requestUrl = "";
-    let requestBody: ProviderRequest | null = null;
-    replaceFetch(
-      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-        requestUrl = resolveRequestUrl(url);
-        requestBody = decodeProviderRequest(init);
-        return new Response(
-          [
-            'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"I can see it."}\n\n',
-            'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":4,"output_tokens":5}}}\n\n',
-          ].join(""),
-          { status: 200, headers: { "content-type": "text/event-stream" } },
-        );
-      }),
-    );
-
-    try {
-      const adapter = createResponsesAdapter(
-        { baseUrl: "https://api.example.com", apiKey: "test-key" },
-        "gpt-5.6-luna",
-      );
-      const lookupTool = toolDefinition({
-        name: "lookup",
-        description: "Look something up.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string", minLength: 2, maxLength: 400 },
-            limit: { type: "number", minimum: 1, maximum: 5 },
-          },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      }).server(async () => "unused");
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", content: "What is this?" },
-              {
-                type: "image",
-                source: { type: "data", mimeType: "image/jpeg", value: "AQI=" },
-              },
-            ],
-          },
-        ],
-        tools: [lookupTool],
-      })) {
-        chunks.push(chunk);
-      }
-
-      expect(requestUrl).toBe("https://api.example.com/responses");
-      const capturedBody = requireProviderRequest(requestBody);
-      const userMessage = capturedBody.input?.find((item) => item.role === "user");
-      expect(userMessage?.content).toEqual([
-        { type: "input_text", text: "What is this?" },
-        { type: "input_image", image_url: "data:image/jpeg;base64,AQI=" },
-      ]);
-      expect(capturedBody.tools?.[0]?.strict).toBe(false);
-      expect(chunks.some((chunk) => chunk.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
-      expect(chunks.some((chunk) => chunk.type === "RUN_FINISHED")).toBe(true);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("completes provider tool calls and preserves null assistant content on continuation", async () => {
-    const requests: ProviderRequest[] = [];
-    const originalFetch = globalThis.fetch;
-    let callCount = 0;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        requests.push(decodeProviderRequest(init));
-        callCount += 1;
-
-        const sse =
-          callCount === 1
+      vi.fn(async (_request: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(decodeRequestBody(init));
+        requestCount += 1;
+        const body =
+          requestCount === 1
             ? [
-                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"exa_web_search","arguments":"{\\"query\\":\\"current f1 standings\\"}"}}]}}]}\n\n',
-                'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":5}}\n\n',
-                "data: [DONE]\n\n",
-              ]
+                'data: {"id":"chatcmpl_tools","object":"chat.completion.chunk","created":1,"model":"kimi-k3","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}},{"index":1,"id":"call_2","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":null}]}',
+                'data: {"id":"chatcmpl_tools","object":"chat.completion.chunk","created":1,"model":"kimi-k3","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}',
+                "data: [DONE]",
+                "",
+              ].join("\n\n")
             : [
-                'data: {"choices":[{"delta":{"content":"Oscar Piastri leads."}}]}\n\n',
-                'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":7}}\n\n',
-                "data: [DONE]\n\n",
-              ];
-
-        const body = new ReadableStream({
-          start(controller) {
-            for (const chunk of sse) {
-              controller.enqueue(encoder.encode(chunk));
-            }
-            controller.close();
-          },
-        });
-
+                'data: {"id":"chatcmpl_answer","object":"chat.completion.chunk","created":2,"model":"kimi-k3","choices":[{"index":0,"delta":{"role":"assistant","content":"Done."},"finish_reason":null}]}',
+                'data: {"id":"chatcmpl_answer","object":"chat.completion.chunk","created":2,"model":"kimi-k3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+                "data: [DONE]",
+                "",
+              ].join("\n\n");
         return new Response(body, {
           status: 200,
           headers: { "content-type": "text/event-stream" },
@@ -1368,735 +1264,30 @@ describe("server helpers", () => {
       }),
     );
 
+    const lookup = toolDefinition({
+      name: "lookup",
+      description: "Look up one fact.",
+    }).server(async () => {
+      executions += 1;
+      return { ok: true };
+    });
+
     try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-        },
-        "openai/gpt-4.1",
-      );
-
-      const searchTool = toolDefinition({
-        name: "exa_web_search",
-        description: "Search the web",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-          },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      }).server(async () => "Search grounding");
-
-      const chunks: ExtendedStreamChunk[] = [];
+      let text = "";
       for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "who leads the 2026 f1 wdc?" }],
-        tools: [searchTool],
+        adapter: createOpenCodeAdapter({ env, modelId: "kimi-k3" }),
+        messages: [{ role: "user", content: "look it up" }],
+        tools: [lookup],
+        middleware: [toolBudgetMiddleware({ lookup: 1 })],
       })) {
-        chunks.push(chunk);
+        if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) text += chunk.delta;
       }
 
+      expect(text).toBe("Done.");
+      expect(executions).toBe(1);
       expect(requests).toHaveLength(2);
-      expect(chunks.some((chunk) => chunk.type === "TOOL_CALL_END")).toBe(true);
-
-      const continuationMessages = requests[1]?.messages ?? [];
-      const assistantToolCall = continuationMessages.find(
-        (message) => message.role === "assistant" && message.tool_calls !== undefined,
-      );
-      expect(assistantToolCall).toBeTruthy();
-      expect(assistantToolCall?.content).toBeNull();
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("replays the provider-shaped assistant tool call on continuation", async () => {
-    const requests: ProviderRequest[] = [];
-    const originalFetch = globalThis.fetch;
-    let callCount = 0;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        requests.push(decodeProviderRequest(init));
-        callCount += 1;
-
-        const sse =
-          callCount === 1
-            ? [
-                'data: {"choices":[{"delta":{"reasoningContent":"Need current standings. "}}]}\n\n',
-                'data: {"choices":[{"delta":{"content":"Let me check the latest standings. "}}]}\n\n',
-                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"exa_web_search","arguments":"{\\"query\\":\\"current f1 standings\\"}"}}]}}]}\n\n',
-                'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"completion_tokens_details":{"reasoning_tokens":63}}}\n\n',
-                "data: [DONE]\n\n",
-              ]
-            : [
-                'data: {"choices":[{"delta":{"content":"Oscar Piastri leads."}}]}\n\n',
-                'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":7}}\n\n',
-                "data: [DONE]\n\n",
-              ];
-
-        const body = new ReadableStream({
-          start(controller) {
-            for (const chunk of sse) {
-              controller.enqueue(encoder.encode(chunk));
-            }
-            controller.close();
-          },
-        });
-
-        return new Response(body, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-        },
-        "moonshot/kimi-k2.5",
-      );
-
-      const searchTool = toolDefinition({
-        name: "exa_web_search",
-        description: "Search the web",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-          },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      }).server(async () => "Search grounding");
-
-      for await (const _chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "who leads the 2026 f1 wdc?" }],
-        modelOptions: {
-          thinking: { type: "enabled" },
-        },
-        tools: [searchTool],
-      })) {
-      }
-
-      expect(requests).toHaveLength(2);
-      const continuationMessages = requests[1]?.messages ?? [];
-      const assistantToolCall = continuationMessages.find(
-        (message) => message.role === "assistant" && message.tool_calls !== undefined,
-      );
-
-      expect(assistantToolCall?.content).toBe("Let me check the latest standings. ");
-      expect(assistantToolCall?.reasoning_content).toBe("Need current standings. ");
-      expect(assistantToolCall?.tool_calls).toEqual([
-        {
-          id: "call_1",
-          type: "function",
-          function: {
-            name: "exa_web_search",
-            arguments: '{"query":"current f1 standings"}',
-          },
-        },
-      ]);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("replays leaked reasoning_content on continuation even when thinking is disabled", async () => {
-    const requests: ProviderRequest[] = [];
-    const originalFetch = globalThis.fetch;
-    let callCount = 0;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const body = decodeProviderRequest(init);
-        requests.push(body);
-        callCount += 1;
-
-        if (callCount === 1) {
-          expect(body.thinking).toEqual({ type: "disabled" });
-          const sse = [
-            'data: {"choices":[{"delta":{"reasoningContent":"Need current standings. "}}]}\n\n',
-            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"exa_web_search","arguments":"{\\"query\\":\\"current f1 standings\\"}"}}]}}]}\n\n',
-            'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"completion_tokens_details":{"reasoning_tokens":63}}}\n\n',
-            "data: [DONE]\n\n",
-          ];
-          const stream = new ReadableStream({
-            start(controller) {
-              for (const chunk of sse) {
-                controller.enqueue(encoder.encode(chunk));
-              }
-              controller.close();
-            },
-          });
-          return new Response(stream, {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          });
-        }
-
-        const continuationMessages = body.messages ?? [];
-        const assistantToolCall = continuationMessages.find(
-          (message) => message.role === "assistant" && message.tool_calls !== undefined,
-        );
-        if (!assistantToolCall?.reasoning_content) {
-          return new Response(
-            JSON.stringify({
-              error: {
-                message: "thinking is enabled but reasoning_content is missing",
-              },
-            }),
-            { status: 400, headers: { "content-type": "application/json" } },
-          );
-        }
-
-        const sse = [
-          'data: {"choices":[{"delta":{"content":"Oscar Piastri leads."}}]}\n\n',
-          'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":7}}\n\n',
-          "data: [DONE]\n\n",
-        ];
-        const stream = new ReadableStream({
-          start(controller) {
-            for (const chunk of sse) {
-              controller.enqueue(encoder.encode(chunk));
-            }
-            controller.close();
-          },
-        });
-        return new Response(stream, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-        },
-        "moonshot/kimi-k2.5",
-      );
-
-      const searchTool = toolDefinition({
-        name: "exa_web_search",
-        description: "Search the web",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-          },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      }).server(async () => "Search grounding");
-
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "who leads the 2026 f1 wdc?" }],
-        modelOptions: {
-          thinking: { type: "disabled" },
-        },
-        tools: [searchTool],
-      })) {
-        chunks.push(chunk);
-      }
-
-      expect(requests).toHaveLength(2);
-      expect(chunks.some((chunk) => chunk.type === "RUN_ERROR")).toBe(false);
-
-      const continuationMessages = requests[1]?.messages ?? [];
-      const assistantToolCall = continuationMessages.find(
-        (message) => message.role === "assistant" && message.tool_calls !== undefined,
-      );
-
-      expect(assistantToolCall?.reasoning_content).toBe("Need current standings. ");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("carries reasoning_content across multiple tool continuations when later turns omit it", async () => {
-    const requests: ProviderRequest[] = [];
-    const originalFetch = globalThis.fetch;
-    let callCount = 0;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const body = decodeProviderRequest(init);
-        requests.push(body);
-        callCount += 1;
-
-        if (callCount === 1) {
-          const sse = [
-            'data: {"choices":[{"delta":{"reasoningContent":"Need current standings. "}}]}\n\n',
-            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"exa_web_search","arguments":"{\\"query\\":\\"f1 standings\\"}"}}]}}]}\n\n',
-            'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":5}}\n\n',
-            "data: [DONE]\n\n",
-          ];
-          const stream = new ReadableStream({
-            start(controller) {
-              for (const chunk of sse) controller.enqueue(encoder.encode(chunk));
-              controller.close();
-            },
-          });
-          return new Response(stream, {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          });
-        }
-
-        if (callCount === 2) {
-          const continuationMessages = body.messages ?? [];
-          const assistantToolCall = continuationMessages.find(
-            (message) => message.role === "assistant" && message.tool_calls !== undefined,
-          );
-          expect(assistantToolCall?.reasoning_content).toBe("Need current standings. ");
-
-          const sse = [
-            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_2","type":"function","function":{"name":"exa_web_search","arguments":"{\\"query\\":\\"f1 current leader\\"}"}}]}}]}\n\n',
-            'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":18,"completion_tokens":4}}\n\n',
-            "data: [DONE]\n\n",
-          ];
-          const stream = new ReadableStream({
-            start(controller) {
-              for (const chunk of sse) controller.enqueue(encoder.encode(chunk));
-              controller.close();
-            },
-          });
-          return new Response(stream, {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          });
-        }
-
-        const continuationMessages = body.messages ?? [];
-        const assistantToolCall = continuationMessages.find(
-          (message) => message.role === "assistant" && message.tool_calls !== undefined,
-        );
-        if (!assistantToolCall?.reasoning_content) {
-          return new Response(
-            JSON.stringify({
-              error: {
-                message: "thinking is enabled but reasoning_content is missing",
-              },
-            }),
-            { status: 400, headers: { "content-type": "application/json" } },
-          );
-        }
-
-        const sse = [
-          'data: {"choices":[{"delta":{"content":"Oscar Piastri leads."}}]}\n\n',
-          'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":24,"completion_tokens":7}}\n\n',
-          "data: [DONE]\n\n",
-        ];
-        const stream = new ReadableStream({
-          start(controller) {
-            for (const chunk of sse) controller.enqueue(encoder.encode(chunk));
-            controller.close();
-          },
-        });
-        return new Response(stream, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-        },
-        "moonshot/kimi-k2.5",
-      );
-
-      const searchTool = toolDefinition({
-        name: "exa_web_search",
-        description: "Search the web",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-          },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      }).server(async (args) => {
-        const decoded = Schema.decodeUnknownSync(Schema.Struct({ query: Schema.String }))(args);
-        return `Search grounding for ${decoded.query}`;
-      });
-
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "who leads the 2026 f1 wdc?" }],
-        modelOptions: {
-          thinking: { type: "disabled" },
-        },
-        tools: [searchTool],
-      })) {
-        chunks.push(chunk);
-      }
-
-      expect(requests).toHaveLength(3);
-      expect(chunks.some((chunk) => chunk.type === "RUN_ERROR")).toBe(false);
-
-      const thirdRequestMessages = requests[2]?.messages ?? [];
-      const assistantToolCalls = thirdRequestMessages.filter(
-        (message) => message.role === "assistant" && message.tool_calls !== undefined,
-      );
-      expect(assistantToolCalls).toHaveLength(2);
-      expect(assistantToolCalls[0]?.reasoning_content).toBe("Need current standings. ");
-      expect(assistantToolCalls[1]?.reasoning_content).toBe("Need current standings. ");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("omits tools on continuation after a tool result disables further tool calls", async () => {
-    const requests: ProviderRequest[] = [];
-    const originalFetch = globalThis.fetch;
-    let callCount = 0;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const body = decodeProviderRequest(init);
-        requests.push(body);
-        callCount += 1;
-
-        const sse =
-          callCount === 1
-            ? [
-                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"exa_web_search","arguments":"{\\"query\\":\\"current f1 standings\\"}"}}]}}]}\n\n',
-                'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":5}}\n\n',
-                "data: [DONE]\n\n",
-              ]
-            : [
-                'data: {"choices":[{"delta":{"content":"Answer from existing results."}}]}\n\n',
-                'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":7}}\n\n',
-                "data: [DONE]\n\n",
-              ];
-
-        const stream = new ReadableStream({
-          start(controller) {
-            for (const chunk of sse) controller.enqueue(encoder.encode(chunk));
-            controller.close();
-          },
-        });
-
-        return new Response(stream, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-        },
-        "openai/gpt-4.1",
-      );
-
-      const searchTool = toolDefinition({
-        name: "exa_web_search",
-        description: "Search the web",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-          },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      }).server(async () => ({
-        ok: true,
-        query: "current f1 standings",
-        resultCount: 1,
-        context: "Search grounding",
-        disableFurtherToolCalls: true,
-      }));
-
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "who leads the 2026 f1 wdc?" }],
-        tools: [searchTool],
-      })) {
-        chunks.push(chunk);
-      }
-
-      expect(requests).toHaveLength(2);
-      expect(requests[0]?.tools).toHaveLength(1);
-      expect(requests[1]?.tools).toBeUndefined();
-      expect(
-        (requests[1]?.messages ?? []).some(
-          (message) =>
-            message.role === "system" &&
-            String(message.content).includes("tool budget for this turn is exhausted"),
-        ),
-      ).toBe(true);
-      expect(chunks.some((chunk) => chunk.type === "RUN_ERROR")).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("fails streaming chat when the first byte deadline is exceeded", async () => {
-    const originalFetch = globalThis.fetch;
-
-    replaceFetch(
-      vi.fn(
-        (_url: RequestInfo | URL, init?: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            const signal = init?.signal;
-            if (!signal) return;
-            if (signal.aborted) {
-              reject(signal.reason);
-              return;
-            }
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-          }),
-      ),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-          firstByteTimeout: 20,
-          overallTimeout: 200,
-        },
-        "openai/gpt-4.1",
-      );
-
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "say hi" }],
-      })) {
-        chunks.push(chunk);
-      }
-
-      const errorChunk = chunks.find((chunk) => chunk.type === "RUN_ERROR");
-      expect(errorChunk).toBeTruthy();
-      expect(errorChunk?.error?.message).toContain("did not produce a first byte");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("fails a truncated stream that has text but no terminal marker", async () => {
-    const originalFetch = globalThis.fetch;
-    replaceFetch(
-      vi.fn(
-        async () =>
-          new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          }),
-      ),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        { baseUrl: "https://api.example.com", apiKey: "test-key" },
-        "openai/gpt-4.1",
-      );
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "say hi" }],
-      })) {
-        chunks.push(chunk);
-      }
-
-      const errorChunk = chunks.find((chunk) => chunk.type === "RUN_ERROR");
-      expect(errorChunk?.error?.code).toBe("assistant_stream_interrupted");
-      expect(chunks.some((chunk) => chunk.type === "RUN_FINISHED")).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("accepts a usage-terminated stream when the provider omits [DONE]", async () => {
-    const originalFetch = globalThis.fetch;
-    replaceFetch(
-      vi.fn(
-        async () =>
-          new Response(
-            'data: {"choices":[{"delta":{"content":"complete"}}]}\r\n\r\ndata: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":3,"completion_tokens":2}}',
-            {
-              status: 200,
-              headers: { "content-type": "text/event-stream" },
-            },
-          ),
-      ),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        { baseUrl: "https://api.example.com", apiKey: "test-key" },
-        "gpt-5.6-luna",
-      );
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "say hi" }],
-      })) {
-        chunks.push(chunk);
-      }
-
-      expect(chunks.some((chunk) => chunk.type === "RUN_ERROR")).toBe(false);
-      const finishedChunk = chunks.find((chunk) => chunk.type === "RUN_FINISHED");
-      expect(finishedChunk?.finishReason).toBe("stop");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("fails streaming chat when the overall timeout is exceeded after streaming starts", async () => {
-    const originalFetch = globalThis.fetch;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const signal = init?.signal;
-        let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
-        const failStream = (reason: ExternalValue) => {
-          if (controllerRef) {
-            controllerRef.error(reason);
-          }
-        };
-        const body = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controllerRef = controller;
-            controller.enqueue(
-              encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'),
-            );
-          },
-        });
-
-        if (signal) {
-          if (signal.aborted) {
-            failStream(signal.reason);
-          } else {
-            signal.addEventListener("abort", () => failStream(signal.reason), { once: true });
-          }
-        }
-
-        return new Response(body, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-          firstByteTimeout: 50,
-          overallTimeout: 20,
-        },
-        "openai/gpt-4.1",
-      );
-
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "say hi" }],
-      })) {
-        chunks.push(chunk);
-      }
-
-      const errorChunk = chunks.find((chunk) => chunk.type === "RUN_ERROR");
-      expect(errorChunk).toBeTruthy();
-      expect(errorChunk?.error?.message).toContain("exceeded overall timeout");
-      expect(chunks.some((chunk) => chunk.type === "RUN_FINISHED")).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("fails streaming chat when the upstream stream goes idle after output starts", async () => {
-    const originalFetch = globalThis.fetch;
-    const encoder = new TextEncoder();
-
-    replaceFetch(
-      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-        const signal = init?.signal;
-        let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
-        const failStream = (reason: ExternalValue) => {
-          controllerRef?.error(reason);
-        };
-        const body = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controllerRef = controller;
-            controller.enqueue(
-              encoder.encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'),
-            );
-          },
-        });
-
-        if (signal) {
-          if (signal.aborted) {
-            failStream(signal.reason);
-          } else {
-            signal.addEventListener("abort", () => failStream(signal.reason), { once: true });
-          }
-        }
-
-        return new Response(body, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-
-    try {
-      const adapter = createChatCompletionsAdapter(
-        {
-          baseUrl: "https://api.example.com",
-          apiKey: "test-key",
-          firstByteTimeout: 50,
-          idleTimeout: 20,
-          overallTimeout: 200,
-        },
-        "openai/gpt-4.1",
-      );
-
-      const chunks: ExtendedStreamChunk[] = [];
-      for await (const chunk of chat({
-        adapter,
-        messages: [{ role: "user", content: "say hi" }],
-      })) {
-        chunks.push(chunk);
-      }
-
-      const errorChunk = chunks.find((chunk) => chunk.type === "RUN_ERROR");
-      expect(errorChunk).toBeTruthy();
-      expect(errorChunk?.error?.message).toContain("stream was idle");
-      expect(chunks.some((chunk) => chunk.type === "RUN_FINISHED")).toBe(false);
+      expect(requests[0]).toMatchObject({ tools: [{ function: { name: "lookup" } }] });
+      expect(requests[1]).not.toHaveProperty("tools");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -2258,187 +1449,12 @@ describe("server helpers", () => {
       expect(result.ok).toBe(true);
       expect(result.resultCount).toBe(1);
       expect(tool.description).toContain("current or externally verifiable information");
-      expect(tool.description).toContain("limited to 3 calls per assistant turn");
+      expect(tool.description).toContain("answer directly from existing context otherwise");
       expect(tool.description).not.toContain("reformulate");
       expect(String(result.context)).toContain("Tool: exa_web_search");
       expect(String(result.context)).toContain("Piastri leads with 89 points");
       expect(state.searchRuns).toHaveLength(1);
       expect(state.searchRuns[0]?.status).toBe("completed");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("search tool refuses duplicate queries instead of re-fetching", async () => {
-    const originalFetch = globalThis.fetch;
-    let fetchCount = 0;
-    replaceFetch(
-      vi.fn(async () => {
-        fetchCount += 1;
-        return new Response(
-          JSON.stringify({
-            results: [{ title: "x", url: "https://x.example.com", highlights: ["result"] }],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }),
-    );
-
-    try {
-      const { tool } = createExaSearchTool({
-        env,
-        assistantMessageId: "msg_1",
-      });
-      const execute = requireToolExecutor(tool);
-      const first = decodeSearchToolResult(await execute({ query: "Piastri 2026 F1 standings" }));
-      expect(first.ok).toBe(true);
-      // Near-duplicate: different whitespace / punctuation / case.
-      const second = decodeSearchToolResult(
-        await execute({ query: "  PIASTRI 2026 f1 standings!  " }),
-      );
-      expect(second.ok).toBe(false);
-      expect(second.reason).toBe("duplicate_query");
-      expect(fetchCount).toBe(1);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("search tool deduplicates simultaneous equivalent queries", async () => {
-    const originalFetch = globalThis.fetch;
-    let releaseFetch: (() => void) | undefined;
-    const fetchCanFinish = new Promise<void>((resolve) => {
-      releaseFetch = resolve;
-    });
-    let fetchCount = 0;
-    replaceFetch(
-      vi.fn(async () => {
-        fetchCount += 1;
-        await fetchCanFinish;
-        return new Response(
-          JSON.stringify({
-            results: [{ title: "x", url: "https://x.example.com", highlights: ["result"] }],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }),
-    );
-
-    try {
-      const { tool } = createExaSearchTool({
-        env,
-        assistantMessageId: "msg_parallel_duplicate",
-        maxSearchesPerTurn: 2,
-      });
-      const executeRaw = requireToolExecutor(tool);
-      const execute = (args: { query: string }) => executeRaw(args).then(decodeSearchToolResult);
-
-      const firstPending = execute({
-        query: "Piastri 2026 F1 standings",
-      });
-      const duplicate = await execute({
-        query: "  PIASTRI 2026 f1 standings!  ",
-      });
-
-      expect(duplicate.ok).toBe(false);
-      expect(duplicate.reason).toBe("duplicate_query");
-      expect(fetchCount).toBe(1);
-
-      releaseFetch?.();
-      await expect(firstPending).resolves.toMatchObject({ ok: true });
-    } finally {
-      releaseFetch?.();
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("search tool reserves budget before simultaneous searches finish", async () => {
-    const originalFetch = globalThis.fetch;
-    let releaseFetch: (() => void) | undefined;
-    const fetchCanFinish = new Promise<void>((resolve) => {
-      releaseFetch = resolve;
-    });
-    let fetchCount = 0;
-    replaceFetch(
-      vi.fn(async () => {
-        fetchCount += 1;
-        await fetchCanFinish;
-        return new Response(
-          JSON.stringify({
-            results: [{ title: "x", url: "https://x.example.com", highlights: ["result"] }],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }),
-    );
-
-    try {
-      const { tool, state } = createExaSearchTool({
-        env,
-        assistantMessageId: "msg_parallel_budget",
-        maxSearchesPerTurn: 2,
-      });
-      const executeRaw = requireToolExecutor(tool);
-      const execute = (args: { query: string }) => executeRaw(args).then(decodeSearchToolResult);
-
-      const firstPending = execute({ query: "alpha query" });
-      const secondPending = execute({ query: "beta query" });
-      const rejected = await execute({ query: "gamma query" });
-
-      expect(rejected.ok).toBe(false);
-      expect(rejected.reason).toBe("max_searches_reached");
-      expect(rejected.disableFurtherToolCalls).toBe(true);
-      expect(fetchCount).toBe(2);
-
-      releaseFetch?.();
-      await expect(Promise.all([firstPending, secondPending])).resolves.toMatchObject([
-        { ok: true, disableFurtherToolCalls: true },
-        { ok: true, disableFurtherToolCalls: true },
-      ]);
-      expect(state.searchRuns.map((run) => run.step).sort((a, b) => a - b)).toEqual([1, 2]);
-    } finally {
-      releaseFetch?.();
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("search tool enforces the per-turn budget", async () => {
-    const originalFetch = globalThis.fetch;
-    replaceFetch(
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              results: [{ title: "t", url: "https://example.com", highlights: ["s"] }],
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          ),
-      ),
-    );
-
-    try {
-      const { tool, state } = createExaSearchTool({
-        env,
-        assistantMessageId: "msg_budget",
-        maxSearchesPerTurn: 2,
-      });
-      // Issue enough distinct queries to exactly fill the budget.
-      let lastOk: Schema.Schema.Type<typeof SearchToolResultSchema> | null = null;
-      const execute = requireToolExecutor(tool);
-      for (let i = 0; i < 2; i++) {
-        const ok = decodeSearchToolResult(await execute({ query: `alpha query ${i}` }));
-        expect(ok.ok).toBe(true);
-        lastOk = ok;
-      }
-      expect(lastOk?.disableFurtherToolCalls).toBe(true);
-      expect(state.searchRuns).toHaveLength(2);
-      // Next distinct query must be rejected with max_searches_reached.
-      const rejected = decodeSearchToolResult(await execute({ query: "alpha query 5" }));
-      expect(rejected.ok).toBe(false);
-      expect(rejected.reason).toBe("max_searches_reached");
-      expect(rejected.disableFurtherToolCalls).toBe(true);
-      // Budget rejection does NOT add a search run.
-      expect(state.searchRuns).toHaveLength(2);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -2481,7 +1497,7 @@ describe("server helpers", () => {
       assistantMessageId: "msg_short",
     });
     const executeRaw = requireToolExecutor(tool);
-    const execute = (args: { query: string; numResults?: ExternalValue }) =>
+    const execute = (args: { query: string; numResults?: number }) =>
       executeRaw(args).then(decodeSearchToolResult);
 
     const empty = await execute({ query: "" });
@@ -2495,10 +1511,6 @@ describe("server helpers", () => {
     const short = await execute({ query: "a" });
     expect(short.ok).toBe(false);
     expect(short.reason).toBe("query_too_short");
-
-    const invalidCount = await execute({ query: "valid query", numResults: "many" });
-    expect(invalidCount.ok).toBe(false);
-    expect(invalidCount.reason).toBe("invalid_arguments");
 
     expect(convertSchemaToJsonSchema(tool.inputSchema)).toMatchObject({
       type: "object",
@@ -2647,49 +1659,6 @@ describe("server helpers", () => {
     expect(state.extractRuns[0]?.status).toBe("completed");
   });
 
-  it("extract tool refuses duplicate URLs instead of re-rendering", async () => {
-    let renders = 0;
-    const { tool } = createBrowserExtractTool({
-      env,
-      assistantMessageId: "msg_extract_dup",
-      extract: async () => {
-        renders += 1;
-        return "# Page";
-      },
-    });
-    const execute = requireToolExecutor(tool);
-    const first = decodeExtractToolResult(
-      await execute({ url: "https://example.com/docs?utm_source=x" }),
-    );
-    expect(first.ok).toBe(true);
-    // Near-duplicate: trailing slash + different utm_ param.
-    const second = decodeExtractToolResult(
-      await execute({ url: "https://example.com/docs/?utm_campaign=y" }),
-    );
-    expect(second.ok).toBe(false);
-    expect(second.reason).toBe("duplicate_url");
-    expect(renders).toBe(1);
-  });
-
-  it("extract tool enforces per-turn budget", async () => {
-    const { tool, state } = createBrowserExtractTool({
-      env,
-      assistantMessageId: "msg_extract_budget",
-      extract: async () => "# Page",
-    });
-    const execute = requireToolExecutor(tool);
-    // Fill the budget, then the next call should be rejected.
-    for (let i = 0; i < MAX_BROWSER_RENDERS_PER_TURN; i++) {
-      const ok = decodeExtractToolResult(await execute({ url: `https://example.com/page-${i}` }));
-      expect(ok.ok).toBe(true);
-    }
-    const rejected = decodeExtractToolResult(await execute({ url: "https://example.com/page-6" }));
-    expect(rejected.ok).toBe(false);
-    expect(rejected.reason).toBe("max_extracts_reached");
-    // Budget rejection doesn't create a run record.
-    expect(state.extractRuns).toHaveLength(MAX_BROWSER_RENDERS_PER_TURN);
-  });
-
   it("extract tool rejects malformed URLs without touching the browser", async () => {
     let renders = 0;
     const { tool, state } = createBrowserExtractTool({
@@ -2759,8 +1728,9 @@ describe("server helpers", () => {
 
     const result = await consumeAssistantStream(
       (async function* () {
-        const chunk: ExtendedStreamChunk = {
-          type: "RUN_FINISHED",
+        const chunk: StreamChunk = {
+          type: EventType.RUN_FINISHED,
+          threadId: "thread_empty",
           runId: "run_empty",
           finishReason: "stop",
           timestamp: Date.now(),

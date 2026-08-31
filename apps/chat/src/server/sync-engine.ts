@@ -32,6 +32,8 @@ import * as SqlError from "effect/unstable/sql/SqlError";
 import { json, parseJsonRequest, parseInternalCommandBody, syncLog } from "./sync-utils";
 import { initializeChatDatabase } from "./database-initializer";
 import { BackupReader } from "./backup-reader";
+import { decodeChatBackup } from "./backup-codec";
+import { BackupRestorer } from "./backup-restorer";
 import { ChatRepository } from "./chat-repository";
 import { DataAccess } from "./data-access";
 import { EventStore } from "./event-store";
@@ -100,6 +102,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
   private readonly chatAccess: ChatRepository;
   private readonly snapshots: SnapshotReader;
   private readonly backups: BackupReader;
+  private readonly backupRestorer: BackupRestorer;
   private readonly eventStore: EventStore;
   private readonly assistantTurnControllers = new Map<string, AbortController>();
   private readonly activeTurnMessageIds = new Set<string>();
@@ -113,6 +116,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
     this.chatAccess = new ChatRepository(this.sqlAccess);
     this.snapshots = new SnapshotReader(this.sqlAccess);
     this.backups = new BackupReader({ access: this.sqlAccess, snapshots: this.snapshots });
+    this.backupRestorer = new BackupRestorer(this.sqlAccess, this.chatAccess);
     this.eventStore = new EventStore({
       sql: this.sqlAccess,
       repository: this.chatAccess,
@@ -250,6 +254,27 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       return Response.json(
         this.backups.getBackup({ createdAt, protocolVersion: SYNC_PROTOCOL_VERSION }),
       );
+    }
+
+    if (url.pathname === "/backup/restore" && request.method === "POST") {
+      if (this.activeTurnMessageIds.size > 0 || this.assistantTurnControllers.size > 0) {
+        return Response.json(
+          { error: "Cannot restore while an assistant turn is active." },
+          { status: 409 },
+        );
+      }
+      const body = await parseJsonRequest(request);
+      if (body instanceof Response) return body;
+      const backup = decodeChatBackup(body);
+      const result = this.backupRestorer.restore(backup);
+      const snapshot = this.getSnapshot();
+      this.broadcast({
+        type: "sync_reset",
+        reason: "Chat history was restored from backup.",
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        snapshot,
+      });
+      return Response.json({ ok: true, ...result });
     }
 
     if (url.pathname === "/history/threads" && request.method === "GET") {
@@ -602,6 +627,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       runAssistantTurn: (payload: AssistantTurnPayload) =>
         runAssistantTurn(payload, {
           access: this.chatAccess,
+          database: this.database,
           eventStore: this.eventStore,
           env: this.env,
           broadcast: (e) => this.broadcast(e),
@@ -783,6 +809,7 @@ export class SyncEngineDurableObject extends SyncEngineDO<AppEnv> {
       },
       {
         access: this.chatAccess,
+        database: this.database,
         eventStore: this.eventStore,
         env: this.env,
         broadcast: (e) => this.broadcast(e),

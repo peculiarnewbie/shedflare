@@ -3,7 +3,11 @@ import { createAuthHandlers } from "@shedflare/auth-client/consumer";
 import { setRuntimeEnv } from "#/runtime";
 import { chatApi } from "./definitions";
 import { createBootstrapGroup, createModelsGroup, createUploadsGroup } from "./impl/all";
-import { handleChatBackup } from "../api/backups";
+import {
+  handleChatBackup,
+  handleChatBackupDownload,
+  handleChatBackupRestore,
+} from "../api/backups";
 import { handleSync } from "../api/sync";
 import { handleUploadBlobPut, handleUploadBlobGet } from "../api/uploads-blob";
 import { BUILD_INFO } from "../lib/build-info";
@@ -115,6 +119,14 @@ export function createRouter(env: RawEnv) {
 
           if (pathname === "/api/backups/chat") {
             return withVersionHeader(await handleChatBackup(request));
+          }
+
+          if (pathname === "/api/backups/chat/download") {
+            return withVersionHeader(await handleChatBackupDownload(request));
+          }
+
+          if (pathname === "/api/backups/chat/restore") {
+            return withVersionHeader(await handleChatBackupRestore(request));
           }
 
           if (pathname.startsWith("/api/uploads/blob/")) {

@@ -1,7 +1,8 @@
 import { decodeMessageRow, resolveThreadMessagePath, type Message, type Thread } from "#/domain";
 import * as dbSchema from "#/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { DataAccess } from "./data-access";
+import { deletePersistedChatThread } from "./chat-persistence";
 
 /** Typed Chat row operations layered over the shared synchronous SQLite access. */
 export class ChatRepository {
@@ -36,6 +37,7 @@ export class ChatRepository {
   }
 
   deleteThreadCascade(id: string) {
+    deletePersistedChatThread(this.sql.database, id);
     const messageIds = this.sql.database
       .runSync(
         this.sql.db
@@ -104,6 +106,16 @@ export class ChatRepository {
       this.sql.db.select().from(dbSchema.messages).where(eq(dbSchema.messages.id, id)).get(),
     );
     return row ? decodeMessageRow(row) : null;
+  }
+
+  getMessageParts(messageId: string) {
+    return this.sql.database.runSync(
+      this.sql.db
+        .select()
+        .from(dbSchema.messageParts)
+        .where(eq(dbSchema.messageParts.messageId, messageId))
+        .orderBy(asc(dbSchema.messageParts.seq)),
+    );
   }
 
   getAttachment(id: string) {

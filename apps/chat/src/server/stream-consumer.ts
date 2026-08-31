@@ -1,12 +1,12 @@
 /**
  * Stream consumer for TanStack AI AG-UI stream events.
  *
- * Consumes AsyncIterable<ExtendedStreamChunk> from TanStack AI's chat() function
+ * Consumes TanStack AI's native AG-UI stream from chat()
  * and drives the existing event pipeline (broadcast, delta batching,
  * activity reporting, etc.).
  */
 
-import { REASONING_CONTENT_EVENT, type ExtendedStreamChunk } from "#/runtime";
+import { fromSpecTokenUsage, type StreamChunk, type TokenUsage } from "@tanstack/ai";
 import {
   nowIso,
   type JsonObject,
@@ -19,12 +19,19 @@ import {
 import { AssistantTurnError } from "#/effect";
 import { Effect } from "effect";
 import * as Schema from "effect/Schema";
-import type { SearchProgressEvent } from "./search";
+import { TOOL_PROGRESS_EVENT, type SearchProgressEvent, type ToolProgressEvent } from "./search";
 import { normalizeAssistantError, type NormalizedAssistantError } from "./error-normalization";
 
 /** Threshold for flushing accumulated deltas to the client */
 const DELTA_FLUSH_THRESHOLD = 96;
-const ReasoningContentSchema = Schema.Struct({ delta: Schema.String });
+const ToolProgressEventSchema = Schema.Struct({
+  tool: Schema.optional(Schema.Literals(["search", "extract"])),
+  label: Schema.String,
+  state: Schema.optional(Schema.Literals(["active", "completed", "failed"])),
+  step: Schema.optional(Schema.Number),
+  query: Schema.optional(Schema.String),
+  detail: Schema.optional(Schema.String),
+});
 
 export type StreamConsumerDeps = {
   /** Appends a server event to the event log and returns the event */
@@ -68,9 +75,8 @@ export type StreamConsumerDeps = {
   /**
    * When true, reasoning/thinking tokens observed in the stream are dropped
    * rather than emitted as `thinking_tokens` parts. Used when the request
-   * ran with reasoning disabled (either via user selection or our own
-   * tool-turn override) to avoid exposing reasoning output that the upstream
-   * produced despite being asked not to.
+   * ran with reasoning disabled to avoid exposing reasoning output that the
+   * upstream produced despite being asked not to.
    */
   suppressReasoningTokens?: boolean;
   /** Logging function */
@@ -124,7 +130,7 @@ export function requireSuccessfulAssistantStream(result: StreamConsumerResult) {
  * and timing metrics (TTFT, duration).
  */
 export async function consumeAssistantStream(
-  stream: AsyncIterable<ExtendedStreamChunk>,
+  stream: AsyncIterable<StreamChunk>,
   deps: StreamConsumerDeps,
 ): Promise<StreamConsumerResult> {
   const { appendServerEvent, broadcast, appendMessagePart, reportActivity, messageId, log } = deps;
@@ -158,6 +164,8 @@ export async function consumeAssistantStream(
   let sawReasoningTokens = false;
   let lastReportedReasoningTokens: number | null = null;
   let responseStartedReported = false;
+  let firstTextDeltaFlushed = false;
+  let firstReasoningDeltaFlushed = false;
   /**
    * Count of completed tool-call iterations observed from the adapter.
    * We bump this on each RUN_FINISHED with finishReason "tool_calls".
@@ -406,8 +414,13 @@ export async function consumeAssistantStream(
 
           // Batch deltas and flush at threshold
           pendingDelta += delta;
-          if (pendingDelta.length >= DELTA_FLUSH_THRESHOLD || /\n/.test(pendingDelta)) {
+          if (
+            !firstTextDeltaFlushed ||
+            pendingDelta.length >= DELTA_FLUSH_THRESHOLD ||
+            /\n/.test(pendingDelta)
+          ) {
             await flushDelta();
+            firstTextDeltaFlushed = true;
           }
           break;
         }
@@ -418,18 +431,8 @@ export async function consumeAssistantStream(
           break;
         }
 
-        case "CUSTOM": {
-          // The AG-UI spec reserves `CUSTOM` for extensions. We use it
-          // to carry reasoning-content deltas from the adapter so the
-          // UI can render a live Reasoning chip. Any other custom
-          // events fall through and are ignored.
-          if (chunk.name !== REASONING_CONTENT_EVENT) break;
-          let delta: string;
-          try {
-            delta = Schema.decodeUnknownSync(ReasoningContentSchema)(chunk.value).delta;
-          } catch {
-            break;
-          }
+        case "REASONING_MESSAGE_CONTENT": {
+          const delta = chunk.delta;
           if (!delta) continue;
           if (suppressReasoningTokens) {
             // Reasoning is disabled for this turn; drop the chunk
@@ -453,15 +456,36 @@ export async function consumeAssistantStream(
           // upstream event. Newlines flush immediately so paragraph
           // breaks in the reasoning show up promptly.
           pendingReasoning += delta;
-          if (pendingReasoning.length >= DELTA_FLUSH_THRESHOLD || /\n/.test(pendingReasoning)) {
+          if (
+            !firstReasoningDeltaFlushed ||
+            pendingReasoning.length >= DELTA_FLUSH_THRESHOLD ||
+            /\n/.test(pendingReasoning)
+          ) {
             await flushPendingReasoning();
+            firstReasoningDeltaFlushed = true;
+          }
+          break;
+        }
+
+        case "CUSTOM": {
+          if (chunk.name !== TOOL_PROGRESS_EVENT) break;
+          try {
+            await reportActivity(
+              Schema.decodeUnknownSync(ToolProgressEventSchema)(
+                chunk.value,
+              ) satisfies ToolProgressEvent,
+            );
+          } catch {
+            log?.("assistant_turn_invalid_tool_progress", {
+              assistantMessageId: messageId,
+            });
           }
           break;
         }
 
         case "TOOL_CALL_START": {
           toolCallsStarted += 1;
-          const { toolName } = chunk;
+          const toolName = chunk.toolName ?? chunk.toolCallName;
           toolNamesSeen.add(toolName);
           // A tool call marks the end of the current reasoning segment:
           // flush so the "Reasoning" chip closes before the tool chip.
@@ -476,20 +500,23 @@ export async function consumeAssistantStream(
         }
 
         case "TOOL_CALL_END": {
-          // Distinguish adapter-emitted (args done) vs engine-emitted (result available).
-          // The engine's TOOL_CALL_END includes a `result` field, the adapter's does not.
-          const hasResult = chunk.result !== undefined;
-          const phase: "emission" | "result" = hasResult ? "result" : "emission";
-          if (phase === "emission") {
-            toolCallEmissionsEnded += 1;
-          } else {
-            toolCallResultsEnded += 1;
-          }
+          toolCallEmissionsEnded += 1;
           log?.("assistant_turn_tool_call_end", {
             assistantMessageId: messageId,
-            toolName: chunk.toolName,
             iteration: toolCallIterations + 1,
-            phase,
+            phase: "emission",
+            emissionsEnded: toolCallEmissionsEnded,
+            resultsEnded: toolCallResultsEnded,
+          });
+          break;
+        }
+
+        case "TOOL_CALL_RESULT": {
+          toolCallResultsEnded += 1;
+          log?.("assistant_turn_tool_call_end", {
+            assistantMessageId: messageId,
+            iteration: toolCallIterations + 1,
+            phase: "result",
             emissionsEnded: toolCallEmissionsEnded,
             resultsEnded: toolCallResultsEnded,
           });
@@ -498,15 +525,19 @@ export async function consumeAssistantStream(
 
         case "RUN_FINISHED": {
           if (chunk.usage) {
-            sawUsage = true;
-            promptTokens += chunk.usage.promptTokens;
-            completionTokens += chunk.usage.completionTokens;
-          }
-
-          // Check for custom reasoning tokens field
-          if (chunk._reasoningTokens != null) {
-            sawReasoningTokens = true;
-            reasoningTokens += chunk._reasoningTokens;
+            const usage: TokenUsage | undefined = Array.isArray(chunk.usage)
+              ? fromSpecTokenUsage(chunk.usage)
+              : chunk.usage;
+            if (usage) {
+              sawUsage = true;
+              promptTokens += usage.promptTokens;
+              completionTokens += usage.completionTokens;
+              const currentReasoningTokens = usage.completionTokensDetails?.reasoningTokens;
+              if (currentReasoningTokens != null) {
+                sawReasoningTokens = true;
+                reasoningTokens += currentReasoningTokens;
+              }
+            }
           }
 
           if (chunk.finishReason === "tool_calls") {
@@ -555,8 +586,8 @@ export async function consumeAssistantStream(
 
         case "RUN_ERROR": {
           const normalizedError = normalizeAssistantError({
-            errorCode: chunk.error.code,
-            errorMessage: chunk.error.message,
+            errorCode: chunk.code ?? "stream_error",
+            errorMessage: chunk.message,
           });
 
           return failMessage(normalizedError);
